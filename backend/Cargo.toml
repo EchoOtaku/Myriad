@@ -43,6 +43,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 validator = { version = "0.18", features = ["derive"] }
+rand = "0.8"
+lazy_static = "1.4"
 
 [dev-dependencies]
 mockall = "0.12"

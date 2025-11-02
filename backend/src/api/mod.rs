@@ -6,6 +6,7 @@ pub mod config;
 pub mod platforms;
 pub mod bilibili;
 pub mod steam;
+pub mod profile;
 
 pub async fn health() -> (StatusCode, Json<Value>) {
     (

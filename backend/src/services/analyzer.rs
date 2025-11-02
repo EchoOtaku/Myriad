@@ -51,12 +51,17 @@ impl AiAnalyzer {
     }
 
     pub async fn analyze_profile(&self, profile_data: &serde_json::Value) -> Result<String> {
-        let system_prompt = "You are an expert data analyst specializing in social media and professional profiles.";
-        let user_prompt = format!(
-            "{}\n\nAnalyze the following user profile data and provide insights on their professional background, skills, interests, and online presence:\n\n{}",
-            system_prompt,
-            serde_json::to_string_pretty(profile_data)?
-        );
+        // 检查是否提供了自定义提示词
+        let user_prompt = if let Some(prompt) = profile_data.get("prompt").and_then(|p| p.as_str()) {
+            prompt.to_string()
+        } else {
+            let system_prompt = "You are an expert data analyst specializing in social media and professional profiles.";
+            format!(
+                "{}\n\nAnalyze the following user profile data and provide insights on their professional background, skills, interests, and online presence:\n\n{}",
+                system_prompt,
+                serde_json::to_string_pretty(profile_data)?
+            )
+        };
 
         let request_body = GeminiRequest {
             contents: vec![GeminiContent {

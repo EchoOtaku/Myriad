@@ -1,107 +1,15 @@
 ---
 import Layout from '@layouts/Layout.astro';
-import PlatformIcon from '@components/PlatformIcon';
+import ReportCards from '@components/ReportCards';
 
-const title = 'Myriad - Multi-Platform Profile Aggregator';
-const description = 'Aggregate and analyze your digital presence across multiple platforms';
-
-// 示例卡片数据
-const sampleCards = [
-  {
-    id: 1,
-    platform: 'GitHub',
-    color: 'from-gray-700 to-gray-900',
-    title: 'Open Source Contributor',
-    description: '热衷于开源项目，致力于为社区贡献代码。主要专注于 Web 开发和工具链优化。',
-    stats: { repos: 42, stars: 328, followers: 156 }
-  },
-  {
-    id: 2,
-    platform: 'Bilibili',
-    color: 'from-pink-400 to-pink-600',
-    title: 'Tech Content Creator',
-    description: '分享编程教程和技术见解，帮助更多人进入技术领域。专注前端开发和 Rust 教程。',
-    stats: { fans: 2840, views: '18.4万', videos: 67 }
-  },
-  {
-    id: 3,
-    platform: 'Steam',
-    color: 'from-blue-600 to-blue-800',
-    title: 'Indie Game Enthusiast',
-    description: '独立游戏爱好者，喜欢探索有创意的小众游戏。收藏了大量精品独立游戏。',
-    stats: { games: 127, level: 23, hours: '1,284' }
-  },
-];
+const title = 'Myriad - 数字自我发现';
+const description = '一键聚合你的多平台数据，生成AI个人分析报告';
 ---
 
 <Layout title={title} description={description}>
-  <!-- Fixed Height Content Section - No Scroll -->
-  <section class="h-screen flex items-center justify-center px-6 overflow-hidden">
-    <div class="max-w-6xl w-full">
-      <!-- AI Generated Content Cards Grid -->
-      <div class="grid md:grid-cols-3 gap-6">
-        {sampleCards.map((card) => (
-          <article class="glass rounded-3xl p-6 hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-            <!-- Card Header -->
-            <div class="flex items-center gap-3 mb-4">
-              <div class={`w-12 h-12 rounded-2xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg text-white`}>
-                <PlatformIcon platform={card.platform} className="w-7 h-7" client:only="react" />
-              </div>
-              <div>
-                <h3 class="font-semibold text-gray-800">{card.platform}</h3>
-                <div class="flex items-center gap-1">
-                  <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  <span class="text-xs text-gray-500">活跃</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Card Title -->
-            <h2 class="text-xl font-bold text-gray-900 mb-3">
-              {card.title}
-            </h2>
-
-            <!-- Card Description -->
-            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
-              {card.description}
-            </p>
-
-            <!-- Card Stats -->
-            <div class="grid grid-cols-3 gap-3 pt-4 border-t border-gray-200">
-              {Object.entries(card.stats).map(([key, value]) => (
-                <div class="text-center">
-                  <div class="text-lg font-bold bg-gradient-to-r from-green-600 to-pink-600 bg-clip-text text-transparent">
-                    {value}
-                  </div>
-                  <div class="text-xs text-gray-500 capitalize">{key}</div>
-                </div>
-              ))}
-            </div>
-
-            <!-- Card Footer -->
-            <div class="mt-4 pt-4 border-t border-gray-200">
-              <button class="w-full py-2.5 rounded-2xl bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-all duration-300 hover:shadow-lg">
-                查看详情
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <!-- Bottom Action Hint -->
-      <div class="text-center mt-8">
-        <p class="text-gray-600 text-sm mb-3">✨ 这些是 AI 生成的示例内容</p>
-        <a
-          href="/config"
-          class="inline-flex items-center gap-2 px-6 py-3 bg-pink-500 hover:bg-pink-600 rounded-3xl font-semibold text-white transition-all duration-300 transform hover:scale-105 shadow-lg"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-          </svg>
-          配置你的平台开始生成
-        </a>
-      </div>
-    </div>
+  <!-- Report Cards Section -->
+  <section class="min-h-screen flex items-center justify-center px-6">
+    <ReportCards client:load />
   </section>
 </Layout>
 

@@ -59,6 +59,16 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
             </svg>
           </a>
+
+          <!-- 分隔线 -->
+          <div class="w-8 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+
+          <!-- 生成报告按钮 -->
+          <button id="generate-report-btn" class="nav-item generate-btn" title="生成报告">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+            </svg>
+          </button>
         </div>
       </div>
     </nav>
@@ -182,6 +192,61 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         @apply text-green-600 bg-green-50;
       }
 
+      /* Generate button with gradient border */
+      .generate-btn {
+        position: relative;
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(236, 72, 153, 0.15));
+        border: 2px solid transparent;
+      }
+
+      .generate-btn::before {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: 16px;
+        padding: 2px;
+        background: linear-gradient(135deg, 
+          rgba(34, 197, 94, 0.8),
+          rgba(236, 72, 153, 0.6),
+          rgba(251, 191, 36, 0.6)
+        );
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: border-pulse 3s ease-in-out infinite;
+      }
+
+      @keyframes border-pulse {
+        0%, 100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .generate-btn:hover {
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(236, 72, 153, 0.25));
+        transform: scale(1.15);
+      }
+
+      .generate-btn:active {
+        transform: scale(1.05);
+      }
+
+      .generate-btn.loading {
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       /* Smooth scrolling */
       html {
         scroll-behavior: smooth;
@@ -223,7 +288,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       // Set active nav state
       function setActiveNav() {
         const currentPath = window.location.pathname;
-        const navItems = document.querySelectorAll('.nav-item');
+        const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
         
         navItems.forEach(item => {
           const href = item.getAttribute('href');
@@ -234,9 +299,34 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           }
         });
       }
+
+      // Handle generate report button
+      function setupGenerateButton() {
+        const generateBtn = document.getElementById('generate-report-btn');
+        if (!generateBtn) return;
+
+        generateBtn.addEventListener('click', async () => {
+          // 检查是否在首页
+          if (window.location.pathname !== '/') {
+            window.location.href = '/';
+            return;
+          }
+
+          // 调用 ReportCards 组件的生成函数
+          if (typeof (window as any).generateReport === 'function') {
+            generateBtn.classList.add('loading');
+            try {
+              await (window as any).generateReport();
+            } finally {
+              generateBtn.classList.remove('loading');
+            }
+          }
+        });
+      }
       
       loadWallpaper();
       setActiveNav();
+      setupGenerateButton();
     </script>
   </body>
 </html>
