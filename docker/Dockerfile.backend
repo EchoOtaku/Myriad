@@ -1,0 +1,39 @@
+# Backend Dockerfile
+FROM rust:1.75 as builder
+
+WORKDIR /app
+
+# Copy manifests
+COPY backend/Cargo.toml ./
+RUN mkdir -p .cargo && echo '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"' > .cargo/config.toml || true
+
+# Create dummy main to build dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+# Copy source code
+COPY backend/src ./src
+
+# Build application (migrations will be handled separately if needed)
+RUN cargo build --release
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y libssl3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/myriad-backend /app/myriad-backend
+
+# Copy frontend dist (if built)
+COPY frontend/dist /app/frontend/dist
+
+EXPOSE 3000
+
+CMD ["/app/myriad-backend"]

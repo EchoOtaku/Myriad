@@ -1,0 +1,49 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+    <nav class="bg-white dark:bg-gray-800 shadow-sm">
+      <div class="container mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+          <a href="/" class="text-2xl font-bold text-primary-600 dark:text-primary-400">
+            Myriad
+          </a>
+          <div class="flex gap-6">
+            <a href="/" class="hover:text-primary-600 transition">Home</a>
+            <a href="/config" class="hover:text-primary-600 transition">Config</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <main>
+      <slot />
+    </main>
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-16">
+      <div class="container mx-auto px-4 py-8 text-center text-gray-600 dark:text-gray-400">
+        <p>&copy; 2025 Myriad. Built with Astro & Rust.</p>
+      </div>
+    </footer>
+  </body>
+</html>

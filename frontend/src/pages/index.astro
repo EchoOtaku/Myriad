@@ -1,0 +1,15 @@
+---
+import Layout from '@layouts/Layout.astro';
+import Hero from '@components/Hero.astro';
+import PlatformStats from '@components/PlatformStats.astro';
+import AnalysisSection from '@components/AnalysisSection.astro';
+
+const title = 'Myriad - Multi-Platform Profile Aggregator';
+const description = 'Aggregate and analyze your digital presence across multiple platforms';
+---
+
+<Layout title={title} description={description}>
+  <Hero />
+  <PlatformStats />
+  <AnalysisSection />
+</Layout>
