@@ -6,8 +6,9 @@ const title = 'Configuration - Myriad';
 ---
 
 <Layout title={title}>
-  <div class="container mx-auto px-4 py-8">
-    <h1 class="text-4xl font-bold mb-8">Configuration</h1>
+  <!-- 配置页不需要额外背景，使用Layout的春日背景 -->
+
+  <div class="min-h-screen flex items-center justify-center px-6 py-20">
     <ConfigForm client:load />
   </div>
 </Layout>

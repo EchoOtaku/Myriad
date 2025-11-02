@@ -7,8 +7,8 @@ pub struct AppConfig {
     pub server_host: String,
     pub server_port: u16,
     pub frontend_dist_path: String,
-    pub openai_api_key: String,
-    pub openai_model: String,
+    pub gemini_api_key: String,
+    pub gemini_model: String,
 }
 
 impl AppConfig {
@@ -23,10 +23,10 @@ impl AppConfig {
                 .parse()?,
             frontend_dist_path: env::var("FRONTEND_DIST_PATH")
                 .unwrap_or_else(|_| "../frontend/dist".to_string()),
-            openai_api_key: env::var("OPENAI_API_KEY")
+            gemini_api_key: env::var("GEMINI_API_KEY")
                 .unwrap_or_else(|_| String::new()),
-            openai_model: env::var("OPENAI_MODEL")
-                .unwrap_or_else(|_| "gpt-4".to_string()),
+            gemini_model: env::var("GEMINI_MODEL")
+                .unwrap_or_else(|_| "gemini-pro".to_string()),
         })
     }
 }

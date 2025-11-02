@@ -19,31 +19,224 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
   </head>
-  <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-    <nav class="bg-white dark:bg-gray-800 shadow-sm">
-      <div class="container mx-auto px-4 py-4">
-        <div class="flex items-center justify-between">
-          <a href="/" class="text-2xl font-bold text-primary-600 dark:text-primary-400">
-            Myriad
+  <body class="antialiased">
+    <!-- Animated Background -->
+    <div id="bg-container" class="fixed inset-0 -z-10 overflow-hidden">
+      <!-- Dynamic Wallpaper -->
+      <div id="wallpaper" class="absolute inset-0 bg-cover bg-center bg-no-repeat"></div>
+      
+      <!-- Overlay Gradient - Spring Colors -->
+      <div class="absolute inset-0 bg-gradient-to-br from-green-50/95 via-pink-50/90 to-yellow-50/95"></div>
+      
+      <!-- Animated Mesh Gradient - Spring Colors -->
+      <div class="absolute inset-0 opacity-30">
+        <div class="absolute top-0 -left-4 w-96 h-96 bg-green-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+        <div class="absolute top-0 -right-4 w-96 h-96 bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+        <div class="absolute -bottom-8 left-20 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
+      </div>
+      
+      <!-- Subtle Grid Pattern -->
+      <div class="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
+    </div>
+
+    <!-- Dynamic Island Navigation - Left Side Vertical -->
+    <nav class="fixed left-6 top-1/2 -translate-y-1/2 z-50">
+      <div class="dynamic-island shadow-2xl">
+        <div class="flex flex-col items-center gap-3">
+          <a href="/" class="nav-item" title="主页">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+            </svg>
           </a>
-          <div class="flex gap-6">
-            <a href="/" class="hover:text-primary-600 transition">Home</a>
-            <a href="/config" class="hover:text-primary-600 transition">Config</a>
-          </div>
+          
+          <a href="/config" class="nav-item" title="配置">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+          </a>
         </div>
       </div>
     </nav>
-    <main>
+
+    <main class="relative z-10">
       <slot />
     </main>
-    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-16">
-      <div class="container mx-auto px-4 py-8 text-center text-gray-600 dark:text-gray-400">
-        <p>&copy; 2025 Myriad. Built with Astro & Rust.</p>
-      </div>
-    </footer>
+
+    <style is:global>
+      @keyframes blob {
+        0%, 100% {
+          transform: translate(0, 0) scale(1);
+        }
+        33% {
+          transform: translate(30px, -50px) scale(1.1);
+        }
+        66% {
+          transform: translate(-20px, 20px) scale(0.9);
+        }
+      }
+
+      .animate-blob {
+        animation: blob 7s infinite;
+      }
+
+      .animation-delay-2000 {
+        animation-delay: 2s;
+      }
+
+      .animation-delay-4000 {
+        animation-delay: 4s;
+      }
+
+      .bg-grid-pattern {
+        background-image: 
+          linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        background-size: 50px 50px;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        background: #fef3c7;
+        color: #1f2937;
+      }
+
+      /* Glass effect utility - Bright style */
+      .glass {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+      }
+
+      /* Dynamic Island - 灵动岛样式（垂直布局，流动玻璃材质） */
+      .dynamic-island {
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 24px;
+        padding: 16px 12px;
+        border: 2px solid rgba(34, 197, 94, 0.4);
+        box-shadow: 0 8px 32px 0 rgba(34, 197, 94, 0.15),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* 动态渐变边框动画 */
+      .dynamic-island::before {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: 24px;
+        padding: 2px;
+        background: linear-gradient(135deg, 
+          rgba(34, 197, 94, 0.6),
+          rgba(236, 72, 153, 0.4),
+          rgba(251, 191, 36, 0.4),
+          rgba(34, 197, 94, 0.6)
+        );
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: border-flow 8s linear infinite;
+        background-size: 300% 300%;
+      }
+
+      @keyframes border-flow {
+        0%, 100% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+      }
+
+      .dynamic-island:hover {
+        padding: 18px 12px;
+        background: rgba(255, 255, 255, 0.85);
+        box-shadow: 0 12px 48px 0 rgba(34, 197, 94, 0.25),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+      }
+
+      /* Navigation items */
+      .nav-item {
+        @apply text-gray-500 hover:text-green-600 transition-all duration-300;
+        @apply transform hover:scale-110 active:scale-95;
+        @apply relative p-2.5;
+        border-radius: 16px;
+      }
+
+      .nav-item:hover {
+        background: rgba(34, 197, 94, 0.1);
+      }
+
+      /* Active nav item indicator */
+      [aria-current="page"].nav-item {
+        @apply text-green-600 bg-green-50;
+      }
+
+      /* Smooth scrolling */
+      html {
+        scroll-behavior: smooth;
+      }
+
+      /* Custom scrollbar - Spring theme */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(254, 243, 199, 0.5);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(34, 197, 94, 0.5);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(236, 72, 153, 0.7);
+      }
+    </style>
+
+    <script>
+      // Load wallpaper from config
+      async function loadWallpaper() {
+        try {
+          const response = await fetch('http://localhost:3000/api/config');
+          const data = await response.json();
+          const wallpaperEl = document.getElementById('wallpaper');
+          if (wallpaperEl && data.ui_config?.wallpaper_url) {
+            wallpaperEl.style.backgroundImage = `url(${data.ui_config.wallpaper_url})`;
+            wallpaperEl.style.filter = `blur(${data.ui_config.wallpaper_blur || 3}px)`;
+          }
+        } catch (error) {
+          console.log('Using default background');
+        }
+      }
+      
+      // Set active nav state
+      function setActiveNav() {
+        const currentPath = window.location.pathname;
+        const navItems = document.querySelectorAll('.nav-item');
+        
+        navItems.forEach(item => {
+          const href = item.getAttribute('href');
+          if (href === currentPath || (currentPath === '/' && href === '/')) {
+            item.setAttribute('aria-current', 'page');
+          } else {
+            item.removeAttribute('aria-current');
+          }
+        });
+      }
+      
+      loadWallpaper();
+      setActiveNav();
+    </script>
   </body>
 </html>

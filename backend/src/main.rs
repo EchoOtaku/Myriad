@@ -47,10 +47,23 @@ async fn main() -> anyhow::Result<()> {
     let api_router = Router::new()
         .route("/health", get(api::health))
         .route("/api/config", get(api::config::get_config).post(api::config::update_config))
+        .route("/api/config/test", post(api::config::test_platform))
         .route("/api/platforms", get(api::platforms::list_platforms))
         .route("/api/profiles", get(api::platforms::get_profiles))
         .route("/api/fetch", post(api::platforms::trigger_fetch))
         .route("/api/analysis", get(api::analysis::get_analysis).post(api::analysis::trigger_analysis))
+        // Bilibili API routes
+        .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
+        .route("/api/bilibili/user/:uid", get(api::bilibili::get_bilibili_user_info))
+        .route("/api/bilibili/favorites/:uid", get(api::bilibili::get_bilibili_favorites))
+        .route("/api/bilibili/bangumi/:uid", get(api::bilibili::get_bilibili_bangumi))
+        .route("/api/bilibili/bangumi/all/:uid", get(api::bilibili::get_all_bilibili_bangumi))
+        // Steam API routes
+        .route("/api/steam/user", get(api::steam::get_steam_user))
+        .route("/api/steam/user/info", get(api::steam::get_steam_user_info))
+        .route("/api/steam/games", get(api::steam::get_steam_games))
+        .route("/api/steam/wishlist/:steam_id", get(api::steam::get_steam_wishlist))
+        .route("/api/steam/stats", get(api::steam::get_steam_stats))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(db);

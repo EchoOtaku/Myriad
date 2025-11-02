@@ -12,18 +12,28 @@ pub async fn list_platforms(
             "name": "GitHub",
             "enabled": true,
             "icon": "github",
+            "description": "Aggregate your repositories, stars, and contributions",
         }),
         json!({
             "id": 2,
-            "name": "Twitter",
-            "enabled": false,
-            "icon": "twitter",
+            "name": "Bilibili",
+            "enabled": true,
+            "icon": "bilibili",
+            "description": "Track your favorites, bangumi, and viewing history",
         }),
         json!({
             "id": 3,
-            "name": "LinkedIn",
+            "name": "Steam",
             "enabled": false,
-            "icon": "linkedin",
+            "icon": "steam",
+            "description": "Sync your game library and wishlist",
+        }),
+        json!({
+            "id": 4,
+            "name": "X",
+            "enabled": false,
+            "icon": "twitter",
+            "description": "Analyze your tweets and engagement metrics",
         }),
     ];
 

@@ -21,6 +21,7 @@ export default defineConfig({
         '@components': path.resolve(__dirname, './src/components'),
         '@layouts': path.resolve(__dirname, './src/layouts'),
         '@lib': path.resolve(__dirname, './src/lib'),
+        '@config': path.resolve(__dirname, './src/config.ts'),
       },
     },
     server: {

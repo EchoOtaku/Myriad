@@ -4,6 +4,8 @@ use serde_json::{json, Value};
 pub mod analysis;
 pub mod config;
 pub mod platforms;
+pub mod bilibili;
+pub mod steam;
 
 pub async fn health() -> (StatusCode, Json<Value>) {
     (
