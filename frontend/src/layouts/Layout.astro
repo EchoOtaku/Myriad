@@ -29,14 +29,13 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       <!-- Dynamic Wallpaper -->
       <div id="wallpaper" class="absolute inset-0 bg-cover bg-center bg-no-repeat"></div>
       
-      <!-- Overlay Gradient - Spring Colors -->
-      <div class="absolute inset-0 bg-gradient-to-br from-green-50/95 via-pink-50/90 to-yellow-50/95"></div>
+      <!-- Gradient from middle: Top transparent, Bottom white blur -->
+      <div class="absolute inset-0 bg-gradient-to-b from-transparent from-[45%] via-white/60 via-[50%] to-white/95"></div>
       
-      <!-- Animated Mesh Gradient - Spring Colors -->
-      <div class="absolute inset-0 opacity-30">
-        <div class="absolute top-0 -left-4 w-96 h-96 bg-green-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-        <div class="absolute top-0 -right-4 w-96 h-96 bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-        <div class="absolute -bottom-8 left-20 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
+      <!-- Subtle Mesh Gradient - Lower half only -->
+      <div class="absolute inset-0 opacity-20">
+        <div class="absolute top-[45%] left-10 w-96 h-96 bg-green-400/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+        <div class="absolute top-[45%] right-10 w-96 h-96 bg-pink-400/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
       </div>
       
       <!-- Subtle Grid Pattern -->
@@ -78,6 +77,14 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     </main>
 
     <style is:global>
+      :root {
+        --color-primary: #22c55e;
+        --color-secondary: #ec4899;
+        --color-accent: #fbbf24;
+        --color-light: #4ade80;
+        --color-dark: #16a34a;
+      }
+
       @keyframes blob {
         0%, 100% {
           transform: translate(0, 0) scale(1);
@@ -131,8 +138,8 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         -webkit-backdrop-filter: blur(20px);
         border-radius: 24px;
         padding: 16px 12px;
-        border: 2px solid rgba(34, 197, 94, 0.4);
-        box-shadow: 0 8px 32px 0 rgba(34, 197, 94, 0.15),
+        border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+        box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
                     inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
         transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
@@ -147,10 +154,10 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         border-radius: 24px;
         padding: 2px;
         background: linear-gradient(135deg, 
-          rgba(34, 197, 94, 0.6),
-          rgba(236, 72, 153, 0.4),
-          rgba(251, 191, 36, 0.4),
-          rgba(34, 197, 94, 0.6)
+          color-mix(in srgb, var(--color-primary) 60%, transparent),
+          color-mix(in srgb, var(--color-secondary) 40%, transparent),
+          color-mix(in srgb, var(--color-accent) 40%, transparent),
+          color-mix(in srgb, var(--color-primary) 60%, transparent)
         );
         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
         -webkit-mask-composite: xor;
@@ -171,31 +178,36 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       .dynamic-island:hover {
         padding: 18px 12px;
         background: rgba(255, 255, 255, 0.85);
-        box-shadow: 0 12px 48px 0 rgba(34, 197, 94, 0.25),
+        box-shadow: 0 12px 48px 0 color-mix(in srgb, var(--color-primary) 25%, transparent),
                     inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
       }
 
       /* Navigation items */
       .nav-item {
-        @apply text-gray-500 hover:text-green-600 transition-all duration-300;
+        @apply text-gray-500 transition-all duration-300;
         @apply transform hover:scale-110 active:scale-95;
         @apply relative p-2.5;
         border-radius: 16px;
       }
 
       .nav-item:hover {
-        background: rgba(34, 197, 94, 0.1);
+        color: var(--color-primary);
+        background: color-mix(in srgb, var(--color-primary) 10%, transparent);
       }
 
       /* Active nav item indicator */
       [aria-current="page"].nav-item {
-        @apply text-green-600 bg-green-50;
+        color: var(--color-primary);
+        background: color-mix(in srgb, var(--color-primary) 10%, white);
       }
 
       /* Generate button with gradient border */
       .generate-btn {
         position: relative;
-        background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(236, 72, 153, 0.15));
+        background: linear-gradient(135deg, 
+          color-mix(in srgb, var(--color-primary) 15%, transparent), 
+          color-mix(in srgb, var(--color-secondary) 15%, transparent)
+        );
         border: 2px solid transparent;
       }
 
@@ -226,7 +238,10 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       }
 
       .generate-btn:hover {
-        background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(236, 72, 153, 0.25));
+        background: linear-gradient(135deg, 
+          color-mix(in srgb, var(--color-primary) 25%, transparent), 
+          color-mix(in srgb, var(--color-secondary) 25%, transparent)
+        );
         transform: scale(1.15);
       }
 
@@ -261,27 +276,80 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         background: rgba(254, 243, 199, 0.5);
       }
       ::-webkit-scrollbar-thumb {
-        background: rgba(34, 197, 94, 0.5);
+        background: color-mix(in srgb, var(--color-primary) 50%, transparent);
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: rgba(236, 72, 153, 0.7);
+        background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
       }
     </style>
 
     <script>
-      // Load wallpaper from config
-      async function loadWallpaper() {
+      import { extractColorsFromImage, applyColorPalette, clearColors } from '../utils/colorExtractor';
+
+      // 🔴 关键：页面加载的第一时间就清除旧颜色
+      clearColors();
+
+      // 全局状态：存储当前显示的壁纸 URL（原始 URL，不含时间戳）
+      let activeWallpaperUrl: string | null = null;
+
+      // Load wallpaper and extract colors
+      async function loadWallpaperAndColors() {
         try {
           const response = await fetch('http://localhost:3000/api/config');
           const data = await response.json();
           const wallpaperEl = document.getElementById('wallpaper');
+          
           if (wallpaperEl && data.ui_config?.wallpaper_url) {
-            wallpaperEl.style.backgroundImage = `url(${data.ui_config.wallpaper_url})`;
-            wallpaperEl.style.filter = `blur(${data.ui_config.wallpaper_blur || 3}px)`;
+            const wallpaperUrl = data.ui_config.wallpaper_url;
+            
+            console.log('🖼️ Loading wallpaper:', wallpaperUrl);
+            
+            // 🔴 立即更新活动的壁纸 URL（同步操作）
+            activeWallpaperUrl = wallpaperUrl;
+            
+            // 预加载并显示背景图片
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => {
+                // 再次验证这仍然是活动的 URL
+                if (activeWallpaperUrl === wallpaperUrl) {
+                  wallpaperEl.style.backgroundImage = `url(${wallpaperUrl})`;
+                  wallpaperEl.style.filter = `blur(${data.ui_config.wallpaper_blur || 3}px)`;
+                  console.log('✅ Wallpaper displayed');
+                  resolve();
+                } else {
+                  console.warn('⚠️ Wallpaper URL changed, skipping display');
+                  reject(new Error('URL changed'));
+                }
+              };
+              img.onerror = () => {
+                console.error('❌ Failed to load wallpaper');
+                reject(new Error('Failed to load wallpaper'));
+              };
+              img.src = wallpaperUrl;
+            });
+            
+            // 提取颜色（这个是异步的，可能需要时间）
+            console.log('🎨 Starting color extraction');
+            const result = await extractColorsFromImage(wallpaperUrl);
+            
+            // 🔴 关键验证：只有当这个 URL 仍然是活动的，才应用颜色
+            if (activeWallpaperUrl === wallpaperUrl) {
+              applyColorPalette(result);
+              console.log('✅ Colors applied:', result);
+            } else {
+              console.warn('⚠️ Wallpaper changed during extraction');
+              console.warn(`   Extracted for: ${wallpaperUrl}`);
+              console.warn(`   But active is: ${activeWallpaperUrl}`);
+              console.warn('   Colors NOT applied');
+            }
+            
           }
         } catch (error) {
-          console.log('Using default background');
+          console.error('❌ Error:', error);
         }
       }
       
@@ -324,7 +392,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         });
       }
       
-      loadWallpaper();
+      loadWallpaperAndColors();
       setActiveNav();
       setupGenerateButton();
     </script>

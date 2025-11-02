@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
+interface UserInfo {
+    name: string;
+    avatar: string;
+    platform: string;
+}
+
 interface CardContent {
     summary: string;
     details: string[];
@@ -28,6 +34,71 @@ export default function ReportCards() {
     const [report, setReport] = useState<PersonalReport | null>(null);
     const [progress, setProgress] = useState<string>('');
     const [fromCache, setFromCache] = useState(false);
+    const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+    const [avatarError, setAvatarError] = useState(false);
+
+    // 生成默认头像 (SVG Data URL)
+    const getDefaultAvatar = (name: string) => {
+        const initial = name.charAt(0).toUpperCase();
+        const colors = [
+            { bg: '#6366f1', text: '#ffffff' },
+            { bg: '#8b5cf6', text: '#ffffff' },
+            { bg: '#ec4899', text: '#ffffff' },
+            { bg: '#f59e0b', text: '#ffffff' },
+            { bg: '#10b981', text: '#ffffff' },
+        ];
+        const colorIndex = name.charCodeAt(0) % colors.length;
+        const color = colors[colorIndex];
+
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="${color.bg}"/><text x="50" y="50" font-family="Arial, sans-serif" font-size="45" font-weight="bold" fill="${color.text}" text-anchor="middle" dominant-baseline="central">${initial}</text></svg>`;
+        return `data:image/svg+xml;base64,${btoa(svg)}`;
+    };
+
+    // 获取用户信息
+    const fetchUserInfo = async () => {
+        try {
+            // 优先尝试从 Bilibili 获取
+            const bilibiliUid = await fetch('http://localhost:3000/api/config')
+                .then(res => res.json())
+                .then(data => {
+                    const bilibili = data.platforms?.find((p: any) => p.name === 'Bilibili');
+                    return bilibili?.config_fields?.find((f: any) => f.key === 'uid')?.value;
+                });
+
+            if (bilibiliUid) {
+                const response = await fetch(`http://localhost:3000/api/bilibili/user?uid=${bilibiliUid}`);
+                const result = await response.json();
+                if (result.success && result.data?.user_info) {
+                    setUserInfo({
+                        name: result.data.user_info.name,
+                        avatar: result.data.user_info.face,
+                        platform: 'Bilibili'
+                    });
+                    return;
+                }
+            }
+
+            // 如果没有 Bilibili，尝试 GitHub
+            const githubUsername = await fetch('http://localhost:3000/api/config')
+                .then(res => res.json())
+                .then(data => {
+                    const github = data.platforms?.find((p: any) => p.name === 'GitHub');
+                    return github?.config_fields?.find((f: any) => f.key === 'username')?.value;
+                });
+
+            if (githubUsername) {
+                const response = await fetch(`https://api.github.com/users/${githubUsername}`);
+                const result = await response.json();
+                setUserInfo({
+                    name: result.name || result.login,
+                    avatar: result.avatar_url,
+                    platform: 'GitHub'
+                });
+            }
+        } catch (err) {
+            console.error('Failed to fetch user info:', err);
+        }
+    };
 
     // 获取所有平台数据
     const fetchAllData = async () => {
@@ -107,6 +178,9 @@ export default function ReportCards() {
     // 加载已有报告或自动生成
     useEffect(() => {
         const loadExistingReport = async () => {
+            // 获取用户信息
+            fetchUserInfo();
+
             try {
                 const response = await fetch('http://localhost:3000/api/profile/report');
                 if (response.ok) {
@@ -146,7 +220,7 @@ export default function ReportCards() {
 
                     {loading && (
                         <div className="flex flex-col items-center gap-4">
-                            <div className="w-16 h-16 border-4 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-16 h-16 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-primary) 40%, transparent)', borderTopColor: 'transparent' }}></div>
                             <p className="text-lg text-gray-700 font-semibold">{progress}</p>
                             <p className="text-sm text-gray-500">这可能需要30-60秒，请稍候...</p>
                         </div>
@@ -166,26 +240,75 @@ export default function ReportCards() {
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
             {/* 报告信息条 */}
-            <div className="mb-6 flex items-center justify-between bg-white/50 backdrop-blur-sm rounded-2xl p-4 border border-green-200/50">
-                <div className="flex items-center gap-3">
-                    <span className="text-2xl">✨</span>
-                    <div>
-                        <p className="text-sm font-semibold text-gray-700">
-                            {fromCache ? '📦 从缓存加载' : '🎉 新鲜生成'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            {getExpiryInfo()}天后自动更新 · {report.cards.length}个话题
-                        </p>
+            <div className="mb-6 glass rounded-3xl p-5 border shadow-lg" style={{ borderColor: 'color-mix(in srgb, var(--color-primary) 30%, transparent)' }}>
+                <div className="flex items-center justify-between gap-4">
+                    {/* 左侧：用户信息 */}
+                    <div className="flex items-center gap-4">
+                        {userInfo ? (
+                            <>
+                                {!avatarError ? (
+                                    <img
+                                        src={userInfo.avatar}
+                                        alt={userInfo.name}
+                                        className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                        crossOrigin="anonymous"
+                                        referrerPolicy="no-referrer"
+                                        onError={() => setAvatarError(true)}
+                                    />
+                                ) : (
+                                    <img
+                                        src={getDefaultAvatar(userInfo.name)}
+                                        alt={userInfo.name}
+                                        className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                    />
+                                )}
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800">{userInfo.name}</h3>
+                                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }}></span>
+                                        来自 {userInfo.platform}
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300 animate-pulse"></div>
+                                <div>
+                                    <div className="h-5 w-24 bg-gray-200 rounded animate-pulse mb-1"></div>
+                                    <div className="h-3 w-16 bg-gray-200 rounded animate-pulse"></div>
+                                </div>
+                            </>
+                        )}
                     </div>
-                </div>
-                <div className="text-xs text-gray-400">
-                    {new Date(report.generated_at).toLocaleDateString('zh-CN', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                    })}
+
+                    {/* 右侧：报告信息 */}
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">✨</span>
+                            <div>
+                                <p className="text-sm font-semibold text-gray-700">
+                                    {fromCache ? '📦 从缓存加载' : '🎉 新鲜生成'}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                    {getExpiryInfo()}天后更新 · {report.cards.length}个话题
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs text-gray-400">
+                                {new Date(report.generated_at).toLocaleDateString('zh-CN', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                })}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                                {new Date(report.generated_at).toLocaleTimeString('zh-CN', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                })}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -206,8 +329,7 @@ export default function ReportCards() {
                             >
                                 {card.icon}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            <div>
                                 <span className="text-xs text-gray-500 font-medium">{card.category}</span>
                             </div>
                         </div>
@@ -226,7 +348,7 @@ export default function ReportCards() {
                         <div className="space-y-2 mb-3">
                             {card.content.details.map((detail, i) => (
                                 <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                                    <span className="text-green-500 mt-1">•</span>
+                                    <span className="mt-1" style={{ color: 'var(--color-primary)' }}>•</span>
                                     <span>{detail}</span>
                                 </div>
                             ))}

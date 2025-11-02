@@ -71,7 +71,7 @@ $env:DATABASE_URL = "postgresql://myriad:password@localhost:5432/myriad"
 # 在新窗口启动后端
 $backendScript = @"
 `$env:DATABASE_URL='postgresql://myriad:password@localhost:5432/myriad'
-Set-Location 'C:\Users\Think\Documents\GitHub\Myriad'
+Set-Location 'C:\Users\Think\Documents\GitHub\Myriad\backend'
 cargo run
 "@
 

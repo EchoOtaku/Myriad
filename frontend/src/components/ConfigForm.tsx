@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '@config';
 import PlatformIcon from './PlatformIcon';
-import { FaBrain, FaClock } from 'react-icons/fa';
+import { FaBrain } from 'react-icons/fa';
 
 interface ConfigField {
   key: string;
@@ -29,11 +29,6 @@ interface AiConfig {
   config_fields: ConfigField[];
 }
 
-interface FetchConfig {
-  auto_fetch: boolean;
-  interval_hours: number;
-}
-
 interface UiConfig {
   wallpaper_url: string;
   wallpaper_blur: number;
@@ -46,7 +41,6 @@ interface UiConfig {
 interface Config {
   platforms: PlatformConfig[];
   ai_config: AiConfig;
-  fetch_config: FetchConfig;
   ui_config: UiConfig;
 }
 
@@ -411,61 +405,6 @@ const ConfigForm: React.FC = () => {
               💡 <strong>Tip:</strong> You can use Unsplash URLs (e.g., https://source.unsplash.com/1920x1080/?nature)
               or any image URL. Changes apply after saving and reloading the page.
             </p>
-          </div>
-        </div>
-
-        {/* Fetch Configuration Card */}
-        <div className="glass rounded-2xl p-6 mb-8">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600">
-              <FaClock className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-gray-800">Fetch Configuration</h3>
-              <p className="text-sm text-gray-600">Automatic data synchronization</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <label className="flex items-center cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={config.fetch_config.auto_fetch}
-                onChange={(e) => {
-                  setConfig({
-                    ...config,
-                    fetch_config: { ...config.fetch_config, auto_fetch: e.target.checked },
-                  });
-                }}
-                className="sr-only peer"
-              />
-              <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
-              <span className="ml-3 text-gray-800 font-medium group-hover:text-green-600 transition-colors">
-                Enable automatic fetching
-              </span>
-            </label>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fetch Interval (hours)
-              </label>
-              <input
-                type="number"
-                value={config.fetch_config.interval_hours}
-                onChange={(e) => {
-                  setConfig({
-                    ...config,
-                    fetch_config: {
-                      ...config.fetch_config,
-                      interval_hours: parseInt(e.target.value) || 24,
-                    },
-                  });
-                }}
-                min="1"
-                max="168"
-                className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-              />
-            </div>
           </div>
         </div>
 
