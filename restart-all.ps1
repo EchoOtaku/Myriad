@@ -16,18 +16,18 @@ Write-Host "[ 1/4 ] 停止现有服务..." -ForegroundColor Yellow
 # 停止前端 (端口 4321)
 $frontendProcess = Get-NetTCPConnection -LocalPort 4321 -ErrorAction SilentlyContinue
 if ($frontendProcess) {
-    $pid = $frontendProcess.OwningProcess | Select-Object -First 1
-    Write-Host "  → 停止前端服务 (PID: $pid)" -ForegroundColor Gray
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    $frontendPid = $frontendProcess.OwningProcess | Select-Object -First 1
+    Write-Host "  → 停止前端服务 (PID: $frontendPid)" -ForegroundColor Gray
+    Stop-Process -Id $frontendPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
 # 停止后端 (端口 3000)
 $backendProcess = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue
 if ($backendProcess) {
-    $pid = $backendProcess.OwningProcess | Select-Object -First 1
-    Write-Host "  → 停止后端服务 (PID: $pid)" -ForegroundColor Gray
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    $backendPid = $backendProcess.OwningProcess | Select-Object -First 1
+    Write-Host "  → 停止后端服务 (PID: $backendPid)" -ForegroundColor Gray
+    Stop-Process -Id $backendPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
@@ -53,7 +53,8 @@ Start-Sleep -Seconds 10
 $dbCheck = docker ps --filter "name=myriad-postgres" --format "{{.Names}}"
 if ($dbCheck -match "myriad-postgres") {
     Write-Host "  ✓ 数据库启动成功`n" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "  ✗ 数据库启动失败！`n" -ForegroundColor Red
     exit 1
 }
@@ -86,7 +87,8 @@ try {
     if ($backendHealth.StatusCode -eq 200) {
         Write-Host "  ✓ 后端启动成功 (http://localhost:3000)`n" -ForegroundColor Green
     }
-} catch {
+}
+catch {
     Write-Host "  ⚠ 后端可能还在启动中..." -ForegroundColor Yellow
     Write-Host "  → 请等待几秒后手动检查: http://localhost:3000/health`n" -ForegroundColor Gray
 }
@@ -115,7 +117,8 @@ try {
     if ($frontendHealth.StatusCode -eq 200) {
         Write-Host "  ✓ 前端启动成功 (http://localhost:4321)`n" -ForegroundColor Green
     }
-} catch {
+}
+catch {
     Write-Host "  ⚠ 前端可能还在启动中..." -ForegroundColor Yellow
     Write-Host "  → 请等待几秒后刷新浏览器`n" -ForegroundColor Gray
 }
@@ -136,7 +139,8 @@ if ($dbStatus) {
     Write-Host "  ✓ 数据库 (PostgreSQL)" -ForegroundColor Green
     Write-Host "    端口: localhost:5432" -ForegroundColor Gray
     Write-Host "    状态: $dbStatus" -ForegroundColor Gray
-} else {
+}
+else {
     Write-Host "  ✗ 数据库未运行" -ForegroundColor Red
 }
 
@@ -148,7 +152,8 @@ try {
     Write-Host "  ✓ 后端 (Rust/Axum)" -ForegroundColor Green
     Write-Host "    地址: http://localhost:3000" -ForegroundColor Gray
     Write-Host "    状态: $($backendCheck.StatusCode) OK" -ForegroundColor Gray
-} catch {
+}
+catch {
     Write-Host "  ⚠ 后端 (启动中...)" -ForegroundColor Yellow
     Write-Host "    地址: http://localhost:3000" -ForegroundColor Gray
 }
@@ -161,7 +166,8 @@ try {
     Write-Host "  ✓ 前端 (Astro)" -ForegroundColor Green
     Write-Host "    地址: http://localhost:4321" -ForegroundColor Gray
     Write-Host "    状态: $($frontendCheck.StatusCode) OK" -ForegroundColor Gray
-} catch {
+}
+catch {
     Write-Host "  ⚠ 前端 (启动中...)" -ForegroundColor Yellow
     Write-Host "    地址: http://localhost:4321" -ForegroundColor Gray
 }

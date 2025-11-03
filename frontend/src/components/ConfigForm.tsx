@@ -49,6 +49,8 @@ const ConfigForm: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState('');
   const [message, setMessage] = useState('');
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
 
@@ -176,6 +178,56 @@ const ConfigForm: React.FC = () => {
     const newPlatforms = [...config.platforms];
     newPlatforms[platformIndex].enabled = !newPlatforms[platformIndex].enabled;
     setConfig({ ...config, platforms: newPlatforms });
+  };
+
+  const handleGenerateIllustrations = async () => {
+    setGenerating(true);
+    setMessage('');
+    setGenerateProgress('正在加载报告...');
+
+    try {
+      // 1. 获取当前报告
+      const reportResponse = await fetch(`${API_URL}/api/profile/report`);
+      if (!reportResponse.ok) {
+        throw new Error('未找到报告，请先生成报告');
+      }
+
+      const reportData = await reportResponse.json();
+      if (!reportData.report || !reportData.report.cards || reportData.report.cards.length === 0) {
+        throw new Error('报告中没有卡片，请先生成报告');
+      }
+
+      const cards = reportData.report.cards;
+      const totalCards = cards.length;
+      
+      setGenerateProgress(`正在为 ${totalCards} 张卡片生成插图...`);
+
+      // 2. 动态导入 imageGenerator
+      const { generateCardIllustration } = await import('../utils/imageGenerator');
+
+      // 3. 依次为每张卡片生成插图
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        setGenerateProgress(`正在生成插图 ${i + 1}/${totalCards}: ${card.title}`);
+
+        await generateCardIllustration(
+          card.topic_id,
+          card.title,
+          card.content.summary,
+          card.category
+        );
+      }
+
+      setMessage('✓ 所有插图生成完成！刷新页面查看效果。');
+      setTimeout(() => setMessage(''), 5000);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '生成失败';
+      setMessage(`✗ ${errorMsg}`);
+      console.error('Generate illustrations error:', error);
+    } finally {
+      setGenerating(false);
+      setGenerateProgress('');
+    }
   };
 
   if (loading) {
@@ -379,12 +431,14 @@ const ConfigForm: React.FC = () => {
             </div>
             <div>
               <h3 className="text-2xl font-bold text-gray-800">UI Configuration</h3>
-              <p className="text-sm text-gray-600">Customize background wallpaper</p>
+              <p className="text-sm text-gray-600">Customize background &amp; illustrations</p>
             </div>
           </div>
 
           <div className="space-y-4">
-            {config.ui_config.config_fields.map((field) => (
+            {config.ui_config.config_fields
+              .filter((field) => !field.key.startsWith('image_gen_')) // 过滤掉 AI 图片生成字段
+              .map((field) => (
               <div key={field.key}>
                 <label htmlFor={`ui-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
                   {field.label}
@@ -412,12 +466,130 @@ const ConfigForm: React.FC = () => {
           </div>
         </div>
 
+        {/* AI Image Generation Card */}
+        <div className="glass rounded-2xl p-6 mb-8">
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-100 to-pink-200 flex items-center justify-center text-pink-600">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-gray-800">AI Image Generation</h3>
+              <p className="text-sm text-gray-600">Generate card illustrations with Pollinations AI</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* 启用/禁用开关 */}
+            <div className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-200">
+              <div>
+                <label className="text-sm font-medium text-gray-700">Enable AI Illustrations</label>
+                <p className="text-xs text-gray-500 mt-1">Automatically generate Ghibli-style illustrations for report cards</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={config.ui_config.config_fields.find(f => f.key === 'image_gen_enabled')?.value === 'true'}
+                  onChange={(e) => updateUiFieldValue('image_gen_enabled', e.target.checked.toString())}
+                  aria-label="Enable AI Illustrations"
+                />
+                <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-pink-500"></div>
+              </label>
+            </div>
+
+            {/* 模型选择 */}
+            <div>
+              <label htmlFor="image-gen-model" className="block text-sm font-medium text-gray-700 mb-2">
+                AI Model <span className="text-pink-500 ml-1">*</span>
+              </label>
+              <select
+                id="image-gen-model"
+                value={config.ui_config.config_fields.find(f => f.key === 'image_gen_model')?.value || 'flux'}
+                onChange={(e) => updateUiFieldValue('image_gen_model', e.target.value)}
+                className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+              >
+                <option value="flux">Flux (Default) - Balanced quality</option>
+                <option value="flux-realism">Flux Realism - Photorealistic</option>
+                <option value="flux-anime">Flux Anime - Anime style</option>
+                <option value="flux-3d">Flux 3D - 3D rendering</option>
+                <option value="turbo">Turbo - Fast generation</option>
+              </select>
+            </div>
+
+            {/* 图片尺寸 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="image-width" className="block text-sm font-medium text-gray-700 mb-2">
+                  Width (px)
+                </label>
+                <input
+                  id="image-width"
+                  type="number"
+                  min="256"
+                  max="1024"
+                  step="64"
+                  value={config.ui_config.config_fields.find(f => f.key === 'image_gen_width')?.value || '512'}
+                  onChange={(e) => updateUiFieldValue('image_gen_width', e.target.value)}
+                  className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                />
+              </div>
+              <div>
+                <label htmlFor="image-height" className="block text-sm font-medium text-gray-700 mb-2">
+                  Height (px)
+                </label>
+                <input
+                  id="image-height"
+                  type="number"
+                  min="256"
+                  max="1024"
+                  step="64"
+                  value={config.ui_config.config_fields.find(f => f.key === 'image_gen_height')?.value || '512'}
+                  onChange={(e) => updateUiFieldValue('image_gen_height', e.target.value)}
+                  className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 p-4 bg-pink-50 rounded-xl border border-pink-200">
+            <p className="text-sm text-pink-800">
+              🎨 <strong>Style:</strong> Generated illustrations feature transparent backgrounds with a single main subject (person or object) in Studio Ghibli watercolor style. Perfect for card decorations!
+            </p>
+          </div>
+          
+          {/* 生成插图按钮 */}
+          <div className="mt-6 border-t border-gray-200 pt-6">
+            <button
+              onClick={handleGenerateIllustrations}
+              disabled={generating}
+              className="w-full px-8 py-4 text-white font-bold text-lg rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center space-x-3 btn-primary-large"
+            >
+              {generating ? (
+                <>
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                  <span>{generateProgress}</span>
+                </>
+              ) : (
+                <>
+                  <span>🎨</span>
+                  <span>为所有卡片生成插图</span>
+                </>
+              )}
+            </button>
+            <p className="text-sm text-gray-500 text-center mt-3">
+              点击后将为当前报告的所有卡片生成 AI 插图（需要先生成报告）
+            </p>
+          </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="flex gap-4">
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 px-8 py-4 bg-green-500 hover:bg-green-600 text-white font-bold text-lg rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            className="flex-1 px-8 py-4 text-white font-bold text-lg rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed btn-secondary-large"
           >
             {saving ? '💾 Saving...' : '💾 Save All Changes'}
           </button>

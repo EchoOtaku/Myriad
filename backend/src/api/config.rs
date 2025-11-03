@@ -55,9 +55,7 @@ pub struct UiConfig {
     pub config_fields: Vec<ConfigField>,
 }
 
-pub async fn get_config(
-    State(_db): State<DatabaseConnection>,
-) -> (StatusCode, Json<Value>) {
+pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     let config = ConfigResponse {
         platforms: vec![
             PlatformConfig {
@@ -90,17 +88,16 @@ pub async fn get_config(
                 enabled: std::env::var("BILIBILI_UID").is_ok(),
                 has_token: std::env::var("BILIBILI_UID").is_ok(),
                 icon: "".to_string(),
-                description: "Track your Bilibili favorites, anime, and viewing history".to_string(),
-                config_fields: vec![
-                    ConfigField {
-                        key: "uid".to_string(),
-                        label: "User ID (UID)".to_string(),
-                        field_type: "number".to_string(),
-                        value: std::env::var("BILIBILI_UID").unwrap_or_default(),
-                        placeholder: "123456789".to_string(),
-                        required: true,
-                    },
-                ],
+                description: "Track your Bilibili favorites, anime, and viewing history"
+                    .to_string(),
+                config_fields: vec![ConfigField {
+                    key: "uid".to_string(),
+                    label: "User ID (UID)".to_string(),
+                    field_type: "number".to_string(),
+                    value: std::env::var("BILIBILI_UID").unwrap_or_default(),
+                    placeholder: "123456789".to_string(),
+                    required: true,
+                }],
             },
             PlatformConfig {
                 name: "Steam".to_string(),
@@ -171,8 +168,10 @@ pub async fn get_config(
                     key: "model".to_string(),
                     label: "Model Name".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string()),
-                    placeholder: "gemini-pro, gemini-pro-vision, gemini-1.5-flash, etc.".to_string(),
+                    value: std::env::var("GEMINI_MODEL")
+                        .unwrap_or_else(|_| "gemini-pro".to_string()),
+                    placeholder: "gemini-pro, gemini-pro-vision, gemini-1.5-flash, etc."
+                        .to_string(),
                     required: true,
                 },
             ],
@@ -188,22 +187,26 @@ pub async fn get_config(
                 .unwrap_or(24),
         },
         ui_config: UiConfig {
-            wallpaper_url: std::env::var("UI_WALLPAPER_URL")
-                .unwrap_or_else(|_| "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()),
+            wallpaper_url: std::env::var("UI_WALLPAPER_URL").unwrap_or_else(|_| {
+                "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()
+            }),
             wallpaper_blur: std::env::var("UI_WALLPAPER_BLUR")
                 .unwrap_or_else(|_| "3".to_string())
                 .parse()
                 .unwrap_or(3),
             theme: std::env::var("UI_THEME").unwrap_or_else(|_| "dark".to_string()),
-            primary_color: std::env::var("UI_PRIMARY_COLOR").unwrap_or_else(|_| "#6366f1".to_string()),
-            secondary_color: std::env::var("UI_SECONDARY_COLOR").unwrap_or_else(|_| "#8b5cf6".to_string()),
+            primary_color: std::env::var("UI_PRIMARY_COLOR")
+                .unwrap_or_else(|_| "#6366f1".to_string()),
+            secondary_color: std::env::var("UI_SECONDARY_COLOR")
+                .unwrap_or_else(|_| "#8b5cf6".to_string()),
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
                     label: "Wallpaper URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("UI_WALLPAPER_URL")
-                        .unwrap_or_else(|_| "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()),
+                    value: std::env::var("UI_WALLPAPER_URL").unwrap_or_else(|_| {
+                        "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()
+                    }),
                     placeholder: "URL to wallpaper image or API endpoint".to_string(),
                     required: false,
                 },
@@ -213,6 +216,39 @@ pub async fn get_config(
                     field_type: "number".to_string(),
                     value: std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()),
                     placeholder: "3".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "image_gen_enabled".to_string(),
+                    label: "Enable AI Illustrations".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: std::env::var("IMAGE_GEN_ENABLED")
+                        .unwrap_or_else(|_| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "image_gen_model".to_string(),
+                    label: "AI Model".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("IMAGE_GEN_MODEL").unwrap_or_else(|_| "flux".to_string()),
+                    placeholder: "flux".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "image_gen_width".to_string(),
+                    label: "Image Width (px)".to_string(),
+                    field_type: "number".to_string(),
+                    value: std::env::var("IMAGE_GEN_WIDTH").unwrap_or_else(|_| "512".to_string()),
+                    placeholder: "512".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "image_gen_height".to_string(),
+                    label: "Image Height (px)".to_string(),
+                    field_type: "number".to_string(),
+                    value: std::env::var("IMAGE_GEN_HEIGHT").unwrap_or_else(|_| "512".to_string()),
+                    placeholder: "512".to_string(),
                     required: false,
                 },
             ],
@@ -227,22 +263,28 @@ pub async fn update_config(
     Json(payload): Json<ConfigResponse>,
 ) -> (StatusCode, Json<Value>) {
     tracing::info!("Updating configuration");
-    
+
     // 保存所有配置到环境变量文件
     match save_all_configs(&payload).await {
         Ok(_) => {
             tracing::info!("Configuration saved successfully");
-            (StatusCode::OK, Json(json!({
-                "success": true, 
-                "message": "Configuration saved successfully! Please restart backend to apply changes."
-            })))
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "message": "Configuration saved successfully! Please restart backend to apply changes."
+                })),
+            )
         }
         Err(e) => {
             tracing::error!("Failed to save configuration: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
-                "success": false, 
-                "message": format!("Failed to save configuration: {}", e)
-            })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Failed to save configuration: {}", e)
+                })),
+            )
         }
     }
 }
@@ -251,7 +293,7 @@ pub async fn update_config(
 async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::error::Error>> {
     use std::fs;
     use std::path::Path;
-    
+
     // 读取现有的 .env 文件（如果存在）
     let env_path = Path::new(".env");
     let mut env_content = if env_path.exists() {
@@ -259,7 +301,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
     } else {
         String::new()
     };
-    
+
     // 保存平台配置
     for platform in &config.platforms {
         match platform.name.as_str() {
@@ -303,7 +345,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             _ => {}
         }
     }
-    
+
     // 保存 AI 配置
     for field in &config.ai_config.config_fields {
         let key = match field.key.as_str() {
@@ -313,20 +355,24 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         };
         env_content = update_env_var(&env_content, key, &field.value);
     }
-    
+
     // 保存 UI 配置
     for field in &config.ui_config.config_fields {
         let key = match field.key.as_str() {
             "wallpaper_url" => "UI_WALLPAPER_URL",
             "wallpaper_blur" => "UI_WALLPAPER_BLUR",
+            "image_gen_enabled" => "IMAGE_GEN_ENABLED",
+            "image_gen_model" => "IMAGE_GEN_MODEL",
+            "image_gen_width" => "IMAGE_GEN_WIDTH",
+            "image_gen_height" => "IMAGE_GEN_HEIGHT",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
     }
-    
+
     // 写回 .env 文件
     fs::write(env_path, env_content)?;
-    
+
     Ok(())
 }
 
@@ -335,11 +381,11 @@ fn update_env_var(content: &str, key: &str, value: &str) -> String {
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let key_prefix = format!("{}=", key);
     let new_line = if value.is_empty() {
-        format!("# {}=", key)  // 空值时注释掉
+        format!("# {}=", key) // 空值时注释掉
     } else {
         format!("{}={}", key, value)
     };
-    
+
     // 查找是否已存在该键
     let mut found = false;
     for line in &mut lines {
@@ -349,12 +395,12 @@ fn update_env_var(content: &str, key: &str, value: &str) -> String {
             break;
         }
     }
-    
+
     // 如果不存在，添加到末尾
     if !found {
         lines.push(new_line);
     }
-    
+
     lines.join("\n") + "\n"
 }
 
@@ -364,16 +410,19 @@ pub async fn test_platform(
 ) -> (StatusCode, Json<Value>) {
     let platform = payload["platform"].as_str().unwrap_or("");
     let config = &payload["config"];
-    
+
     match platform {
         "GitHub" => {
             let username = config["username"].as_str().unwrap_or("");
             if username.is_empty() {
-                return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "Username is required"})));
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "Username is required"})),
+                );
             }
-            
+
             let token = config["token"].as_str().filter(|s| !s.is_empty());
-            
+
             // 调用 GitHub API 验证
             let fetcher = crate::services::fetcher::PlatformFetcher::new();
             match fetcher.fetch_github_user(username, token).await {
@@ -381,98 +430,131 @@ pub async fn test_platform(
                     let name = user_info["name"].as_str().unwrap_or(username);
                     let followers = user_info["followers"].as_i64().unwrap_or(0);
                     let repos = user_info["public_repos"].as_i64().unwrap_or(0);
-                    (StatusCode::OK, Json(json!({
-                        "success": true, 
-                        "message": format!("✓ GitHub user '{}' verified. {} followers, {} repos", name, followers, repos)
-                    })))
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!("✓ GitHub user '{}' verified. {} followers, {} repos", name, followers, repos)
+                        })),
+                    )
                 }
-                Err(e) => {
-                    (StatusCode::BAD_REQUEST, Json(json!({
-                        "success": false, 
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
                         "message": format!("✗ Failed to verify GitHub user: {}", e)
-                    })))
-                }
+                    })),
+                ),
             }
         }
         "Bilibili" => {
             let uid = config["uid"].as_str().unwrap_or("");
             if uid.is_empty() {
-                return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "UID is required"})));
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "UID is required"})),
+                );
             }
-            
+
             // 尝试解析 UID 为数字
             let uid_i64 = match uid.parse::<i64>() {
                 Ok(n) => n,
-                Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "Invalid UID format"}))),
+                Err(_) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"success": false, "message": "Invalid UID format"})),
+                    )
+                }
             };
-            
+
             // 实际调用 Bilibili API 验证
             let fetcher = crate::services::fetcher::PlatformFetcher::new();
             match fetcher.fetch_bilibili_user(uid_i64).await {
-                Ok(user_info) => {
-                    (StatusCode::OK, Json(json!({
-                        "success": true, 
+                Ok(user_info) => (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": true,
                         "message": format!("✓ Bilibili UID {} is valid. User: {}", uid, user_info.name)
-                    })))
-                }
-                Err(e) => {
-                    (StatusCode::BAD_REQUEST, Json(json!({
-                        "success": false, 
+                    })),
+                ),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
                         "message": format!("✗ Failed to verify Bilibili UID: {}", e)
-                    })))
-                }
+                    })),
+                ),
             }
         }
         "Steam" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
             let steam_id = config["steam_id"].as_str().unwrap_or("");
             if api_key.is_empty() || steam_id.is_empty() {
-                return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "API Key and Steam ID are required"})));
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "API Key and Steam ID are required"})),
+                );
             }
-            
+
             // 调用 Steam API 验证
             let fetcher = crate::services::fetcher::PlatformFetcher::new();
             match fetcher.fetch_steam_user(api_key, steam_id).await {
-                Ok(user_info) => {
-                    (StatusCode::OK, Json(json!({
-                        "success": true, 
+                Ok(user_info) => (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": true,
                         "message": format!("✓ Steam user '{}' verified", user_info.personaname)
-                    })))
-                }
-                Err(e) => {
-                    (StatusCode::BAD_REQUEST, Json(json!({
-                        "success": false, 
+                    })),
+                ),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
                         "message": format!("✗ Failed to verify Steam: {}", e)
-                    })))
-                }
+                    })),
+                ),
             }
         }
         "X" => {
             let username = config["username"].as_str().unwrap_or("");
             let bearer_token = config["bearer_token"].as_str().unwrap_or("");
             if username.is_empty() || bearer_token.is_empty() {
-                return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "Username and Bearer Token are required"})));
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(
+                        json!({"success": false, "message": "Username and Bearer Token are required"}),
+                    ),
+                );
             }
-            
+
             // 调用 X API 验证
             let fetcher = crate::services::fetcher::PlatformFetcher::new();
             match fetcher.fetch_twitter_user(username, bearer_token).await {
                 Ok(user_info) => {
                     let name = user_info["data"]["name"].as_str().unwrap_or(username);
-                    let followers = user_info["data"]["public_metrics"]["followers_count"].as_i64().unwrap_or(0);
-                    (StatusCode::OK, Json(json!({
-                        "success": true, 
-                        "message": format!("✓ X user '{}' verified. {} followers", name, followers)
-                    })))
+                    let followers = user_info["data"]["public_metrics"]["followers_count"]
+                        .as_i64()
+                        .unwrap_or(0);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!("✓ X user '{}' verified. {} followers", name, followers)
+                        })),
+                    )
                 }
-                Err(e) => {
-                    (StatusCode::BAD_REQUEST, Json(json!({
-                        "success": false, 
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
                         "message": format!("✗ Failed to verify X user: {}", e)
-                    })))
-                }
+                    })),
+                ),
             }
         }
-        _ => (StatusCode::OK, Json(json!({"success": false, "message": "Platform test not implemented yet"}))),
+        _ => (
+            StatusCode::OK,
+            Json(json!({"success": false, "message": "Platform test not implemented yet"})),
+        ),
     }
 }

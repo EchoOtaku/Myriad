@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface UserInfo {
     name: string;
@@ -10,6 +10,7 @@ interface CardContent {
     summary: string;
     details: string[];
     highlight?: string;
+    tags: string[];
 }
 
 interface ReportCard {
@@ -19,6 +20,7 @@ interface ReportCard {
     icon: string;
     color: string;
     content: CardContent;
+    illustration?: string; // 插画 URL
 }
 
 interface PersonalReport {
@@ -29,10 +31,12 @@ interface PersonalReport {
 }
 
 export default function ReportCards() {
+    const [selectedCard, setSelectedCard] = useState<ReportCard | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [report, setReport] = useState<PersonalReport | null>(null);
     const [progress, setProgress] = useState<string>('');
+    const [progressPercent, setProgressPercent] = useState<number>(0);
     const [fromCache, setFromCache] = useState(false);
     const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
     const [avatarError, setAvatarError] = useState(false);
@@ -103,11 +107,14 @@ export default function ReportCards() {
     // 获取所有平台数据
     const fetchAllData = async () => {
         try {
-            setProgress('正在获取平台数据...');
+            setProgress('步骤 1/3: 正在连接平台获取数据...');
+            setProgressPercent(10);
 
             const response = await fetch('http://localhost:3000/api/profile/fetch-all', {
                 method: 'POST',
             });
+
+            setProgressPercent(40);
 
             if (!response.ok) {
                 throw new Error(`Failed to fetch data: ${response.statusText}`);
@@ -115,6 +122,7 @@ export default function ReportCards() {
 
             const result = await response.json();
             if (result.success && result.data) {
+                setProgressPercent(50);
                 return result.data;
             } else {
                 throw new Error('No data returned');
@@ -128,7 +136,9 @@ export default function ReportCards() {
     // 生成报告
     const generateReport = async (data: any) => {
         try {
-            setProgress('正在生成AI报告...');
+            setProgress('步骤 2/3: AI 正在分析数据...');
+            setProgressPercent(55);
+            
             const response = await fetch('http://localhost:3000/api/profile/report', {
                 method: 'POST',
                 headers: {
@@ -137,14 +147,19 @@ export default function ReportCards() {
                 body: JSON.stringify(data),
             });
 
+            setProgressPercent(80);
+
             if (!response.ok) {
                 throw new Error(`Failed to generate report: ${response.statusText}`);
             }
 
             const result = await response.json();
             if (result.success && result.report) {
+                setProgress('步骤 3/3: 生成卡片报告...');
+                setProgressPercent(90);
                 setReport(result.report);
                 setFromCache(result.from_cache || false);
+                setProgressPercent(100);
             } else {
                 throw new Error('Failed to parse report');
             }
@@ -155,27 +170,32 @@ export default function ReportCards() {
     };
 
     // 一键生成报告
-    const handleGenerateReport = async () => {
+    const handleGenerateReport = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
+            setProgressPercent(0);
 
             // 1. 获取所有数据
             const data = await fetchAllData();
 
             // 2. 生成报告
             await generateReport(data);
+            
+            // 完成
+            await new Promise(resolve => setTimeout(resolve, 300)); // 短暂延迟显示100%
         } catch (err) {
             console.error('Error generating report:', err);
             const message = err instanceof Error ? err.message : 'Unknown error';
             setError(message);
+            setProgressPercent(0);
         } finally {
             setLoading(false);
             setProgress('');
         }
-    };
+    }, []);
 
-    // 加载已有报告或自动生成
+    // 加载已有报告（优先从缓存读取，不自动生成）
     useEffect(() => {
         const loadExistingReport = async () => {
             // 获取用户信息
@@ -188,15 +208,16 @@ export default function ReportCards() {
                     if (result.report && result.report.cards && result.report.cards.length > 0) {
                         setReport(result.report);
                         setFromCache(result.from_cache || false);
+                        setLoading(false);
                         return;
                     }
                 }
-                // 如果没有报告，自动触发生成
-                await handleGenerateReport();
+                // 没有报告时显示空状态，不自动生成
+                setLoading(false);
             } catch (err) {
                 console.error('Failed to load existing report:', err);
-                // 加载失败也尝试自动生成
-                await handleGenerateReport();
+                setError('加载报告失败');
+                setLoading(false);
             }
         };
 
@@ -206,7 +227,16 @@ export default function ReportCards() {
     // 暴露生成函数供外部调用
     useEffect(() => {
         (window as any).generateReport = handleGenerateReport;
-    }, []);
+        
+        // 清理函数
+        return () => {
+            delete (window as any).generateReport;
+        };
+    }, [handleGenerateReport]);
+
+    // 为每张卡片生成插画
+    // 移除自动生成插图的 useEffect
+    // 插图现在需要在配置页面手动生成
 
     if (!report) {
         return (
@@ -219,10 +249,54 @@ export default function ReportCards() {
                     )}
 
                     {loading && (
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="w-16 h-16 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-primary) 40%, transparent)', borderTopColor: 'transparent' }}></div>
-                            <p className="text-lg text-gray-700 font-semibold">{progress}</p>
-                            <p className="text-sm text-gray-500">这可能需要30-60秒，请稍候...</p>
+                        <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-lg z-50">
+                            <div className="max-w-4xl mx-auto px-6 py-6">
+                                <div className="mb-3 text-center">
+                                    <p className="text-sm font-medium text-gray-700">{progress}</p>
+                                </div>
+                                
+                                {/* 进度条 - 使用动态颜色 */}
+                                <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div 
+                                        className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
+                                        style={{ width: `${progressPercent}%` }}
+                                    ></div>
+                                </div>
+                                
+                                <p className="text-xs text-gray-500 text-center mt-2">{progressPercent}% 完成</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 空状态：无报告时的提示 */}
+                    {!loading && !error && (
+                        <div className="max-w-md mx-auto">
+                            <div className="text-6xl mb-6">📊</div>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">还没有生成报告</h2>
+                            <p className="text-gray-600 mb-8">
+                                点击导航岛的灯泡图标开始生成您的个性化数据报告
+                            </p>
+                            <div className="glass rounded-2xl p-6 text-left">
+                                <h3 className="font-bold text-gray-800 mb-3">报告将包含：</h3>
+                                <ul className="space-y-2 text-sm text-gray-600">
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-lg">✨</span>
+                                        <span>从6个随机话题分析您的数据特征</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-lg">🎯</span>
+                                        <span>AI 生成的个性化洞察和标签</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-lg">🎨</span>
+                                        <span>可选的精美插图配图</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-lg">⏰</span>
+                                        <span>报告7天有效，过期后自动刷新</span>
+                                    </li>
+                                </ul>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -240,7 +314,7 @@ export default function ReportCards() {
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
             {/* 报告信息条 */}
-            <div className="mb-6 glass rounded-3xl p-5 border shadow-lg" style={{ borderColor: 'color-mix(in srgb, var(--color-primary) 30%, transparent)' }}>
+            <div className="mb-6 glass rounded-3xl p-5 border shadow-lg report-info-card">
                 <div className="flex items-center justify-between gap-4">
                     {/* 左侧：用户信息 */}
                     <div className="flex items-center gap-4">
@@ -265,7 +339,7 @@ export default function ReportCards() {
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-800">{userInfo.name}</h3>
                                     <p className="text-xs text-gray-500 flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }}></span>
+                                        <span className="w-1.5 h-1.5 rounded-full platform-indicator"></span>
                                         来自 {userInfo.platform}
                                     </p>
                                 </div>
@@ -317,53 +391,181 @@ export default function ReportCards() {
                 {report.cards.map((card, index) => (
                     <article
                         key={card.topic_id}
-                        className="glass rounded-3xl p-6 hover:scale-105 transition-all duration-300 hover:shadow-2xl"
-                        style={{
-                            animationDelay: `${index * 0.1}s`,
-                        }}
+                        className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card"
                     >
-                        {/* Card Header */}
-                        <div className="flex items-center gap-3 mb-4">
-                            <div
-                                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg text-2xl`}
-                            >
-                                {card.icon}
-                            </div>
-                            <div>
-                                <span className="text-xs text-gray-500 font-medium">{card.category}</span>
-                            </div>
-                        </div>
-
-                        {/* Card Title */}
-                        <h2 className="text-xl font-bold text-gray-900 mb-3">
-                            {card.title}
-                        </h2>
-
-                        {/* Card Summary */}
-                        <p className="text-base font-semibold text-gray-800 mb-3">
-                            {card.content.summary}
-                        </p>
-
-                        {/* Card Details */}
-                        <div className="space-y-2 mb-3">
-                            {card.content.details.map((detail, i) => (
-                                <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                                    <span className="mt-1" style={{ color: 'var(--color-primary)' }}>•</span>
-                                    <span>{detail}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Card Highlight */}
-                        {card.content.highlight && (
-                            <div className="bg-gradient-to-r from-yellow-100/50 to-amber-100/50 p-3 rounded-xl border border-yellow-200/50">
-                                <p className="text-xs font-semibold text-amber-800 mb-1">💡 洞察</p>
-                                <p className="text-sm text-gray-700 italic">{card.content.highlight}</p>
+                        {/* 插画背景 */}
+                        {card.illustration && (
+                            <div className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity duration-300 rounded-3xl overflow-hidden">
+                                <img
+                                    src={card.illustration}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                />
                             </div>
                         )}
+
+                        <div className="relative z-10">
+                            {/* Card Header */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div
+                                    className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg text-2xl`}
+                                >
+                                    {card.icon}
+                                </div>
+                                
+                                {/* 更多按钮 */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedCard(card);
+                                    }}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
+                                    aria-label="查看详情"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* Card Title */}
+                            <h2 className="text-sm text-gray-600 mb-2">
+                                {card.title}
+                            </h2>
+
+                            {/* Card Summary */}
+                            <p className="text-xl font-bold text-gray-900 line-clamp-2 mb-3">
+                                {card.content.summary}
+                            </p>
+
+                            {/* Tags */}
+                            {card.content.tags && card.content.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {card.content.tags.map((tag, i) => (
+                                        <span
+                                            key={i}
+                                            className="px-3 py-1 rounded-full text-xs font-medium text-white tag-badge"
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </article>
                 ))}
             </div>
+
+            {/* 详情弹窗 */}
+            {selectedCard && (
+                <div 
+                    className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+                    onClick={() => setSelectedCard(null)}
+                >
+                    <div 
+                        className="bg-white/95 backdrop-blur-2xl rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl border border-white/60 animate-scale-in"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* 滚动内容区 */}
+                        <div className="overflow-y-auto max-h-[85vh] custom-scrollbar">
+                            <div className="p-10">
+                                {/* 头部区域 */}
+                                <div className="flex items-start justify-between mb-10">
+                                    <div className="flex items-start gap-5">
+                                        <div
+                                            className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${selectedCard.color} flex items-center justify-center shadow-lg text-3xl flex-shrink-0 transition-transform hover:scale-110`}
+                                        >
+                                            {selectedCard.icon}
+                                        </div>
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-gray-900 mb-3">
+                                                {selectedCard.title}
+                                            </h2>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-sm text-gray-500">
+                                                    {selectedCard.category}
+                                                </span>
+                                                {selectedCard.content.tags && selectedCard.content.tags.length > 0 && (
+                                                    <>
+                                                        <span className="text-gray-300">·</span>
+                                                        {selectedCard.content.tags.map((tag, i) => (
+                                                            <span key={i} className="tag-badge px-2.5 py-1 rounded-full text-xs font-medium text-white transition-transform hover:scale-105">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedCard(null)}
+                                        className="text-gray-400 hover:text-gray-700 transition-all p-2 rounded-lg hover:bg-gray-100 active:scale-95"
+                                        aria-label="关闭"
+                                    >
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                {/* 插画展示 */}
+                                {selectedCard.illustration && (
+                                    <div className="mb-10 rounded-2xl overflow-hidden transition-shadow hover:shadow-xl">
+                                        <img
+                                            src={selectedCard.illustration}
+                                            alt={selectedCard.title}
+                                            className="w-full h-80 object-cover"
+                                            loading="lazy"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* 摘要 */}
+                                <div className="mb-8">
+                                    <p className="text-lg text-gray-800 leading-relaxed font-medium">
+                                        {selectedCard.content.summary}
+                                    </p>
+                                </div>
+
+                                {/* 详细内容 */}
+                                {selectedCard.content.details && selectedCard.content.details.length > 0 && (
+                                    <div className="mb-8">
+                                        <div className="space-y-4">
+                                            {selectedCard.content.details.map((detail, i) => (
+                                                <div key={i} className="flex items-start gap-4 transition-transform hover:translate-x-1">
+                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                                                        {i + 1}
+                                                    </span>
+                                                    <p className="flex-1 text-base text-gray-700 leading-relaxed">
+                                                        {detail}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* AI 洞察 */}
+                                {selectedCard.content.highlight && (
+                                    <div className="pt-6 border-t border-gray-200">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <span className="text-2xl animate-pulse-slow">💡</span>
+                                            <h3 className="text-base font-bold text-gray-900">AI 洞察</h3>
+                                        </div>
+                                        <div className="pl-4 border-l-4 transition-all hover:pl-5 ai-insight-border">
+                                            <p className="text-base text-gray-700 leading-relaxed italic">
+                                                {selectedCard.content.highlight}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* 提示信息 */}
             <div className="mt-8 text-center text-sm text-gray-500">

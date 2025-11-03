@@ -2,11 +2,12 @@ use axum::{http::StatusCode, Json};
 use serde_json::{json, Value};
 
 pub mod analysis;
+pub mod bilibili;
 pub mod config;
 pub mod platforms;
-pub mod bilibili;
-pub mod steam;
 pub mod profile;
+pub mod prompt;
+pub mod steam;
 
 pub async fn health() -> (StatusCode, Json<Value>) {
     (

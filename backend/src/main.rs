@@ -52,6 +52,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/profiles", get(api::platforms::get_profiles))
         .route("/api/fetch", post(api::platforms::trigger_fetch))
         .route("/api/analysis", get(api::analysis::get_analysis).post(api::analysis::trigger_analysis))
+        // Prompt generation for image AI
+        .route("/api/prompt/generate", post(api::prompt::generate_prompt))
         // Profile report routes
         .route("/api/profile/fetch-all", post(api::profile::fetch_all_data))
         .route("/api/profile/report", post(api::profile::generate_report).get(api::profile::get_report))

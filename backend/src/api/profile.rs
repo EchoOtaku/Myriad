@@ -30,6 +30,7 @@ pub struct CardContent {
     pub summary: String,
     pub details: Vec<String>,
     pub highlight: Option<String>,
+    pub tags: Vec<String>,
 }
 
 // 内存缓存（简单实现，生产环境应使用Redis）
@@ -205,10 +206,11 @@ pub async fn generate_report(
 {{
   "summary": "一句话总结（20字内）",
   "details": ["要点1", "要点2", "要点3"],
-  "highlight": "最有洞察力的发现（可选）"
+  "highlight": "最有洞察力的发现（可选）",
+  "tags": ["标签1", "标签2", "标签3"]
 }}
 
-用轻松、有趣、有洞察力的语言。让人读完说"哇，真的懂我"。只返回JSON，不要其他文字。"#,
+用轻松、有趣、有洞察力的语言。标签应该是2-3个词的简短关键词（如"高产出"、"创意十足"、"持续学习"）。只返回JSON，不要其他文字。"#,
             topic.title,
             topic.prompt_template,
             serde_json::to_string_pretty(&profile_data).unwrap_or_else(|_| "{}".to_string())
