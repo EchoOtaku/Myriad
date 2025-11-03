@@ -1286,3 +1286,80 @@ pub async fn delete_all_reports(
         })),
     )
 }
+
+/// 从报告中删除单个卡片
+#[derive(Deserialize)]
+pub struct DeleteCardRequest {
+    pub card_index: usize,
+}
+
+pub async fn delete_card_from_report(
+    State(_db): State<DatabaseConnection>,
+    axum::extract::Path(report_id): axum::extract::Path<String>,
+    Json(payload): Json<DeleteCardRequest>,
+) -> (StatusCode, Json<Value>) {
+    tracing::info!(
+        "🗑️ Deleting card {} from report: {}",
+        payload.card_index,
+        report_id
+    );
+
+    let mut cache = REPORT_CACHE.lock().unwrap();
+
+    if let Some((report, _created_at)) = cache.get_mut(&report_id) {
+        if payload.card_index >= report.cards.len() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Card index {} out of range (total: {})", payload.card_index, report.cards.len())
+                })),
+            );
+        }
+
+        // 删除指定索引的卡片
+        let deleted_card = report.cards.remove(payload.card_index);
+        tracing::info!("✓ Deleted card: {}", deleted_card.title);
+
+        // 如果报告中没有卡片了，删除整个报告
+        if report.cards.is_empty() {
+            tracing::info!(
+                "Report {} has no cards left, deleting entire report",
+                report_id
+            );
+            cache.remove(&report_id);
+        }
+
+        drop(cache); // 释放锁
+
+        // 保存到磁盘
+        if let Err(e) = save_cache_to_disk() {
+            tracing::error!("❌ Failed to save cache after card deletion: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Card deleted but failed to save: {}", e)
+                })),
+            );
+        }
+
+        tracing::info!("✓ Card deleted successfully");
+        (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "message": "Card deleted successfully",
+                "deleted_card_title": deleted_card.title
+            })),
+        )
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "success": false,
+                "message": "Report not found"
+            })),
+        )
+    }
+}

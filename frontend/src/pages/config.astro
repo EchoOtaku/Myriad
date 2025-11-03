@@ -21,7 +21,7 @@ const title = 'Configuration - Myriad';
             id="tab-debug"
             class="tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300"
           >
-            🐛 调试
+            📊 数据管理
           </button>
         </div>
       </div>
@@ -195,22 +195,13 @@ const title = 'Configuration - Myriad';
                     <p class="text-xs text-gray-500">查看和浏览历史生成的报告</p>
                   </div>
                 </div>
-                <div class="flex gap-2">
-                  <button
-                    id="fetch-reports"
-                    class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
-                  >
-                    <span>🔄</span>
-                    <span>刷新</span>
-                  </button>
-                  <button
-                    id="delete-all-reports"
-                    class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
-                  >
-                    <span>🗑️</span>
-                    <span>删除所有</span>
-                  </button>
-                </div>
+                <button
+                  id="fetch-reports"
+                  class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
+                >
+                  <span>🔄</span>
+                  <span>刷新</span>
+                </button>
               </div>
               <div
                 id="reports-container"
@@ -686,8 +677,14 @@ const title = 'Configuration - Myriad';
           const statusIcon = entry.is_valid ? '✅' : '❌';
           const statusText = entry.is_valid ? '有效' : '已过期';
           html += `
-            <div class="border ${statusColor} rounded-lg p-3 hover:shadow-lg transition-all duration-300">
-              <div class="flex items-start justify-between mb-2">
+            <div class="border ${statusColor} rounded-lg p-3 hover:shadow-lg transition-all duration-300 group relative" data-cache-key="${entry.cache_key}">
+              <button 
+                class="absolute top-2 right-2 px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity delete-cache-btn z-10"
+                data-delete-cache-key="${entry.cache_key}"
+              >
+                🗑️ 删除
+              </button>
+              <div class="flex items-start justify-between mb-2 pr-16">
                 <div class="flex-1">
                   <p class="font-mono text-xs text-blue-400 mb-1.5">🔑 ${entry.cache_key}</p>
                   <div class="grid grid-cols-2 gap-2 text-xs">
@@ -719,6 +716,39 @@ const title = 'Configuration - Myriad';
         
         html += '</div>';
         document.getElementById('cache-debug-container')!.innerHTML = html;
+        
+        // 为每个缓存条目添加删除按钮事件
+        document.querySelectorAll('.delete-cache-btn').forEach(element => {
+          element.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const cacheKey = (element as HTMLElement).dataset.deleteCacheKey;
+            
+            if (!confirm(`确定要删除缓存 ${cacheKey} 吗？`)) {
+              return;
+            }
+
+            console.log('🗑️ Deleting cache:', cacheKey);
+            
+            try {
+              const response = await fetch(`${API_URL}/api/profile/reports/${cacheKey}`, {
+                method: 'DELETE'
+              });
+              const result = await response.json();
+              
+              if (result.success) {
+                console.log('✅ Cache deleted successfully');
+                alert('缓存删除成功！');
+                // 刷新列表
+                document.getElementById('fetch-cache-debug')?.click();
+              } else {
+                alert(`删除失败: ${result.message}`);
+              }
+            } catch (error) {
+              console.error('❌ Error deleting cache:', error);
+              alert('删除缓存时出错');
+            }
+          });
+        });
       } else {
         showError('cache-debug-container', result.message || 'Failed to load cache info');
       }
@@ -728,7 +758,7 @@ const title = 'Configuration - Myriad';
     }
   });
 
-  // 获取报告列表
+  // 获取报告列表（展示所有卡片）
   document.getElementById('fetch-reports')?.addEventListener('click', async () => {
     console.log('🔄 Fetching reports list...');
     showLoading('reports-container');
@@ -740,53 +770,83 @@ const title = 'Configuration - Myriad';
       if (result.success) {
         console.log('✅ Reports loaded:', result);
         
-        // 美化显示报告列表
+        // 获取所有报告的完整数据以展示卡片
+        const allCards: any[] = [];
+        for (const report of result.reports) {
+          try {
+            const detailResponse = await fetch(`${API_URL}/api/profile/reports/${report.id}`);
+            const detailResult = await detailResponse.json();
+            if (detailResult.success && detailResult.report.cards) {
+              detailResult.report.cards.forEach((card: any, index: number) => {
+                allCards.push({
+                  ...card,
+                  reportId: report.id,
+                  reportGeneratedAt: report.generated_at,
+                  indexInReport: index // 记录卡片在报告中的索引
+                });
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to load report ${report.id}:`, error);
+          }
+        }
+        
+        // 美化显示卡片列表
         let html = `
           <div class="mb-4 p-3 bg-gradient-to-r from-purple-900/30 to-pink-900/30 rounded-lg border border-purple-700/50">
             <div class="flex items-center justify-between">
-              <p class="text-purple-400 font-semibold text-sm">总报告数: ${result.total}</p>
-              <div class="text-2xl">📊</div>
+              <div>
+                <p class="text-purple-400 font-semibold text-sm">总卡片数: ${allCards.length}</p>
+                <p class="text-gray-400 text-xs mt-0.5">来自 ${result.total} 个报告</p>
+              </div>
+              <div class="text-2xl">🃏</div>
             </div>
           </div>
           <div class="grid grid-cols-1 gap-3">
         `;
         
-        for (const report of result.reports) {
-          const topics = report.selected_topics || [];
+        for (let i = 0; i < allCards.length; i++) {
+          const card = allCards[i];
+          const cardId = `${card.reportId}_card_${i}`;
+          // 找到这个卡片在原报告中的索引
+          const cardIndexInReport = card.indexInReport || 0;
           html += `
             <div class="border border-purple-700/50 bg-purple-900/20 rounded-lg p-3 hover:border-purple-500 hover:shadow-lg transition-all duration-300 group relative" 
-                 data-report-id="${report.id}">
+                 data-card-id="${cardId}" data-report-id="${card.reportId}">
               <button 
-                class="absolute top-2 right-2 px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity delete-report-btn z-10"
-                data-delete-id="${report.id}"
+                class="absolute top-2 right-2 px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity delete-single-card-btn z-10"
+                data-delete-report-id="${card.reportId}"
+                data-delete-card-index="${cardIndexInReport}"
+                title="删除这张卡片"
               >
                 🗑️ 删除
               </button>
-              <div class="cursor-pointer view-report" data-view-id="${report.id}">
+              <div class="cursor-pointer view-card" data-card-index="${i}">
                 <div class="flex items-start justify-between mb-2 pr-16">
                   <div class="flex-1">
-                    <p class="font-mono text-xs text-purple-400 mb-1.5">📄 ${report.id}</p>
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span class="text-gray-500">卡片数:</span>
-                        <span class="text-gray-300 ml-1 font-semibold">${report.card_count}</span>
-                      </div>
-                      <div>
-                        <span class="text-gray-500">话题数:</span>
-                        <span class="text-gray-300 ml-1 font-semibold">${topics.length}</span>
-                      </div>
+                    <p class="font-bold text-sm text-purple-300 mb-1">${card.title}</p>
+                    <p class="font-mono text-xs text-gray-400 mb-1.5">🔑 ${card.topic_id}</p>
+                    <div class="flex gap-2 text-xs flex-wrap">
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
+                        📂 ${card.category}
+                      </span>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                        📊 ${card.data_type || 'unknown'}
+                      </span>
                     </div>
                   </div>
                   <span class="text-lg ml-2 group-hover:scale-110 transition-transform">👁️</span>
                 </div>
-                <div class="text-xs text-gray-500 space-y-0.5 border-t border-gray-700 pt-2 mt-2">
-                  <p>📌 话题ID: ${topics.join(', ')}</p>
-                  <p>🕐 生成: ${new Date(report.generated_at).toLocaleString()}</p>
-                  <p>⏰ 过期: ${new Date(report.expires_at).toLocaleString()}</p>
+                <div class="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-700">
+                  <p class="line-clamp-2">${card.content?.summary || '暂无摘要'}</p>
+                </div>
+                <div class="text-xs text-gray-500 space-y-0.5 mt-2 pt-2 border-t border-gray-700">
+                  <p>📄 报告: ${card.reportId}</p>
+                  <p>🕐 生成: ${new Date(card.reportGeneratedAt).toLocaleString()}</p>
                 </div>
                 <div class="mt-2 pt-2 border-t border-gray-700">
                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-400">
-                    点击查看详情
+                    点击查看完整内容
                   </span>
                 </div>
               </div>
@@ -797,85 +857,80 @@ const title = 'Configuration - Myriad';
         html += '</div>';
         document.getElementById('reports-container')!.innerHTML = html;
         
-        // 为每个报告添加查看详情事件
-        document.querySelectorAll('.view-report').forEach(element => {
+        // 为每个卡片添加查看详情事件
+        document.querySelectorAll('.view-card').forEach(element => {
           element.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const reportId = (element as HTMLElement).dataset.viewId;
-            console.log('📖 Viewing report:', reportId);
+            const cardIndex = parseInt((element as HTMLElement).dataset.cardIndex || '0');
+            const card = allCards[cardIndex];
+            console.log('📖 Viewing card:', card);
             
-            try {
-              const detailResponse = await fetch(`${API_URL}/api/profile/reports/${reportId}`);
-              const detailResult = await detailResponse.json();
-              
-              if (detailResult.success) {
-                // 在新窗口显示完整JSON
-                const win = window.open('', '_blank');
-                if (win) {
-                  const htmlContent = `
-                    <html>
-                      <head>
-                        <title>Report ${reportId}</title>
-                        <style>
-                          body { 
-                            background: #1a1a1a; 
-                            color: #e0e0e0; 
-                            font-family: monospace; 
-                            padding: 20px; 
-                          }
-                          pre { 
-                            white-space: pre-wrap; 
-                            word-wrap: break-word; 
-                          }
-                        </style>
-                      </head>
-                      <body>
-                        <h1>Report: ${reportId}</h1>
-                        <pre>${JSON.stringify(detailResult.report, null, 2)}</pre>
-                      </body>
-                    </html>
-                  `;
-                  win.document.open();
-                  win.document.write(htmlContent);
-                  win.document.close();
-                }
-              }
-            } catch (error) {
-              console.error('❌ Error fetching report detail:', error);
-              alert('无法加载报告详情');
+            // 在新窗口显示完整卡片JSON
+            const win = window.open('', '_blank');
+            if (win) {
+              const htmlContent = `
+                <html>
+                  <head>
+                    <title>Card: ${card.title}</title>
+                    <style>
+                      body { 
+                        background: #1a1a1a; 
+                        color: #e0e0e0; 
+                        font-family: monospace; 
+                        padding: 20px; 
+                      }
+                      pre { 
+                        white-space: pre-wrap; 
+                        word-wrap: break-word; 
+                      }
+                      h1 { color: #a78bfa; }
+                    </style>
+                  </head>
+                  <body>
+                    <h1>🃏 ${card.title}</h1>
+                    <pre>${JSON.stringify(card, null, 2)}</pre>
+                  </body>
+                </html>
+              `;
+              win.document.open();
+              win.document.write(htmlContent);
+              win.document.close();
             }
           });
         });
 
-        // 为每个删除按钮添加事件
-        document.querySelectorAll('.delete-report-btn').forEach(element => {
+        // 为每个删除单个卡片按钮添加事件
+        document.querySelectorAll('.delete-single-card-btn').forEach(element => {
           element.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const reportId = (element as HTMLElement).dataset.deleteId;
+            const reportId = (element as HTMLElement).dataset.deleteReportId;
+            const cardIndex = parseInt((element as HTMLElement).dataset.deleteCardIndex || '0');
             
-            if (!confirm(`确定要删除报告 ${reportId} 吗？`)) {
+            if (!confirm(`确定要删除这张卡片吗？\n这不会删除整个报告。`)) {
               return;
             }
 
-            console.log('🗑️ Deleting report:', reportId);
+            console.log('🗑️ Deleting card:', { reportId, cardIndex });
             
             try {
-              const response = await fetch(`${API_URL}/api/profile/reports/${reportId}`, {
-                method: 'DELETE'
+              const response = await fetch(`${API_URL}/api/profile/reports/${reportId}/cards`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ card_index: cardIndex })
               });
               const result = await response.json();
               
               if (result.success) {
-                console.log('✅ Report deleted successfully');
-                alert('报告删除成功！');
+                console.log('✅ Card deleted successfully');
+                alert(`✓ 卡片 "${result.deleted_card_title || ''}" 删除成功！`);
                 // 刷新列表
                 document.getElementById('fetch-reports')?.click();
               } else {
                 alert(`删除失败: ${result.message}`);
               }
             } catch (error) {
-              console.error('❌ Error deleting report:', error);
-              alert('删除报告时出错');
+              console.error('❌ Error deleting card:', error);
+              alert('删除卡片时出错');
             }
           });
         });

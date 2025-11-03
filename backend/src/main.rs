@@ -76,6 +76,10 @@ async fn main() -> anyhow::Result<()> {
             get(api::profile::get_report_by_id).delete(api::profile::delete_report_by_id),
         )
         .route(
+            "/api/profile/reports/:id/cards",
+            delete(api::profile::delete_card_from_report),
+        )
+        .route(
             "/api/profile/reports/all",
             delete(api::profile::delete_all_reports),
         )
