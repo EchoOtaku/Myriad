@@ -327,6 +327,7 @@ impl PlatformFetcher {
     }
     
     /// 获取 GitHub 用户的所有公开仓库
+    #[allow(dead_code)]
     pub async fn fetch_github_repos(&self, username: &str, token: Option<&str>) -> Result<Vec<serde_json::Value>> {
         let mut all_repos = Vec::new();
         let mut page = 1;
@@ -364,6 +365,7 @@ impl PlatformFetcher {
     }
     
     /// 计算 GitHub 用户的总 star 数
+    #[allow(dead_code)]
     pub async fn fetch_github_stats(&self, username: &str, token: Option<&str>) -> Result<serde_json::Value> {
         // 获取用户信息
         let user_info = self.fetch_github_user(username, token).await?;
@@ -423,6 +425,7 @@ impl PlatformFetcher {
     }
     
     /// 获取 X 用户最近一年的推文数据
+    #[allow(dead_code)]
     pub async fn fetch_twitter_tweets(&self, user_id: &str, bearer_token: &str) -> Result<Vec<serde_json::Value>> {
         let mut all_tweets = Vec::new();
         let mut pagination_token: Option<String> = None;
@@ -470,6 +473,7 @@ impl PlatformFetcher {
     }
     
     /// 获取 X 用户统计数据（包含一年内推文）
+    #[allow(dead_code)]
     pub async fn fetch_twitter_stats(&self, username: &str, bearer_token: &str) -> Result<serde_json::Value> {
         // 获取用户信息
         let user_info = self.fetch_twitter_user(username, bearer_token).await?;

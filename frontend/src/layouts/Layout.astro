@@ -78,11 +78,28 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
     <style is:global>
       :root {
-        --color-primary: #22c55e;
-        --color-secondary: #ec4899;
-        --color-accent: #fbbf24;
-        --color-light: #4ade80;
-        --color-dark: #16a34a;
+        --color-primary: #94a3b8;
+        --color-secondary: #94a3b8;
+        --color-accent: #cbd5e1;
+        --color-light: #cbd5e1;
+        --color-dark: #475569;
+        
+        /* 颜色切换平滑过渡 */
+        transition: --color-primary 0.6s ease-in-out,
+                    --color-secondary 0.6s ease-in-out,
+                    --color-accent 0.6s ease-in-out,
+                    --color-light 0.6s ease-in-out,
+                    --color-dark 0.6s ease-in-out;
+      }
+      
+      @supports not (transition: --color-primary 0.6s) {
+        /* 对于不支持 CSS 变量过渡的浏览器，使用通配符 */
+        * {
+          transition: color 0.6s ease-in-out,
+                      background-color 0.6s ease-in-out,
+                      border-color 0.6s ease-in-out,
+                      box-shadow 0.6s ease-in-out;
+        }
       }
 
       @keyframes blob {
@@ -285,13 +302,74 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     </style>
 
     <script>
-      import { extractColorsFromImage, applyColorPalette, clearColors } from '../utils/colorExtractor';
+      import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
 
-      // 🔴 关键：页面加载的第一时间就清除旧颜色
-      clearColors();
-
-      // 全局状态：存储当前显示的壁纸 URL（原始 URL，不含时间戳）
+      // 全局状态：存储当前显示的壁纸的实际 URL（重定向后的最终 URL）
       let activeWallpaperUrl: string | null = null;
+
+      // 缓存接口
+      interface WallpaperCache {
+        apiUrl: string;
+        actualUrl: string;
+        timestamp: number;
+      }
+
+      // 从 localStorage 获取上次的壁纸缓存
+      function getLastWallpaperCache(): WallpaperCache | null {
+        try {
+          const cached = localStorage.getItem('lastWallpaper');
+          if (!cached) return null;
+          const data = JSON.parse(cached) as WallpaperCache;
+          // 缓存 1 小时内有效
+          if (Date.now() - data.timestamp < 60 * 60 * 1000) {
+            return data;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
+      // 保存壁纸缓存
+      function saveWallpaperCache(apiUrl: string, actualUrl: string): void {
+        try {
+          const cache: WallpaperCache = { apiUrl, actualUrl, timestamp: Date.now() };
+          localStorage.setItem('lastWallpaper', JSON.stringify(cache));
+        } catch (e) {
+          console.warn('⚠️ [Layout] Failed to save wallpaper cache:', e);
+        }
+      }
+
+      // 获取图片的实际 URL（处理重定向）
+      async function getActualImageUrl(apiUrl: string): Promise<string> {
+        try {
+          // 先获取实际的图片 URL（通过 fetch 会自动跟随重定向）
+          const response = await fetch(apiUrl, { method: 'HEAD' });
+          const actualUrl = response.url; // 重定向后的最终 URL
+          console.log('🔗 [Layout] API URL:', apiUrl);
+          console.log('🔗 [Layout] Actual image URL:', actualUrl);
+          return actualUrl;
+        } catch {
+          // 如果获取失败，回退到原始 URL
+          return apiUrl;
+        }
+      }
+
+      // 立即显示缓存的壁纸和颜色
+      function showCachedWallpaper(wallpaperEl: HTMLElement, cache: WallpaperCache, blur: number): void {
+        console.log('⚡ [Layout] Using cached wallpaper for instant display');
+        wallpaperEl.style.backgroundImage = `url(${cache.actualUrl})`;
+        wallpaperEl.style.filter = `blur(${blur}px)`;
+        activeWallpaperUrl = cache.actualUrl;
+        
+        // 立即提取并应用缓存的颜色（从 colorExtractor 的缓存）
+        extractColorsFromImage(cache.actualUrl).then(colors => {
+          if (activeWallpaperUrl === cache.actualUrl) {
+            applyColorPalette(colors);
+            console.log('⚡ [Layout] Cached colors applied instantly:', colors);
+          }
+        });
+      }
 
       // Load wallpaper and extract colors
       async function loadWallpaperAndColors() {
@@ -301,55 +379,80 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           const wallpaperEl = document.getElementById('wallpaper');
           
           if (wallpaperEl && data.ui_config?.wallpaper_url) {
-            const wallpaperUrl = data.ui_config.wallpaper_url;
+            const apiUrl = data.ui_config.wallpaper_url;
+            const blur = data.ui_config.wallpaper_blur || 3;
             
-            console.log('🖼️ Loading wallpaper:', wallpaperUrl);
+            console.log('🖼️ [Layout] Loading wallpaper from API:', apiUrl);
             
-            // 🔴 立即更新活动的壁纸 URL（同步操作）
-            activeWallpaperUrl = wallpaperUrl;
+            // 🚀 优化1: 先检查缓存，立即显示
+            const cachedWallpaper = getLastWallpaperCache();
+            if (cachedWallpaper && cachedWallpaper.apiUrl === apiUrl) {
+              showCachedWallpaper(wallpaperEl, cachedWallpaper, blur);
+              console.log('✅ [Layout] Cached wallpaper displayed instantly');
+            }
             
-            // 预加载并显示背景图片
+            // 🚀 优化2: 后台获取新的实际 URL
+            const actualImageUrl = await getActualImageUrl(apiUrl);
+            
+            // 如果实际 URL 和缓存的一样，不需要更新
+            if (cachedWallpaper && cachedWallpaper.actualUrl === actualImageUrl) {
+              console.log('✅ [Layout] Wallpaper unchanged, no update needed');
+              return;
+            }
+            
+            // URL 不同，需要更新
+            console.log('🔄 [Layout] New wallpaper detected, updating...');
+            activeWallpaperUrl = actualImageUrl;
+            
+            // 🚀 优化3：并行加载新图片和提取颜色
             const img = new Image();
             img.crossOrigin = 'anonymous';
             
-            await new Promise<void>((resolve, reject) => {
+            console.log('🎨 [Layout] Starting color extraction (parallel)');
+            const colorPromise = extractColorsFromImage(actualImageUrl);
+            
+            const imagePromise = new Promise<void>((resolve, reject) => {
               img.onload = () => {
-                // 再次验证这仍然是活动的 URL
-                if (activeWallpaperUrl === wallpaperUrl) {
-                  wallpaperEl.style.backgroundImage = `url(${wallpaperUrl})`;
-                  wallpaperEl.style.filter = `blur(${data.ui_config.wallpaper_blur || 3}px)`;
-                  console.log('✅ Wallpaper displayed');
+                if (activeWallpaperUrl === actualImageUrl) {
+                  wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;
+                  wallpaperEl.style.filter = `blur(${blur}px)`;
+                  console.log('✅ [Layout] New wallpaper displayed');
                   resolve();
                 } else {
-                  console.warn('⚠️ Wallpaper URL changed, skipping display');
+                  console.warn('⚠️ [Layout] Wallpaper URL changed, skipping display');
                   reject(new Error('URL changed'));
                 }
               };
               img.onerror = () => {
-                console.error('❌ Failed to load wallpaper');
+                console.error('❌ [Layout] Failed to load wallpaper');
                 reject(new Error('Failed to load wallpaper'));
               };
-              img.src = wallpaperUrl;
+              img.src = actualImageUrl;
             });
             
-            // 提取颜色（这个是异步的，可能需要时间）
-            console.log('🎨 Starting color extraction');
-            const result = await extractColorsFromImage(wallpaperUrl);
+            // 等待颜色提取完成
+            const result = await colorPromise;
             
-            // 🔴 关键验证：只有当这个 URL 仍然是活动的，才应用颜色
-            if (activeWallpaperUrl === wallpaperUrl) {
+            if (activeWallpaperUrl === actualImageUrl) {
               applyColorPalette(result);
-              console.log('✅ Colors applied:', result);
+              console.log('✅ [Layout] New colors applied:', result);
+              
+              // 保存新的缓存
+              saveWallpaperCache(apiUrl, actualImageUrl);
             } else {
-              console.warn('⚠️ Wallpaper changed during extraction');
-              console.warn(`   Extracted for: ${wallpaperUrl}`);
+              console.warn('⚠️ [Layout] Wallpaper changed during extraction');
+              console.warn(`   Extracted for: ${actualImageUrl}`);
               console.warn(`   But active is: ${activeWallpaperUrl}`);
               console.warn('   Colors NOT applied');
             }
             
+          } else {
+            // 没有配置壁纸，使用默认配色
+            console.log('ℹ️ [Layout] No wallpaper configured, using default colors');
           }
         } catch (error) {
-          console.error('❌ Error:', error);
+          console.error('❌ [Layout] Error loading wallpaper/colors:', error);
+          // 出错时保持默认配色，不清除颜色
         }
       }
       

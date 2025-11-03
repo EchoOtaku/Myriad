@@ -251,6 +251,7 @@ const ConfigForm: React.FC = () => {
                       checked={platform.enabled}
                       onChange={() => togglePlatform(index)}
                       className="sr-only peer"
+                      aria-label={`Enable ${platform.name}`}
                     />
                     <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
                   </label>
@@ -287,11 +288,12 @@ const ConfigForm: React.FC = () => {
                   <div className="mt-4 space-y-4 animate-fade-in">
                     {platform.config_fields.map((field) => (
                       <div key={field.key}>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor={`platform-${index}-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
                           {field.label}
                           {field.required && <span className="text-pink-500 ml-1">*</span>}
                         </label>
                         <input
+                          id={`platform-${index}-${field.key}`}
                           type={field.field_type}
                           value={field.value}
                           onChange={(e) => updateFieldValue(index, field.key, e.target.value)}
@@ -341,11 +343,12 @@ const ConfigForm: React.FC = () => {
           <div className="space-y-4">
             {config.ai_config.config_fields.map((field) => (
               <div key={field.key}>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor={`ai-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
                   {field.label}
                   {field.required && <span className="text-pink-500 ml-1">*</span>}
                 </label>
                 <input
+                  id={`ai-${field.key}`}
                   type={field.field_type}
                   value={field.value}
                   onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
@@ -383,11 +386,12 @@ const ConfigForm: React.FC = () => {
           <div className="space-y-4">
             {config.ui_config.config_fields.map((field) => (
               <div key={field.key}>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor={`ui-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
                   {field.label}
                   {field.required && <span className="text-pink-500 ml-1">*</span>}
                 </label>
                 <input
+                  id={`ui-${field.key}`}
                   type={field.field_type}
                   value={field.value}
                   onChange={(e) => updateUiFieldValue(field.key, e.target.value)}

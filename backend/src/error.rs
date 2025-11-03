@@ -6,6 +6,7 @@ use axum::{
 use serde_json::json;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AppError {
     DatabaseError(sea_orm::DbErr),
     NotFound(String),
@@ -18,7 +19,10 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             AppError::DatabaseError(err) => {
                 tracing::error!("Database error: {:?}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Database error".to_string(),
+                )
             }
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),

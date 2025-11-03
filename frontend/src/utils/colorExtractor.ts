@@ -1,4 +1,4 @@
-// 颜色提取和缓存工具
+﻿// ColorExtractor v3.0
 interface ColorPalette {
     primary: string;
     secondary: string;
@@ -11,243 +11,300 @@ interface CachedColorData {
     url: string;
     palette: ColorPalette;
     timestamp: number;
-    version: number; // 缓存版本号
+    version: number;
 }
 
-// 缓存版本（更新算法时递增此值）
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 4; // 更新版本号，强制刷新缓存
+const CACHE_EXPIRY_DAYS = 30;
+const MAX_CANVAS_SIZE = 150;
+const SAMPLE_STEP = 4;
 
-// 内存缓存
-const colorCache = new Map<string, ColorPalette>();
+// 严格的彩色检测阈值
+const MIN_SATURATION = 0.35; // 饱和度必须 > 35% (严格)
+const MIN_COLOR_DISTANCE = 40; // 与灰色的最小距离
+const MIN_CHROMA = 50; // 最小色度值
 
-// 从图片URL提取主色调
-export async function extractColorsFromImage(imageUrl: string): Promise<ColorPalette> {
-    console.log('🎨 Starting color extraction from:', imageUrl); try {
-        // 创建canvas提取颜色
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
+const memoryCache = new Map<string, ColorPalette>();
+let currentExtractionController: AbortController | null = null;
+let currentExtractionUrl: string | null = null;
 
-        // 添加时间戳参数强制绕过浏览器图片缓存
-        // 这样可以确保每次都获取带 CORS 头的图片
-        const cacheBuster = imageUrl.includes('?')
-            ? `&t=${Date.now()}`
-            : `?t=${Date.now()}`;
+export async function extractColorsFromImage(
+    imageUrl: string,
+    options: { forceRefresh?: boolean } = {}
+): Promise<ColorPalette> {
+    const startTime = performance.now();
+    console.log(' [ColorExtractor] Starting:', imageUrl);
 
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = imageUrl + cacheBuster;
-        });
+    if (currentExtractionController) {
+        console.log(' [ColorExtractor] Cancelling previous');
+        currentExtractionController.abort();
+    }
 
-        console.log('✓ Image loaded successfully');
+    currentExtractionController = new AbortController();
+    currentExtractionUrl = imageUrl;
+    const myController = currentExtractionController;
 
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-            throw new Error('Canvas context not available');
+    try {
+        if (!options.forceRefresh && memoryCache.has(imageUrl)) {
+            console.log(' [ColorExtractor] Hit memory cache');
+            return memoryCache.get(imageUrl)!;
         }
 
-        // 缩小尺寸以提高性能
-        const scaleFactor = 0.1;
-        canvas.width = img.width * scaleFactor;
-        canvas.height = img.height * scaleFactor;
+        if (!options.forceRefresh) {
+            const cached = getLocalStorageCache(imageUrl);
+            if (cached) {
+                console.log(' [ColorExtractor] Hit localStorage cache');
+                memoryCache.set(imageUrl, cached);
+                return cached;
+            }
+        }
 
-        console.log(`📐 Canvas size: ${canvas.width}x${canvas.height}`);
+        console.log(' [ColorExtractor] Extracting...');
+        const palette = await extractFromImage(imageUrl, myController.signal);
 
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (myController.signal.aborted) {
+            throw new Error('Extraction cancelled');
+        }
 
-        console.log(`🔍 Analyzing ${imageData.data.length / 4} pixels...`);
+        if (currentExtractionUrl !== imageUrl) {
+            throw new Error('URL changed during extraction');
+        }
 
-        // 提取颜色
-        const palette = analyzeImageColors(imageData);
+        memoryCache.set(imageUrl, palette);
+        saveToLocalStorage(imageUrl, palette);
 
-        console.log('✅ Color extraction complete:', palette);
+        const duration = performance.now() - startTime;
+        console.log(` [ColorExtractor] Complete in ${duration.toFixed(0)}ms:`, palette);
+
         return palette;
+
     } catch (error) {
-        console.error('❌ Failed to extract colors:', error);
-        // 返回默认配色
+        if (error instanceof Error && error.message.includes('cancel')) {
+            console.log(' [ColorExtractor] Cancelled');
+            throw error;
+        }
+        console.error(' [ColorExtractor] Failed:', error);
         return getDefaultPalette();
+    } finally {
+        if (currentExtractionController === myController) {
+            currentExtractionController = null;
+            currentExtractionUrl = null;
+        }
     }
 }
 
-// 分析图片颜色
+async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<ColorPalette> {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const cacheBuster = imageUrl.includes('?') ? `&_t=${Date.now()}` : `?_t=${Date.now()}`;
+    const imageUrlWithCache = imageUrl + cacheBuster;
+
+    await new Promise<void>((resolve, reject) => {
+        if (signal.aborted) {
+            reject(new Error('Aborted before image load'));
+            return;
+        }
+        const abortHandler = () => reject(new Error('Aborted during image load'));
+        signal.addEventListener('abort', abortHandler);
+        img.onload = () => {
+            signal.removeEventListener('abort', abortHandler);
+            resolve();
+        };
+        img.onerror = () => {
+            signal.removeEventListener('abort', abortHandler);
+            reject(new Error('Failed to load image'));
+        };
+        img.src = imageUrlWithCache;
+    });
+
+    if (signal.aborted) {
+        throw new Error('Extraction cancelled after image load');
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+        throw new Error('Canvas context not available');
+    }
+
+    const scale = Math.min(MAX_CANVAS_SIZE / img.width, MAX_CANVAS_SIZE / img.height, 1);
+    canvas.width = Math.floor(img.width * scale);
+    canvas.height = Math.floor(img.height * scale);
+    console.log(` [ColorExtractor] Canvas: ${canvas.width}x${canvas.height}`);
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    if (signal.aborted) {
+        throw new Error('Extraction cancelled after processing');
+    }
+
+    return analyzeImageColors(imageData);
+}
+
 function analyzeImageColors(imageData: ImageData): ColorPalette {
     const pixels = imageData.data;
     const colorMap = new Map<string, number>();
+    let totalSamples = 0;
 
-    // 🔧 增加采样密度：每个像素都采样（去掉 i += 8）
-    for (let i = 0; i < pixels.length; i += 4) {
+    for (let i = 0; i < pixels.length; i += SAMPLE_STEP * 4) {
         const r = pixels[i];
         const g = pixels[i + 1];
         const b = pixels[i + 2];
         const a = pixels[i + 3];
-
+        
         // 跳过透明像素
-        if (a < 128) {
-            continue;
-        }
-
-        // 使用感知亮度公式 (更接近人眼感知)
-        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-
-        // 跳过过暗和过亮的像素
-        if (brightness < 20 || brightness > 235) {
-            continue;
-        }
-
-        // 计算饱和度
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        const saturation = max === 0 ? 0 : (max - min) / max;
-
-        // 🔧 降低饱和度阈值：0.08（更宽松，包含更多颜色）
-        if (saturation < 0.08) {
-            continue;
-        }
-
-        // 🔧 更精细的量化：12 而不是 16，保留更多颜色细节
-        const qR = Math.round(r / 12) * 12;
-        const qG = Math.round(g / 12) * 12;
-        const qB = Math.round(b / 12) * 12;
-
+        if (a < 128) continue;
+        
+        // 严格过滤：必须是明确的彩色
+        if (!isVividColor(r, g, b)) continue;
+        
+        // 量化颜色（减少相似颜色）
+        const qR = Math.round(r / 16) * 16;
+        const qG = Math.round(g / 16) * 16;
+        const qB = Math.round(b / 16) * 16;
         const key = `${qR},${qG},${qB}`;
         colorMap.set(key, (colorMap.get(key) || 0) + 1);
+        totalSamples++;
     }
 
-    console.log(`Found ${colorMap.size} unique colors`);
+    console.log(` [ColorExtractor] ${colorMap.size} vivid colors from ${totalSamples} samples`);
 
-    // 计算总像素数
-    const totalPixels = Array.from(colorMap.values()).reduce((sum, count) => sum + count, 0);
-    console.log(`Total sampled pixels: ${totalPixels}`);
+    if (colorMap.size === 0) {
+        console.warn('⚠️ [ColorExtractor] No vivid colors found, using default');
+        return getDefaultPalette();
+    }
 
-    // 按频率排序，并计算占比
     const sortedColors = Array.from(colorMap.entries())
         .sort((a, b) => b[1] - a[1])
         .map(([color, count]) => {
             const [r, g, b] = color.split(',').map(Number);
-            const percentage = (count / totalPixels) * 100;
-            return { r, g, b, count, percentage };
+            const percentage = (count / totalSamples) * 100;
+            const saturation = getSaturation(r, g, b);
+            const brightness = getPerceptualBrightness(r, g, b);
+            const chroma = getChroma(r, g, b);
+            return { r, g, b, percentage, saturation, brightness, chroma };
         });
 
-    if (sortedColors.length === 0) {
-        console.warn('No colors found, using default palette');
+    // 严格筛选：只要鲜艳的彩色
+    const vividColors = sortedColors.filter(c =>
+        c.percentage > 2 && 
+        c.saturation > MIN_SATURATION && 
+        c.chroma > MIN_CHROMA &&
+        c.brightness > 40 && 
+        c.brightness < 220
+    );
+
+    const selectedColors = vividColors.length > 0
+        ? vividColors
+        : sortedColors.filter(c => 
+            c.percentage > 1 && 
+            c.saturation > MIN_SATURATION * 0.8 && 
+            c.chroma > MIN_CHROMA * 0.7
+        );
+
+    if (selectedColors.length === 0) {
+        console.warn('⚠️ [ColorExtractor] No colors pass strict filter, using default');
         return getDefaultPalette();
     }
 
-    console.log('Top 5 colors:', sortedColors.slice(0, 5).map(c =>
-        `rgb(${c.r},${c.g},${c.b}) ${c.percentage.toFixed(1)}% sat:${getSaturation(c.r, c.g, c.b).toFixed(2)}`
-    ));
+    const primary = selectedColors[0];
+    const secondary = selectedColors.length > 1 ? selectedColors[1] : primary;
+    const accent = selectedColors.length > 2 ? selectedColors[2] : secondary;
 
-    // 🔧 降低阈值：只考虑占比超过 1% 的颜色（更宽松）
-    const significantColors = sortedColors.filter(c => c.percentage > 1);
-    console.log(`Found ${significantColors.length} significant colors (>1% each)`);
-
-    // 从显著颜色中筛选有活力的颜色
-    const vibrantColors = significantColors.filter(c => {
-        const saturation = getSaturation(c.r, c.g, c.b);
-        const brightness = getPerceptualBrightness(c.r, c.g, c.b);
-        // 🔧 降低饱和度要求：0.15（之前是 0.2）
-        return saturation > 0.15 && brightness > 50 && brightness < 200;
+    console.log(` [ColorExtractor] Selected colors:`, {
+        primary: `sat=${primary.saturation.toFixed(2)} chroma=${primary.chroma.toFixed(0)}`,
+        secondary: `sat=${secondary.saturation.toFixed(2)} chroma=${secondary.chroma.toFixed(0)}`,
+        accent: `sat=${accent.saturation.toFixed(2)} chroma=${accent.chroma.toFixed(0)}`
     });
 
-    console.log(`Found ${vibrantColors.length} vibrant colors with significant presence`);
-
-    // 🔧 如果没有找到显著的鲜艳颜色，降低阈值到 0.5%
-    const fallbackColors = vibrantColors.length === 0
-        ? sortedColors.filter(c => {
-            const saturation = getSaturation(c.r, c.g, c.b);
-            const brightness = getPerceptualBrightness(c.r, c.g, c.b);
-            // 🔧 进一步降低要求：0.5% 占比，0.12 饱和度
-            return c.percentage > 0.5 && saturation > 0.12 && brightness > 50 && brightness < 200;
-        })
-        : vibrantColors;
-
-    console.log(`Using ${fallbackColors.length} colors for palette generation`);
-
-    // 选择主色：优先选择占比最大的鲜艳颜色
-    const primaryColor = fallbackColors.length > 0 ? fallbackColors[0] : sortedColors[0];
-
-    // 选择次要色和强调色（尽量选择不同色相的颜色）
-    const secondaryColor = fallbackColors.length > 1 ? fallbackColors[1] :
-        sortedColors.length > 1 ? sortedColors[1] :
-            primaryColor;
-
-    const accentColor = fallbackColors.length > 2 ? fallbackColors[2] :
-        sortedColors.length > 2 ? sortedColors[2] :
-            secondaryColor;
-
-    const result = {
-        primary: rgbToHex(primaryColor.r, primaryColor.g, primaryColor.b),
-        secondary: rgbToHex(secondaryColor.r, secondaryColor.g, secondaryColor.b),
-        accent: rgbToHex(accentColor.r, accentColor.g, accentColor.b),
-        light: lightenColor(primaryColor.r, primaryColor.g, primaryColor.b),
-        dark: darkenColor(primaryColor.r, primaryColor.g, primaryColor.b),
+    return {
+        primary: rgbToHex(primary.r, primary.g, primary.b),
+        secondary: rgbToHex(secondary.r, secondary.g, secondary.b),
+        accent: rgbToHex(accent.r, accent.g, accent.b),
+        light: lightenColor(primary.r, primary.g, primary.b),
+        dark: darkenColor(primary.r, primary.g, primary.b),
     };
-
-    console.log('Generated palette:', result);
-    return result;
 }
 
-// 计算颜色亮度（简单平均）
-function getBrightness(r: number, g: number, b: number): number {
-    return (r + g + b) / 3;
-}
-
-// 计算感知亮度（更接近人眼）
 function getPerceptualBrightness(r: number, g: number, b: number): number {
     return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
-// 计算颜色饱和度
 function getSaturation(r: number, g: number, b: number): number {
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
-    const delta = max - min;
-
     if (max === 0) return 0;
-    return delta / max;
+    return (max - min) / max;
 }
 
-// RGB转十六进制
+// 计算色度（Chroma）：衡量颜色的纯度
+function getChroma(r: number, g: number, b: number): number {
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    return max - min;
+}
+
+// 计算颜色与灰色的距离
+function getDistanceFromGray(r: number, g: number, b: number): number {
+    const avg = (r + g + b) / 3;
+    const dr = r - avg;
+    const dg = g - avg;
+    const db = b - avg;
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+// 严格检测是否为鲜艳的彩色（非灰/白/黑）
+function isVividColor(r: number, g: number, b: number): boolean {
+    // 1. 亮度检查：避免纯黑和纯白
+    const brightness = getPerceptualBrightness(r, g, b);
+    if (brightness < 30 || brightness > 225) return false;
+    
+    // 2. 饱和度检查：必须有足够的彩度
+    const saturation = getSaturation(r, g, b);
+    if (saturation < MIN_SATURATION) return false;
+    
+    // 3. 色度检查：RGB 通道必须有明显差异
+    const chroma = getChroma(r, g, b);
+    if (chroma < MIN_CHROMA) return false;
+    
+    // 4. 灰色距离检查：与灰色必须有明显区别
+    const grayDistance = getDistanceFromGray(r, g, b);
+    if (grayDistance < MIN_COLOR_DISTANCE) return false;
+    
+    // 5. 额外检查：避免几乎相等的 RGB 值（灰色特征）
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const mid = r + g + b - max - min;
+    
+    // 如果三个值都很接近，说明是灰色
+    if (max - mid < 20 && mid - min < 20) return false;
+    
+    return true;
+}
+
 function rgbToHex(r: number, g: number, b: number): string {
     return `#${[r, g, b].map(x => Math.round(x).toString(16).padStart(2, '0')).join('')}`;
 }
 
-// RGB 转 HSL
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-    r /= 255;
-    g /= 255;
-    b /= 255;
-
+    r /= 255; g /= 255; b /= 255;
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
     const delta = max - min;
-
-    let h = 0;
-    let s = 0;
+    let h = 0, s = 0;
     const l = (max + min) / 2;
-
     if (delta !== 0) {
         s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-
-        if (max === r) {
-            h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-        } else if (max === g) {
-            h = ((b - r) / delta + 2) / 6;
-        } else {
-            h = ((r - g) / delta + 4) / 6;
-        }
+        if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / delta + 2) / 6;
+        else h = ((r - g) / delta + 4) / 6;
     }
-
     return { h, s, l };
 }
 
-// HSL 转 RGB
 function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
     let r, g, b;
-
     if (s === 0) {
         r = g = b = l;
     } else {
@@ -259,51 +316,31 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
             if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
             return p;
         };
-
         const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
         const p = 2 * l - q;
-
         r = hue2rgb(p, q, h + 1 / 3);
         g = hue2rgb(p, q, h);
         b = hue2rgb(p, q, h - 1 / 3);
     }
-
-    return {
-        r: Math.round(r * 255),
-        g: Math.round(g * 255),
-        b: Math.round(b * 255)
-    };
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
 }
 
-// 变亮颜色（使用 HSL，保持色相和饱和度）
 function lightenColor(r: number, g: number, b: number): string {
     const hsl = rgbToHsl(r, g, b);
-
-    // 增加亮度，但不超过 85%
     hsl.l = Math.min(0.85, hsl.l + 0.2);
-
-    // 稍微增加饱和度，让颜色更鲜艳
     hsl.s = Math.min(1, hsl.s * 1.1);
-
     const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
     return rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-// 变暗颜色（使用 HSL，保持色相和饱和度）
 function darkenColor(r: number, g: number, b: number): string {
     const hsl = rgbToHsl(r, g, b);
-
-    // 降低亮度，但不低于 15%
     hsl.l = Math.max(0.15, hsl.l - 0.25);
-
-    // 稍微增加饱和度
     hsl.s = Math.min(1, hsl.s * 1.15);
-
     const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
     return rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-// 默认配色（绿色系）
 function getDefaultPalette(): ColorPalette {
     return {
         primary: '#22c55e',
@@ -314,7 +351,33 @@ function getDefaultPalette(): ColorPalette {
     };
 }
 
-// 应用配色到CSS变量
+function getLocalStorageCache(url: string): ColorPalette | null {
+    try {
+        const cached = localStorage.getItem('wallpaperColorCache');
+        if (!cached) return null;
+        const data: CachedColorData = JSON.parse(cached);
+        if (data.version !== CACHE_VERSION) {
+            localStorage.removeItem('wallpaperColorCache');
+            return null;
+        }
+        if (data.url !== url) return null;
+        const age = Date.now() - data.timestamp;
+        if (age > CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000) return null;
+        return data.palette;
+    } catch {
+        return null;
+    }
+}
+
+function saveToLocalStorage(url: string, palette: ColorPalette): void {
+    try {
+        const data: CachedColorData = { url, palette, timestamp: Date.now(), version: CACHE_VERSION };
+        localStorage.setItem('wallpaperColorCache', JSON.stringify(data));
+    } catch (e) {
+        console.error('Failed to save cache:', e);
+    }
+}
+
 export function applyColorPalette(palette: ColorPalette): void {
     const root = document.documentElement;
     root.style.setProperty('--color-primary', palette.primary);
@@ -322,130 +385,30 @@ export function applyColorPalette(palette: ColorPalette): void {
     root.style.setProperty('--color-accent', palette.accent);
     root.style.setProperty('--color-light', palette.light);
     root.style.setProperty('--color-dark', palette.dark);
-
-    console.log('Applied color palette:', palette);
+    console.log(' [ColorExtractor] Applied:', palette);
 }
 
-// 清除颜色（应用中性色，避免显示上一张图片的颜色）
 export function clearColors(): void {
     const neutralPalette: ColorPalette = {
-        primary: '#94a3b8',    // 中性灰蓝
+        primary: '#94a3b8',
         secondary: '#94a3b8',
         accent: '#94a3b8',
-        light: '#cbd5e1',      // 浅灰
-        dark: '#475569',       // 深灰
+        light: '#cbd5e1',
+        dark: '#475569',
     };
     applyColorPalette(neutralPalette);
-    console.log('🔄 Colors cleared, neutral palette applied');
+    console.log(' [ColorExtractor] Cleared colors');
 }
 
-// 保存到 localStorage（与 URL 绑定）
-function saveToLocalStorage(url: string, palette: ColorPalette): void {
-    try {
-        const data: CachedColorData = {
-            url,
-            palette,
-            timestamp: Date.now(),
-            version: CACHE_VERSION
-        };
-        localStorage.setItem('wallpaperColorCache', JSON.stringify(data));
-    } catch (error) {
-        console.error('Failed to save to localStorage:', error);
-    }
-}
-
-// 验证颜色是否合理（不能过度黑或过度白）
-function isValidColor(hex: string): boolean {
-    const rgb = parseInt(hex.slice(1), 16);
-    const r = (rgb >> 16) & 0xff;
-    const g = (rgb >> 8) & 0xff;
-    const b = rgb & 0xff;
-
-    const brightness = (r + g + b) / 3;
-
-    // 亮度应该在 30-225 之间
-    return brightness >= 30 && brightness <= 225;
-}
-
-// 验证配色方案是否合理
-function isValidPalette(palette: ColorPalette): boolean {
-    // 检查所有颜色是否合理
-    return isValidColor(palette.primary) &&
-        isValidColor(palette.secondary) &&
-        isValidColor(palette.accent) &&
-        palette.light !== '#ffffff' && // light 不应该是纯白
-        palette.dark !== '#000000';    // dark 不应该是纯黑
-}
-
-// 从 localStorage 获取缓存（检查 URL 是否匹配）
-function getLocalStorageCache(url: string): ColorPalette | null {
-    try {
-        const cached = localStorage.getItem('wallpaperColorCache');
-        if (!cached) return null;
-
-        const data: CachedColorData = JSON.parse(cached);
-
-        // 检查版本号
-        if (!data.version || data.version !== CACHE_VERSION) {
-            console.log('Cache version mismatch, clearing old cache');
-            localStorage.removeItem('wallpaperColorCache');
-            return null;
-        }
-
-        // 检查 URL 是否匹配
-        if (data.url === url) {
-            // 验证配色是否合理
-            if (!isValidPalette(data.palette)) {
-                console.log('Invalid cached palette, will regenerate');
-                return null;
-            }
-
-            // 检查缓存是否过期（7天）
-            const age = Date.now() - data.timestamp;
-            if (age < 7 * 24 * 60 * 60 * 1000) {
-                return data.palette;
-            }
-        }
-        return null;
-    } catch {
-        return null;
-    }
-}
-
-// 从localStorage加载配色（用于快速初始化）
-export function loadCachedPalette(): ColorPalette | null {
-    try {
-        const cached = localStorage.getItem('wallpaperColorCache');
-        if (!cached) return null;
-
-        const data: CachedColorData = JSON.parse(cached);
-        return data.palette;
-    } catch {
-        return null;
-    }
-}
-
-// 获取缓存的 URL
-export function getCachedUrl(): string | null {
-    try {
-        const cached = localStorage.getItem('wallpaperColorCache');
-        if (!cached) return null;
-
-        const data: CachedColorData = JSON.parse(cached);
-        return data.url;
-    } catch {
-        return null;
-    }
-}
-
-// 清除特定URL的缓存（用于强制重新提取）
 export function clearColorCache(url?: string): void {
     if (url) {
-        colorCache.delete(url);
-        console.log('Cleared color cache for:', url);
+        memoryCache.delete(url);
     } else {
-        colorCache.clear();
+        memoryCache.clear();
         localStorage.removeItem('wallpaperColorCache');
-        console.log('Cleared all color cache');
     }
+}
+
+export function getCurrentExtractionUrl(): string | null {
+    return currentExtractionUrl;
 }
