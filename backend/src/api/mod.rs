@@ -2,6 +2,7 @@ use axum::{http::StatusCode, Json};
 use serde_json::{json, Value};
 
 pub mod analysis;
+pub mod auth;
 pub mod bilibili;
 pub mod config;
 pub mod platforms;

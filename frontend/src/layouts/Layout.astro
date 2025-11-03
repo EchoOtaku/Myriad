@@ -62,6 +62,40 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           <!-- 分隔线 -->
           <div class="w-8 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
 
+          <!-- 登录/用户头像按钮 -->
+          <div id="user-section">
+            <!-- 未登录状态 - 显示登录按钮 -->
+            <button id="login-btn" class="nav-item" title="登录" style="display: none;">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              </svg>
+            </button>
+            
+            <!-- 已登录状态 - 显示用户头像 -->
+            <div id="user-avatar-container" class="relative" style="display: none;">
+              <button id="user-avatar-btn" class="nav-item p-0 w-10 h-10 overflow-hidden" title="用户菜单">
+                <img id="user-avatar" src="" alt="User" class="w-full h-full object-cover rounded-full">
+              </button>
+              
+              <!-- 用户下拉菜单 -->
+              <div id="user-menu" class="absolute left-full ml-3 top-0 glass rounded-xl shadow-2xl p-2 min-w-[180px] hidden z-50">
+                <div class="px-3 py-2 border-b border-gray-200">
+                  <p class="text-sm font-semibold text-gray-800" id="user-name">用户名</p>
+                  <p class="text-xs text-gray-500">@<span id="user-username">username</span></p>
+                </div>
+                <button id="logout-btn" class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mt-1">
+                  <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                  </svg>
+                  退出登录
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 分隔线 -->
+          <div class="w-8 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+
           <!-- 生成报告按钮 -->
           <button id="generate-report-btn" class="nav-item generate-btn" title="生成报告">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -839,6 +873,136 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       loadWallpaperAndColors();
       setActiveNav();
       setupGenerateButton();
+      setupAuthUI();
+
+      // 检查URL中的token参数（OAuth回调）
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      if (token) {
+        localStorage.setItem('auth_token', token);
+        // 清除URL中的token参数
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // 刷新用户信息
+        loadUserInfo();
+      }
+
+      // 用户认证UI设置
+      function setupAuthUI() {
+        loadUserInfo();
+
+        const loginBtn = document.getElementById('login-btn');
+        const userAvatarBtn = document.getElementById('user-avatar-btn');
+        const userMenu = document.getElementById('user-menu');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        // 登录按钮点击
+        loginBtn?.addEventListener('click', async () => {
+          try {
+            // 先检查后端OAuth是否配置
+            const response = await fetch('http://localhost:3000/api/auth/github/login');
+            
+            if (!response.ok) {
+              const error = await response.json();
+              alert(`登录失败：${error.message || error.error || '服务器错误'}\n\n请联系管理员配置 GitHub OAuth。`);
+              console.error('GitHub OAuth error:', error);
+              return;
+            }
+            
+            // 如果返回重定向，直接跳转
+            window.location.href = 'http://localhost:3000/api/auth/github/login';
+          } catch (e) {
+            console.error('Login error:', e);
+            alert('无法连接到认证服务器，请确保后端服务正在运行。');
+          }
+        });
+
+        // 用户头像点击 - 切换菜单
+        userAvatarBtn?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          userMenu?.classList.toggle('hidden');
+        });
+
+        // 点击其他地方关闭菜单
+        document.addEventListener('click', () => {
+          userMenu?.classList.add('hidden');
+        });
+
+        // 退出登录
+        logoutBtn?.addEventListener('click', async () => {
+          try {
+            await fetch('http://localhost:3000/api/auth/logout', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+              }
+            });
+          } catch (e) {
+            console.error('Logout request failed:', e);
+          }
+          
+          localStorage.removeItem('auth_token');
+          window.location.reload();
+        });
+      }
+
+      // 加载用户信息
+      async function loadUserInfo() {
+        const token = localStorage.getItem('auth_token');
+        const loginBtn = document.getElementById('login-btn');
+        const userAvatarContainer = document.getElementById('user-avatar-container');
+        
+        if (!token) {
+          // 未登录状态
+          loginBtn!.style.display = 'block';
+          userAvatarContainer!.style.display = 'none';
+          // 触发自定义事件通知其他组件
+          window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+            detail: { isAuthenticated: false } 
+          }));
+          return;
+        }
+
+        try {
+          const response = await fetch('http://localhost:3000/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to get user info');
+          }
+
+          const user = await response.json();
+          
+          // 已登录状态 - 显示用户头像
+          loginBtn!.style.display = 'none';
+          userAvatarContainer!.style.display = 'block';
+          
+          const userAvatar = document.getElementById('user-avatar') as HTMLImageElement;
+          const userName = document.getElementById('user-name');
+          const userUsername = document.getElementById('user-username');
+          
+          if (userAvatar) userAvatar.src = user.avatar_url || 'https://github.com/ghost.png';
+          if (userName) userName.textContent = user.display_name || user.username;
+          if (userUsername) userUsername.textContent = user.username;
+
+          // 触发自定义事件通知其他组件
+          window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+            detail: { isAuthenticated: true, user } 
+          }));
+          
+        } catch (error) {
+          console.error('Failed to load user info:', error);
+          // Token无效，清除并显示登录按钮
+          localStorage.removeItem('auth_token');
+          loginBtn!.style.display = 'block';
+          userAvatarContainer!.style.display = 'none';
+          window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+            detail: { isAuthenticated: false } 
+          }));
+        }
+      }
     </script>
   </body>
 </html>

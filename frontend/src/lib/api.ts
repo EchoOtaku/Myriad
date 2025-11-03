@@ -9,6 +9,37 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to include auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid, clear it and redirect to login
+      localStorage.removeItem('auth_token');
+      window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+        detail: { isAuthenticated: false } 
+      }));
+      // Optionally show a message
+      console.warn('Authentication expired, please login again');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Health check
 export const checkHealth = async () => {
   const response = await api.get('/health');

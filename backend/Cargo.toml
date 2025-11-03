@@ -17,7 +17,11 @@ tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
 
 # Database
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "0.12", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+] }
 sea-orm-migration = "0.12"
 
 # Serialization
@@ -26,6 +30,12 @@ serde_json = "1.0"
 
 # HTTP client
 reqwest = { version = "0.11", features = ["json"] }
+
+# Authentication & Authorization
+oauth2 = "4.4"
+jsonwebtoken = "9.2"
+sha2 = "0.10"
+hex = "0.4"
 
 # Configuration
 config = "0.14"

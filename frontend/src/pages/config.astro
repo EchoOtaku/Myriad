@@ -220,6 +220,51 @@ const title = 'Configuration - Myriad';
 <script>
   import { API_URL } from '@/config';
 
+  // 全局状态
+  let isAuthenticated = false;
+
+  // 监听认证状态变化
+  window.addEventListener('auth-state-changed', ((e: CustomEvent) => {
+    isAuthenticated = e.detail.isAuthenticated;
+    updateButtonStates();
+  }) as EventListener);
+
+  // 更新按钮状态（根据登录状态）
+  function updateButtonStates() {
+    const saveButton = document.getElementById('save-config');
+    const resetButton = document.getElementById('reset-config');
+    const refreshButton = document.getElementById('refresh-platform-data');
+
+    if (!isAuthenticated) {
+      // 未登录 - 禁用按钮
+      saveButton?.setAttribute('disabled', 'true');
+      resetButton?.setAttribute('disabled', 'true');
+      refreshButton?.setAttribute('disabled', 'true');
+      
+      saveButton?.classList.add('opacity-50', 'cursor-not-allowed');
+      resetButton?.classList.add('opacity-50', 'cursor-not-allowed');
+      refreshButton?.classList.add('opacity-50', 'cursor-not-allowed');
+      
+      // 添加标题提示
+      saveButton?.setAttribute('title', '请先登录');
+      resetButton?.setAttribute('title', '请先登录');
+      refreshButton?.setAttribute('title', '请先登录');
+    } else {
+      // 已登录 - 启用按钮
+      saveButton?.removeAttribute('disabled');
+      resetButton?.removeAttribute('disabled');
+      refreshButton?.removeAttribute('disabled');
+      
+      saveButton?.classList.remove('opacity-50', 'cursor-not-allowed');
+      resetButton?.classList.remove('opacity-50', 'cursor-not-allowed');
+      refreshButton?.classList.remove('opacity-50', 'cursor-not-allowed');
+      
+      saveButton?.setAttribute('title', '保存配置');
+      resetButton?.setAttribute('title', '重置配置');
+      refreshButton?.setAttribute('title', '刷新平台数据');
+    }
+  }
+
   // 标签切换功能
   const tabConfig = document.getElementById('tab-config');
   const tabDebug = document.getElementById('tab-debug');

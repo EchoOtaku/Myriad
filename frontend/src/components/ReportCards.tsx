@@ -318,6 +318,15 @@ export default function ReportCards() {
 
     // 一键生成报告
     const handleGenerateReport = useCallback(async (forceRefresh: boolean = false) => {
+        // 检查登录状态
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+            setError('请先登录后再生成报告');
+            // 可选：显示一个提示模态框或跳转到登录
+            alert('请先登录后再生成报告');
+            return;
+        }
+
         try {
             setLoading(true);
             setError(null);

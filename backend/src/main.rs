@@ -46,6 +46,12 @@ async fn main() -> anyhow::Result<()> {
     // Build API router
     let api_router = Router::new()
         .route("/health", get(api::health))
+        // Authentication routes
+        .route("/api/auth/github/login", get(api::auth::github_login))
+        .route("/api/auth/github/callback", get(api::auth::github_callback))
+        .route("/api/auth/me", get(api::auth::get_current_user))
+        .route("/api/auth/logout", post(api::auth::logout))
+        // Configuration routes
         .route(
             "/api/config",
             get(api::config::get_config).post(api::config::update_config),
