@@ -53,6 +53,7 @@ const ConfigForm: React.FC = () => {
   const [generateProgress, setGenerateProgress] = useState('');
   const [message, setMessage] = useState('');
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -230,6 +231,31 @@ const ConfigForm: React.FC = () => {
     }
   };
 
+  const handleRefreshPlatformData = async () => {
+    setRefreshing(true);
+    setMessage('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/profile/refresh?force=true`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setMessage('✓ 平台数据刷新成功！已获取最新数据。');
+        setTimeout(() => setMessage(''), 5000);
+      } else {
+        setMessage(`✗ 刷新失败: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      setMessage('✗ 刷新平台数据失败');
+      console.error(error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -253,7 +279,7 @@ const ConfigForm: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="px-4">
       {/* Message Toast */}
       {message && (
         <div className="fixed top-4 right-4 z-50 animate-fade-in">
@@ -267,12 +293,41 @@ const ConfigForm: React.FC = () => {
       )}
 
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold mb-4 text-gray-800">
-            Platform Configuration
-          </h1>
-          <p className="text-gray-600 text-lg">Connect and manage your integrations</p>
+        {/* Refresh Platform Data Card */}
+        <div className="glass rounded-2xl p-6 mb-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-2xl">
+                🔄
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">平台数据缓存</h3>
+                <p className="text-sm text-gray-600 mt-1">每12小时自动更新，或点击右侧按钮手动刷新</p>
+              </div>
+            </div>
+            <button
+              onClick={handleRefreshPlatformData}
+              disabled={refreshing}
+              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 shadow-lg"
+            >
+              {refreshing ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                  <span>刷新中...</span>
+                </>
+              ) : (
+                <>
+                  <span>🔄</span>
+                  <span>立即刷新</span>
+                </>
+              )}
+            </button>
+          </div>
+          <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+            <p className="text-sm text-blue-800">
+              💡 <strong>说明:</strong> 平台数据（GitHub仓库、Bilibili追番、Steam游戏等）会被缓存12小时。这可以避免频繁请求API，提高生成报告的速度。如果你刚更新了平台数据，可以点击"立即刷新"获取最新信息。
+            </p>
+          </div>
         </div>
 
         {/* Platform Cards */}
@@ -437,31 +492,90 @@ const ConfigForm: React.FC = () => {
 
           <div className="space-y-4">
             {config.ui_config.config_fields
-              .filter((field) => !field.key.startsWith('image_gen_')) // 过滤掉 AI 图片生成字段
+              .filter((field) => !field.key.startsWith('image_gen_') && !field.key.startsWith('pet_')) // 过滤掉 AI 图片生成和宠物字段
               .map((field) => (
               <div key={field.key}>
                 <label htmlFor={`ui-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
                   {field.label}
                   {field.required && <span className="text-pink-500 ml-1">*</span>}
                 </label>
-                <input
-                  id={`ui-${field.key}`}
-                  type={field.field_type}
-                  value={field.value}
-                  onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  min={field.field_type === 'number' ? '0' : undefined}
-                  max={field.field_type === 'number' ? '10' : undefined}
-                  className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                />
+                {field.field_type === 'select' && field.key === 'topic_style' ? (
+                  <>
+                    <select
+                      id={`ui-${field.key}`}
+                      value={field.value.startsWith('custom:') ? 'custom' : field.value}
+                      onChange={(e) => {
+                        if (e.target.value === 'custom') {
+                          // 如果是自定义，设置一个默认值，用户需要在下面输入
+                          updateUiFieldValue(field.key, 'custom:');
+                        } else {
+                          updateUiFieldValue(field.key, e.target.value);
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    >
+                      <option value="balanced">平衡风格 - 兼具深度与趣味</option>
+                      <option value="playful">活泼风格 - 轻松有趣游戏化</option>
+                      <option value="professional">专业风格 - 数据驱动严谨</option>
+                      <option value="artistic">文艺风格 - 诗意隐喻感性</option>
+                      <option value="experimental">实验风格 - 前卫大胆新奇</option>
+                      <option value="custom">🎨 自定义风格...</option>
+                    </select>
+                    {field.value.startsWith('custom:') && (
+                      <div className="mt-3">
+                        <label htmlFor={`ui-${field.key}-custom`} className="block text-xs font-medium text-purple-700 mb-2">
+                          自定义风格描述（将直接用于AI生成指引）
+                        </label>
+                        <textarea
+                          id={`ui-${field.key}-custom`}
+                          value={field.value.replace('custom:', '')}
+                          onChange={(e) => updateUiFieldValue(field.key, `custom:${e.target.value}`)}
+                          placeholder="例如：科幻未来风格，使用太空、AI、机器人等元素，充满科技感和未来感..."
+                          rows={3}
+                          className="w-full px-4 py-3 bg-white/50 border border-purple-300 rounded-2xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+                        />
+                        <p className="text-xs text-purple-600 mt-1">
+                          💡 提示：详细描述你想要的话题风格、表达方式、分析角度等，AI会根据你的描述生成个性化的报告维度
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <input
+                    id={`ui-${field.key}`}
+                    type={field.field_type}
+                    value={field.value}
+                    onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    min={field.field_type === 'number' ? '0' : undefined}
+                    max={field.field_type === 'number' ? '10' : undefined}
+                    className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  />
+                )}
               </div>
             ))}
           </div>
 
           <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-            <p className="text-sm text-blue-800">
+            <p className="text-sm text-blue-800 mb-2">
               💡 <strong>Tip:</strong> You can use Unsplash URLs (e.g., https://source.unsplash.com/1920x1080/?nature)
               or any image URL. Changes apply after saving and reloading the page.
+            </p>
+          </div>
+
+          {/* 话题风格说明 */}
+          <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
+            <p className="text-sm font-semibold text-purple-900 mb-2">🎨 报告话题风格说明：</p>
+            <ul className="text-xs text-purple-800 space-y-1 ml-4">
+              <li><strong>平衡风格：</strong>兼具深度与趣味，覆盖行为分析、兴趣洞察、成长轨迹等多维度</li>
+              <li><strong>活泼风格：</strong>轻松有趣，使用游戏化、拟人化等创意手法，像玩游戏一样</li>
+              <li><strong>专业风格：</strong>数据驱动，使用量化分析、对比研究、趋势预测等专业方法</li>
+              <li><strong>文艺风格：</strong>富有诗意，使用隐喻、意象、哲学思考等艺术手法</li>
+              <li><strong>实验风格：</strong>前卫新奇，使用科幻、玄学、未来学等实验性概念</li>
+              <li><strong>🎨 自定义风格：</strong>完全由你定义！可以描述任何你想要的话题方向和表达方式</li>
+            </ul>
+            <p className="text-xs text-purple-700 mt-2">
+              💡 <strong>注意：</strong>每次生成报告时，AI会根据所选风格和你的实际数据，动态创建6个独特的分析维度，而不使用固定模板。
             </p>
           </div>
         </div>
@@ -580,6 +694,80 @@ const ConfigForm: React.FC = () => {
             </button>
             <p className="text-sm text-gray-500 text-center mt-3">
               点击后将为当前报告的所有卡片生成 AI 插图（需要先生成报告）
+            </p>
+          </div>
+        </div>
+
+        {/* Pet Mascot Configuration Card */}
+        <div className="glass rounded-2xl p-6 mb-8">
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center text-amber-600 text-3xl">
+              🐱
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-gray-800">Pet Mascot</h3>
+              <p className="text-sm text-gray-600">Cute walking character on report cards</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* 启用/禁用开关 */}
+            <div className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-200">
+              <div>
+                <label className="text-sm font-medium text-gray-700">Enable Pet Mascot</label>
+                <p className="text-xs text-gray-500 mt-1">Show an animated walking pet character on top of the report info card</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={config.ui_config.config_fields.find(f => f.key === 'pet_enabled')?.value === 'true'}
+                  onChange={(e) => updateUiFieldValue('pet_enabled', e.target.checked.toString())}
+                  aria-label="Enable Pet Mascot"
+                />
+                <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {/* 宠物图片 URL */}
+            <div>
+              <label htmlFor="pet-image-url" className="block text-sm font-medium text-gray-700 mb-2">
+                Pet Image URL
+              </label>
+              <input
+                id="pet-image-url"
+                type="text"
+                value={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value || ''}
+                onChange={(e) => updateUiFieldValue('pet_image_url', e.target.value)}
+                placeholder="URL to pet character image"
+                className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+              />
+            </div>
+
+            {/* 图片预览 */}
+            {config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value && (
+              <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200">
+                <p className="text-sm font-medium text-gray-700 mb-3">Preview:</p>
+                <div className="flex items-end justify-center bg-white/50 rounded-xl p-6 min-h-[120px]">
+                  <img
+                    src={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value}
+                    alt="Pet preview"
+                    className="max-h-20 object-contain pixelated-image"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const errorMsg = e.currentTarget.parentElement?.querySelector('.error-msg');
+                      if (errorMsg) errorMsg.classList.remove('hidden');
+                    }}
+                  />
+                  <p className="error-msg hidden text-sm text-red-600">❌ Failed to load image</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+            <p className="text-sm text-amber-800">
+              🎮 <strong>Tips:</strong> The pet will walk randomly on the report info card. Use pixel art or cute character images (PNG with transparency recommended). Click the pet to see a special animation!
             </p>
           </div>
         </div>

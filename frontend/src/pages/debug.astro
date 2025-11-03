@@ -1,0 +1,283 @@
+---
+import Layout from '@layouts/Layout.astro';
+
+const title = 'Debug Info - Myriad';
+---
+
+<Layout title={title}>
+  <div class="min-h-screen px-6 py-20">
+    <div class="max-w-7xl mx-auto">
+      <h1 class="text-4xl font-bold mb-8 text-center bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
+        调试信息面板
+      </h1>
+      
+      <!-- 原始元数据 -->
+      <div class="mb-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-semibold">API 原始元数据</h2>
+          <button
+            id="fetch-metadata"
+            class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+          >
+            🔄 刷新元数据
+          </button>
+        </div>
+        <div
+          id="metadata-container"
+          class="bg-gray-800 rounded-lg p-6 overflow-auto max-h-[600px]"
+        >
+          <p class="text-gray-400">点击刷新按钮加载数据...</p>
+        </div>
+      </div>
+
+      <!-- 缓存调试信息 -->
+      <div class="mb-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-semibold">缓存详细信息</h2>
+          <button
+            id="fetch-cache-debug"
+            class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
+          >
+            🔄 刷新缓存信息
+          </button>
+        </div>
+        <div
+          id="cache-debug-container"
+          class="bg-gray-800 rounded-lg p-6 overflow-auto max-h-[600px]"
+        >
+          <p class="text-gray-400">点击刷新按钮加载数据...</p>
+        </div>
+      </div>
+
+      <!-- 报告列表 -->
+      <div class="mb-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-semibold">所有报告列表</h2>
+          <button
+            id="fetch-reports"
+            class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors"
+          >
+            🔄 刷新报告列表
+          </button>
+        </div>
+        <div
+          id="reports-container"
+          class="bg-gray-800 rounded-lg p-6 overflow-auto max-h-[600px]"
+        >
+          <p class="text-gray-400">点击刷新按钮加载数据...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  import { API_URL } from '@/config';
+
+  // 格式化JSON显示
+  function formatJson(data: any) {
+    return `<pre class="text-sm text-gray-300 whitespace-pre-wrap">${JSON.stringify(data, null, 2)}</pre>`;
+  }
+
+  // 显示加载状态
+  function showLoading(containerId: string) {
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.innerHTML = '<p class="text-blue-400 animate-pulse">加载中...</p>';
+    }
+  }
+
+  // 显示错误信息
+  function showError(containerId: string, error: string) {
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.innerHTML = `<p class="text-red-400">❌ ${error}</p>`;
+    }
+  }
+
+  // 获取原始元数据
+  document.getElementById('fetch-metadata')?.addEventListener('click', async () => {
+    console.log('🔄 Fetching raw metadata...');
+    showLoading('metadata-container');
+    
+    try {
+      const response = await fetch(`${API_URL}/api/profile/metadata`);
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Metadata loaded:', result);
+        document.getElementById('metadata-container')!.innerHTML = formatJson(result.data);
+      } else {
+        showError('metadata-container', result.message || 'Failed to load metadata');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching metadata:', error);
+      showError('metadata-container', error instanceof Error ? error.message : 'Unknown error');
+    }
+  });
+
+  // 获取缓存调试信息
+  document.getElementById('fetch-cache-debug')?.addEventListener('click', async () => {
+    console.log('🔄 Fetching cache debug info...');
+    showLoading('cache-debug-container');
+    
+    try {
+      const response = await fetch(`${API_URL}/api/profile/cache-debug`);
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Cache info loaded:', result);
+        
+        // 美化显示缓存信息
+        let html = `
+          <div class="mb-4">
+            <p class="text-green-400 font-semibold">总缓存数: ${result.total_entries} / ${result.max_entries}</p>
+            <p class="text-gray-400 text-sm">缓存文件: ${result.cache_file}</p>
+          </div>
+          <div class="space-y-4">
+        `;
+        
+        for (const entry of result.cache_entries) {
+          const statusColor = entry.is_valid ? 'text-green-400' : 'text-red-400';
+          html += `
+            <div class="border border-gray-700 rounded p-4">
+              <p class="font-mono text-sm text-blue-300">Key: ${entry.cache_key}</p>
+              <p class="text-gray-300">卡片数: ${entry.card_count}</p>
+              <p class="text-gray-300">话题: ${entry.selected_topics.join(', ')}</p>
+              <p class="text-gray-400 text-sm">生成时间: ${new Date(entry.generated_at).toLocaleString()}</p>
+              <p class="text-gray-400 text-sm">缓存时间: ${entry.cached_at}</p>
+              <p class="text-gray-400 text-sm">年龄: ${entry.age.days}天 ${entry.age.hours % 24}小时</p>
+              <p class="${statusColor} text-sm font-semibold">状态: ${entry.is_valid ? '✅ 有效' : '❌ 已过期'}</p>
+            </div>
+          `;
+        }
+        
+        html += '</div>';
+        document.getElementById('cache-debug-container')!.innerHTML = html;
+      } else {
+        showError('cache-debug-container', result.message || 'Failed to load cache info');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching cache debug info:', error);
+      showError('cache-debug-container', error instanceof Error ? error.message : 'Unknown error');
+    }
+  });
+
+  // 获取报告列表
+  document.getElementById('fetch-reports')?.addEventListener('click', async () => {
+    console.log('🔄 Fetching reports list...');
+    showLoading('reports-container');
+    
+    try {
+      const response = await fetch(`${API_URL}/api/profile/reports`);
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Reports loaded:', result);
+        
+        // 美化显示报告列表
+        let html = `
+          <div class="mb-4">
+            <p class="text-green-400 font-semibold">总报告数: ${result.total}</p>
+          </div>
+          <div class="space-y-4">
+        `;
+        
+        for (const report of result.reports) {
+          html += `
+            <div class="border border-gray-700 rounded p-4 cursor-pointer hover:border-purple-500 transition-colors" 
+                 data-report-id="${report.id}">
+              <p class="font-mono text-sm text-purple-300">ID: ${report.id}</p>
+              <p class="text-gray-300">话题: ${report.topics.join(', ')}</p>
+              <p class="text-gray-300">卡片数: ${report.card_count}</p>
+              <p class="text-gray-400 text-sm">生成时间: ${new Date(report.generated_at).toLocaleString()}</p>
+              <p class="text-gray-400 text-sm">过期时间: ${new Date(report.expires_at).toLocaleString()}</p>
+            </div>
+          `;
+        }
+        
+        html += '</div>';
+        document.getElementById('reports-container')!.innerHTML = html;
+        
+        // 为每个报告添加点击事件查看详情
+        document.querySelectorAll('[data-report-id]').forEach(element => {
+          element.addEventListener('click', async () => {
+            const reportId = (element as HTMLElement).dataset.reportId;
+            console.log('📖 Viewing report:', reportId);
+            
+            try {
+              const detailResponse = await fetch(`${API_URL}/api/profile/reports/${reportId}`);
+              const detailResult = await detailResponse.json();
+              
+              if (detailResult.success) {
+                // 在新窗口显示完整JSON
+                const win = window.open('', '_blank');
+                if (win) {
+                  win.document.write(`
+                    <html>
+                      <head>
+                        <title>Report ${reportId}</title>
+                        <style>
+                          body { 
+                            background: #1a1a1a; 
+                            color: #e0e0e0; 
+                            font-family: monospace; 
+                            padding: 20px; 
+                          }
+                          pre { 
+                            white-space: pre-wrap; 
+                            word-wrap: break-word; 
+                          }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>Report: ${reportId}</h1>
+                        <pre>${JSON.stringify(detailResult.report, null, 2)}</pre>
+                      </body>
+                    </html>
+                  `);
+                }
+              }
+            } catch (error) {
+              console.error('❌ Error fetching report detail:', error);
+              alert('无法加载报告详情');
+            }
+          });
+        });
+      } else {
+        showError('reports-container', result.message || 'Failed to load reports');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching reports:', error);
+      showError('reports-container', error instanceof Error ? error.message : 'Unknown error');
+    }
+  });
+</script>
+
+<style>
+  /* 自定义滚动条样式 */
+  #metadata-container::-webkit-scrollbar,
+  #cache-debug-container::-webkit-scrollbar,
+  #reports-container::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  #metadata-container::-webkit-scrollbar-track,
+  #cache-debug-container::-webkit-scrollbar-track,
+  #reports-container::-webkit-scrollbar-track {
+    background: #1f2937;
+  }
+
+  #metadata-container::-webkit-scrollbar-thumb,
+  #cache-debug-container::-webkit-scrollbar-thumb,
+  #reports-container::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 4px;
+  }
+
+  #metadata-container::-webkit-scrollbar-thumb:hover,
+  #cache-debug-container::-webkit-scrollbar-thumb:hover,
+  #reports-container::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+</style>

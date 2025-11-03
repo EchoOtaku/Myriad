@@ -218,7 +218,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         background: color-mix(in srgb, var(--color-primary) 10%, white);
       }
 
-      /* Generate button with gradient border */
+      /* Generate button with gradient border - 简洁旋转版 */
       .generate-btn {
         position: relative;
         background: linear-gradient(135deg, 
@@ -226,31 +226,83 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           color-mix(in srgb, var(--color-secondary) 15%, transparent)
         );
         border: 2px solid transparent;
+        cursor: pointer;
+        z-index: 1;
+        border-radius: 16px;
+        /* 硬件加速优化 */
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        transition: border-radius 0.3s ease;
       }
 
+      /* 加载时变圆形 */
+      .generate-btn.loading {
+        border-radius: 50%;
+      }
+
+      .generate-btn svg {
+        position: relative;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      /* 边框容器 */
       .generate-btn::before {
         content: '';
         position: absolute;
         inset: -2px;
         border-radius: 16px;
+        z-index: -1;
+        pointer-events: none;
+        overflow: hidden;
+        transition: border-radius 0.3s ease;
+      }
+
+      .generate-btn.loading::before {
+        border-radius: 50%;
+      }
+
+      /* 渐变层 - 旋转 */
+      .generate-btn::after {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: 16px;
         padding: 2px;
-        background: linear-gradient(135deg, 
-          rgba(34, 197, 94, 0.8),
-          rgba(236, 72, 153, 0.6),
-          rgba(251, 191, 36, 0.6)
+        z-index: -1;
+        pointer-events: none;
+        background: conic-gradient(
+          from 0deg,
+          rgba(34, 197, 94, 0.9),    /* 绿 */
+          rgba(251, 191, 36, 0.9),   /* 黄 */
+          rgba(236, 72, 153, 0.9),   /* 粉 */
+          rgba(139, 92, 246, 0.9),   /* 紫 */
+          rgba(59, 130, 246, 0.9),   /* 蓝 */
+          rgba(16, 185, 129, 0.9),   /* 青绿 */
+          rgba(34, 197, 94, 0.9)     /* 绿（循环） */
         );
         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
         -webkit-mask-composite: xor;
         mask-composite: exclude;
-        animation: border-pulse 3s ease-in-out infinite;
+        /* 硬件加速 */
+        will-change: transform;
+        transform: translateZ(0) rotate(0deg);
+        backface-visibility: hidden;
+        transition: border-radius 0.3s ease;
       }
 
-      @keyframes border-pulse {
-        0%, 100% {
-          opacity: 1;
+      .generate-btn.loading::after {
+        border-radius: 50%;
+        animation: rainbow-spin 1.5s linear infinite;
+      }
+
+      /* 彩虹边框旋转 */
+      @keyframes rainbow-spin {
+        0% {
+          transform: translateZ(0) rotate(0deg);
         }
-        50% {
-          opacity: 0.5;
+        100% {
+          transform: translateZ(0) rotate(360deg);
         }
       }
 
@@ -266,17 +318,67 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         transform: scale(1.05);
       }
 
-      .generate-btn.loading {
-        animation: spin 1s linear infinite;
+      .generate-btn.loading::before {
+        animation: rainbow-spin 2s linear infinite;
       }
 
-      @keyframes spin {
-        from {
-          transform: rotate(0deg);
-        }
-        to {
-          transform: rotate(360deg);
-        }
+      /* Shuffle button - 使用壁纸提取的颜色渐变 */
+      .shuffle-btn {
+        position: relative;
+        background: linear-gradient(135deg, 
+          color-mix(in srgb, var(--color-primary) 15%, transparent), 
+          color-mix(in srgb, var(--color-secondary) 15%, transparent)
+        );
+        border: 2px solid transparent;
+        cursor: pointer;
+        z-index: 1;
+        color: var(--color-dark);
+        font-weight: 500;
+        /* 硬件加速优化 */
+        transform: translateZ(0);
+        backface-visibility: hidden;
+      }
+
+      .shuffle-btn::before {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: 16px;
+        z-index: -1;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .shuffle-btn::after {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: 16px;
+        padding: 2px;
+        z-index: -1;
+        pointer-events: none;
+        /* 使用壁纸提取的 primary 和 secondary 颜色 */
+        background: linear-gradient(
+          135deg,
+          var(--color-primary) 0%,
+          var(--color-secondary) 100%
+        );
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        will-change: transform;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        /* 平滑过渡颜色变化 */
+        transition: background 0.6s ease-in-out;
+      }
+
+      .shuffle-btn:hover {
+        background: linear-gradient(135deg, 
+          color-mix(in srgb, var(--color-primary) 25%, transparent), 
+          color-mix(in srgb, var(--color-secondary) 25%, transparent)
+        );
+        box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 30%, transparent);
       }
 
       /* Smooth scrolling */
@@ -426,6 +528,84 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       /* 渐变工具类 */
       .via-primary {
         --tw-gradient-stops: var(--tw-gradient-from), var(--color-primary), var(--tw-gradient-to);
+      }
+
+      /* 萌宠走动动画 - 精灵图 */
+      .pet-walker {
+        transition: left 0.05s linear, transform 0.3s ease;
+        display: flex;
+        align-items: flex-end; /* 底部对齐 */
+      }
+
+      .pet-sprite {
+        background-image: var(--pet-image-url, url('https://api.fuukei.org/myriad/frontend/public/furina.png'));
+        background-size: 100% 100%; /* 填充整个容器 */
+        background-repeat: no-repeat;
+        background-position: center bottom; /* 底部对齐 */
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        transition: transform 0.3s ease;
+        width: 100%;
+        height: 100%;
+      }
+
+      .pet-sprite:hover {
+        transform: scale(1.1);
+      }
+
+      .pixelated-image {
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
+      }
+
+      .pet-walker.walking .pet-sprite {
+        animation: pet-walk-bounce 0.5s ease-in-out infinite;
+      }
+
+      @keyframes pet-walk-bounce {
+        0%, 100% {
+          transform: translateY(0) scaleY(1);
+        }
+        25% {
+          transform: translateY(-3px) scaleY(1.02) scaleX(0.98);
+        }
+        50% {
+          transform: translateY(0) scaleY(0.98) scaleX(1.02);
+        }
+        75% {
+          transform: translateY(-3px) scaleY(1.02) scaleX(0.98);
+        }
+      }
+
+      @keyframes pet-excited {
+        0% {
+          transform: translateY(0) rotate(0deg);
+        }
+        30% {
+          transform: translateY(-12px) rotate(-8deg) scale(1.1);
+        }
+        60% {
+          transform: translateY(-16px) rotate(8deg) scale(1.1);
+        }
+        100% {
+          transform: translateY(0) rotate(0deg);
+        }
+      }
+
+      .pet-walker.pet-excited {
+        animation: pet-excited 0.6s ease-out;
+      }
+
+      @keyframes pet-walk-shadow {
+        0%, 100% {
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+        50% {
+          filter: drop-shadow(0 3px 6px rgba(0,0,0,0.25));
+        }
       }
     </style>
 
@@ -604,7 +784,10 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         const generateBtn = document.getElementById('generate-report-btn');
         if (!generateBtn) return;
 
-        generateBtn.addEventListener('click', async () => {
+        generateBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
           // 检查是否在首页
           if (window.location.pathname !== '/') {
             window.location.href = '/';
@@ -616,6 +799,8 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             generateBtn.classList.add('loading');
             try {
               await (window as any).generateReport();
+            } catch (err) {
+              console.error('Report generation failed:', err);
             } finally {
               generateBtn.classList.remove('loading');
             }

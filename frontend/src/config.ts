@@ -5,3 +5,5 @@ export const SITE = {
 } as const;
 
 export const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+
+export const PET_IMAGE_URL = import.meta.env.PUBLIC_PET_IMAGE_URL || 'https://api.fuukei.org/myriad/frontend/public/furina.png';

@@ -52,6 +52,8 @@ pub struct UiConfig {
     pub theme: String,
     pub primary_color: String,
     pub secondary_color: String,
+    pub pet_enabled: bool,
+    pub pet_image_url: String,
     pub config_fields: Vec<ConfigField>,
 }
 
@@ -199,6 +201,13 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                 .unwrap_or_else(|_| "#6366f1".to_string()),
             secondary_color: std::env::var("UI_SECONDARY_COLOR")
                 .unwrap_or_else(|_| "#8b5cf6".to_string()),
+            pet_enabled: std::env::var("PET_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            pet_image_url: std::env::var("PET_IMAGE_URL").unwrap_or_else(|_| {
+                "https://api.fuukei.org/myriad/frontend/public/furina.png".to_string()
+            }),
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
@@ -249,6 +258,32 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     field_type: "number".to_string(),
                     value: std::env::var("IMAGE_GEN_HEIGHT").unwrap_or_else(|_| "512".to_string()),
                     placeholder: "512".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pet_enabled".to_string(),
+                    label: "Enable Pet Mascot".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: std::env::var("PET_ENABLED").unwrap_or_else(|_| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pet_image_url".to_string(),
+                    label: "Pet Image URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("PET_IMAGE_URL").unwrap_or_else(|_| {
+                        "https://api.fuukei.org/myriad/frontend/public/furina.png".to_string()
+                    }),
+                    placeholder: "URL to pet character image".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "topic_style".to_string(),
+                    label: "Report Topic Style".to_string(),
+                    field_type: "select".to_string(),
+                    value: std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
+                    placeholder: "balanced".to_string(),
                     required: false,
                 },
             ],
@@ -365,6 +400,9 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "image_gen_model" => "IMAGE_GEN_MODEL",
             "image_gen_width" => "IMAGE_GEN_WIDTH",
             "image_gen_height" => "IMAGE_GEN_HEIGHT",
+            "pet_enabled" => "PET_ENABLED",
+            "pet_image_url" => "PET_IMAGE_URL",
+            "topic_style" => "TOPIC_STYLE",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);

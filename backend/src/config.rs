@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub gemini_model: String,
     pub image_gen_enabled: bool,
     pub image_gen_model: String,
+    pub topic_style: String,
 }
 
 impl AppConfig {
@@ -31,6 +32,7 @@ impl AppConfig {
                 .parse()
                 .unwrap_or(true),
             image_gen_model: env::var("IMAGE_GEN_MODEL").unwrap_or_else(|_| "flux".to_string()),
+            topic_style: env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
         })
     }
 }

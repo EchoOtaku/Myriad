@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_URL } from '../config';
 
 interface UserInfo {
     name: string;
@@ -24,7 +25,8 @@ interface ReportCard {
 }
 
 interface PersonalReport {
-    cards: ReportCard[];
+    cards: ReportCard[]; // 当前显示的卡片
+    all_cards?: ReportCard[]; // 所有可用的卡片（包含历史缓存）
     generated_at: string;
     expires_at: string;
     selected_topics: number[];
@@ -35,11 +37,47 @@ export default function ReportCards() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [report, setReport] = useState<PersonalReport | null>(null);
+    const [displayCards, setDisplayCards] = useState<ReportCard[]>([]); // 当前显示的卡片
     const [progress, setProgress] = useState<string>('');
     const [progressPercent, setProgressPercent] = useState<number>(0);
     const [fromCache, setFromCache] = useState(false);
     const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
     const [avatarError, setAvatarError] = useState(false);
+    const [petEnabled, setPetEnabled] = useState(true);
+    const [petImageUrl, setPetImageUrl] = useState('https://api.fuukei.org/myriad/frontend/public/furina.png');
+
+    // 从所有卡片中随机抽取指定数量（优先使用all_cards）
+    const getRandomCards = useCallback((currentReport: PersonalReport | null, count: number = 6): ReportCard[] => {
+        if (!currentReport) {
+            console.warn('⚠️ [Random] No report available!');
+            return [];
+        }
+
+        // 优先使用 all_cards，如果没有则使用 cards
+        const allCards = currentReport.all_cards || currentReport.cards;
+        console.log(`🎯 [Random] Source: ${currentReport.all_cards ? 'all_cards' : 'cards'}, Total: ${allCards?.length || 0} cards, Need: ${count} cards`);
+        
+        if (!allCards || allCards.length === 0) {
+            console.warn('⚠️ [Random] No cards available!');
+            return [];
+        }
+        if (allCards.length <= count) {
+            console.log(`✅ [Random] Returning all ${allCards.length} cards`);
+            return allCards;
+        }
+        
+        // Fisher-Yates 洗牌算法
+        const shuffled = [...allCards];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        
+        const result = shuffled.slice(0, count);
+        console.log(`✅ [Random] Returning ${result.length} random cards from ${allCards.length} total`);
+        console.log(`   Selected cards: ${result.map(c => c.title).join(', ')}`);
+        return result;
+    }, []);
 
     // 生成默认头像 (SVG Data URL)
     const getDefaultAvatar = (name: string) => {
@@ -134,12 +172,16 @@ export default function ReportCards() {
     };
 
     // 生成报告
-    const generateReport = async (data: any) => {
+    const generateReport = async (data: any, forceRefresh: boolean = false) => {
         try {
             setProgress('步骤 2/3: AI 正在分析数据...');
             setProgressPercent(55);
             
-            const response = await fetch('http://localhost:3000/api/profile/report', {
+            const url = forceRefresh 
+                ? 'http://localhost:3000/api/profile/report?force=true'
+                : 'http://localhost:3000/api/profile/report';
+            
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -157,7 +199,19 @@ export default function ReportCards() {
             if (result.success && result.report) {
                 setProgress('步骤 3/3: 生成卡片报告...');
                 setProgressPercent(90);
+                
+                console.log('📊 [Report] Generated report data:', {
+                    from_cache: result.from_cache,
+                    card_count: result.report.cards.length,
+                    all_cards_count: result.report.all_cards?.length || 0,
+                    generated_at: result.report.generated_at,
+                    topics: result.report.selected_topics
+                });
+                
                 setReport(result.report);
+                // 从所有卡片中随机抽取6张显示
+                const randomCards = getRandomCards(result.report, 6);
+                setDisplayCards(randomCards);
                 setFromCache(result.from_cache || false);
                 setProgressPercent(100);
             } else {
@@ -170,7 +224,7 @@ export default function ReportCards() {
     };
 
     // 一键生成报告
-    const handleGenerateReport = useCallback(async () => {
+    const handleGenerateReport = useCallback(async (forceRefresh: boolean = false) => {
         try {
             setLoading(true);
             setError(null);
@@ -179,8 +233,8 @@ export default function ReportCards() {
             // 1. 获取所有数据
             const data = await fetchAllData();
 
-            // 2. 生成报告
-            await generateReport(data);
+            // 2. 生成报告（强制刷新）
+            await generateReport(data, forceRefresh);
             
             // 完成
             await new Promise(resolve => setTimeout(resolve, 300)); // 短暂延迟显示100%
@@ -193,7 +247,7 @@ export default function ReportCards() {
             setLoading(false);
             setProgress('');
         }
-    }, []);
+    }, [getRandomCards]);
 
     // 加载已有报告（优先从缓存读取，不自动生成）
     useEffect(() => {
@@ -201,12 +255,47 @@ export default function ReportCards() {
             // 获取用户信息
             fetchUserInfo();
 
+            // 获取萌宠配置
             try {
-                const response = await fetch('http://localhost:3000/api/profile/report');
+                const configResponse = await fetch(`${API_URL}/api/config`);
+                if (configResponse.ok) {
+                    const configData = await configResponse.json();
+                    const petEnabledValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'pet_enabled')?.value;
+                    const petImageValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'pet_image_url')?.value;
+                    
+                    if (petEnabledValue !== undefined) {
+                        const enabled = petEnabledValue === 'true' || petEnabledValue === true;
+                        setPetEnabled(enabled);
+                    }
+                    if (petImageValue) {
+                        setPetImageUrl(petImageValue);
+                        // 设置 CSS 变量
+                        if (typeof document !== 'undefined') {
+                            document.documentElement.style.setProperty('--pet-image-url', `url('${petImageValue}')`);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load pet config:', err);
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/profile/report`);
                 if (response.ok) {
                     const result = await response.json();
                     if (result.report && result.report.cards && result.report.cards.length > 0) {
+                        console.log('📦 [Load] Existing report loaded:', {
+                            from_cache: result.from_cache,
+                            card_count: result.report.cards.length,
+                            all_cards_count: result.report.all_cards?.length || 0,
+                            generated_at: result.report.generated_at,
+                            topics: result.report.selected_topics
+                        });
+                        
                         setReport(result.report);
+                        // 从所有卡片中随机抽取6张显示
+                        const randomCards = getRandomCards(result.report, 6);
+                        setDisplayCards(randomCards);
                         setFromCache(result.from_cache || false);
                         setLoading(false);
                         return;
@@ -222,17 +311,142 @@ export default function ReportCards() {
         };
 
         loadExistingReport();
-    }, []);
+    }, [getRandomCards]);
 
     // 暴露生成函数供外部调用
     useEffect(() => {
-        (window as any).generateReport = handleGenerateReport;
+        (window as any).generateReport = () => handleGenerateReport(true); // 始终强制刷新
         
         // 清理函数
         return () => {
             delete (window as any).generateReport;
         };
     }, [handleGenerateReport]);
+
+    // 萌宠走动动画 - 使用上传的像素画
+    useEffect(() => {
+        if (!report || !petEnabled) return;
+
+        const pet = document.getElementById('pet-walker');
+        const sprite = pet?.querySelector('.pet-sprite') as HTMLElement;
+        const card = document.querySelector('.report-info-card');
+        if (!pet || !sprite || !card) return;
+
+        // 预加载图片以获取实际尺寸
+        const img = new Image();
+        img.src = petImageUrl;
+        
+        img.onload = () => {
+            const naturalWidth = img.naturalWidth;
+            const naturalHeight = img.naturalHeight;
+            
+            // 根据图片实际尺寸动态调整显示大小和位置
+            const maxSize = 80; // 最大尺寸限制
+            let displayWidth = naturalWidth;
+            let displayHeight = naturalHeight;
+            
+            // 等比缩放到合适大小
+            if (naturalWidth > maxSize || naturalHeight > maxSize) {
+                const scale = Math.min(maxSize / naturalWidth, maxSize / naturalHeight);
+                displayWidth = naturalWidth * scale;
+                displayHeight = naturalHeight * scale;
+            }
+            
+            // 设置精灵大小
+            sprite.style.width = `${displayWidth}px`;
+            sprite.style.height = `${displayHeight}px`;
+            pet.style.width = `${displayWidth}px`;
+            pet.style.height = `${displayHeight}px`;
+            
+            // 调整垂直位置，确保底部精准贴在卡片上边缘
+            // 使用负的高度值让角色底部正好在卡片顶部
+            pet.style.top = `-${displayHeight}px`;
+            
+            // 启动走路动画
+            pet.classList.add('walking');
+        };
+
+        let animationId: number;
+        let currentPosition = Math.random() * 200; // 随机起始位置 0-200px
+        let direction = Math.random() < 0.5 ? 1 : -1; // 随机初始方向
+        let isPaused = false;
+        let currentSpeed = 0.1 + Math.random() * 0.1; // 减小速度范围 0.1-0.2
+        let animationPhase = 0;
+        
+        const updateMaxPosition = () => {
+            const cardWidth = card.getBoundingClientRect().width;
+            const petWidth = parseFloat(pet.style.width) || 64;
+            return cardWidth - petWidth;
+        };
+        
+        let maxPosition = updateMaxPosition();
+        
+        // 确保初始位置在有效范围内
+        if (currentPosition > maxPosition) {
+            currentPosition = maxPosition;
+        }
+        
+        // 设置初始方向的翻转效果
+        pet.style.transform = direction === 1 ? 'scaleX(1)' : 'scaleX(-1)';
+
+        const animate = () => {
+            if (!isPaused) {
+                currentPosition += direction * currentSpeed;
+                maxPosition = updateMaxPosition(); // 动态更新最大位置
+                
+                // 边界检测和转向
+                if (currentPosition >= maxPosition) {
+                    currentPosition = maxPosition;
+                    direction = -1;
+                    pet.style.transform = 'scaleX(-1)';
+                    // 转向时随机改变速度
+                    currentSpeed = 0.1 + Math.random() * 0.1;
+                } else if (currentPosition <= 0) {
+                    currentPosition = 0;
+                    direction = 1;
+                    pet.style.transform = 'scaleX(1)';
+                    // 转向时随机改变速度
+                    currentSpeed = 0.1 + Math.random() * 0.1;
+                }
+
+                pet.style.left = `${currentPosition}px`;
+
+                // 随机暂停（降低频率，增加停留时间）
+                if (Math.random() < 0.001) {
+                    isPaused = true;
+                    pet.classList.remove('walking');
+                    sprite.style.transform = 'translateY(0)';
+                    const pauseDuration = 2000 + Math.random() * 4000; // 2-6秒随机暂停
+                    setTimeout(() => {
+                        isPaused = false;
+                        pet.classList.add('walking');
+                        animationPhase = 0;
+                        // 恢复时随机改变速度和方向
+                        currentSpeed = 0.1 + Math.random() * 0.1;
+                        if (Math.random() < 0.3) {
+                            direction *= -1;
+                            pet.style.transform = direction === 1 ? 'scaleX(1)' : 'scaleX(-1)';
+                        }
+                    }, pauseDuration);
+                }
+            }
+
+            animationId = requestAnimationFrame(animate);
+        };
+
+        // 点击暂停/继续
+        const handleClick = () => {
+            isPaused = !isPaused;
+        };
+
+        pet.addEventListener('click', handleClick);
+        animationId = requestAnimationFrame(animate);
+
+        return () => {
+            cancelAnimationFrame(animationId);
+            pet.removeEventListener('click', handleClick);
+        };
+    }, [report, petEnabled, petImageUrl]);
 
     // 为每张卡片生成插画
     // 移除自动生成插图的 useEffect
@@ -280,16 +494,16 @@ export default function ReportCards() {
                                 <h3 className="font-bold text-gray-800 mb-3">报告将包含：</h3>
                                 <ul className="space-y-2 text-sm text-gray-600">
                                     <li className="flex items-start gap-2">
-                                        <span className="text-lg">✨</span>
-                                        <span>从6个随机话题分析您的数据特征</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
                                         <span className="text-lg">🎯</span>
-                                        <span>AI 生成的个性化洞察和标签</span>
+                                        <span>6个精选话题的深度分析</span>
                                     </li>
                                     <li className="flex items-start gap-2">
-                                        <span className="text-lg">🎨</span>
-                                        <span>可选的精美插图配图</span>
+                                        <span className="text-lg">🤖</span>
+                                        <span>AI 驱动的个性化洞察</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-lg">📈</span>
+                                        <span>跨平台数据整合</span>
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-lg">⏰</span>
@@ -314,7 +528,22 @@ export default function ReportCards() {
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
             {/* 报告信息条 */}
-            <div className="mb-6 glass rounded-3xl p-5 border shadow-lg report-info-card">
+            <div className="mb-6 glass rounded-3xl p-5 border shadow-lg report-info-card relative">
+                {/* 动态萌宠 - 使用精灵图动画 */}
+                {petEnabled && (
+                    <div 
+                        id="pet-walker"
+                        className="pet-walker absolute left-0 cursor-pointer z-10"
+                        onClick={(e) => {
+                            const pet = e.currentTarget;
+                            pet.classList.add('pet-excited');
+                            setTimeout(() => pet.classList.remove('pet-excited'), 600);
+                        }}
+                    >
+                        <div className="pet-sprite"></div>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between gap-4">
                     {/* 左侧：用户信息 */}
                     <div className="flex items-center gap-4">
@@ -364,31 +593,30 @@ export default function ReportCards() {
                                     {fromCache ? '📦 从缓存加载' : '🎉 新鲜生成'}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                    {getExpiryInfo()}天后更新 · {report.cards.length}个话题
+                                    {getExpiryInfo()}天后更新 · 共{report.all_cards?.length || report.cards.length}个话题 · 显示{displayCards.length}个
                                 </p>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <p className="text-xs text-gray-400">
-                                {new Date(report.generated_at).toLocaleDateString('zh-CN', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                })}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                                {new Date(report.generated_at).toLocaleTimeString('zh-CN', {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                })}
-                            </p>
-                        </div>
+                        {((report.all_cards && report.all_cards.length > 6) || report.cards.length > 6) && (
+                            <button
+                                onClick={() => {
+                                    console.log('🔄 [Shuffle] Changing cards...');
+                                    const newCards = getRandomCards(report, 6);
+                                    setDisplayCards(newCards);
+                                }}
+                                className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-105"
+                                aria-label="换一批"
+                            >
+                                🎲 换一批
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* 卡片网格 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {report.cards.map((card, index) => (
+                {displayCards.map((card, index) => (
                     <article
                         key={card.topic_id}
                         className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card"
