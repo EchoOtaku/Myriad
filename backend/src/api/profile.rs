@@ -488,6 +488,22 @@ async fn fetch_fresh_platform_data() -> Result<Value, Box<dyn std::error::Error>
         }
     }
 
+    // 获取网易云音乐数据
+    if let Ok(user_id_str) = std::env::var("NETEASE_USER_ID") {
+        if let Ok(user_id) = user_id_str.parse::<i64>() {
+            match fetcher.fetch_netease_liked_songs(user_id).await {
+                Ok(songs) => {
+                    all_data["netease"]["liked_songs"] = json!(songs);
+                    tracing::info!(
+                        "✓ Netease Cloud Music liked songs fetched: {} songs",
+                        songs.len()
+                    );
+                }
+                Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
+            }
+        }
+    }
+
     // 数据清洗：移除无用信息，保留核心5W1H信息
     clean_platform_data(&mut all_data);
 
@@ -523,6 +539,7 @@ fn clean_platform_data(data: &mut Value) {
             "login": user.get("login"),
             "name": user.get("name"),
             "bio": user.get("bio"),
+            "avatar_url": user.get("avatar_url"),
             "company": user.get("company"),
             "location": user.get("location"),
             "public_repos": user.get("public_repos"),
@@ -554,6 +571,8 @@ fn clean_platform_data(data: &mut Value) {
         let cleaned = json!({
             "steamid": user.get("steamid"),
             "personaname": user.get("personaname"),
+            "avatar": user.get("avatar"),
+            "avatarfull": user.get("avatarfull"),
             "profileurl": user.get("profileurl"),
             "timecreated": user.get("timecreated"),
         });
@@ -1043,6 +1062,10 @@ pub async fn get_cache_debug_info(
     let cache = REPORT_CACHE.lock().unwrap();
     let now = Utc::now();
 
+    // 加载平台数据缓存以获取原始数据
+    let platform_cache = load_platform_data_cache();
+    let raw_data = platform_cache.as_ref().map(|c| c.data.clone());
+
     let cache_info: Vec<Value> = cache
         .iter()
         .map(|(key, (report, created_at))| {
@@ -1062,7 +1085,8 @@ pub async fn get_cache_debug_info(
                     "hours": age_hours,
                     "days": age_days
                 },
-                "is_valid": age_days < 7
+                "is_valid": age_days < 7,
+                "raw_data": raw_data.as_ref()
             })
         })
         .collect();
@@ -1075,6 +1099,190 @@ pub async fn get_cache_debug_info(
             "cache_entries": cache_info,
             "max_entries": MAX_CACHE_ENTRIES,
             "cache_file": CACHE_FILE_PATH
+        })),
+    )
+}
+
+/// 从缓存中获取用户信息（支持多平台）
+pub async fn get_user_info(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+    // 从缓存获取平台数据
+    if let Some(cache) = load_platform_data_cache() {
+        let data = &cache.data;
+
+        // 优先从 Bilibili 获取
+        if let Some(bilibili_user) = data.get("bilibili").and_then(|b| b.get("user")) {
+            return (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "user_info": {
+                        "name": bilibili_user.get("name"),
+                        "avatar": bilibili_user.get("face"),
+                        "bio": bilibili_user.get("sign").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
+                        "platform": "Bilibili"
+                    }
+                })),
+            );
+        }
+
+        // 其次从 GitHub 获取
+        if let Some(github_user) = data.get("github").and_then(|g| g.get("user")) {
+            return (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "user_info": {
+                        "name": github_user.get("name").and_then(|n| n.as_str()).or_else(|| github_user.get("login").and_then(|l| l.as_str())),
+                        "avatar": github_user.get("avatar_url"),
+                        "bio": github_user.get("bio").and_then(|b| b.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
+                        "platform": "GitHub"
+                    }
+                })),
+            );
+        }
+
+        // 最后从 Steam 获取
+        if let Some(steam_user) = data.get("steam").and_then(|s| s.get("user")) {
+            return (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "user_info": {
+                        "name": steam_user.get("personaname"),
+                        "avatar": steam_user.get("avatarfull").or_else(|| steam_user.get("avatar")),
+                        "bio": "Steam 玩家",
+                        "platform": "Steam"
+                    }
+                })),
+            );
+        }
+    }
+
+    // 没有缓存或没有用户信息
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "success": false,
+            "message": "No user info found in cache. Please fetch platform data first."
+        })),
+    )
+}
+
+/// 删除平台数据缓存
+pub async fn delete_platform_cache(
+    State(_db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    tracing::info!("🗑️ Deleting platform data cache...");
+
+    let cache_path = PathBuf::from(PLATFORM_CACHE_FILE);
+
+    if cache_path.exists() {
+        match fs::remove_file(&cache_path) {
+            Ok(_) => {
+                tracing::info!("✓ Platform cache deleted successfully");
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": true,
+                        "message": "Platform cache deleted successfully"
+                    })),
+                )
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to delete cache: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("Failed to delete cache: {}", e)
+                    })),
+                )
+            }
+        }
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "success": false,
+                "message": "Platform cache file not found"
+            })),
+        )
+    }
+}
+
+/// 删除指定的报告
+pub async fn delete_report_by_id(
+    State(_db): State<DatabaseConnection>,
+    axum::extract::Path(report_id): axum::extract::Path<String>,
+) -> (StatusCode, Json<Value>) {
+    tracing::info!("🗑️ Deleting report: {}", report_id);
+
+    let mut cache = REPORT_CACHE.lock().unwrap();
+
+    if cache.remove(&report_id).is_some() {
+        drop(cache); // 释放锁
+
+        // 保存到磁盘
+        if let Err(e) = save_cache_to_disk() {
+            tracing::error!("❌ Failed to save cache after deletion: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Report deleted but failed to save: {}", e)
+                })),
+            );
+        }
+
+        tracing::info!("✓ Report deleted successfully");
+        (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "message": "Report deleted successfully"
+            })),
+        )
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "success": false,
+                "message": "Report not found"
+            })),
+        )
+    }
+}
+
+/// 删除所有报告
+pub async fn delete_all_reports(
+    State(_db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    tracing::info!("🗑️ Deleting all reports...");
+
+    let mut cache = REPORT_CACHE.lock().unwrap();
+    let count = cache.len();
+    cache.clear();
+    drop(cache); // 释放锁
+
+    // 保存到磁盘
+    if let Err(e) = save_cache_to_disk() {
+        tracing::error!("❌ Failed to save cache after clearing: {}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": format!("Reports cleared but failed to save: {}", e)
+            })),
+        );
+    }
+
+    tracing::info!("✓ All {} reports deleted successfully", count);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "message": format!("All {} reports deleted successfully", count),
+            "deleted_count": count
         })),
     )
 }

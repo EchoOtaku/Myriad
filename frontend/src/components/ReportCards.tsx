@@ -1,10 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '../config';
+import PlatformIcon from './PlatformIcon';
 
 interface UserInfo {
     name: string;
     avatar: string;
     platform: string;
+    bio: string;
+}
+
+interface PlatformLink {
+    platform: string;
+    url: string;
+    displayName: string;
+    brandColor: string;
 }
 
 interface CardContent {
@@ -45,6 +54,7 @@ export default function ReportCards() {
     const [avatarError, setAvatarError] = useState(false);
     const [petEnabled, setPetEnabled] = useState(true);
     const [petImageUrl, setPetImageUrl] = useState('https://api.fuukei.org/myriad/frontend/public/furina.png');
+    const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
 
     // 从所有卡片中随机抽取指定数量（优先使用all_cards）
     const getRandomCards = useCallback((currentReport: PersonalReport | null, count: number = 6): ReportCard[] => {
@@ -99,44 +109,127 @@ export default function ReportCards() {
     // 获取用户信息
     const fetchUserInfo = async () => {
         try {
-            // 优先尝试从 Bilibili 获取
-            const bilibiliUid = await fetch('http://localhost:3000/api/config')
-                .then(res => res.json())
-                .then(data => {
-                    const bilibili = data.platforms?.find((p: any) => p.name === 'Bilibili');
-                    return bilibili?.config_fields?.find((f: any) => f.key === 'uid')?.value;
-                });
-
-            if (bilibiliUid) {
-                const response = await fetch(`http://localhost:3000/api/bilibili/user?uid=${bilibiliUid}`);
-                const result = await response.json();
-                if (result.success && result.data?.user_info) {
+            // 优先从后端缓存获取用户信息
+            const userInfoResponse = await fetch('http://localhost:3000/api/profile/user-info');
+            if (userInfoResponse.ok) {
+                const userInfoResult = await userInfoResponse.json();
+                if (userInfoResult.success && userInfoResult.user_info) {
                     setUserInfo({
-                        name: result.data.user_info.name,
-                        avatar: result.data.user_info.face,
-                        platform: 'Bilibili'
+                        name: userInfoResult.user_info.name,
+                        avatar: userInfoResult.user_info.avatar,
+                        platform: userInfoResult.user_info.platform,
+                        bio: userInfoResult.user_info.bio
                     });
-                    return;
+                    console.log('✓ User info loaded from cache:', userInfoResult.user_info.platform);
                 }
             }
 
-            // 如果没有 Bilibili，尝试 GitHub
-            const githubUsername = await fetch('http://localhost:3000/api/config')
-                .then(res => res.json())
-                .then(data => {
-                    const github = data.platforms?.find((p: any) => p.name === 'GitHub');
-                    return github?.config_fields?.find((f: any) => f.key === 'username')?.value;
-                });
-
-            if (githubUsername) {
-                const response = await fetch(`https://api.github.com/users/${githubUsername}`);
-                const result = await response.json();
-                setUserInfo({
-                    name: result.name || result.login,
-                    avatar: result.avatar_url,
-                    platform: 'GitHub'
-                });
+            // 获取配置以构建平台链接
+            const configResponse = await fetch('http://localhost:3000/api/config');
+            const config = await configResponse.json();
+            
+            const links: PlatformLink[] = [];
+            
+            // 尝试获取缓存的平台数据（包含Steam用户名等）
+            let cachedData: any = null;
+            try {
+                const cacheResponse = await fetch('http://localhost:3000/api/profile/cache-debug');
+                const cacheResult = await cacheResponse.json();
+                if (cacheResult.success && cacheResult.cache_entries && cacheResult.cache_entries.length > 0) {
+                    // 找到最新的有效缓存
+                    const validCache = cacheResult.cache_entries.find((entry: any) => entry.is_valid);
+                    if (validCache && validCache.raw_data) {
+                        cachedData = validCache.raw_data;
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to fetch cached data:', e);
             }
+            
+            // 处理各个平台的配置
+            if (config.platforms) {
+                // Bilibili
+                const bilibili = config.platforms.find((p: any) => p.name === 'Bilibili' && p.enabled);
+                if (bilibili) {
+                    const uid = bilibili.config_fields?.find((f: any) => f.key === 'uid')?.value;
+                    if (uid) {
+                        links.push({
+                            platform: 'Bilibili',
+                            url: `https://space.bilibili.com/${uid}`,
+                            displayName: 'BiliBili',
+                            brandColor: '#00a1d6'
+                        });
+                    }
+                }
+                
+                // GitHub
+                const github = config.platforms.find((p: any) => p.name === 'GitHub' && p.enabled);
+                if (github) {
+                    const username = github.config_fields?.find((f: any) => f.key === 'username')?.value;
+                    if (username) {
+                        links.push({
+                            platform: 'GitHub',
+                            url: `https://github.com/${username}`,
+                            displayName: 'GitHub',
+                            brandColor: '#181717'
+                        });
+                    }
+                }
+                
+                // Steam - 从缓存获取用户名
+                const steam = config.platforms.find((p: any) => p.name === 'Steam' && p.enabled);
+                if (steam) {
+                    const steamId = steam.config_fields?.find((f: any) => f.key === 'steam_id')?.value;
+                    if (steamId) {
+                        let steamUrl = `https://steamcommunity.com/profiles/${steamId}`;
+                        
+                        // 尝试从缓存获取自定义URL
+                        if (cachedData && cachedData.steam && cachedData.steam.user_info) {
+                            const profileUrl = cachedData.steam.user_info.profileurl;
+                            if (profileUrl) {
+                                steamUrl = profileUrl;
+                            }
+                        }
+                        
+                        links.push({
+                            platform: 'Steam',
+                            url: steamUrl,
+                            displayName: 'Steam',
+                            brandColor: '#1b2838'
+                        });
+                    }
+                }
+                
+                // Netease Music (注意：配置中是 "Netease Music")
+                const netease = config.platforms.find((p: any) => p.name === 'Netease Music' && p.enabled);
+                if (netease) {
+                    const userId = netease.config_fields?.find((f: any) => f.key === 'user_id')?.value;
+                    if (userId) {
+                        links.push({
+                            platform: 'Netease',
+                            url: `https://music.163.com/user/home?id=${userId}`,
+                            displayName: '网易云',
+                            brandColor: '#c20c0c'
+                        });
+                    }
+                }
+                
+                // Pixiv
+                const pixiv = config.platforms.find((p: any) => p.name === 'Pixiv' && p.enabled);
+                if (pixiv) {
+                    const userId = pixiv.config_fields?.find((f: any) => f.key === 'user_id')?.value;
+                    if (userId) {
+                        links.push({
+                            platform: 'Pixiv',
+                            url: `https://www.pixiv.net/users/${userId}`,
+                            displayName: 'Pixiv',
+                            brandColor: '#0096fa'
+                        });
+                    }
+                }
+            }
+            
+            setPlatformLinks(links);
         } catch (err) {
             console.error('Failed to fetch user info:', err);
         }
@@ -323,6 +416,14 @@ export default function ReportCards() {
         };
     }, [handleGenerateReport]);
 
+    // 更新进度条宽度
+    useEffect(() => {
+        const progressBar = document.querySelector('.progress-bar-fill') as HTMLElement;
+        if (progressBar) {
+            progressBar.style.setProperty('--progress', progressPercent.toString());
+        }
+    }, [progressPercent]);
+
     // 萌宠走动动画 - 使用上传的像素画
     useEffect(() => {
         if (!report || !petEnabled) return;
@@ -371,7 +472,6 @@ export default function ReportCards() {
         let direction = Math.random() < 0.5 ? 1 : -1; // 随机初始方向
         let isPaused = false;
         let currentSpeed = 0.1 + Math.random() * 0.1; // 减小速度范围 0.1-0.2
-        let animationPhase = 0;
         
         const updateMaxPosition = () => {
             const cardWidth = card.getBoundingClientRect().width;
@@ -420,7 +520,6 @@ export default function ReportCards() {
                     setTimeout(() => {
                         isPaused = false;
                         pet.classList.add('walking');
-                        animationPhase = 0;
                         // 恢复时随机改变速度和方向
                         currentSpeed = 0.1 + Math.random() * 0.1;
                         if (Math.random() < 0.3) {
@@ -448,6 +547,20 @@ export default function ReportCards() {
         };
     }, [report, petEnabled, petImageUrl]);
 
+    // 设置平台链接的 CSS 变量
+    useEffect(() => {
+        if (!platformLinks.length) return;
+        
+        // 为每个平台链接元素设置 CSS 变量
+        const links = document.querySelectorAll('.platform-link');
+        links.forEach((link) => {
+            const brandColor = link.getAttribute('data-brand-color');
+            if (brandColor) {
+                (link as HTMLElement).style.setProperty('--brand-color', brandColor);
+            }
+        });
+    }, [platformLinks]);
+
     // 为每张卡片生成插画
     // 移除自动生成插图的 useEffect
     // 插图现在需要在配置页面手动生成
@@ -473,7 +586,7 @@ export default function ReportCards() {
                                 <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                                     <div 
                                         className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
-                                        style={{ width: `${progressPercent}%` }}
+                                        data-progress={progressPercent}
                                     ></div>
                                 </div>
                                 
@@ -544,8 +657,8 @@ export default function ReportCards() {
                     </div>
                 )}
 
-                <div className="flex items-center justify-between gap-4">
-                    {/* 左侧：用户信息 */}
+                <div className="flex items-center justify-between gap-6">
+                    {/* 左侧区域1：用户信息 */}
                     <div className="flex items-center gap-4">
                         {userInfo ? (
                             <>
@@ -567,9 +680,8 @@ export default function ReportCards() {
                                 )}
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-800">{userInfo.name}</h3>
-                                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full platform-indicator"></span>
-                                        来自 {userInfo.platform}
+                                    <p className="text-xs text-gray-500">
+                                        {userInfo.bio}
                                     </p>
                                 </div>
                             </>
@@ -583,8 +695,35 @@ export default function ReportCards() {
                             </>
                         )}
                     </div>
+                    
+                    {/* 中间区域2：社交网络胶囊 - 智能2行布局 */}
+                    {platformLinks.length > 0 && (
+                        <div className="flex-1 max-w-sm">
+                            <div 
+                                className="flex flex-wrap gap-2"
+                            >
+                                {platformLinks.map((link) => (
+                                    <a
+                                        key={link.platform}
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="platform-link inline-flex items-center gap-1.5 px-2 py-1 rounded-xl text-xs font-semibold no-underline transition-all duration-300 backdrop-blur-sm cursor-pointer whitespace-nowrap"
+                                        data-brand-color={link.brandColor}
+                                        title={`访问 ${link.displayName}`}
+                                    >
+                                        <PlatformIcon 
+                                            platform={link.platform} 
+                                            className="w-4 h-4"
+                                        />
+                                        <span>{link.displayName}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                    {/* 右侧：报告信息 */}
+                    {/* 右侧区域3：报告信息 */}
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-3">
                             <span className="text-2xl">✨</span>
@@ -593,7 +732,7 @@ export default function ReportCards() {
                                     {fromCache ? '📦 从缓存加载' : '🎉 新鲜生成'}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                    {getExpiryInfo()}天后更新 · 共{report.all_cards?.length || report.cards.length}个话题 · 显示{displayCards.length}个
+                                    {getExpiryInfo()}天后更新 · 共{report.all_cards?.length || report.cards.length}个话题
                                 </p>
                             </div>
                         </div>
@@ -616,7 +755,7 @@ export default function ReportCards() {
 
             {/* 卡片网格 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {displayCards.map((card, index) => (
+                {displayCards.map((card) => (
                     <article
                         key={card.topic_id}
                         className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card"

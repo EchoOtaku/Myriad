@@ -1,75 +1,75 @@
+﻿# ========================================
+#   Myriad 鍏ㄦ湇鍔￠噸鍚剼鏈?
 # ========================================
-#   Myriad 全服务重启脚本
-# ========================================
-# 功能: 重启数据库、后端、前端所有服务
-# 使用: .\restart-all.ps1
+# 鍔熻兘: 閲嶅惎鏁版嵁搴撱€佸悗绔€佸墠绔墍鏈夋湇鍔?
+# 浣跨敤: .\restart-all.ps1
 
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host "   Myriad 全服务重启" -ForegroundColor Green
+Write-Host "   Myriad 鍏ㄦ湇鍔￠噸鍚? -ForegroundColor Green
 Write-Host "========================================`n" -ForegroundColor Cyan
 
 # ========================================
-# 1. 停止所有服务
+# 1. 鍋滄鎵€鏈夋湇鍔?
 # ========================================
-Write-Host "[ 1/4 ] 停止现有服务..." -ForegroundColor Yellow
+Write-Host "[ 1/4 ] 鍋滄鐜版湁鏈嶅姟..." -ForegroundColor Yellow
 
-# 停止前端 (端口 4321)
+# 鍋滄鍓嶇 (绔彛 4321)
 $frontendProcess = Get-NetTCPConnection -LocalPort 4321 -ErrorAction SilentlyContinue
 if ($frontendProcess) {
     $frontendPid = $frontendProcess.OwningProcess | Select-Object -First 1
-    Write-Host "  → 停止前端服务 (PID: $frontendPid)" -ForegroundColor Gray
+    Write-Host "  鈫?鍋滄鍓嶇鏈嶅姟 (PID: $($frontendPid))" -ForegroundColor Gray
     Stop-Process -Id $frontendPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
-# 停止后端 (端口 3000)
+# 鍋滄鍚庣 (绔彛 3000)
 $backendProcess = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue
 if ($backendProcess) {
     $backendPid = $backendProcess.OwningProcess | Select-Object -First 1
-    Write-Host "  → 停止后端服务 (PID: $backendPid)" -ForegroundColor Gray
+    Write-Host "  鈫?鍋滄鍚庣鏈嶅姟 (PID: $($backendPid))" -ForegroundColor Gray
     Stop-Process -Id $backendPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
-# 停止数据库容器
-Write-Host "  → 停止数据库容器" -ForegroundColor Gray
+# 鍋滄鏁版嵁搴撳鍣?
+Write-Host "  鈫?鍋滄鏁版嵁搴撳鍣? -ForegroundColor Gray
 docker compose down 2>$null
 Start-Sleep -Seconds 3
 
-Write-Host "  ✓ 所有服务已停止`n" -ForegroundColor Green
+Write-Host "  鉁?鎵€鏈夋湇鍔″凡鍋滄`n" -ForegroundColor Green
 
 # ========================================
-# 2. 启动数据库
+# 2. 鍚姩鏁版嵁搴?
 # ========================================
-Write-Host "[ 2/4 ] 启动数据库..." -ForegroundColor Yellow
+Write-Host "[ 2/4 ] 鍚姩鏁版嵁搴?.." -ForegroundColor Yellow
 
 Set-Location "C:\Users\Think\Documents\GitHub\Myriad"
 docker compose up -d postgres
 
-Write-Host "  → 等待数据库就绪 (10秒)..." -ForegroundColor Gray
+Write-Host "  鈫?绛夊緟鏁版嵁搴撳氨缁?(10绉?..." -ForegroundColor Gray
 Start-Sleep -Seconds 10
 
-# 验证数据库
+# 楠岃瘉鏁版嵁搴?
 $dbCheck = docker ps --filter "name=myriad-postgres" --format "{{.Names}}"
 if ($dbCheck -match "myriad-postgres") {
-    Write-Host "  ✓ 数据库启动成功`n" -ForegroundColor Green
+    Write-Host "  鉁?鏁版嵁搴撳惎鍔ㄦ垚鍔焋n" -ForegroundColor Green
 }
 else {
-    Write-Host "  ✗ 数据库启动失败！`n" -ForegroundColor Red
+    Write-Host "  鉁?鏁版嵁搴撳惎鍔ㄥけ璐ワ紒`n" -ForegroundColor Red
     exit 1
 }
 
 # ========================================
-# 3. 启动后端
+# 3. 鍚姩鍚庣
 # ========================================
-Write-Host "[ 3/4 ] 启动后端服务..." -ForegroundColor Yellow
+Write-Host "[ 3/4 ] 鍚姩鍚庣鏈嶅姟..." -ForegroundColor Yellow
 
 Set-Location "C:\Users\Think\Documents\GitHub\Myriad"
 
-# 设置环境变量
+# 璁剧疆鐜鍙橀噺
 $env:DATABASE_URL = "postgresql://myriad:password@localhost:5432/myriad"
 
-# 在新窗口启动后端
+# 鍦ㄦ柊绐楀彛鍚姩鍚庣
 $backendScript = @"
 `$env:DATABASE_URL='postgresql://myriad:password@localhost:5432/myriad'
 Set-Location 'C:\Users\Think\Documents\GitHub\Myriad\backend'
@@ -78,29 +78,29 @@ cargo run
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendScript
 
-Write-Host "  → 等待后端就绪 (15秒)..." -ForegroundColor Gray
+Write-Host "  鈫?绛夊緟鍚庣灏辩华 (15绉?..." -ForegroundColor Gray
 Start-Sleep -Seconds 15
 
-# 验证后端
+# 楠岃瘉鍚庣
 try {
     $backendHealth = Invoke-WebRequest -Uri "http://localhost:3000/health" -UseBasicParsing -TimeoutSec 5
     if ($backendHealth.StatusCode -eq 200) {
-        Write-Host "  ✓ 后端启动成功 (http://localhost:3000)`n" -ForegroundColor Green
+        Write-Host "  鉁?鍚庣鍚姩鎴愬姛 (http://localhost:3000)`n" -ForegroundColor Green
     }
 }
 catch {
-    Write-Host "  ⚠ 后端可能还在启动中..." -ForegroundColor Yellow
-    Write-Host "  → 请等待几秒后手动检查: http://localhost:3000/health`n" -ForegroundColor Gray
+    Write-Host "  鈿?鍚庣鍙兘杩樺湪鍚姩涓?.." -ForegroundColor Yellow
+    Write-Host "  鈫?璇风瓑寰呭嚑绉掑悗鎵嬪姩妫€鏌? http://localhost:3000/health`n" -ForegroundColor Gray
 }
 
 # ========================================
-# 4. 启动前端
+# 4. 鍚姩鍓嶇
 # ========================================
-Write-Host "[ 4/4 ] 启动前端服务..." -ForegroundColor Yellow
+Write-Host "[ 4/4 ] 鍚姩鍓嶇鏈嶅姟..." -ForegroundColor Yellow
 
 Set-Location "C:\Users\Think\Documents\GitHub\Myriad\frontend"
 
-# 在新窗口启动前端
+# 鍦ㄦ柊绐楀彛鍚姩鍓嶇
 $frontendScript = @"
 Set-Location 'C:\Users\Think\Documents\GitHub\Myriad\frontend'
 npm run dev
@@ -108,80 +108,80 @@ npm run dev
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendScript
 
-Write-Host "  → 等待前端就绪 (10秒)..." -ForegroundColor Gray
+Write-Host "  鈫?绛夊緟鍓嶇灏辩华 (10绉?..." -ForegroundColor Gray
 Start-Sleep -Seconds 10
 
-# 验证前端
+# 楠岃瘉鍓嶇
 try {
     $frontendHealth = Invoke-WebRequest -Uri "http://localhost:4321/" -UseBasicParsing -TimeoutSec 5
     if ($frontendHealth.StatusCode -eq 200) {
-        Write-Host "  ✓ 前端启动成功 (http://localhost:4321)`n" -ForegroundColor Green
+        Write-Host "  鉁?鍓嶇鍚姩鎴愬姛 (http://localhost:4321)`n" -ForegroundColor Green
     }
 }
 catch {
-    Write-Host "  ⚠ 前端可能还在启动中..." -ForegroundColor Yellow
-    Write-Host "  → 请等待几秒后刷新浏览器`n" -ForegroundColor Gray
+    Write-Host "  鈿?鍓嶇鍙兘杩樺湪鍚姩涓?.." -ForegroundColor Yellow
+    Write-Host "  鈫?璇风瓑寰呭嚑绉掑悗鍒锋柊娴忚鍣╜n" -ForegroundColor Gray
 }
 
 # ========================================
-# 5. 最终状态报告
+# 5. 鏈€缁堢姸鎬佹姤鍛?
 # ========================================
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host "   重启完成！" -ForegroundColor Green
+Write-Host "   閲嶅惎瀹屾垚锛? -ForegroundColor Green
 Write-Host "========================================`n" -ForegroundColor Cyan
 
-Write-Host "📦 服务状态:" -ForegroundColor White
+Write-Host "馃摝 鏈嶅姟鐘舵€?" -ForegroundColor White
 Write-Host ""
 
-# 检查数据库
+# 妫€鏌ユ暟鎹簱
 $dbStatus = docker ps --filter "name=myriad-postgres" --format "{{.Status}}"
 if ($dbStatus) {
-    Write-Host "  ✓ 数据库 (PostgreSQL)" -ForegroundColor Green
-    Write-Host "    端口: localhost:5432" -ForegroundColor Gray
-    Write-Host "    状态: $dbStatus" -ForegroundColor Gray
+    Write-Host "  鉁?鏁版嵁搴?(PostgreSQL)" -ForegroundColor Green
+    Write-Host "    绔彛: localhost:5432" -ForegroundColor Gray
+    Write-Host "    鐘舵€? $($dbStatus)" -ForegroundColor Gray
 }
 else {
-    Write-Host "  ✗ 数据库未运行" -ForegroundColor Red
+    Write-Host "  鉁?鏁版嵁搴撴湭杩愯" -ForegroundColor Red
 }
 
 Write-Host ""
 
-# 检查后端
+# 妫€鏌ュ悗绔?
 try {
     $backendCheck = Invoke-WebRequest -Uri "http://localhost:3000/health" -UseBasicParsing -TimeoutSec 3
-    Write-Host "  ✓ 后端 (Rust/Axum)" -ForegroundColor Green
-    Write-Host "    地址: http://localhost:3000" -ForegroundColor Gray
-    Write-Host "    状态: $($backendCheck.StatusCode) OK" -ForegroundColor Gray
+    Write-Host "  鉁?鍚庣 (Rust/Axum)" -ForegroundColor Green
+    Write-Host "    鍦板潃: http://localhost:3000" -ForegroundColor Gray
+    Write-Host "    鐘舵€? $($backendCheck.StatusCode) OK" -ForegroundColor Gray
 }
 catch {
-    Write-Host "  ⚠ 后端 (启动中...)" -ForegroundColor Yellow
-    Write-Host "    地址: http://localhost:3000" -ForegroundColor Gray
+    Write-Host "  鈿?鍚庣 (鍚姩涓?..)" -ForegroundColor Yellow
+    Write-Host "    鍦板潃: http://localhost:3000" -ForegroundColor Gray
 }
 
 Write-Host ""
 
-# 检查前端
+# 妫€鏌ュ墠绔?
 try {
     $frontendCheck = Invoke-WebRequest -Uri "http://localhost:4321/" -UseBasicParsing -TimeoutSec 3
-    Write-Host "  ✓ 前端 (Astro)" -ForegroundColor Green
-    Write-Host "    地址: http://localhost:4321" -ForegroundColor Gray
-    Write-Host "    状态: $($frontendCheck.StatusCode) OK" -ForegroundColor Gray
+    Write-Host "  鉁?鍓嶇 (Astro)" -ForegroundColor Green
+    Write-Host "    鍦板潃: http://localhost:4321" -ForegroundColor Gray
+    Write-Host "    鐘舵€? $($frontendCheck.StatusCode) OK" -ForegroundColor Gray
 }
 catch {
-    Write-Host "  ⚠ 前端 (启动中...)" -ForegroundColor Yellow
-    Write-Host "    地址: http://localhost:4321" -ForegroundColor Gray
+    Write-Host "  鈿?鍓嶇 (鍚姩涓?..)" -ForegroundColor Yellow
+    Write-Host "    鍦板潃: http://localhost:4321" -ForegroundColor Gray
 }
 
-Write-Host "`n🌐 访问地址:" -ForegroundColor White
-Write-Host "  主页:   http://localhost:4321/" -ForegroundColor Cyan
-Write-Host "  配置:   http://localhost:4321/config" -ForegroundColor Cyan
+Write-Host "`n馃寪 璁块棶鍦板潃:" -ForegroundColor White
+Write-Host "  涓婚〉:   http://localhost:4321/" -ForegroundColor Cyan
+Write-Host "  閰嶇疆:   http://localhost:4321/config" -ForegroundColor Cyan
 Write-Host "  API:    http://localhost:3000/health" -ForegroundColor Cyan
 
-Write-Host "`n💡 提示:" -ForegroundColor Yellow
-Write-Host "  - 后端和前端在独立的 PowerShell 窗口中运行" -ForegroundColor Gray
-Write-Host "  - 如需停止服务，请关闭对应的窗口" -ForegroundColor Gray
-Write-Host "  - 查看日志请切换到对应的窗口" -ForegroundColor Gray
-Write-Host "  - 如果服务未就绪，请等待几秒后刷新`n" -ForegroundColor Gray
+Write-Host "`n馃挕 鎻愮ず:" -ForegroundColor Yellow
+Write-Host "  - 鍚庣鍜屽墠绔湪鐙珛鐨?PowerShell 绐楀彛涓繍琛? -ForegroundColor Gray
+Write-Host "  - 濡傞渶鍋滄鏈嶅姟锛岃鍏抽棴瀵瑰簲鐨勭獥鍙? -ForegroundColor Gray
+Write-Host "  - 鏌ョ湅鏃ュ織璇峰垏鎹㈠埌瀵瑰簲鐨勭獥鍙? -ForegroundColor Gray
+Write-Host "  - 濡傛灉鏈嶅姟鏈氨缁紝璇风瓑寰呭嚑绉掑悗鍒锋柊`n" -ForegroundColor Gray
 
-# 返回原始目录
+# 杩斿洖鍘熷鐩綍
 Set-Location "C:\Users\Think\Documents\GitHub\Myriad"

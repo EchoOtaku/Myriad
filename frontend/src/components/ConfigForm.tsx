@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { API_URL } from '@config';
+import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
 import { FaBrain } from 'react-icons/fa';
 
@@ -29,6 +29,11 @@ interface AiConfig {
   config_fields: ConfigField[];
 }
 
+interface ReportConfig {
+  topic_style: string;
+  config_fields: ConfigField[];
+}
+
 interface UiConfig {
   wallpaper_url: string;
   wallpaper_blur: number;
@@ -41,42 +46,37 @@ interface UiConfig {
 interface Config {
   platforms: PlatformConfig[];
   ai_config: AiConfig;
+  report_config: ReportConfig;
   ui_config: UiConfig;
 }
 
 const ConfigForm: React.FC = () => {
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateProgress, setGenerateProgress] = useState('');
   const [message, setMessage] = useState('');
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<string>('platforms'); // 默认展开平台配置
 
-  useEffect(() => {
-    loadConfig();
-  }, []);
-
-  const loadConfig = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/config`);
-      const data = await response.json();
-      setConfig(data);
-    } catch (error) {
-      setMessage('Failed to load configuration');
-      console.error(error);
-    } finally {
-      setLoading(false);
+  // 使用 useCallback 包装处理函数，避免闭包问题
+  const handleSave = React.useCallback(async () => {
+    if (!config) {
+      console.error('No config to save');
+      window.dispatchEvent(
+        new CustomEvent('config-save-result', {
+          detail: {
+            success: false,
+            message: '配置为空，无法保存',
+          },
+        })
+      );
+      return;
     }
-  };
 
-  const handleSave = async () => {
-    if (!config) return;
-
-    setSaving(true);
-    setMessage('');
+    setMessage('保存中...');
+    console.log('Saving config...', config);
 
     try {
       const response = await fetch(`${API_URL}/api/config`, {
@@ -85,21 +85,282 @@ const ConfigForm: React.FC = () => {
         body: JSON.stringify(config),
       });
 
+      console.log('Save response status:', response.status);
       const result = await response.json();
+      console.log('Save result:', result);
 
       if (response.ok) {
-        setMessage('✓ Configuration saved! Please restart backend to apply changes.');
+        setMessage('✓ 配置已保存！请重启后端生效。');
+        notifyDirtyState(false);
+        window.dispatchEvent(
+          new CustomEvent('config-save-result', {
+            detail: {
+              success: true,
+              message: result.message || '配置已保存',
+            },
+          })
+        );
         setTimeout(() => setMessage(''), 5000);
       } else {
-        setMessage(`✗ Failed to save: ${result.message || 'Unknown error'}`);
+        const errorMsg = `✗ 保存失败: ${result.message || 'Unknown error'}`;
+        setMessage(errorMsg);
+        window.dispatchEvent(
+          new CustomEvent('config-save-result', {
+            detail: {
+              success: false,
+              message: result.message || '保存失败',
+            },
+          })
+        );
       }
     } catch (error) {
-      setMessage('✗ Failed to save configuration');
+      console.error('Save config error:', error);
+      const errorMsg = '✗ 保存配置失败：' + (error instanceof Error ? error.message : '网络错误');
+      setMessage(errorMsg);
+      window.dispatchEvent(
+        new CustomEvent('config-save-result', {
+          detail: {
+            success: false,
+            message: errorMsg,
+          },
+        })
+      );
+    }
+  }, [config]);
+
+  // 重置配置并自动保存
+  const handleReset = React.useCallback(async () => {
+    console.log('Resetting config to defaults (clearing all values)...');
+    setMessage('正在重置配置...');
+    
+    try {
+      // 加载配置结构
+      const response = await fetch(`${API_URL}/api/config`);
+      const data = await response.json();
+      console.log('Loaded config structure:', data);
+      
+      // 清空所有配置字段的值
+      const clearedData = {
+        ...data,
+        platforms: data.platforms.map((platform: any) => ({
+          ...platform,
+          enabled: false, // 禁用所有平台
+          has_token: false,
+          config_fields: platform.config_fields.map((field: any) => ({
+            ...field,
+            value: '', // 清空所有字段值
+          })),
+        })),
+        ai_config: {
+          ...data.ai_config,
+          enabled: false,
+          api_key: '',
+          config_fields: data.ai_config.config_fields.map((field: any) => ({
+            ...field,
+            value: field.key === 'model' ? 'gemini-pro' : '', // 保留默认模型名
+          })),
+        },
+        report_config: {
+          ...data.report_config,
+          config_fields: data.report_config.config_fields.map((field: any) => ({
+            ...field,
+            value: field.key === 'topic_style' ? 'balanced' : field.value, // 保留默认风格
+          })),
+        },
+        ui_config: {
+          ...data.ui_config,
+          config_fields: data.ui_config.config_fields.map((field: any) => {
+            // 保留UI配置的默认值
+            let defaultValue = '';
+            if (field.key === 'wallpaper_url') {
+              defaultValue = 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809';
+            } else if (field.key === 'wallpaper_blur') {
+              defaultValue = '3';
+            } else if (field.key === 'image_gen_enabled' || field.key === 'pet_enabled') {
+              defaultValue = 'true';
+            } else if (field.key === 'image_gen_model') {
+              defaultValue = 'flux';
+            } else if (field.key === 'image_gen_width' || field.key === 'image_gen_height') {
+              defaultValue = '512';
+            } else if (field.key === 'pet_image_url') {
+              defaultValue = 'https://api.fuukei.org/myriad/frontend/public/furina.png';
+            }
+            return {
+              ...field,
+              value: defaultValue,
+            };
+          }),
+        },
+      };
+      
+      console.log('Cleared config:', clearedData);
+      setConfig(clearedData);
+      notifyDirtyState(false);
+      
+      // 等待一小段时间确保状态更新
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // 自动保存
+      setMessage('正在保存默认配置...');
+      console.log('Saving cleared config...');
+      
+      const saveResponse = await fetch(`${API_URL}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clearedData),
+      });
+
+      const saveResult = await saveResponse.json();
+      console.log('Save result:', saveResult);
+
+      if (saveResponse.ok) {
+        setMessage('✓ 配置已重置并保存！');
+        setTimeout(() => setMessage(''), 5000);
+        
+        // 通知重置完成
+        window.dispatchEvent(
+          new CustomEvent('config-reset-result', {
+            detail: {
+              success: true,
+              message: saveResult.message || '配置已重置为默认值并保存',
+            },
+          })
+        );
+      } else {
+        throw new Error(saveResult.message || '保存失败');
+      }
+    } catch (error) {
+      console.error('Reset config error:', error);
+      const errorMsg = '重置配置失败：' + (error instanceof Error ? error.message : '未知错误');
+      setMessage(errorMsg);
+      window.dispatchEvent(
+        new CustomEvent('config-reset-result', {
+          detail: {
+            success: false,
+            message: errorMsg,
+          },
+        })
+      );
+    }
+  }, []);
+
+  const handleRefreshPlatformData = React.useCallback(async () => {
+    setMessage('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (result.success || response.ok) {
+        setMessage('✓ 平台数据刷新成功！');
+        setTimeout(() => setMessage(''), 5000);
+        
+        // 触发缓存状态更新事件
+        window.dispatchEvent(
+          new CustomEvent('cache-status-update', { 
+            detail: { 
+              cached: true, 
+              time: new Date().toISOString() 
+            } 
+          })
+        );
+        
+        // 通知刷新完成
+        window.dispatchEvent(
+          new CustomEvent('platform-data-refresh-result', {
+            detail: {
+              success: true,
+              message: '平台数据刷新成功',
+            },
+          })
+        );
+      } else {
+        setMessage(`✗ 刷新失败: ${result.message || 'Unknown error'}`);
+        window.dispatchEvent(
+          new CustomEvent('platform-data-refresh-result', {
+            detail: {
+              success: false,
+              message: result.message || '刷新失败',
+            },
+          })
+        );
+      }
+    } catch (error) {
+      setMessage('✗ 刷新平台数据失败');
+      console.error(error);
+      window.dispatchEvent(
+        new CustomEvent('platform-data-refresh-result', {
+          detail: {
+            success: false,
+            message: '刷新失败，请检查网络连接',
+          },
+        })
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    loadConfig();
+  }, []); // 只在组件挂载时执行一次
+
+  // 单独的 effect 监听事件，依赖 handleSave 等函数
+  useEffect(() => {
+    // 监听来自页面的保存、重置和刷新事件
+    const handleSaveEvent = () => {
+      console.log('Received request-config-save event');
+      handleSave();
+    };
+    const handleResetEvent = () => {
+      console.log('Received config-reset event');
+      handleReset();
+    };
+    const handleRefreshEvent = () => {
+      console.log('Received request-platform-refresh event');
+      handleRefreshPlatformData();
+    };
+
+    window.addEventListener('request-config-save', handleSaveEvent);
+    window.addEventListener('config-reset', handleResetEvent);
+    window.addEventListener('request-platform-refresh', handleRefreshEvent);
+
+    return () => {
+      window.removeEventListener('request-config-save', handleSaveEvent);
+      window.removeEventListener('config-reset', handleResetEvent);
+      window.removeEventListener('request-platform-refresh', handleRefreshEvent);
+    };
+  }, [handleSave, handleReset, handleRefreshPlatformData]); // 依赖这些函数
+
+  const notifyDirtyState = (dirty: boolean) => {
+    window.dispatchEvent(
+      new CustomEvent('config-dirty-state', {
+        detail: { dirty },
+      })
+    );
+  };
+
+  const loadConfig = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/config`);
+      const data = await response.json();
+      setConfig(data);
+      notifyDirtyState(false);
+      
+      // 触发配置加载完成事件，传递配置数据
+      const event = new CustomEvent('config-loaded', { detail: data });
+      window.dispatchEvent(event);
+    } catch (error) {
+      setMessage('Failed to load configuration');
       console.error(error);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
+
+
 
   const handleTest = async (platformName: string) => {
     const platform = config?.platforms.find(p => p.name === platformName);
@@ -127,7 +388,7 @@ const ConfigForm: React.FC = () => {
       setMessage(result.message);
       setTimeout(() => setMessage(''), 5000);
     } catch (error) {
-      setMessage('✗ Connection test failed');
+      setMessage('✗ 连接测试失败');
       console.error(error);
     } finally {
       setTesting(null);
@@ -142,9 +403,9 @@ const ConfigForm: React.FC = () => {
     if (field) {
       field.value = value;
       setConfig({ ...config, platforms: newPlatforms });
+      notifyDirtyState(true);
     }
   };
-
   const updateAiFieldValue = (fieldKey: string, value: string) => {
     if (!config) return;
 
@@ -156,6 +417,22 @@ const ConfigForm: React.FC = () => {
         ...config,
         ai_config: { ...config.ai_config, config_fields: newFields }
       });
+      notifyDirtyState(true);
+    }
+  };
+
+  const updateReportFieldValue = (fieldKey: string, value: string) => {
+    if (!config) return;
+
+    const newFields = [...config.report_config.config_fields];
+    const field = newFields.find(f => f.key === fieldKey);
+    if (field) {
+      field.value = value;
+      setConfig({
+        ...config,
+        report_config: { ...config.report_config, config_fields: newFields }
+      });
+      notifyDirtyState(true);
     }
   };
 
@@ -170,6 +447,7 @@ const ConfigForm: React.FC = () => {
         ...config,
         ui_config: { ...config.ui_config, config_fields: newFields }
       });
+      notifyDirtyState(true);
     }
   };
 
@@ -179,6 +457,7 @@ const ConfigForm: React.FC = () => {
     const newPlatforms = [...config.platforms];
     newPlatforms[platformIndex].enabled = !newPlatforms[platformIndex].enabled;
     setConfig({ ...config, platforms: newPlatforms });
+    notifyDirtyState(true);
   };
 
   const handleGenerateIllustrations = async () => {
@@ -187,7 +466,6 @@ const ConfigForm: React.FC = () => {
     setGenerateProgress('正在加载报告...');
 
     try {
-      // 1. 获取当前报告
       const reportResponse = await fetch(`${API_URL}/api/profile/report`);
       if (!reportResponse.ok) {
         throw new Error('未找到报告，请先生成报告');
@@ -203,10 +481,8 @@ const ConfigForm: React.FC = () => {
       
       setGenerateProgress(`正在为 ${totalCards} 张卡片生成插图...`);
 
-      // 2. 动态导入 imageGenerator
       const { generateCardIllustration } = await import('../utils/imageGenerator');
 
-      // 3. 依次为每张卡片生成插图
       for (let i = 0; i < cards.length; i++) {
         const card = cards[i];
         setGenerateProgress(`正在生成插图 ${i + 1}/${totalCards}: ${card.title}`);
@@ -231,37 +507,14 @@ const ConfigForm: React.FC = () => {
     }
   };
 
-  const handleRefreshPlatformData = async () => {
-    setRefreshing(true);
-    setMessage('');
 
-    try {
-      const response = await fetch(`${API_URL}/api/profile/refresh?force=true`, {
-        method: 'POST',
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setMessage('✓ 平台数据刷新成功！已获取最新数据。');
-        setTimeout(() => setMessage(''), 5000);
-      } else {
-        setMessage(`✗ 刷新失败: ${result.message || 'Unknown error'}`);
-      }
-    } catch (error) {
-      setMessage('✗ 刷新平台数据失败');
-      console.error(error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading configuration...</p>
+          <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-green-500 border-t-transparent"></div>
+          <p className="mt-3 text-gray-600 text-sm">加载配置中...</p>
         </div>
       </div>
     );
@@ -271,19 +524,23 @@ const ConfigForm: React.FC = () => {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center text-pink-600">
-          <p className="text-2xl mb-4">⚠️</p>
-          <p>Failed to load configuration</p>
+          <p className="text-xl mb-2">⚠️</p>
+          <p className="text-sm">加载配置失败</p>
         </div>
       </div>
     );
   }
+
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? '' : section);
+  };
 
   return (
     <div className="px-4">
       {/* Message Toast */}
       {message && (
         <div className="fixed top-4 right-4 z-50 animate-fade-in">
-          <div className={`px-6 py-4 rounded-lg shadow-2xl backdrop-blur-sm ${message.includes('✓')
+          <div className={`px-4 py-3 rounded-lg shadow-2xl backdrop-blur-sm text-sm ${message.includes('✓')
             ? 'bg-green-500/90 text-white'
             : 'bg-red-500/90 text-white'
             }`}>
@@ -293,501 +550,567 @@ const ConfigForm: React.FC = () => {
       )}
 
       <div className="max-w-6xl mx-auto">
-        {/* Refresh Platform Data Card */}
-        <div className="glass rounded-2xl p-6 mb-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-2xl">
-                🔄
+        {/* ================ 平台配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('platforms')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center text-green-600 text-lg">
+                🌐
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">平台数据缓存</h3>
-                <p className="text-sm text-gray-600 mt-1">每12小时自动更新，或点击右侧按钮手动刷新</p>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">数据平台配置</h2>
+                <p className="text-xs text-gray-500">配置各个数据源平台的访问凭证</p>
               </div>
             </div>
-            <button
-              onClick={handleRefreshPlatformData}
-              disabled={refreshing}
-              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 shadow-lg"
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'platforms' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              {refreshing ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                  <span>刷新中...</span>
-                </>
-              ) : (
-                <>
-                  <span>🔄</span>
-                  <span>立即刷新</span>
-                </>
-              )}
-            </button>
-          </div>
-          <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-            <p className="text-sm text-blue-800">
-              💡 <strong>说明:</strong> 平台数据（GitHub仓库、Bilibili追番、Steam游戏等）会被缓存12小时。这可以避免频繁请求API，提高生成报告的速度。如果你刚更新了平台数据，可以点击"立即刷新"获取最新信息。
-            </p>
-          </div>
-        </div>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
-        {/* Platform Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {config.platforms.map((platform, index) => (
-            <div
-              key={platform.name}
-              className="group relative glass rounded-2xl hover:shadow-xl transition-all duration-300 overflow-hidden"
-            >
+          {expandedSection === 'platforms' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {config.platforms.map((platform, index) => (
+                  <div
+                    key={platform.name}
+                    className="group relative glass rounded-xl hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200/50"
+                  >
+                    <div className="relative p-4">
+                      {/* Platform Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-700">
+                            <PlatformIcon platform={platform.name} className="w-7 h-7" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-gray-800">{platform.name}</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">{platform.description}</p>
+                          </div>
+                        </div>
 
-              <div className="relative p-6">
-                {/* Platform Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-700">
-                      <PlatformIcon platform={platform.name} className="w-10 h-10" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-gray-800">{platform.name}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{platform.description}</p>
+                        {/* Enable Toggle */}
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={platform.enabled}
+                            onChange={() => togglePlatform(index)}
+                            className="sr-only peer"
+                            aria-label={`Enable ${platform.name}`}
+                          />
+                          <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[3px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                        </label>
+                      </div>
+
+                      {/* Status Badge */}
+                      <div className="mb-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${platform.enabled && platform.has_token
+                          ? 'bg-green-500/20 text-green-600 border border-green-500/30'
+                          : 'bg-yellow-500/20 text-yellow-600 border border-yellow-500/30'
+                          }`}>
+                          {platform.enabled && platform.has_token ? '✓ 已配置' : '⚠ 未配置'}
+                        </span>
+                      </div>
+
+                      {/* Expand/Collapse Button */}
+                      <button
+                        onClick={() => setExpandedPlatform(expandedPlatform === platform.name ? null : platform.name)}
+                        className="w-full text-left flex items-center justify-between py-1.5 text-green-600 hover:text-pink-600 transition-colors text-sm font-medium"
+                      >
+                        <span>配置 {platform.name}</span>
+                        <svg
+                          className={`w-4 h-4 transition-transform ${expandedPlatform === platform.name ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {/* Configuration Fields */}
+                      {expandedPlatform === platform.name && (
+                        <div className="mt-3 space-y-3 animate-fade-in">
+                          {platform.config_fields.map((field) => (
+                            <div key={field.key}>
+                              <label htmlFor={`platform-${index}-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-pink-500 ml-1">*</span>}
+                              </label>
+                              <input
+                                id={`platform-${index}-${field.key}`}
+                                type={field.field_type}
+                                value={field.value}
+                                onChange={(e) => updateFieldValue(index, field.key, e.target.value)}
+                                placeholder={field.placeholder}
+                                className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                              />
+                            </div>
+                          ))}
+
+                          {/* Test Button */}
+                          <button
+                            onClick={() => handleTest(platform.name)}
+                            disabled={testing === platform.name}
+                            className="w-full mt-3 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1.5"
+                          >
+                            {testing === platform.name ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                <span>测试中...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>🔍</span>
+                                <span>测试连接</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
-                  {/* Enable Toggle */}
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={platform.enabled}
-                      onChange={() => togglePlatform(index)}
-                      className="sr-only peer"
-                      aria-label={`Enable ${platform.name}`}
-                    />
-                    <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
-                  </label>
-                </div>
+        {/* ================ AI配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('ai')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600">
+                <FaBrain className="w-6 h-6" />
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">AI 配置</h2>
+                <p className="text-xs text-gray-500">配置AI模型和API密钥</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'ai' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
-                {/* Status Badge */}
-                <div className="mb-4">
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${platform.enabled && platform.has_token
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+          {expandedSection === 'ai' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-white/50 rounded-lg border border-gray-200">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Provider: {config.ai_config.provider}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Model: {config.ai_config.model}</p>
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${config.ai_config.enabled
+                    ? 'bg-green-500/20 text-green-600 border border-green-500/30'
+                    : 'bg-red-500/20 text-red-600 border border-red-500/30'
                     }`}>
-                    {platform.enabled && platform.has_token ? '✓ Connected' : '⚠ Not Configured'}
+                    {config.ai_config.enabled ? '✓ 已配置' : '✗ 未配置'}
                   </span>
                 </div>
 
-                {/* Expand/Collapse Button */}
-                <button
-                  onClick={() => setExpandedPlatform(expandedPlatform === platform.name ? null : platform.name)}
-                  className="w-full text-left flex items-center justify-between py-2 text-green-600 hover:text-pink-600 transition-colors"
-                >
-                  <span className="font-medium">Configure {platform.name}</span>
-                  <svg
-                    className={`w-5 h-5 transition-transform ${expandedPlatform === platform.name ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                {config.ai_config.config_fields.map((field) => (
+                  <div key={field.key}>
+                    <label htmlFor={`ai-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                      {field.label}
+                      {field.required && <span className="text-pink-500 ml-1">*</span>}
+                    </label>
+                    <input
+                      id={`ai-${field.key}`}
+                      type={field.field_type}
+                      value={field.value}
+                      onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
+                      placeholder={field.placeholder}
+                      className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ================ 报告配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('report')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-lg">
+                📊
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">报告生成配置</h2>
+                <p className="text-xs text-gray-500">设置报告话题风格和生成选项</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'report' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {expandedSection === 'report' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="space-y-3">
+                {config.report_config.config_fields.map((field) => (
+                  <div key={field.key}>
+                    <label htmlFor={`report-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                      {field.label}
+                      {field.required && <span className="text-pink-500 ml-1">*</span>}
+                    </label>
+                    {field.field_type === 'select' && field.key === 'topic_style' ? (
+                      <>
+                        <select
+                          id={`report-${field.key}`}
+                          value={field.value.startsWith('custom:') ? 'custom' : field.value}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              updateReportFieldValue(field.key, 'custom:');
+                            } else {
+                              updateReportFieldValue(field.key, e.target.value);
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        >
+                          <option value="balanced">平衡 - 兼具深度与趣味</option>
+                          <option value="playful">活泼 - 轻松有趣游戏化</option>
+                          <option value="professional">专业 - 数据驱动严谨</option>
+                          <option value="artistic">文艺 - 诗意隐喻感性</option>
+                          <option value="experimental">实验 - 前卫大胆新奇</option>
+                          <option value="custom">🎨 自定义风格...</option>
+                        </select>
+                        {field.value.startsWith('custom:') && (
+                          <div className="mt-2">
+                            <textarea
+                              id={`report-${field.key}-custom`}
+                              value={field.value.replace('custom:', '')}
+                              onChange={(e) => updateReportFieldValue(field.key, `custom:${e.target.value}`)}
+                              placeholder="例如：科幻未来风格，使用太空、AI、机器人等元素..."
+                              rows={3}
+                              className="w-full px-3 py-2 text-xs bg-white/50 border border-blue-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            />
+                            <p className="text-xs text-blue-600 mt-1">
+                              💡 详细描述你想要的话题风格，AI会根据描述生成个性化报告维度
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <input
+                        id={`report-${field.key}`}
+                        type={field.field_type}
+                        value={field.value}
+                        onChange={(e) => updateReportFieldValue(field.key, e.target.value)}
+                        placeholder={field.placeholder}
+                        className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
+                <p className="text-xs font-semibold text-blue-900 mb-1">📊 报告话题风格说明：</p>
+                <p className="text-xs text-blue-700">
+                  每次生成报告时，AI会根据所选风格和你的实际数据，动态创建6个独特的分析维度。
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ================ UI配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('ui')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-600 text-lg">
+                🎨
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">UI 界面配置</h2>
+                <p className="text-xs text-gray-500">自定义背景、主题等界面样式</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'ui' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {expandedSection === 'ui' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="space-y-3">
+                {config.ui_config.config_fields
+                  .filter((field) => !field.key.startsWith('image_gen_') && !field.key.startsWith('pet_'))
+                  .map((field) => (
+                  <div key={field.key}>
+                    <label htmlFor={`ui-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                      {field.label}
+                      {field.required && <span className="text-pink-500 ml-1">*</span>}
+                    </label>
+                    <input
+                      id={`ui-${field.key}`}
+                      type={field.field_type}
+                      value={field.value}
+                      onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                      placeholder={field.placeholder}
+                      min={field.field_type === 'number' ? '0' : undefined}
+                      max={field.field_type === 'number' ? '10' : undefined}
+                      className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ================ AI图片生成配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('image')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-100 to-pink-200 flex items-center justify-center text-pink-600 text-lg">
+                🖼️
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">AI 图片生成</h2>
+                <p className="text-xs text-gray-500">为卡片生成插图</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'image' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {expandedSection === 'image' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="space-y-3">
+                {/* 启用开关 */}
+                <div className="flex items-center justify-between p-3 bg-white/50 rounded-lg border border-gray-200">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">启用AI插图</label>
+                    <p className="text-xs text-gray-500 mt-0.5">自动为报告卡片生成插图</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.ui_config.config_fields.find(f => f.key === 'image_gen_enabled')?.value === 'true'}
+                      onChange={(e) => updateUiFieldValue('image_gen_enabled', e.target.checked.toString())}
+                      aria-label="Enable AI Illustrations"
+                    />
+                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
+                  </label>
+                </div>
+
+                {/* 模型选择 */}
+                <div>
+                  <label htmlFor="image-gen-model" className="block text-xs font-medium text-gray-700 mb-1">
+                    AI 模型
+                  </label>
+                  <select
+                    id="image-gen-model"
+                    value={config.ui_config.config_fields.find(f => f.key === 'image_gen_model')?.value || 'flux'}
+                    onChange={(e) => updateUiFieldValue('image_gen_model', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+                    <option value="flux">Flux (Default)</option>
+                    <option value="flux-realism">Flux Realism</option>
+                    <option value="flux-anime">Flux Anime</option>
+                    <option value="flux-3d">Flux 3D</option>
+                    <option value="turbo">Turbo</option>
+                  </select>
+                </div>
 
-                {/* Configuration Fields */}
-                {expandedPlatform === platform.name && (
-                  <div className="mt-4 space-y-4 animate-fade-in">
-                    {platform.config_fields.map((field) => (
-                      <div key={field.key}>
-                        <label htmlFor={`platform-${index}-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
-                          {field.label}
-                          {field.required && <span className="text-pink-500 ml-1">*</span>}
-                        </label>
-                        <input
-                          id={`platform-${index}-${field.key}`}
-                          type={field.field_type}
-                          value={field.value}
-                          onChange={(e) => updateFieldValue(index, field.key, e.target.value)}
-                          placeholder={field.placeholder}
-                          className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-                        />
-                      </div>
-                    ))}
+                {/* 图片尺寸 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="image-width" className="block text-xs font-medium text-gray-700 mb-1">
+                      宽度 (px)
+                    </label>
+                    <input
+                      id="image-width"
+                      type="number"
+                      min="256"
+                      max="1024"
+                      step="64"
+                      value={config.ui_config.config_fields.find(f => f.key === 'image_gen_width')?.value || '512'}
+                      onChange={(e) => updateUiFieldValue('image_gen_width', e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="image-height" className="block text-xs font-medium text-gray-700 mb-1">
+                      高度 (px)
+                    </label>
+                    <input
+                      id="image-height"
+                      type="number"
+                      min="256"
+                      max="1024"
+                      step="64"
+                      value={config.ui_config.config_fields.find(f => f.key === 'image_gen_height')?.value || '512'}
+                      onChange={(e) => updateUiFieldValue('image_gen_height', e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
 
-                    {/* Test Button */}
-                    <button
-                      onClick={() => handleTest(platform.name)}
-                      disabled={testing === platform.name}
-                      className="w-full mt-4 px-6 py-3 bg-pink-500 hover:bg-pink-600 text-white font-semibold rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                    >
-                      {testing === platform.name ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                          <span>Testing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>🔍</span>
-                          <span>Test Connection</span>
-                        </>
-                      )}
-                    </button>
+                {/* 生成按钮 */}
+                <div className="mt-4 border-t border-gray-200 pt-4">
+                  <button
+                    onClick={handleGenerateIllustrations}
+                    disabled={generating}
+                    className="w-full px-6 py-3 text-white font-semibold rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center space-x-2 btn-primary-large text-sm"
+                  >
+                    {generating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        <span>{generateProgress}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🎨</span>
+                        <span>为所有卡片生成插图</span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-xs text-gray-500 text-center mt-2">
+                    需要先生成报告后才能生成插图
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ================ 宠物吉祥物配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('pet')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center text-amber-600 text-xl">
+                🐱
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">宠物吉祥物</h2>
+                <p className="text-xs text-gray-500">可爱的行走角色</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'pet' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {expandedSection === 'pet' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="space-y-3">
+                {/* 启用开关 */}
+                <div className="flex items-center justify-between p-3 bg-white/50 rounded-lg border border-gray-200">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">启用宠物</label>
+                    <p className="text-xs text-gray-500 mt-0.5">在报告信息卡上显示行走的宠物角色</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.ui_config.config_fields.find(f => f.key === 'pet_enabled')?.value === 'true'}
+                      onChange={(e) => updateUiFieldValue('pet_enabled', e.target.checked.toString())}
+                      aria-label="Enable Pet Mascot"
+                    />
+                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
+
+                {/* 宠物图片 URL */}
+                <div>
+                  <label htmlFor="pet-image-url" className="block text-xs font-medium text-gray-700 mb-1">
+                    宠物图片 URL
+                  </label>
+                  <input
+                    id="pet-image-url"
+                    type="text"
+                    value={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value || ''}
+                    onChange={(e) => updateUiFieldValue('pet_image_url', e.target.value)}
+                    placeholder="宠物角色图片的URL"
+                    className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {/* 图片预览 */}
+                {config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value && (
+                  <div className="p-3 bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg border border-amber-200">
+                    <p className="text-xs font-medium text-gray-700 mb-2">预览:</p>
+                    <div className="flex items-end justify-center bg-white/50 rounded-lg p-4 min-h-[100px]">
+                      <img
+                        src={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value}
+                        alt="Pet preview"
+                        className="max-h-16 object-contain pixelated-image"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const errorMsg = e.currentTarget.parentElement?.querySelector('.error-msg');
+                          if (errorMsg) errorMsg.classList.remove('hidden');
+                        }}
+                      />
+                      <p className="error-msg hidden text-xs text-red-600">❌ 加载失败</p>
+                    </div>
                   </div>
                 )}
               </div>
+
+              <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-xs text-amber-800">
+                  🎮 宠物会在报告信息卡上随机行走，推荐使用带透明背景的像素风或可爱角色图片。点击宠物可触发特殊动画！
+                </p>
+              </div>
             </div>
-          ))}
+          )}
         </div>
 
-        {/* AI Configuration Card */}
-        <div className="glass rounded-2xl p-6 mb-8">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600">
-              <FaBrain className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-gray-800">AI Configuration</h3>
-              <p className="text-sm text-gray-600">Powered by {config.ai_config.provider}</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {config.ai_config.config_fields.map((field) => (
-              <div key={field.key}>
-                <label htmlFor={`ai-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
-                  {field.label}
-                  {field.required && <span className="text-pink-500 ml-1">*</span>}
-                </label>
-                <input
-                  id={`ai-${field.key}`}
-                  type={field.field_type}
-                  value={field.value}
-                  onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4">
-            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${config.ai_config.enabled
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-              : 'bg-red-500/20 text-red-400 border border-red-500/30'
-              }`}>
-              {config.ai_config.enabled ? '✓ API Key Configured' : '✗ API Key Not Configured'}
-            </span>
-          </div>
-        </div>
-
-        {/* UI Configuration Card */}
-        <div className="glass rounded-2xl p-6 mb-8">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-600">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-gray-800">UI Configuration</h3>
-              <p className="text-sm text-gray-600">Customize background &amp; illustrations</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {config.ui_config.config_fields
-              .filter((field) => !field.key.startsWith('image_gen_') && !field.key.startsWith('pet_')) // 过滤掉 AI 图片生成和宠物字段
-              .map((field) => (
-              <div key={field.key}>
-                <label htmlFor={`ui-${field.key}`} className="block text-sm font-medium text-gray-700 mb-2">
-                  {field.label}
-                  {field.required && <span className="text-pink-500 ml-1">*</span>}
-                </label>
-                {field.field_type === 'select' && field.key === 'topic_style' ? (
-                  <>
-                    <select
-                      id={`ui-${field.key}`}
-                      value={field.value.startsWith('custom:') ? 'custom' : field.value}
-                      onChange={(e) => {
-                        if (e.target.value === 'custom') {
-                          // 如果是自定义，设置一个默认值，用户需要在下面输入
-                          updateUiFieldValue(field.key, 'custom:');
-                        } else {
-                          updateUiFieldValue(field.key, e.target.value);
-                        }
-                      }}
-                      className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                    >
-                      <option value="balanced">平衡风格 - 兼具深度与趣味</option>
-                      <option value="playful">活泼风格 - 轻松有趣游戏化</option>
-                      <option value="professional">专业风格 - 数据驱动严谨</option>
-                      <option value="artistic">文艺风格 - 诗意隐喻感性</option>
-                      <option value="experimental">实验风格 - 前卫大胆新奇</option>
-                      <option value="custom">🎨 自定义风格...</option>
-                    </select>
-                    {field.value.startsWith('custom:') && (
-                      <div className="mt-3">
-                        <label htmlFor={`ui-${field.key}-custom`} className="block text-xs font-medium text-purple-700 mb-2">
-                          自定义风格描述（将直接用于AI生成指引）
-                        </label>
-                        <textarea
-                          id={`ui-${field.key}-custom`}
-                          value={field.value.replace('custom:', '')}
-                          onChange={(e) => updateUiFieldValue(field.key, `custom:${e.target.value}`)}
-                          placeholder="例如：科幻未来风格，使用太空、AI、机器人等元素，充满科技感和未来感..."
-                          rows={3}
-                          className="w-full px-4 py-3 bg-white/50 border border-purple-300 rounded-2xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                        />
-                        <p className="text-xs text-purple-600 mt-1">
-                          💡 提示：详细描述你想要的话题风格、表达方式、分析角度等，AI会根据你的描述生成个性化的报告维度
-                        </p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <input
-                    id={`ui-${field.key}`}
-                    type={field.field_type}
-                    value={field.value}
-                    onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    min={field.field_type === 'number' ? '0' : undefined}
-                    max={field.field_type === 'number' ? '10' : undefined}
-                    className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-            <p className="text-sm text-blue-800 mb-2">
-              💡 <strong>Tip:</strong> You can use Unsplash URLs (e.g., https://source.unsplash.com/1920x1080/?nature)
-              or any image URL. Changes apply after saving and reloading the page.
-            </p>
-          </div>
-
-          {/* 话题风格说明 */}
-          <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
-            <p className="text-sm font-semibold text-purple-900 mb-2">🎨 报告话题风格说明：</p>
-            <ul className="text-xs text-purple-800 space-y-1 ml-4">
-              <li><strong>平衡风格：</strong>兼具深度与趣味，覆盖行为分析、兴趣洞察、成长轨迹等多维度</li>
-              <li><strong>活泼风格：</strong>轻松有趣，使用游戏化、拟人化等创意手法，像玩游戏一样</li>
-              <li><strong>专业风格：</strong>数据驱动，使用量化分析、对比研究、趋势预测等专业方法</li>
-              <li><strong>文艺风格：</strong>富有诗意，使用隐喻、意象、哲学思考等艺术手法</li>
-              <li><strong>实验风格：</strong>前卫新奇，使用科幻、玄学、未来学等实验性概念</li>
-              <li><strong>🎨 自定义风格：</strong>完全由你定义！可以描述任何你想要的话题方向和表达方式</li>
-            </ul>
-            <p className="text-xs text-purple-700 mt-2">
-              💡 <strong>注意：</strong>每次生成报告时，AI会根据所选风格和你的实际数据，动态创建6个独特的分析维度，而不使用固定模板。
-            </p>
-          </div>
-        </div>
-
-        {/* AI Image Generation Card */}
-        <div className="glass rounded-2xl p-6 mb-8">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-100 to-pink-200 flex items-center justify-center text-pink-600">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-gray-800">AI Image Generation</h3>
-              <p className="text-sm text-gray-600">Generate card illustrations with Pollinations AI</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {/* 启用/禁用开关 */}
-            <div className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-200">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Enable AI Illustrations</label>
-                <p className="text-xs text-gray-500 mt-1">Automatically generate Ghibli-style illustrations for report cards</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={config.ui_config.config_fields.find(f => f.key === 'image_gen_enabled')?.value === 'true'}
-                  onChange={(e) => updateUiFieldValue('image_gen_enabled', e.target.checked.toString())}
-                  aria-label="Enable AI Illustrations"
-                />
-                <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-pink-500"></div>
-              </label>
-            </div>
-
-            {/* 模型选择 */}
-            <div>
-              <label htmlFor="image-gen-model" className="block text-sm font-medium text-gray-700 mb-2">
-                AI Model <span className="text-pink-500 ml-1">*</span>
-              </label>
-              <select
-                id="image-gen-model"
-                value={config.ui_config.config_fields.find(f => f.key === 'image_gen_model')?.value || 'flux'}
-                onChange={(e) => updateUiFieldValue('image_gen_model', e.target.value)}
-                className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-              >
-                <option value="flux">Flux (Default) - Balanced quality</option>
-                <option value="flux-realism">Flux Realism - Photorealistic</option>
-                <option value="flux-anime">Flux Anime - Anime style</option>
-                <option value="flux-3d">Flux 3D - 3D rendering</option>
-                <option value="turbo">Turbo - Fast generation</option>
-              </select>
-            </div>
-
-            {/* 图片尺寸 */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="image-width" className="block text-sm font-medium text-gray-700 mb-2">
-                  Width (px)
-                </label>
-                <input
-                  id="image-width"
-                  type="number"
-                  min="256"
-                  max="1024"
-                  step="64"
-                  value={config.ui_config.config_fields.find(f => f.key === 'image_gen_width')?.value || '512'}
-                  onChange={(e) => updateUiFieldValue('image_gen_width', e.target.value)}
-                  className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                />
-              </div>
-              <div>
-                <label htmlFor="image-height" className="block text-sm font-medium text-gray-700 mb-2">
-                  Height (px)
-                </label>
-                <input
-                  id="image-height"
-                  type="number"
-                  min="256"
-                  max="1024"
-                  step="64"
-                  value={config.ui_config.config_fields.find(f => f.key === 'image_gen_height')?.value || '512'}
-                  onChange={(e) => updateUiFieldValue('image_gen_height', e.target.value)}
-                  className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 p-4 bg-pink-50 rounded-xl border border-pink-200">
-            <p className="text-sm text-pink-800">
-              🎨 <strong>Style:</strong> Generated illustrations feature transparent backgrounds with a single main subject (person or object) in Studio Ghibli watercolor style. Perfect for card decorations!
-            </p>
-          </div>
-          
-          {/* 生成插图按钮 */}
-          <div className="mt-6 border-t border-gray-200 pt-6">
-            <button
-              onClick={handleGenerateIllustrations}
-              disabled={generating}
-              className="w-full px-8 py-4 text-white font-bold text-lg rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center space-x-3 btn-primary-large"
-            >
-              {generating ? (
-                <>
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
-                  <span>{generateProgress}</span>
-                </>
-              ) : (
-                <>
-                  <span>🎨</span>
-                  <span>为所有卡片生成插图</span>
-                </>
-              )}
-            </button>
-            <p className="text-sm text-gray-500 text-center mt-3">
-              点击后将为当前报告的所有卡片生成 AI 插图（需要先生成报告）
-            </p>
-          </div>
-        </div>
-
-        {/* Pet Mascot Configuration Card */}
-        <div className="glass rounded-2xl p-6 mb-8">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center text-amber-600 text-3xl">
-              🐱
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-gray-800">Pet Mascot</h3>
-              <p className="text-sm text-gray-600">Cute walking character on report cards</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {/* 启用/禁用开关 */}
-            <div className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-200">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Enable Pet Mascot</label>
-                <p className="text-xs text-gray-500 mt-1">Show an animated walking pet character on top of the report info card</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={config.ui_config.config_fields.find(f => f.key === 'pet_enabled')?.value === 'true'}
-                  onChange={(e) => updateUiFieldValue('pet_enabled', e.target.checked.toString())}
-                  aria-label="Enable Pet Mascot"
-                />
-                <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500"></div>
-              </label>
-            </div>
-
-            {/* 宠物图片 URL */}
-            <div>
-              <label htmlFor="pet-image-url" className="block text-sm font-medium text-gray-700 mb-2">
-                Pet Image URL
-              </label>
-              <input
-                id="pet-image-url"
-                type="text"
-                value={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value || ''}
-                onChange={(e) => updateUiFieldValue('pet_image_url', e.target.value)}
-                placeholder="URL to pet character image"
-                className="w-full px-4 py-3 bg-white/50 border border-gray-300 rounded-2xl text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-              />
-            </div>
-
-            {/* 图片预览 */}
-            {config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value && (
-              <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200">
-                <p className="text-sm font-medium text-gray-700 mb-3">Preview:</p>
-                <div className="flex items-end justify-center bg-white/50 rounded-xl p-6 min-h-[120px]">
-                  <img
-                    src={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value}
-                    alt="Pet preview"
-                    className="max-h-20 object-contain pixelated-image"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      const errorMsg = e.currentTarget.parentElement?.querySelector('.error-msg');
-                      if (errorMsg) errorMsg.classList.remove('hidden');
-                    }}
-                  />
-                  <p className="error-msg hidden text-sm text-red-600">❌ Failed to load image</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
-            <p className="text-sm text-amber-800">
-              🎮 <strong>Tips:</strong> The pet will walk randomly on the report info card. Use pixel art or cute character images (PNG with transparency recommended). Click the pet to see a special animation!
-            </p>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-4">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 px-8 py-4 text-white font-bold text-lg rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed btn-secondary-large"
-          >
-            {saving ? '💾 Saving...' : '💾 Save All Changes'}
-          </button>
-          <button
-            onClick={loadConfig}
-            className="px-8 py-4 glass hover:bg-white/90 text-gray-800 font-bold text-lg rounded-2xl transition-all duration-300"
-          >
-            🔄 Reset
-          </button>
-        </div>
       </div>
     </div>
   );

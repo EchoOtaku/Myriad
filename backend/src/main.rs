@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use std::net::SocketAddr;
@@ -73,12 +73,22 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/profile/reports", get(api::profile::list_reports))
         .route(
             "/api/profile/reports/:id",
-            get(api::profile::get_report_by_id),
+            get(api::profile::get_report_by_id).delete(api::profile::delete_report_by_id),
+        )
+        .route(
+            "/api/profile/reports/all",
+            delete(api::profile::delete_all_reports),
         )
         .route("/api/profile/metadata", get(api::profile::get_raw_metadata))
         .route(
             "/api/profile/cache-debug",
             get(api::profile::get_cache_debug_info),
+        )
+        .route("/api/profile/user-info", get(api::profile::get_user_info))
+        // Cache management routes
+        .route(
+            "/api/profile/cache",
+            delete(api::profile::delete_platform_cache),
         )
         // Bilibili API routes
         .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))

@@ -408,6 +408,11 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 50%, transparent);
       }
 
+      /* 进度条宽度通过 JavaScript 动态设置 */
+      .progress-bar-fill[data-progress] {
+        width: calc(var(--progress, 0) * 1%);
+      }
+
       .report-info-card {
         border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
       }
@@ -504,6 +509,28 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       .animate-pulse-slow {
         animation: pulse-slow 2s ease-in-out infinite;
+      }
+
+      /* 平台链接样式 */
+      .platform-link {
+        background: linear-gradient(135deg, 
+          color-mix(in srgb, var(--brand-color) 7%, transparent), 
+          color-mix(in srgb, var(--brand-color) 4%, transparent)
+        );
+        border: 1.5px solid color-mix(in srgb, var(--brand-color) 20%, transparent);
+        color: var(--brand-color);
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .platform-link:hover {
+        background: linear-gradient(135deg, 
+          color-mix(in srgb, var(--brand-color) 13%, transparent), 
+          color-mix(in srgb, var(--brand-color) 9%, transparent)
+        );
+        border-color: color-mix(in srgb, var(--brand-color) 30%, transparent);
+        transform: translateY(-2px) scale(1.05);
+        box-shadow: 0 6px 16px color-mix(in srgb, var(--brand-color) 15%, transparent), 
+                    0 0 0 1px color-mix(in srgb, var(--brand-color) 9%, transparent);
       }
 
       /* 自定义滚动条 */
@@ -719,7 +746,8 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             console.log('🎨 [Layout] Starting color extraction (parallel)');
             const colorPromise = extractColorsFromImage(actualImageUrl);
             
-            const imagePromise = new Promise<void>((resolve, reject) => {
+            // 加载新图片
+            new Promise<void>((resolve, reject) => {
               img.onload = () => {
                 if (activeWallpaperUrl === actualImageUrl) {
                   wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;

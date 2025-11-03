@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaGithub, FaSteam } from 'react-icons/fa';
+import { FaGithub, FaSteam, FaMusic } from 'react-icons/fa';
 import { SiBilibili } from 'react-icons/si';
 import { FaXTwitter } from 'react-icons/fa6';
 
@@ -19,6 +19,9 @@ const PlatformIcon: React.FC<PlatformIconProps> = ({ platform, className = "w-6 
         case 'twitter':
         case 'x':
             return <FaXTwitter className={className} />;
+        case 'netease music':
+        case 'netease':
+            return <FaMusic className={`${className} text-red-500`} />;
         default:
             return <span className={className}>?</span>;
     }

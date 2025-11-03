@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 pub struct ConfigResponse {
     pub platforms: Vec<PlatformConfig>,
     pub ai_config: AiConfig,
-    pub fetch_config: FetchConfig,
+    pub report_config: ReportConfig,
     pub ui_config: UiConfig,
 }
 
@@ -40,9 +40,9 @@ pub struct AiConfig {
     pub config_fields: Vec<ConfigField>,
 }
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FetchConfig {
-    pub auto_fetch: bool,
-    pub interval_hours: u32,
+pub struct ReportConfig {
+    pub topic_style: String,
+    pub config_fields: Vec<ConfigField>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -151,6 +151,22 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     },
                 ],
             },
+            PlatformConfig {
+                name: "Netease Music".to_string(),
+                enabled: std::env::var("NETEASE_USER_ID").is_ok(),
+                has_token: std::env::var("NETEASE_USER_ID").is_ok(),
+                icon: "".to_string(),
+                description: "Sync your liked songs and music taste from Netease Cloud Music"
+                    .to_string(),
+                config_fields: vec![ConfigField {
+                    key: "user_id".to_string(),
+                    label: "User ID".to_string(),
+                    field_type: "number".to_string(),
+                    value: std::env::var("NETEASE_USER_ID").unwrap_or_default(),
+                    placeholder: "Your Netease Cloud Music user ID".to_string(),
+                    required: true,
+                }],
+            },
         ],
         ai_config: AiConfig {
             provider: "Gemini".to_string(),
@@ -178,15 +194,16 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                 },
             ],
         },
-        fetch_config: FetchConfig {
-            auto_fetch: std::env::var("ENABLE_AUTO_FETCH")
-                .unwrap_or_else(|_| "false".to_string())
-                .parse()
-                .unwrap_or(false),
-            interval_hours: std::env::var("FETCH_INTERVAL_HOURS")
-                .unwrap_or_else(|_| "24".to_string())
-                .parse()
-                .unwrap_or(24),
+        report_config: ReportConfig {
+            topic_style: std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
+            config_fields: vec![ConfigField {
+                key: "topic_style".to_string(),
+                label: "Report Topic Style".to_string(),
+                field_type: "select".to_string(),
+                value: std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
+                placeholder: "balanced".to_string(),
+                required: true,
+            }],
         },
         ui_config: UiConfig {
             wallpaper_url: std::env::var("UI_WALLPAPER_URL").unwrap_or_else(|_| {
@@ -276,14 +293,6 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         "https://api.fuukei.org/myriad/frontend/public/furina.png".to_string()
                     }),
                     placeholder: "URL to pet character image".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "topic_style".to_string(),
-                    label: "Report Topic Style".to_string(),
-                    field_type: "select".to_string(),
-                    value: std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
-                    placeholder: "balanced".to_string(),
                     required: false,
                 },
             ],
@@ -377,6 +386,13 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
                     env_content = update_env_var(&env_content, key, &field.value);
                 }
             }
+            "Netease Music" => {
+                for field in &platform.config_fields {
+                    if field.key == "user_id" {
+                        env_content = update_env_var(&env_content, "NETEASE_USER_ID", &field.value);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -386,6 +402,15 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         let key = match field.key.as_str() {
             "api_key" => "GEMINI_API_KEY",
             "model" => "GEMINI_MODEL",
+            _ => continue,
+        };
+        env_content = update_env_var(&env_content, key, &field.value);
+    }
+
+    // 保存报告配置
+    for field in &config.report_config.config_fields {
+        let key = match field.key.as_str() {
+            "topic_style" => "TOPIC_STYLE",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
@@ -402,7 +427,6 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "image_gen_height" => "IMAGE_GEN_HEIGHT",
             "pet_enabled" => "PET_ENABLED",
             "pet_image_url" => "PET_IMAGE_URL",
-            "topic_style" => "TOPIC_STYLE",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
@@ -586,6 +610,52 @@ pub async fn test_platform(
                     Json(json!({
                         "success": false,
                         "message": format!("✗ Failed to verify X user: {}", e)
+                    })),
+                ),
+            }
+        }
+        "Netease Music" => {
+            let user_id = config["user_id"].as_str().unwrap_or("");
+            if user_id.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "User ID is required"})),
+                );
+            }
+
+            // 尝试解析 User ID 为数字
+            let user_id_i64 = match user_id.parse::<i64>() {
+                Ok(n) => n,
+                Err(_) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"success": false, "message": "Invalid User ID format"})),
+                    )
+                }
+            };
+
+            // 调用网易云音乐 API 验证
+            let fetcher = crate::services::fetcher::PlatformFetcher::new();
+            match fetcher.fetch_netease_user(user_id_i64).await {
+                Ok(user_info) => {
+                    let nickname = user_info["profile"]["nickname"]
+                        .as_str()
+                        .unwrap_or("Unknown");
+                    let playlist_count =
+                        user_info["profile"]["playlistCount"].as_i64().unwrap_or(0);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!("✓ Netease Music user '{}' verified. {} playlists", nickname, playlist_count)
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify Netease Music user: {}", e)
                     })),
                 ),
             }
