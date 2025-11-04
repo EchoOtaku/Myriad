@@ -213,10 +213,10 @@ pub async fn github_callback(
     let user_count: i64 = count_result
         .and_then(|row| row.try_get("", "count").ok())
         .unwrap_or(0);
-    
+
     // GitHub OAuth users are always normal users (is_admin = false)
     let is_admin = false;
-    
+
     tracing::info!("GitHub user registration. User count: {}. Admin status: false (GitHub users cannot be admin)", user_count);
 
     // Create or update user in database
@@ -245,13 +245,32 @@ pub async fn github_callback(
             vec![
                 SeaValue::BigInt(Some(user_info.id)),
                 SeaValue::String(Some(Box::new(user_info.login.clone()))),
-                user_info.name.as_ref().map_or(SeaValue::String(None), |s| SeaValue::String(Some(Box::new(s.clone())))),
-                user_info.email.as_ref().map_or(SeaValue::String(None), |s| SeaValue::String(Some(Box::new(s.clone())))),
+                user_info.name.as_ref().map_or(SeaValue::String(None), |s| {
+                    SeaValue::String(Some(Box::new(s.clone())))
+                }),
+                user_info
+                    .email
+                    .as_ref()
+                    .map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
                 SeaValue::String(Some(Box::new(user_info.avatar_url.clone()))),
                 SeaValue::String(Some(Box::new(user_info.html_url.clone()))),
-                user_info.bio.as_ref().map_or(SeaValue::String(None), |s| SeaValue::String(Some(Box::new(s.clone())))),
-                user_info.location.as_ref().map_or(SeaValue::String(None), |s| SeaValue::String(Some(Box::new(s.clone())))),
-                user_info.company.as_ref().map_or(SeaValue::String(None), |s| SeaValue::String(Some(Box::new(s.clone())))),
+                user_info.bio.as_ref().map_or(SeaValue::String(None), |s| {
+                    SeaValue::String(Some(Box::new(s.clone())))
+                }),
+                user_info
+                    .location
+                    .as_ref()
+                    .map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                user_info
+                    .company
+                    .as_ref()
+                    .map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
                 SeaValue::Bool(Some(is_admin)),
             ],
         ))
@@ -312,15 +331,130 @@ pub async fn github_callback(
 /// GET /api/auth/me
 /// Get current user info from JWT
 pub async fn get_current_user(
-    State(_db): State<DatabaseConnection>,
-    // TODO: Extract user from JWT middleware
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    // This will be implemented with auth middleware
-    // For now, return placeholder
+    // Extract JWT token from Authorization header
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            tracing::warn!("Missing or invalid Authorization header");
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "Unauthorized",
+                    "message": "Missing or invalid authorization token"
+                })),
+            )
+        })?;
+
+    // Decode and verify JWT
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
+        tracing::error!("JWT_SECRET not configured");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "Server configuration error",
+                "message": "JWT secret not configured"
+            })),
+        )
+    })?;
+
+    let token_data = jsonwebtoken::decode::<Claims>(
+        token,
+        &jsonwebtoken::DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &jsonwebtoken::Validation::default(),
+    )
+    .map_err(|e| {
+        tracing::warn!("Invalid JWT token: {:?}", e);
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Invalid token",
+                "message": "Token is invalid or expired"
+            })),
+        )
+    })?;
+
+    let user_id: i32 = token_data.claims.sub.parse().map_err(|_| {
+        tracing::error!("Invalid user ID in token");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "Invalid token data"
+            })),
+        )
+    })?;
+
+    // Query user from database
+    use sea_orm::Value as SeaValue;
+
+    let query = "SELECT id, username, auth_provider, is_admin, avatar_url, github_id 
+                 FROM users 
+                 WHERE id = $1";
+
+    let user_result = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            query,
+            vec![SeaValue::Int(Some(user_id))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    let user_row = user_result.ok_or_else(|| {
+        tracing::warn!("User not found: {}", user_id);
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "User not found",
+                "message": "User account no longer exists"
+            })),
+        )
+    })?;
+
+    // Extract user data
+    let id: i32 = user_row.try_get("", "id").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read user data"})),
+        )
+    })?;
+
+    let username: String = user_row.try_get("", "username").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read user data"})),
+        )
+    })?;
+
+    let auth_provider: String = user_row
+        .try_get("", "auth_provider")
+        .unwrap_or_else(|_| "local".to_string());
+    let is_admin: bool = user_row.try_get("", "is_admin").unwrap_or(false);
+    let avatar_url: String = user_row
+        .try_get("", "avatar_url")
+        .unwrap_or_else(|_| "https://github.com/ghost.png".to_string());
+    let github_id: Option<i64> = user_row.try_get("", "github_id").ok();
+
+    tracing::info!("User info retrieved: {} (ID: {})", username, id);
+
     Ok(Json(json!({
-        "id": 1,
-        "username": "placeholder",
-        "avatar_url": "https://github.com/ghost.png"
+        "id": id,
+        "username": username,
+        "display_name": username,
+        "auth_provider": auth_provider,
+        "is_admin": is_admin,
+        "avatar_url": avatar_url,
+        "github_id": github_id,
     })))
 }
 
@@ -507,7 +641,11 @@ pub async fn link_github_account(
         )
     })?;
 
-    tracing::info!("✅ GitHub account linked successfully: {} -> {}", request.user_id, github_user.login);
+    tracing::info!(
+        "✅ GitHub account linked successfully: {} -> {}",
+        request.user_id,
+        github_user.login
+    );
 
     Ok(Json(json!({
         "success": true,

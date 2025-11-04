@@ -100,6 +100,11 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/setup/create-admin",
         "/api/system/status",
         "/api/system/reload-config",
+        "/api/config",      // Allow config endpoints (will handle DB check in wrapper)
+        "/api/auth/login",  // Allow login endpoint
+        "/api/auth/me",     // Allow user info endpoint (for login state check)
+        "/api/auth/logout", // Allow logout endpoint
+        "/api/profile",     // Allow all profile endpoints (for UI display)
     ];
 
     // If in config mode and path is not whitelisted, return 503
@@ -264,6 +269,144 @@ async fn test_platform_wrapper(Json(payload): Json<serde_json::Value>) -> Respon
     }
 }
 
+/// Wrapper for get_current_user that gets DB from global state
+async fn get_current_user_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            match api::auth::get_current_user(axum::extract::State(db.clone()), headers).await {
+                Ok(response) => response.into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，认证功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for logout that gets DB from global state
+async fn logout_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let response = api::auth::logout(axum::extract::State(db.clone())).await;
+            response.into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，认证功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_user_info that gets DB from global state
+async fn get_user_info_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::profile::get_user_info(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_cache_debug_info that gets DB from global state
+async fn get_cache_debug_info_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::profile::get_cache_debug_info(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_report that gets DB from global state
+async fn get_report_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::profile::get_report(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for list_reports that gets DB from global state
+async fn list_reports_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::profile::list_reports(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_raw_metadata that gets DB from global state
+async fn get_raw_metadata_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::profile::get_raw_metadata(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Start unified server with all routes (middleware controls access based on mode)
 async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Build CORS layer
@@ -299,12 +442,23 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         // Authentication routes (use wrapper for dynamic DB access)
         .route("/api/auth/login", post(local_login_wrapper))
+        .route("/api/auth/me", get(get_current_user_wrapper))
+        .route("/api/auth/logout", post(logout_wrapper))
         // Configuration routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route(
             "/api/config",
             get(get_config_wrapper).post(update_config_wrapper),
         )
-        .route("/api/config/test", post(test_platform_wrapper));
+        .route("/api/config/test", post(test_platform_wrapper))
+        // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
+        .route("/api/profile/user-info", get(get_user_info_wrapper))
+        .route(
+            "/api/profile/cache-debug",
+            get(get_cache_debug_info_wrapper),
+        )
+        .route("/api/profile/report", get(get_report_wrapper))
+        .route("/api/profile/reports", get(list_reports_wrapper))
+        .route("/api/profile/metadata", get(get_raw_metadata_wrapper));
 
     // Add DB-dependent routes if we have a connection
     // These routes require more complex state handling so keep them conditional for now
@@ -317,14 +471,9 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/auth/link-github",
                 post(api::auth::link_github_account),
             )
-            .route("/api/auth/me", get(api::auth::get_current_user))
-            .route("/api/auth/logout", post(api::auth::logout))
-            // Configuration routes
-            .route(
-                "/api/config",
-                get(api::config::get_config).post(api::config::update_config),
-            )
-            .route("/api/config/test", post(api::config::test_platform))
+            // Note: /api/auth/me and /api/auth/logout are now registered above with wrappers
+            // Note: /api/config routes are now registered above with wrappers, not here
+            // Note: /api/profile/user-info, cache-debug, report, reports, metadata now registered above with wrappers
             .route("/api/platforms", get(api::platforms::list_platforms))
             .route("/api/profiles", get(api::platforms::get_profiles))
             .route("/api/fetch", post(api::platforms::trigger_fetch))
@@ -334,17 +483,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             // Prompt generation
             .route("/api/prompt/generate", post(api::prompt::generate_prompt))
-            // Profile report routes
+            // Profile report routes (complex ones still conditional)
             .route("/api/profile/fetch-all", post(api::profile::fetch_all_data))
             .route(
                 "/api/profile/refresh",
                 post(api::profile::refresh_platform_data),
             )
-            .route(
-                "/api/profile/report",
-                post(api::profile::generate_report).get(api::profile::get_report),
-            )
-            .route("/api/profile/reports", get(api::profile::list_reports))
+            .route("/api/profile/report", post(api::profile::generate_report))
             .route(
                 "/api/profile/reports/:id",
                 get(api::profile::get_report_by_id).delete(api::profile::delete_report_by_id),
@@ -357,12 +502,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/profile/reports/all",
                 delete(api::profile::delete_all_reports),
             )
-            .route("/api/profile/metadata", get(api::profile::get_raw_metadata))
-            .route(
-                "/api/profile/cache-debug",
-                get(api::profile::get_cache_debug_info),
-            )
-            .route("/api/profile/user-info", get(api::profile::get_user_info))
             .route(
                 "/api/profile/cache",
                 delete(api::profile::delete_platform_cache),

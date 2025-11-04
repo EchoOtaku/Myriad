@@ -1,0 +1,67 @@
+/* SetupWizard Component Styles */
+
+.setup-spinner {
+  color: var(--color-primary);
+}
+
+.setup-retry-button {
+  background-color: var(--color-dark);
+}
+
+.setup-retry-button:hover {
+  background-color: var(--color-secondary);
+}
+
+.setup-complete-link {
+  background-color: var(--color-dark);
+}
+
+.setup-complete-link:hover {
+  background-color: var(--color-secondary);
+}
+
+.setup-step-active {
+  color: var(--color-dark);
+}
+
+.setup-step-completed {
+  color: var(--color-primary);
+}
+
+.setup-step-disabled {
+  color: var(--color-light);
+}
+
+.setup-db-icon-wrapper {
+  background: linear-gradient(to bottom right, var(--color-accent), var(--color-light));
+  color: var(--color-dark);
+}
+
+.setup-admin-icon-wrapper {
+  background: linear-gradient(to bottom right, var(--color-primary), var(--color-secondary));
+  color: white;
+}
+
+.setup-save-button {
+  background-color: var(--color-primary);
+}
+
+.setup-save-button:hover:not(:disabled) {
+  background-color: var(--color-dark);
+}
+
+.setup-migrate-button {
+  background-color: var(--color-primary);
+}
+
+.setup-migrate-button:hover:not(:disabled) {
+  background-color: var(--color-dark);
+}
+
+.setup-create-admin-button {
+  background-color: var(--color-dark);
+}
+
+.setup-create-admin-button:hover:not(:disabled) {
+  background-color: var(--color-secondary);
+}

@@ -58,8 +58,15 @@ const LoginForm: React.FC = () => {
       localStorage.setItem('auth_token', data.token);
       localStorage.setItem('user_info', JSON.stringify(data.user));
 
-      // Redirect to home
-      window.location.href = '/';
+      // 触发自定义事件通知Layout更新用户信息
+      window.dispatchEvent(new CustomEvent('auth-login-success', { 
+        detail: { user: data.user, token: data.token } 
+      }));
+
+      // 延迟一下再跳转，让事件处理器先执行
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 100);
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || '登录失败，请稍后重试');
@@ -70,15 +77,7 @@ const LoginForm: React.FC = () => {
 
   return (
     <div className="w-full max-w-md">
-      <div className="bg-white rounded-2xl shadow-xl p-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            登录 <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Myriad</span>
-          </h1>
-          <p className="text-gray-600">使用您的管理员账户登录</p>
-        </div>
-
+      <div className="glass rounded-2xl shadow-xl p-8">
         {/* Error Message */}
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
@@ -129,7 +128,7 @@ const LoginForm: React.FC = () => {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg"
           >
             {submitting ? (
               <>
@@ -156,18 +155,13 @@ const LoginForm: React.FC = () => {
 
             <a
               href={`${API_URL}/api/auth/github/login`}
-              className="w-full py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-semibold shadow-md"
             >
               <FaGithub className="text-xl" />
               <span>使用 GitHub 登录</span>
             </a>
           </>
         )}
-
-        {/* Footer */}
-        <div className="mt-6 text-center text-sm text-gray-600">
-          还没有账户？请联系管理员
-        </div>
       </div>
     </div>
   );

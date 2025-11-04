@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 import { FaCheck, FaSpinner, FaDatabase, FaUser, FaExclamationTriangle } from 'react-icons/fa';
+import './SetupWizard.css';
 
 interface SetupStatus {
   is_setup_required: boolean;
@@ -282,8 +283,7 @@ const SetupWizard: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <FaSpinner 
-            className="animate-spin text-6xl mx-auto mb-4" 
-            style={{ color: 'var(--color-primary)' }}
+            className="animate-spin text-6xl mx-auto mb-4 setup-spinner"
           />
           <p className="text-gray-600">检查系统状态...</p>
         </div>
@@ -302,10 +302,7 @@ const SetupWizard: React.FC = () => {
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={checkSetupStatus}
-            className="px-6 py-3 text-white rounded-lg transition-colors"
-            style={{ backgroundColor: 'var(--color-dark)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-secondary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-dark)')}
+            className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button"
           >
             重试
           </button>
@@ -331,10 +328,7 @@ const SetupWizard: React.FC = () => {
             </p>
             <a
               href="/login"
-              className="inline-block px-8 py-3 text-white rounded-lg transition-colors"
-              style={{ backgroundColor: 'var(--color-dark)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-secondary)')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-dark)')}
+              className="inline-block px-8 py-3 text-white rounded-lg transition-colors setup-complete-link"
             >
               前往登录
             </a>
@@ -353,10 +347,9 @@ const SetupWizard: React.FC = () => {
             <div
               className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center gap-2 ${
                 !dbConfigured
-                  ? 'bg-white shadow-sm'
-                  : ''
+                  ? 'bg-white shadow-sm setup-step-active'
+                  : 'setup-step-completed'
               }`}
-              style={!dbConfigured ? { color: 'var(--color-dark)' } : { color: 'var(--color-primary)' }}
             >
               {dbConfigured ? <FaCheck className="text-green-600" /> : <FaDatabase />}
               <span>数据库配置</span>
@@ -364,16 +357,11 @@ const SetupWizard: React.FC = () => {
             <div
               className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center gap-2 ${
                 dbConfigured && !adminCreated
-                  ? 'bg-white shadow-sm'
-                  : ''
-              }`}
-              style={
-                dbConfigured && !adminCreated
-                  ? { color: 'var(--color-dark)' }
+                  ? 'bg-white shadow-sm setup-step-active'
                   : dbConfigured && adminCreated
-                    ? { color: 'var(--color-primary)' }
-                    : { color: 'var(--color-light)' }
-              }
+                    ? 'setup-step-completed'
+                    : 'setup-step-disabled'
+              }`}
             >
               {adminCreated ? <FaCheck className="text-green-600" /> : <FaUser />}
               <span>管理员账户</span>
@@ -389,11 +377,7 @@ const SetupWizard: React.FC = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-4">
                     <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                      style={{ 
-                        background: `linear-gradient(to bottom right, var(--color-accent), var(--color-light))`,
-                        color: 'var(--color-dark)'
-                      }}
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl setup-db-icon-wrapper"
                     >
                       <FaDatabase />
                     </div>
@@ -483,10 +467,7 @@ const SetupWizard: React.FC = () => {
                       <button
                         onClick={handleSaveDbConfig}
                         disabled={savingDb || !dbConfig.password}
-                        className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg"
-                        style={{ backgroundColor: 'var(--color-primary)' }}
-                        onMouseEnter={(e) => !savingDb && dbConfig.password && (e.currentTarget.style.backgroundColor = 'var(--color-dark)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-primary)')}
+                        className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
                         {savingDb ? <FaSpinner className="animate-spin" /> : '💾'}
                         <span>{savingDb ? '保存中...' : '保存并连接数据库'}</span>
@@ -510,11 +491,7 @@ const SetupWizard: React.FC = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-4">
                     <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                      style={{ 
-                        background: `linear-gradient(to bottom right, var(--color-primary), var(--color-secondary))`,
-                        color: 'white'
-                      }}
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl setup-admin-icon-wrapper"
                     >
                       <FaUser />
                     </div>
@@ -540,10 +517,7 @@ const SetupWizard: React.FC = () => {
                             <button
                               onClick={handleMigrateDatabase}
                               disabled={migratingDb}
-                              className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2"
-                              style={{ backgroundColor: 'var(--color-primary)' }}
-                              onMouseEnter={(e) => !migratingDb && (e.currentTarget.style.backgroundColor = 'var(--color-dark)')}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-primary)')}
+                              className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
                             >
                               {migratingDb ? <FaSpinner className="animate-spin" /> : <FaDatabase />}
                               <span>{migratingDb ? '初始化中...' : '初始化数据库表'}</span>
@@ -610,10 +584,7 @@ const SetupWizard: React.FC = () => {
                         <button
                           onClick={handleCreateAdmin}
                           disabled={creatingAdmin}
-                          className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2"
-                          style={{ backgroundColor: 'var(--color-dark)' }}
-                          onMouseEnter={(e) => !creatingAdmin && (e.currentTarget.style.backgroundColor = 'var(--color-secondary)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-dark)')}
+                          className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
                           {creatingAdmin ? <FaSpinner className="animate-spin" /> : <FaUser />}
                           <span>{creatingAdmin ? '创建中...' : '创建管理员账户'}</span>

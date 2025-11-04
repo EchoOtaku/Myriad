@@ -242,6 +242,65 @@ const title = 'Configuration - Myriad';
   // 全局状态
   let isAuthenticated = false;
 
+  // 检查登录状态并控制页面访问
+  async function checkAuthStatus() {
+    const token = localStorage.getItem('auth_token');
+    isAuthenticated = !!token;
+    
+    if (!isAuthenticated) {
+      // 未登录，显示登录提示并阻止访问
+      showLoginRequired();
+      return false;
+    }
+    
+    // 已登录，隐藏登录提示，显示页面内容
+    hideLoginRequired();
+    return true;
+  }
+
+  // 显示登录提示页面
+  function showLoginRequired() {
+    const mainContent = document.querySelector('.min-h-screen');
+    if (mainContent) {
+      mainContent.innerHTML = `
+        <div class="flex items-center justify-center min-h-screen">
+          <div class="text-center">
+            <div class="glass rounded-2xl p-8 max-w-md mx-auto">
+              <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center text-4xl">
+                🔒
+              </div>
+              <h2 class="text-2xl font-bold text-gray-800 mb-2">需要登录</h2>
+              <p class="text-gray-600 mb-6">请先登录以访问配置页面</p>
+              <a 
+                href="/login" 
+                class="inline-block px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-300"
+              >
+                前往登录
+              </a>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // 隐藏登录提示，恢复页面内容
+  function hideLoginRequired() {
+    // 页面内容默认可见，无需额外操作
+  }
+
+  // 页面加载时检查登录状态
+  if (!await checkAuthStatus()) {
+    // 未登录，停止后续初始化
+  } else {
+    // 已登录，继续初始化页面
+    // 只在页面首次加载时调用一次
+    await checkAccountBinding();
+    await initConfigStatus();
+    await checkSaveStatus();
+    await checkCacheStatus();
+  }
+
   // 检查用户信息和GitHub绑定状态
   async function checkAccountBinding() {
     const container = document.getElementById('account-binding-container');
@@ -317,50 +376,17 @@ const title = 'Configuration - Myriad';
     }
   }
 
-  // 页面加载时检查账户绑定状态
-  checkAccountBinding();
-
   // 监听认证状态变化
   window.addEventListener('auth-state-changed', ((e: CustomEvent) => {
     isAuthenticated = e.detail.isAuthenticated;
-    updateButtonStates();
-  }) as EventListener);
-
-  // 更新按钮状态（根据登录状态）
-  function updateButtonStates() {
-    const saveButton = document.getElementById('save-config');
-    const resetButton = document.getElementById('reset-config');
-    const refreshButton = document.getElementById('refresh-platform-data');
-
     if (!isAuthenticated) {
-      // 未登录 - 禁用按钮
-      saveButton?.setAttribute('disabled', 'true');
-      resetButton?.setAttribute('disabled', 'true');
-      refreshButton?.setAttribute('disabled', 'true');
-      
-      saveButton?.classList.add('opacity-50', 'cursor-not-allowed');
-      resetButton?.classList.add('opacity-50', 'cursor-not-allowed');
-      refreshButton?.classList.add('opacity-50', 'cursor-not-allowed');
-      
-      // 添加标题提示
-      saveButton?.setAttribute('title', '请先登录');
-      resetButton?.setAttribute('title', '请先登录');
-      refreshButton?.setAttribute('title', '请先登录');
+      // 登出时，重新显示登录提示
+      showLoginRequired();
     } else {
-      // 已登录 - 启用按钮
-      saveButton?.removeAttribute('disabled');
-      resetButton?.removeAttribute('disabled');
-      refreshButton?.removeAttribute('disabled');
-      
-      saveButton?.classList.remove('opacity-50', 'cursor-not-allowed');
-      resetButton?.classList.remove('opacity-50', 'cursor-not-allowed');
-      refreshButton?.classList.remove('opacity-50', 'cursor-not-allowed');
-      
-      saveButton?.setAttribute('title', '保存配置');
-      resetButton?.setAttribute('title', '重置配置');
-      refreshButton?.setAttribute('title', '刷新平台数据');
+      // 登录时，刷新页面重新加载内容
+      window.location.reload();
     }
-  }
+  }) as EventListener);
 
   // 标签切换功能
   const tabConfig = document.getElementById('tab-config');
@@ -641,12 +667,16 @@ const title = 'Configuration - Myriad';
   }) as EventListener);
 
   saveButton?.addEventListener('click', async () => {
+    if (!isAuthenticated) {
+      alert('请先登录');
+      return;
+    }
+    
     console.log('Save button clicked');
     const button = saveButton as HTMLButtonElement;
     const buttonText = button.querySelector('span:last-child');
     const originalText = buttonText?.textContent;
     
-    // 禁用按钮防止重复点击
     button.disabled = true;
     if (buttonText) buttonText.textContent = '保存中...';
     button.classList.add('saving');
@@ -692,11 +722,15 @@ const title = 'Configuration - Myriad';
   });
 
   resetButton?.addEventListener('click', async () => {
+    if (!isAuthenticated) {
+      alert('请先登录');
+      return;
+    }
+    
     if (!confirm('确定要重置为默认配置吗？这将恢复所有设置到初始状态并自动保存。')) {
       return;
     }
     
-    console.log('Reset button clicked');
     const button = resetButton as HTMLButtonElement;
     const buttonText = button.querySelector('span:last-child');
     const originalText = buttonText?.textContent;
@@ -1240,11 +1274,6 @@ const title = 'Configuration - Myriad';
   }
 
   .refresh-button:active {
-    transform: translateY(0);
-  }
-
-  /* 自定义滚动条样式 */
-  .reset-button:active {
     transform: translateY(0);
   }
 
