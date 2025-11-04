@@ -43,65 +43,52 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     </div>
 
     <!-- Dynamic Island Navigation - Left Side Vertical -->
-    <nav class="fixed left-6 top-1/2 -translate-y-1/2 z-50">
-      <div class="dynamic-island shadow-2xl">
-        <div class="flex flex-col items-center gap-3">
-          <a href="/" class="nav-item" title="主页">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-            </svg>
-          </a>
+    <nav class="nav-container fixed left-6 top-1/2 -translate-y-1/2 z-50 transition-all duration-300" aria-label="主导航">
+      <div class="dynamic-island shadow-2xl" role="navigation">
+        <div class="flex flex-col items-center gap-1">
+          <!-- 主导航组 -->
+          <div class="nav-group" data-group="main">
+            <a href="/" class="nav-item" title="主页" aria-label="返回主页">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+              </svg>
+            </a>
+          </div>
           
-          <a href="/config" class="nav-item" title="配置">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-            </svg>
-          </a>
+          <!-- 配置按钮组（管理员） -->
+          <div class="nav-group nav-group-spaced" data-group="config" style="display: none;">
+            <a href="/config" id="config-nav-btn" class="nav-item" title="配置" aria-label="系统配置">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+            </a>
+          </div>
 
-          <!-- 分隔线 -->
-          <div class="w-8 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
-
-          <!-- 登录/用户头像按钮 -->
-          <div id="user-section">
+          <!-- 用户账户组 -->
+          <div class="nav-group nav-group-spaced" data-group="user" id="user-section">
             <!-- 未登录状态 - 显示登录按钮 -->
-            <a href="/login" id="login-btn" class="nav-item" title="登录" style="display: none;">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <a href="/login" id="login-btn" class="nav-item" title="登录" aria-label="用户登录" style="display: none;">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
               </svg>
             </a>
             
-            <!-- 已登录状态 - 显示用户头像 -->
-            <div id="user-avatar-container" class="relative" style="display: none;">
-              <button id="user-avatar-btn" class="nav-item p-0 w-10 h-10 overflow-hidden" title="用户菜单">
-                <img id="user-avatar" src="" alt="User" class="w-full h-full object-cover rounded-full">
-              </button>
-              
-              <!-- 用户下拉菜单 -->
-              <div id="user-menu" class="absolute left-full ml-3 top-0 glass rounded-xl shadow-2xl p-2 min-w-[180px] hidden z-50">
-                <div class="px-3 py-2 border-b border-gray-200">
-                  <p class="text-sm font-semibold text-gray-800" id="user-name">用户名</p>
-                  <p class="text-xs text-gray-500">@<span id="user-username">username</span></p>
-                </div>
-                <button id="logout-btn" class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mt-1">
-                  <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                  </svg>
-                  退出登录
-                </button>
-              </div>
-            </div>
+            <!-- 已登录状态 - 显示用户头像链接 -->
+            <a href="/account" id="user-avatar-link" class="nav-item avatar-item p-0 w-11 h-11 overflow-hidden" title="账户管理" aria-label="账户管理" style="display: none;">
+              <img id="user-avatar" src="" alt="用户头像" class="w-full h-full object-cover">
+            </a>
           </div>
 
-          <!-- 分隔线 -->
-          <div class="w-8 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
-
-          <!-- 生成报告按钮 -->
-          <button id="generate-report-btn" class="nav-item generate-btn" title="生成报告">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-            </svg>
-          </button>
+          <!-- 报告功能组（管理员） -->
+          <div class="nav-group nav-group-large-spaced" data-group="report" style="display: none;">
+            <div class="nav-separator"></div>
+            <button id="generate-report-btn" class="nav-item generate-btn" title="生成报告" aria-label="生成数据报告">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </nav>
@@ -187,14 +174,15 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         background: rgba(255, 255, 255, 0.75);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
-        border-radius: 24px;
-        padding: 16px 12px;
+        border-radius: 26px;
+        padding: 14px 10px;
         border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
         box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
                     inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
         transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
         overflow: hidden;
+        max-height: 85vh;
       }
 
       /* 动态渐变边框动画 */
@@ -202,7 +190,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         content: '';
         position: absolute;
         inset: -2px;
-        border-radius: 24px;
+        border-radius: 26px;
         padding: 2px;
         background: linear-gradient(135deg, 
           color-mix(in srgb, var(--color-primary) 60%, transparent),
@@ -215,6 +203,9 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         mask-composite: exclude;
         animation: border-flow 8s linear infinite;
         background-size: 300% 300%;
+        pointer-events: none;
+        opacity: 0.8;
+        transition: opacity 0.3s ease;
       }
 
       @keyframes border-flow {
@@ -227,57 +218,176 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       }
 
       .dynamic-island:hover {
-        padding: 18px 12px;
+        padding: 16px 11px;
         background: rgba(255, 255, 255, 0.85);
         box-shadow: 0 12px 48px 0 color-mix(in srgb, var(--color-primary) 25%, transparent),
                     inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+        border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+      }
+
+      .dynamic-island:hover::before {
+        opacity: 1;
+      }
+
+      /* 导航组 */
+      .nav-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      /* 不同间距的导航组 */
+      .nav-group-spaced {
+        margin-top: 8px;
+      }
+
+      .nav-group-large-spaced {
+        margin-top: 0px;
+      }
+
+      /* 分隔线样式 - 仅用于生成报告按钮 */
+      .nav-separator {
+        width: 32px;
+        height: 1px;
+        background: linear-gradient(to right, 
+          transparent, 
+          color-mix(in srgb, var(--color-primary) 30%, transparent) 50%, 
+          transparent
+        );
+        margin: 0 0 8px 0;
+        transition: all 0.3s ease;
+      }
+
+      .nav-group:hover .nav-separator {
+        background: linear-gradient(to right, 
+          transparent, 
+          color-mix(in srgb, var(--color-primary) 50%, transparent) 50%, 
+          transparent
+        );
       }
 
       /* Navigation items */
       .nav-item {
         @apply text-gray-500 transition-all duration-300;
-        @apply transform hover:scale-110 active:scale-95;
-        @apply relative p-2.5;
-        border-radius: 16px;
+        position: relative;
+        padding: 10px;
+        border-radius: 18px;
+        z-index: 10;
+        cursor: pointer;
+        transform-origin: center;
+        /* 添加触摸反馈 */
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
       }
 
       .nav-item:hover {
         color: var(--color-primary);
-        background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+        background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+        transform: scale(1.12) translateZ(0);
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 20%, transparent);
+      }
+
+      .nav-item:active {
+        transform: scale(1.02);
+        transition-duration: 0.1s;
       }
 
       /* Active nav item indicator */
       [aria-current="page"].nav-item {
         color: var(--color-primary);
-        background: color-mix(in srgb, var(--color-primary) 10%, white);
+        background: color-mix(in srgb, var(--color-primary) 15%, white);
+        box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 25%, transparent);
+      }
+
+      [aria-current="page"].nav-item::after {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 5px;
+        height: 5px;
+        background: var(--color-primary);
+        border-radius: 50%;
+        box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary) 60%, transparent);
+      }
+
+      /* 用户头像特殊样式 */
+      .avatar-item {
+        border: 2px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .avatar-item img {
+        transition: transform 0.3s ease;
+      }
+
+      .avatar-item:hover {
+        border-color: var(--color-primary);
+        box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 40%, transparent);
+      }
+
+      .avatar-item:hover img {
+        transform: scale(1.08);
       }
 
       /* Generate button with gradient border - 简洁旋转版 */
       .generate-btn {
         position: relative;
         background: linear-gradient(135deg, 
-          color-mix(in srgb, var(--color-primary) 15%, transparent), 
-          color-mix(in srgb, var(--color-secondary) 15%, transparent)
+          color-mix(in srgb, var(--color-primary) 18%, transparent), 
+          color-mix(in srgb, var(--color-secondary) 18%, transparent)
         );
         border: 2px solid transparent;
         cursor: pointer;
         z-index: 1;
-        border-radius: 16px;
+        border-radius: 18px;
         /* 硬件加速优化 */
         transform: translateZ(0);
         backface-visibility: hidden;
-        transition: border-radius 0.3s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
 
       /* 加载时变圆形 */
       .generate-btn.loading {
         border-radius: 50%;
+        animation: pulse-glow 1.5s ease-in-out infinite;
+      }
+
+      @keyframes pulse-glow {
+        0%, 100% {
+          box-shadow: 0 0 20px color-mix(in srgb, var(--color-primary) 40%, transparent);
+        }
+        50% {
+          box-shadow: 0 0 30px color-mix(in srgb, var(--color-secondary) 50%, transparent);
+        }
       }
 
       .generate-btn svg {
         position: relative;
         z-index: 2;
         pointer-events: none;
+        transition: transform 0.3s ease;
+      }
+
+      .generate-btn:hover svg {
+        transform: scale(1.1) rotate(5deg);
+      }
+
+      .generate-btn.loading svg {
+        animation: icon-pulse 1.5s ease-in-out infinite;
+      }
+
+      @keyframes icon-pulse {
+        0%, 100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.15);
+          opacity: 0.8;
+        }
       }
 
       /* 边框容器 */
@@ -285,7 +395,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         content: '';
         position: absolute;
         inset: -2px;
-        border-radius: 16px;
+        border-radius: 18px;
         z-index: -1;
         pointer-events: none;
         overflow: hidden;
@@ -301,7 +411,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         content: '';
         position: absolute;
         inset: -2px;
-        border-radius: 16px;
+        border-radius: 18px;
         padding: 2px;
         z-index: -1;
         pointer-events: none;
@@ -323,11 +433,17 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         transform: translateZ(0) rotate(0deg);
         backface-visibility: hidden;
         transition: border-radius 0.3s ease;
+        opacity: 0;
+      }
+
+      .generate-btn:hover::after {
+        opacity: 0.5;
       }
 
       .generate-btn.loading::after {
         border-radius: 50%;
         animation: rainbow-spin 1.5s linear infinite;
+        opacity: 1;
       }
 
       /* 彩虹边框旋转 */
@@ -342,18 +458,150 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       .generate-btn:hover {
         background: linear-gradient(135deg, 
-          color-mix(in srgb, var(--color-primary) 25%, transparent), 
-          color-mix(in srgb, var(--color-secondary) 25%, transparent)
+          color-mix(in srgb, var(--color-primary) 28%, transparent), 
+          color-mix(in srgb, var(--color-secondary) 28%, transparent)
         );
-        transform: scale(1.15);
+        transform: scale(1.15) translateZ(0);
+        box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 30%, transparent);
       }
 
       .generate-btn:active {
         transform: scale(1.05);
       }
 
-      .generate-btn.loading::before {
-        animation: rainbow-spin 2s linear infinite;
+      /* 响应式设计 */
+      @media (max-width: 768px) {
+        .nav-container {
+          left: 12px !important;
+        }
+
+        .dynamic-island {
+          padding: 12px 8px;
+          border-radius: 22px;
+        }
+
+        .dynamic-island:hover {
+          padding: 14px 9px;
+        }
+
+        .nav-item {
+          padding: 9px;
+          border-radius: 16px;
+        }
+
+        .nav-item svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .avatar-item {
+          width: 40px !important;
+          height: 40px !important;
+        }
+
+        .nav-group-spaced {
+          margin-top: 6px;
+        }
+
+        .nav-group-large-spaced {
+          margin-top: 0px;
+        }
+
+        .nav-separator {
+          width: 28px;
+          margin: 0 0 6px 0;
+        }
+
+        .generate-btn {
+          border-radius: 16px;
+        }
+
+        .generate-btn.loading {
+          border-radius: 50%;
+        }
+      }
+
+      /* 小屏幕优化 */
+      @media (max-width: 480px) {
+        .nav-container {
+          left: 8px !important;
+          top: auto !important;
+          bottom: 20px !important;
+          transform: none !important;
+        }
+
+        .dynamic-island {
+          flex-direction: row;
+          padding: 10px 12px;
+        }
+
+        .dynamic-island > div {
+          flex-direction: row;
+          gap: 4px;
+        }
+
+        .nav-group {
+          flex-direction: row;
+        }
+
+        .nav-group-spaced {
+          margin-top: 0;
+          margin-left: 8px;
+        }
+
+        .nav-group-large-spaced {
+          margin-top: 0;
+          margin-left: 8px;
+        }
+
+        .nav-separator {
+          width: 1px;
+          height: 28px;
+          margin: 0 4px 0 4px;
+          background: linear-gradient(to bottom,
+            transparent,
+            color-mix(in srgb, var(--color-primary) 30%, transparent) 50%,
+            transparent
+          );
+        }
+
+        [aria-current="page"].nav-item::after {
+          left: 50%;
+          top: auto;
+          bottom: -8px;
+          transform: translateX(-50%);
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+        }
+      }
+
+      /* 触摸设备优化 */
+      @media (hover: none) and (pointer: coarse) {
+        .nav-item {
+          min-width: 44px;
+          min-height: 44px;
+        }
+
+        .nav-item:hover {
+          transform: scale(1.05);
+        }
+
+        .generate-btn:hover {
+          transform: scale(1.08);
+        }
+      }
+
+      /* 焦点状态（键盘导航） */
+      .nav-item:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 4px;
+        border-radius: 18px;
+      }
+
+      .generate-btn:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 4px;
       }
 
       /* Shuffle button - 使用壁纸提取的颜色渐变 */
@@ -553,7 +801,24 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         );
         border: 1.5px solid color-mix(in srgb, var(--brand-color) 20%, transparent);
         color: var(--brand-color);
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .platform-link::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+        transition: left 0.5s ease;
+      }
+
+      .platform-link:hover::before {
+        left: 100%;
       }
 
       .platform-link:hover {
@@ -561,10 +826,15 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           color-mix(in srgb, var(--brand-color) 13%, transparent), 
           color-mix(in srgb, var(--brand-color) 9%, transparent)
         );
-        border-color: color-mix(in srgb, var(--brand-color) 30%, transparent);
-        transform: translateY(-2px) scale(1.05);
-        box-shadow: 0 6px 16px color-mix(in srgb, var(--brand-color) 15%, transparent), 
+        border-color: color-mix(in srgb, var(--brand-color) 35%, transparent);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--brand-color) 20%, transparent), 
                     0 0 0 1px color-mix(in srgb, var(--brand-color) 9%, transparent);
+      }
+
+      .platform-link:active {
+        transform: translateY(0);
+        transition-duration: 0.1s;
       }
 
       /* 自定义滚动条 */
@@ -895,52 +1165,28 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           console.log('Login success event received, reloading user info');
           loadUserInfo();
         }) as EventListener);
-
-        const userAvatarBtn = document.getElementById('user-avatar-btn');
-        const userMenu = document.getElementById('user-menu');
-        const logoutBtn = document.getElementById('logout-btn');
-
-        // 登录按钮现在是链接，不需要事件监听器
-
-        // 用户头像点击 - 切换菜单
-        userAvatarBtn?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          userMenu?.classList.toggle('hidden');
-        });
-
-        // 点击其他地方关闭菜单
-        document.addEventListener('click', () => {
-          userMenu?.classList.add('hidden');
-        });
-
-        // 退出登录
-        logoutBtn?.addEventListener('click', async () => {
-          try {
-            await fetch('http://localhost:3000/api/auth/logout', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-              }
-            });
-          } catch (e) {
-            console.error('Logout request failed:', e);
-          }
-          
-          localStorage.removeItem('auth_token');
-          window.location.reload();
-        });
       }
 
       // 加载用户信息
       async function loadUserInfo() {
         const token = localStorage.getItem('auth_token');
         const loginBtn = document.getElementById('login-btn');
-        const userAvatarContainer = document.getElementById('user-avatar-container');
+        const userAvatarLink = document.getElementById('user-avatar-link');
+        const configNavBtn = document.getElementById('config-nav-btn');
+        const userSection = document.getElementById('user-section');
+        
+        // 获取导航组
+        const configGroup = document.querySelector('[data-group="config"]') as HTMLElement;
+        const userGroup = document.querySelector('[data-group="user"]') as HTMLElement;
+        const reportGroup = document.querySelector('[data-group="report"]') as HTMLElement;
         
         if (!token) {
-          // 未登录状态
-          loginBtn!.style.display = 'block';
-          userAvatarContainer!.style.display = 'none';
+          // 未登录状态 - 只显示登录按钮
+          hideWithAnimation(userAvatarLink);
+          hideWithAnimation(configGroup);
+          hideWithAnimation(reportGroup);
+          showWithAnimation(loginBtn);
+          
           // 触发自定义事件通知其他组件
           window.dispatchEvent(new CustomEvent('auth-state-changed', { 
             detail: { isAuthenticated: false } 
@@ -961,17 +1207,30 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
           const user = await response.json();
           
-          // 已登录状态 - 显示用户头像
-          loginBtn!.style.display = 'none';
-          userAvatarContainer!.style.display = 'block';
+          // 判断是否为管理员
+          const isAdmin = user.is_admin === true;
           
-          const userAvatar = document.getElementById('user-avatar') as HTMLImageElement;
-          const userName = document.getElementById('user-name');
-          const userUsername = document.getElementById('user-username');
-          
-          if (userAvatar) userAvatar.src = user.avatar_url || 'https://github.com/ghost.png';
-          if (userName) userName.textContent = user.display_name || user.username;
-          if (userUsername) userUsername.textContent = user.username;
+          if (isAdmin) {
+            // 管理员 - 隐藏用户区域，显示配置和报告
+            hideWithAnimation(loginBtn);
+            hideWithAnimation(userAvatarLink);
+            showWithAnimation(configGroup);
+            showWithAnimation(reportGroup);
+          } else {
+            // 普通用户 - 显示头像，隐藏配置和报告
+            hideWithAnimation(loginBtn);
+            hideWithAnimation(configGroup);
+            hideWithAnimation(reportGroup);
+            
+            // 设置头像
+            const userAvatar = document.getElementById('user-avatar') as HTMLImageElement;
+            if (userAvatar) {
+              userAvatar.src = user.avatar_url || 'https://github.com/ghost.png';
+              userAvatar.alt = user.username || '用户头像';
+            }
+            
+            showWithAnimation(userAvatarLink);
+          }
 
           // 触发自定义事件通知其他组件
           window.dispatchEvent(new CustomEvent('auth-state-changed', { 
@@ -982,12 +1241,46 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           console.error('Failed to load user info:', error);
           // Token无效，清除并显示登录按钮
           localStorage.removeItem('auth_token');
-          loginBtn!.style.display = 'block';
-          userAvatarContainer!.style.display = 'none';
+          hideWithAnimation(userAvatarLink);
+          hideWithAnimation(configGroup);
+          hideWithAnimation(reportGroup);
+          showWithAnimation(loginBtn);
+          
           window.dispatchEvent(new CustomEvent('auth-state-changed', { 
             detail: { isAuthenticated: false } 
           }));
         }
+      }
+
+      // 显示动画辅助函数
+      function showWithAnimation(element: HTMLElement | null) {
+        if (!element) return;
+        
+        // 先设置为显示但透明
+        element.style.display = '';
+        element.style.opacity = '0';
+        element.style.transform = 'scale(0.8)';
+        
+        // 使用 requestAnimationFrame 确保动画生效
+        requestAnimationFrame(() => {
+          element.style.transition = 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+          element.style.opacity = '1';
+          element.style.transform = 'scale(1)';
+        });
+      }
+
+      // 隐藏动画辅助函数
+      function hideWithAnimation(element: HTMLElement | null) {
+        if (!element) return;
+        
+        element.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
+        element.style.opacity = '0';
+        element.style.transform = 'scale(0.8)';
+        
+        // 动画结束后真正隐藏
+        setTimeout(() => {
+          element.style.display = 'none';
+        }, 200);
       }
     </script>
   </body>

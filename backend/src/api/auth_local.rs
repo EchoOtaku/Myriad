@@ -1,8 +1,8 @@
-use axum::{extract::State, http::StatusCode, Json};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use axum::{extract::State, http::StatusCode, Json};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use regex::Regex;
@@ -25,6 +25,13 @@ pub struct CreateAdminRequest {
 pub struct LocalLoginRequest {
     pub username: String,
     pub password: String,
+}
+
+/// Request to change password
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub old_password: String,
+    pub new_password: String,
 }
 
 /// Response with JWT token
@@ -114,7 +121,10 @@ pub async fn create_admin(
                 SeaValue::String(Some(Box::new("local".to_string()))),
                 SeaValue::String(Some(Box::new(password_hash))),
                 SeaValue::Bool(Some(true)),
-                SeaValue::String(Some(Box::new("https://ui-avatars.com/api/?name=Admin&background=4f46e5&color=fff".to_string()))),
+                SeaValue::String(Some(Box::new(
+                    "https://ui-avatars.com/api/?name=Admin&background=4f46e5&color=fff"
+                        .to_string(),
+                ))),
             ],
         ))
         .await
@@ -136,7 +146,11 @@ pub async fn create_admin(
             )
         })?;
 
-    tracing::info!("✅ Local admin account created: {} (ID: {})", request.username, user_id);
+    tracing::info!(
+        "✅ Local admin account created: {} (ID: {})",
+        request.username,
+        user_id
+    );
 
     Ok(Json(json!({
         "success": true,
@@ -277,6 +291,172 @@ pub async fn local_login(
             auth_provider: "local".to_string(),
         },
     }))
+}
+
+/// POST /api/auth/change-password
+/// Change password for local account
+pub async fn change_password(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<ChangePasswordRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // Extract and validate JWT token from headers
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Missing or invalid authorization header"})),
+            )
+        })?;
+
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
+        tracing::error!("JWT_SECRET not set");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Server configuration error"})),
+        )
+    })?;
+
+    // Decode and validate token
+    let claims = jsonwebtoken::decode::<Claims>(
+        token,
+        &jsonwebtoken::DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &jsonwebtoken::Validation::default(),
+    )
+    .map_err(|e| {
+        tracing::warn!("Invalid JWT token: {:?}", e);
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid or expired token"})),
+        )
+    })?
+    .claims;
+
+    let user_id = claims.sub.parse::<i32>().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid user ID"})),
+        )
+    })?;
+
+    tracing::info!("Password change request for user ID: {}", user_id);
+
+    // Validate new password
+    validate_password(&request.new_password)?;
+
+    // Query user data
+    use sea_orm::Value as SeaValue;
+
+    let query = "SELECT username, password_hash, auth_provider, local_login_disabled 
+                 FROM users 
+                 WHERE id = $1";
+
+    let user_result = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            query,
+            vec![SeaValue::Int(Some(user_id))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    let user_row = user_result.ok_or_else(|| {
+        tracing::warn!("User not found: {}", user_id);
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User not found"})),
+        )
+    })?;
+
+    let username: String = user_row.try_get("", "username").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read user data"})),
+        )
+    })?;
+
+    let auth_provider: String = user_row.try_get("", "auth_provider").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read user data"})),
+        )
+    })?;
+
+    // Only local accounts can change password
+    if auth_provider != "local" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Operation not allowed",
+                "message": "Only local accounts can change password"
+            })),
+        ));
+    }
+
+    let local_login_disabled: bool = user_row
+        .try_get("", "local_login_disabled")
+        .unwrap_or(false);
+
+    // Check if local login is disabled (GitHub linked)
+    if local_login_disabled {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Local login disabled",
+                "message": "This account has been linked to GitHub. Password change is not allowed."
+            })),
+        ));
+    }
+
+    let current_password_hash: String = user_row.try_get("", "password_hash").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read user data"})),
+        )
+    })?;
+
+    // Verify old password
+    verify_password(&request.old_password, &current_password_hash)?;
+
+    // Hash new password
+    let new_password_hash = hash_password(&request.new_password)?;
+
+    // Update password
+    let update_query =
+        "UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2";
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        update_query,
+        vec![
+            SeaValue::String(Some(Box::new(new_password_hash))),
+            SeaValue::Int(Some(user_id)),
+        ],
+    ))
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update password: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to update password"})),
+        )
+    })?;
+
+    tracing::info!("✅ Password changed successfully for user: {}", username);
+
+    Ok(Json(json!({
+        "success": true,
+        "message": "Password changed successfully"
+    })))
 }
 
 // Helper functions

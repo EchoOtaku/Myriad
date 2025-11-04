@@ -104,6 +104,7 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/auth/login",  // Allow login endpoint
         "/api/auth/me",     // Allow user info endpoint (for login state check)
         "/api/auth/logout", // Allow logout endpoint
+        "/api/auth/change-password", // Allow change password endpoint
         "/api/profile",     // Allow all profile endpoints (for UI display)
     ];
 
@@ -194,6 +195,36 @@ async fn local_login_wrapper(Json(payload): Json<api::auth_local::LocalLoginRequ
         Some(db) => {
             match api::auth_local::local_login(axum::extract::State(db.clone()), Json(payload))
                 .await
+            {
+                Ok(response) => response.into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，请先完成初始配置"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for change_password that gets DB from global state
+async fn change_password_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::auth_local::ChangePasswordRequest>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            match api::auth_local::change_password(
+                axum::extract::State(db.clone()),
+                headers,
+                Json(payload),
+            )
+            .await
             {
                 Ok(response) => response.into_response(),
                 Err((status, json)) => (status, json).into_response(),
@@ -444,6 +475,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/auth/login", post(local_login_wrapper))
         .route("/api/auth/me", get(get_current_user_wrapper))
         .route("/api/auth/logout", post(logout_wrapper))
+        .route("/api/auth/change-password", post(change_password_wrapper))
         // Configuration routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route(
             "/api/config",

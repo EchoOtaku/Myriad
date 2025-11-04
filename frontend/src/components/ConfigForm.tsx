@@ -742,6 +742,93 @@ const ConfigForm: React.FC = () => {
           )}
         </div>
 
+        {/* ================ GitHub OAuth配置分类 ================ */}
+        <div className="glass rounded-xl mb-5 overflow-hidden">
+          <button
+            onClick={() => toggleSection('oauth')}
+            className="w-full flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-white text-lg">
+                🔐
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-gray-800">GitHub OAuth 配置</h2>
+                <p className="text-xs text-gray-500">配置 GitHub OAuth 应用以启用社交登录</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'oauth' ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {expandedSection === 'oauth' && (
+            <div className="p-4 border-t border-gray-200/50 animate-fade-in">
+              <div className="space-y-3">
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 mb-3">
+                  <p className="text-xs text-blue-800">
+                    💡 <strong>如何获取 GitHub OAuth 凭证：</strong><br/>
+                    1. 访问 <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">GitHub Developer Settings</a><br/>
+                    2. 点击 "New OAuth App" 创建新应用<br/>
+                    3. 填写应用信息，Callback URL 填写：<code className="bg-white px-1 rounded">http://localhost:3000/api/auth/github/callback</code><br/>
+                    4. 创建后复制 Client ID 和生成 Client Secret
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="github-client-id" className="block text-xs font-medium text-gray-700 mb-1">
+                    GitHub Client ID
+                    <span className="text-pink-500 ml-1">*</span>
+                  </label>
+                  <input
+                    id="github-client-id"
+                    type="text"
+                    value={config.ui_config.config_fields.find(f => f.key === 'github_client_id')?.value || ''}
+                    onChange={(e) => updateUiFieldValue('github_client_id', e.target.value)}
+                    placeholder="GitHub OAuth App 的 Client ID"
+                    className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="github-client-secret" className="block text-xs font-medium text-gray-700 mb-1">
+                    GitHub Client Secret
+                    <span className="text-pink-500 ml-1">*</span>
+                  </label>
+                  <input
+                    id="github-client-secret"
+                    type="password"
+                    value={config.ui_config.config_fields.find(f => f.key === 'github_client_secret')?.value || ''}
+                    onChange={(e) => updateUiFieldValue('github_client_secret', e.target.value)}
+                    placeholder="GitHub OAuth App 的 Client Secret"
+                    className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="github-redirect-url" className="block text-xs font-medium text-gray-700 mb-1">
+                    Redirect URL
+                  </label>
+                  <input
+                    id="github-redirect-url"
+                    type="text"
+                    value={config.ui_config.config_fields.find(f => f.key === 'github_redirect_url')?.value || 'http://localhost:3000/api/auth/github/callback'}
+                    onChange={(e) => updateUiFieldValue('github_redirect_url', e.target.value)}
+                    placeholder="http://localhost:3000/api/auth/github/callback"
+                    className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">OAuth 回调地址，需与 GitHub App 设置中的一致</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ================ 报告配置分类 ================ */}
         <div className="glass rounded-xl mb-5 overflow-hidden">
           <button

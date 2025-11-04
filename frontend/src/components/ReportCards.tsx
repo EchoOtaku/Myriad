@@ -55,6 +55,8 @@ export default function ReportCards() {
     const [petEnabled, setPetEnabled] = useState(true);
     const [petImageUrl, setPetImageUrl] = useState('https://api.fuukei.org/myriad/frontend/public/furina.png');
     const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
+    const [isAdmin, setIsAdmin] = useState(false); // 是否为管理员
+    const [isAuthenticated, setIsAuthenticated] = useState(false); // 是否已登录
 
     // 从所有卡片中随机抽取指定数量（优先使用all_cards）
     const getRandomCards = useCallback((currentReport: PersonalReport | null, count: number = 6): ReportCard[] => {
@@ -87,6 +89,52 @@ export default function ReportCards() {
         console.log(`✅ [Random] Returning ${result.length} random cards from ${allCards.length} total`);
         console.log(`   Selected cards: ${result.map(c => c.title).join(', ')}`);
         return result;
+    }, []);
+
+    // 检测用户是否为管理员
+    useEffect(() => {
+        const checkAdminStatus = async () => {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                setIsAuthenticated(false);
+                setIsAdmin(false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    setIsAuthenticated(true);
+                    setIsAdmin(user.is_admin === true);
+                    console.log('🔑 [Auth] User admin status:', user.is_admin);
+                } else {
+                    setIsAuthenticated(false);
+                    setIsAdmin(false);
+                }
+            } catch (error) {
+                console.error('❌ [Auth] Failed to check admin status:', error);
+                setIsAuthenticated(false);
+                setIsAdmin(false);
+            }
+        };
+
+        checkAdminStatus();
+
+        // 监听登录状态变化
+        const handleAuthChange = () => {
+            checkAdminStatus();
+        };
+
+        window.addEventListener('auth-state-changed', handleAuthChange);
+        return () => {
+            window.removeEventListener('auth-state-changed', handleAuthChange);
+        };
     }, []);
 
     // 生成默认头像 (SVG Data URL)
@@ -671,21 +719,54 @@ export default function ReportCards() {
                     <div className="flex items-center gap-4">
                         {userInfo ? (
                             <>
-                                {!avatarError ? (
-                                    <img
-                                        src={userInfo.avatar}
-                                        alt={userInfo.name}
-                                        className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
-                                        crossOrigin="anonymous"
-                                        referrerPolicy="no-referrer"
-                                        onError={() => setAvatarError(true)}
-                                    />
+                                {/* 头像 - 仅管理员可点击 */}
+                                {isAdmin ? (
+                                    <a
+                                        href="/account"
+                                        className="relative cursor-pointer"
+                                    >
+                                        {!avatarError ? (
+                                            <img
+                                                src={userInfo.avatar}
+                                                alt={userInfo.name}
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                                crossOrigin="anonymous"
+                                                referrerPolicy="no-referrer"
+                                                onError={() => setAvatarError(true)}
+                                            />
+                                        ) : (
+                                            <img
+                                                src={getDefaultAvatar(userInfo.name)}
+                                                alt={userInfo.name}
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                            />
+                                        )}
+                                        {/* 简约提示角标 */}
+                                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center shadow-lg" style={{ background: 'var(--color-primary)' }}>
+                                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </span>
+                                    </a>
                                 ) : (
-                                    <img
-                                        src={getDefaultAvatar(userInfo.name)}
-                                        alt={userInfo.name}
-                                        className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
-                                    />
+                                    <div className="relative">
+                                        {!avatarError ? (
+                                            <img
+                                                src={userInfo.avatar}
+                                                alt={userInfo.name}
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                                crossOrigin="anonymous"
+                                                referrerPolicy="no-referrer"
+                                                onError={() => setAvatarError(true)}
+                                            />
+                                        ) : (
+                                            <img
+                                                src={getDefaultAvatar(userInfo.name)}
+                                                alt={userInfo.name}
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                            />
+                                        )}
+                                    </div>
                                 )}
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-800">{userInfo.name}</h3>
@@ -717,13 +798,13 @@ export default function ReportCards() {
                                         href={link.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="platform-link inline-flex items-center gap-1.5 px-2 py-1 rounded-xl text-xs font-semibold no-underline transition-all duration-300 backdrop-blur-sm cursor-pointer whitespace-nowrap"
+                                        className="platform-link inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold no-underline transition-all duration-250 backdrop-blur-sm cursor-pointer whitespace-nowrap"
                                         data-brand-color={link.brandColor}
                                         title={`访问 ${link.displayName}`}
                                     >
                                         <PlatformIcon 
                                             platform={link.platform} 
-                                            className="w-4 h-4"
+                                            className="w-4 h-4 transition-transform duration-250 group-hover:scale-110"
                                         />
                                         <span>{link.displayName}</span>
                                     </a>
@@ -752,7 +833,7 @@ export default function ReportCards() {
                                     const newCards = getRandomCards(report, 6);
                                     setDisplayCards(newCards);
                                 }}
-                                className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-105"
+                                className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-lg"
                                 aria-label="换一批"
                             >
                                 🎲 换一批
@@ -767,7 +848,8 @@ export default function ReportCards() {
                 {displayCards.map((card) => (
                     <article
                         key={card.topic_id}
-                        className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card"
+                        className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card cursor-pointer hover:scale-[1.02] active:scale-[0.98] group"
+                        onClick={() => setSelectedCard(card)}
                     >
                         {/* 插画背景 */}
                         {card.illustration && (
@@ -796,22 +878,22 @@ export default function ReportCards() {
                                         e.stopPropagation();
                                         setSelectedCard(card);
                                     }}
-                                    className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
+                                    className="text-gray-400 hover:text-gray-600 transition-all duration-200 p-2 rounded-full hover:bg-gray-100 active:scale-90 opacity-0 group-hover:opacity-100"
                                     aria-label="查看详情"
                                 >
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                     </svg>
                                 </button>
                             </div>
 
                             {/* Card Title */}
-                            <h2 className="text-sm text-gray-600 mb-2">
+                            <h2 className="text-sm text-gray-600 mb-2 transition-colors duration-200 group-hover:text-gray-800">
                                 {card.title}
                             </h2>
 
                             {/* Card Summary */}
-                            <p className="text-xl font-bold text-gray-900 line-clamp-2 mb-3">
+                            <p className="text-xl font-bold text-gray-900 line-clamp-2 mb-3 transition-colors duration-200 group-hover:text-gray-950">
                                 {card.content.summary}
                             </p>
 
@@ -821,7 +903,7 @@ export default function ReportCards() {
                                     {card.content.tags.map((tag, i) => (
                                         <span
                                             key={i}
-                                            className="px-3 py-1 rounded-full text-xs font-medium text-white tag-badge"
+                                            className="px-3 py-1 rounded-full text-xs font-medium text-white tag-badge transition-all duration-200 hover:scale-105 cursor-default"
                                         >
                                             {tag}
                                         </span>
@@ -866,7 +948,7 @@ export default function ReportCards() {
                                                     <>
                                                         <span className="text-gray-300">·</span>
                                                         {selectedCard.content.tags.map((tag, i) => (
-                                                            <span key={i} className="tag-badge px-2.5 py-1 rounded-full text-xs font-medium text-white transition-transform hover:scale-105">
+                                                            <span key={i} className="tag-badge px-2.5 py-1 rounded-full text-xs font-medium text-white transition-all duration-200 hover:scale-110 hover:shadow-md cursor-default">
                                                                 {tag}
                                                             </span>
                                                         ))}
@@ -877,22 +959,22 @@ export default function ReportCards() {
                                     </div>
                                     <button
                                         onClick={() => setSelectedCard(null)}
-                                        className="text-gray-400 hover:text-gray-700 transition-all p-2 rounded-lg hover:bg-gray-100 active:scale-95"
+                                        className="text-gray-400 hover:text-gray-700 transition-all duration-200 p-2.5 rounded-xl hover:bg-gray-100 active:scale-90 hover:rotate-90"
                                         aria-label="关闭"
                                     >
-                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                                         </svg>
                                     </button>
                                 </div>
 
                                 {/* 插画展示 */}
                                 {selectedCard.illustration && (
-                                    <div className="mb-10 rounded-2xl overflow-hidden transition-shadow hover:shadow-xl">
+                                    <div className="mb-10 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:scale-[1.01]">
                                         <img
                                             src={selectedCard.illustration}
                                             alt={selectedCard.title}
-                                            className="w-full h-80 object-cover"
+                                            className="w-full h-80 object-cover transition-transform duration-500 hover:scale-105"
                                             loading="lazy"
                                         />
                                     </div>
@@ -910,8 +992,8 @@ export default function ReportCards() {
                                     <div className="mb-8">
                                         <div className="space-y-4">
                                             {selectedCard.content.details.map((detail, i) => (
-                                                <div key={i} className="flex items-start gap-4 transition-transform hover:translate-x-1">
-                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                                                <div key={i} className="flex items-start gap-4 transition-all duration-200 hover:translate-x-2 hover:bg-gray-50 p-3 rounded-xl -mx-3">
+                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center mt-0.5 transition-transform duration-200 group-hover:scale-110">
                                                         {i + 1}
                                                     </span>
                                                     <p className="flex-1 text-base text-gray-700 leading-relaxed">

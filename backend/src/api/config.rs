@@ -295,6 +295,32 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     placeholder: "URL to pet character image".to_string(),
                     required: false,
                 },
+                ConfigField {
+                    key: "github_client_id".to_string(),
+                    label: "GitHub OAuth Client ID".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("GITHUB_CLIENT_ID").unwrap_or_default(),
+                    placeholder: "GitHub OAuth Application Client ID".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "github_client_secret".to_string(),
+                    label: "GitHub OAuth Client Secret".to_string(),
+                    field_type: "password".to_string(),
+                    value: std::env::var("GITHUB_CLIENT_SECRET").unwrap_or_default(),
+                    placeholder: "GitHub OAuth Application Client Secret".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "github_redirect_url".to_string(),
+                    label: "GitHub OAuth Redirect URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("GITHUB_REDIRECT_URL").unwrap_or_else(|_| {
+                        "http://localhost:3000/api/auth/github/callback".to_string()
+                    }),
+                    placeholder: "http://localhost:3000/api/auth/github/callback".to_string(),
+                    required: false,
+                },
             ],
         },
     };
@@ -427,6 +453,9 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "image_gen_height" => "IMAGE_GEN_HEIGHT",
             "pet_enabled" => "PET_ENABLED",
             "pet_image_url" => "PET_IMAGE_URL",
+            "github_client_id" => "GITHUB_CLIENT_ID",
+            "github_client_secret" => "GITHUB_CLIENT_SECRET",
+            "github_redirect_url" => "GITHUB_REDIRECT_URL",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
