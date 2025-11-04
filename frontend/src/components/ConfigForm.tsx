@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
 import { FaBrain } from 'react-icons/fa';
+import { fetchJson } from '../utils/apiHelper';
 
 interface ConfigField {
   key: string;
@@ -79,39 +80,46 @@ const ConfigForm: React.FC = () => {
     console.log('Saving config...', config);
 
     try {
-      const response = await fetch(`${API_URL}/api/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
+      const result = await fetchJson(
+        `${API_URL}/api/config`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        },
+        '保存配置失败'
+      );
 
-      console.log('Save response status:', response.status);
-      const result = await response.json();
       console.log('Save result:', result);
+      
+      setMessage('✓ 配置已保存！正在重启后端...');
+      notifyDirtyState(false);
+      window.dispatchEvent(
+        new CustomEvent('config-save-result', {
+          detail: {
+            success: true,
+            message: result.message || '配置已保存',
+          },
+        })
+      );
 
-      if (response.ok) {
-        setMessage('✓ 配置已保存！请重启后端生效。');
-        notifyDirtyState(false);
-        window.dispatchEvent(
-          new CustomEvent('config-save-result', {
-            detail: {
-              success: true,
-              message: result.message || '配置已保存',
-            },
-          })
+      // Automatically trigger backend restart
+      try {
+        await fetchJson(
+          `${API_URL}/api/system/restart`,
+          { method: 'POST' },
+          '重启后端失败'
         );
+
+        setMessage('✓ 配置已保存！后端正在重启...');
+        setTimeout(() => {
+          setMessage('✓ 后端重启完成，配置已生效');
+          setTimeout(() => setMessage(''), 3000);
+        }, 5000);
+      } catch (restartError) {
+        console.warn('Failed to restart backend:', restartError);
+        setMessage('✓ 配置已保存！请手动重启后端生效。');
         setTimeout(() => setMessage(''), 5000);
-      } else {
-        const errorMsg = `✗ 保存失败: ${result.message || 'Unknown error'}`;
-        setMessage(errorMsg);
-        window.dispatchEvent(
-          new CustomEvent('config-save-result', {
-            detail: {
-              success: false,
-              message: result.message || '保存失败',
-            },
-          })
-        );
       }
     } catch (error) {
       console.error('Save config error:', error);
@@ -135,8 +143,7 @@ const ConfigForm: React.FC = () => {
     
     try {
       // 加载配置结构
-      const response = await fetch(`${API_URL}/api/config`);
-      const data = await response.json();
+      const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
       console.log('Loaded config structure:', data);
       
       // 清空所有配置字段的值
@@ -204,31 +211,30 @@ const ConfigForm: React.FC = () => {
       setMessage('正在保存默认配置...');
       console.log('Saving cleared config...');
       
-      const saveResponse = await fetch(`${API_URL}/api/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(clearedData),
-      });
+      const saveResult = await fetchJson(
+        `${API_URL}/api/config`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(clearedData),
+        },
+        '保存配置失败'
+      );
 
-      const saveResult = await saveResponse.json();
       console.log('Save result:', saveResult);
 
-      if (saveResponse.ok) {
-        setMessage('✓ 配置已重置并保存！');
-        setTimeout(() => setMessage(''), 5000);
-        
-        // 通知重置完成
-        window.dispatchEvent(
-          new CustomEvent('config-reset-result', {
-            detail: {
-              success: true,
-              message: saveResult.message || '配置已重置为默认值并保存',
-            },
-          })
-        );
-      } else {
-        throw new Error(saveResult.message || '保存失败');
-      }
+      setMessage('✓ 配置已重置并保存！');
+      setTimeout(() => setMessage(''), 5000);
+      
+      // 通知重置完成
+      window.dispatchEvent(
+        new CustomEvent('config-reset-result', {
+          detail: {
+            success: true,
+            message: saveResult.message || '配置已重置为默认值并保存',
+          },
+        })
+      );
     } catch (error) {
       console.error('Reset config error:', error);
       const errorMsg = '重置配置失败：' + (error instanceof Error ? error.message : '未知错误');
@@ -248,13 +254,13 @@ const ConfigForm: React.FC = () => {
     setMessage('');
 
     try {
-      const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
-        method: 'POST',
-      });
+      const result = await fetchJson(
+        `${API_URL}/api/profile/fetch-all`,
+        { method: 'POST' },
+        '刷新平台数据失败'
+      );
 
-      const result = await response.json();
-
-      if (result.success || response.ok) {
+      if (result.success) {
         setMessage('✓ 平台数据刷新成功！');
         setTimeout(() => setMessage(''), 5000);
         
@@ -273,17 +279,7 @@ const ConfigForm: React.FC = () => {
           new CustomEvent('platform-data-refresh-result', {
             detail: {
               success: true,
-              message: '平台数据刷新成功',
-            },
-          })
-        );
-      } else {
-        setMessage(`✗ 刷新失败: ${result.message || 'Unknown error'}`);
-        window.dispatchEvent(
-          new CustomEvent('platform-data-refresh-result', {
-            detail: {
-              success: false,
-              message: result.message || '刷新失败',
+              message: result.message || '平台数据刷新成功',
             },
           })
         );
@@ -344,8 +340,7 @@ const ConfigForm: React.FC = () => {
   const loadConfig = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/config`);
-      const data = await response.json();
+      const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
       setConfig(data);
       notifyDirtyState(false);
       
@@ -375,16 +370,19 @@ const ConfigForm: React.FC = () => {
         configObj[field.key] = field.value;
       });
 
-      const response = await fetch(`${API_URL}/api/config/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform: platformName,
-          config: configObj,
-        }),
-      });
+      const result = await fetchJson(
+        `${API_URL}/api/config/test`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform: platformName,
+            config: configObj,
+          }),
+        },
+        '测试连接失败'
+      );
 
-      const result = await response.json();
       setMessage(result.message);
       setTimeout(() => setMessage(''), 5000);
     } catch (error) {
@@ -466,12 +464,11 @@ const ConfigForm: React.FC = () => {
     setGenerateProgress('正在加载报告...');
 
     try {
-      const reportResponse = await fetch(`${API_URL}/api/profile/report`);
-      if (!reportResponse.ok) {
-        throw new Error('未找到报告，请先生成报告');
-      }
-
-      const reportData = await reportResponse.json();
+      const reportData = await fetchJson(
+        `${API_URL}/api/profile/report`,
+        {},
+        '未找到报告，请先生成报告'
+      );
       if (!reportData.report || !reportData.report.cards || reportData.report.cards.length === 0) {
         throw new Error('报告中没有卡片，请先生成报告');
       }

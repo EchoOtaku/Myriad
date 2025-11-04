@@ -316,7 +316,7 @@ pub async fn update_config(
                 StatusCode::OK,
                 Json(json!({
                     "success": true,
-                    "message": "Configuration saved successfully! Please restart backend to apply changes."
+                    "message": "Configuration saved successfully! Changes will be applied automatically within a few seconds."
                 })),
             )
         }
@@ -434,6 +434,20 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
 
     // 写回 .env 文件
     fs::write(env_path, env_content)?;
+
+    // 重新加载环境变量
+    if let Err(e) = dotenvy::from_path_override(env_path) {
+        tracing::warn!("⚠️ Failed to reload .env file after saving config: {}", e);
+    } else {
+        tracing::info!("♻️ Environment variables reloaded after config save");
+    }
+
+    // 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)
+    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    tracing::info!(
+        "🔄 Configuration reload flag set - changes will be picked up within 2-3 seconds"
+    );
 
     Ok(())
 }

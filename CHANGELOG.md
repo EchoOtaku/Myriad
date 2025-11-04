@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Initial project structure
 - Backend Rust + Axum framework
 - Frontend Astro + React + Tailwind CSS
@@ -21,16 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration management page
 
 ### In Progress
+
 - GitHub API integration
-- Twitter/X API integration  
-- LinkedIn API integration
-- OpenAI analysis implementation
+- Twitter/X API integration
+- Bilibili API integration
+- Steam API integration
+- NetEase Cloud Music integration
+- Google Gemini AI analysis implementation
 - Data visualization components
 - Automated data fetching scheduler
 
 ## [0.1.0] - 2025-10-30
 
 ### Added
+
 - Project initialization
 - Basic architecture setup
 - Core dependencies configuration

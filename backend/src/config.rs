@@ -17,11 +17,12 @@ pub struct AppConfig {
 impl AppConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(Self {
-            database_url: env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://myriad:password@localhost:5432/myriad".to_string()),
+            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| String::new()),
             server_host: env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             server_port: env::var("SERVER_PORT")
-                .unwrap_or_else(|_| "3000".to_string())
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "3000".to_string())
                 .parse()?,
             frontend_dist_path: env::var("FRONTEND_DIST_PATH")
                 .unwrap_or_else(|_| "../frontend/dist".to_string()),

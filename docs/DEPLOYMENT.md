@@ -18,6 +18,7 @@ This guide covers different deployment strategies for the Myriad platform.
 ## Prerequisites
 
 ### For Development
+
 - Windows 10/11 or Linux
 - Rust 1.75+
 - Node.js 20+
@@ -25,6 +26,7 @@ This guide covers different deployment strategies for the Myriad platform.
 - Git
 
 ### For Production
+
 - Linux server (Ubuntu 22.04 LTS recommended) or Windows Server
 - Docker & Docker Compose (for Docker deployment)
 - Minimum 2GB RAM, 2 CPU cores
@@ -36,6 +38,7 @@ This guide covers different deployment strategies for the Myriad platform.
 ### Quick Start
 
 1. **Clone and setup:**
+
    ```powershell
    git clone https://github.com/yourusername/Myriad.git
    cd Myriad
@@ -46,6 +49,7 @@ This guide covers different deployment strategies for the Myriad platform.
    Edit `backend/.env` with your settings
 
 3. **Start PostgreSQL:**
+
    ```powershell
    docker-compose up -d postgres
    ```
@@ -56,6 +60,7 @@ This guide covers different deployment strategies for the Myriad platform.
    ```
 
 Access:
+
 - Frontend: http://localhost:4321
 - Backend: http://localhost:3000
 
@@ -93,13 +98,29 @@ nano backend/.env
 ```
 
 Update these critical settings:
+
 ```env
 DATABASE_URL=postgres://myriad:STRONG_PASSWORD@postgres:5432/myriad
-OPENAI_API_KEY=sk-your-real-api-key
+JWT_SECRET=your-secure-random-secret
+
+# GitHub OAuth (可选 - 用于额外用户登录和管理员账户绑定)
+GITHUB_CLIENT_ID=your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback
+FRONTEND_URL=https://yourdomain.com
+
+# Google Gemini API (Optional for AI analysis)
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.0-flash-exp
+
+# Platform Integration (Optional)
 GITHUB_TOKEN=ghp_your-real-token
+
 SERVER_HOST=0.0.0.0
 CORS_ORIGINS=https://yourdomain.com
 ```
+
+> **Note**: GitHub OAuth is now optional. You can create a local administrator account during setup at `/setup`.
 
 #### 3. Build and Deploy
 
@@ -110,12 +131,22 @@ docker-compose build
 # Start services
 docker-compose up -d
 
+# Check logs
+docker-compose logs -f
+
+# Access setup wizard at https://yourdomain.com/setup
+# Create local admin account and complete initialization
+```
+
 # Check status
+
 docker-compose ps
 
 # View logs
+
 docker-compose logs -f
-```
+
+````
 
 #### 4. Configure Reverse Proxy (nginx)
 
@@ -157,9 +188,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 }
-```
+````
 
 Enable and restart:
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/myriad /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -171,6 +203,7 @@ sudo systemctl restart nginx
 #### 1. Install Dependencies
 
 **On Ubuntu/Debian:**
+
 ```bash
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -244,6 +277,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable myriad
@@ -262,29 +296,54 @@ DATABASE_URL=postgres://user:password@host:port/database
 # Server (Required)
 SERVER_HOST=0.0.0.0
 SERVER_PORT=3000
+RUST_LOG=info
 
-# OpenAI (Required for AI features)
-OPENAI_API_KEY=sk-your-key
-OPENAI_MODEL=gpt-4
+# Security (Required)
+JWT_SECRET=your-secure-random-secret
 
-# Platform Tokens (At least one required)
+# GitHub OAuth (可选 - 用于额外用户登录和管理员账户绑定)
+GITHUB_CLIENT_ID=your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback
+FRONTEND_URL=https://yourdomain.com
+
+# Google Gemini (Optional for AI features)
+GEMINI_API_KEY=your_api_key
+GEMINI_MODEL=gemini-2.0-flash-exp
+TOPIC_STYLE=balanced
+
+# Platform Integration Tokens (Optional, at least one recommended)
+GITHUB_USERNAME=your_username
 GITHUB_TOKEN=ghp_your-token
+BILIBILI_UID=your_bilibili_uid
+STEAM_API_KEY=your_steam_key
+STEAM_ID=your_steam_id
+TWITTER_USERNAME=your_username
 TWITTER_BEARER_TOKEN=your-token
-LINKEDIN_ACCESS_TOKEN=your-token
+NETEASE_USER_ID=your_netease_id
 ```
 
 ### Optional Variables
 
 ```env
-# Logging
-RUST_LOG=info,myriad_backend=debug
-
 # Frontend
 FRONTEND_DIST_PATH=../frontend/dist
 
-# Security
-JWT_SECRET=your-secret-key
-CORS_ORIGINS=https://yourdomain.com
+# UI Customization
+UI_WALLPAPER_URL=https://example.com/wallpaper.jpg
+UI_WALLPAPER_BLUR=5
+UI_THEME=dark
+UI_PRIMARY_COLOR=#6366f1
+UI_SECONDARY_COLOR=#8b5cf6
+
+PET_ENABLED=true
+PET_IMAGE_URL=https://example.com/pet.png
+
+# Image Generation
+IMAGE_GEN_ENABLED=false
+IMAGE_GEN_MODEL=sdxl
+IMAGE_GEN_WIDTH=1024
+IMAGE_GEN_HEIGHT=1024
 
 # Features
 ENABLE_AUTO_FETCH=true
@@ -343,6 +402,7 @@ sudo certbot renew --dry-run
 ### Using Custom Certificate
 
 Update nginx configuration:
+
 ```nginx
 ssl_certificate /path/to/certificate.crt;
 ssl_certificate_key /path/to/private.key;
@@ -408,11 +468,13 @@ sudo systemctl restart myriad
 ### Backend Won't Start
 
 1. **Check logs:**
+
    ```bash
    sudo journalctl -u myriad -n 50
    ```
 
 2. **Verify database connection:**
+
    ```bash
    psql $DATABASE_URL -c "SELECT 1;"
    ```
@@ -425,6 +487,7 @@ sudo systemctl restart myriad
 ### Frontend Build Errors
 
 1. **Clear cache:**
+
    ```bash
    cd frontend
    rm -rf node_modules dist .astro
@@ -440,11 +503,13 @@ sudo systemctl restart myriad
 ### Database Connection Issues
 
 1. **Check PostgreSQL status:**
+
    ```bash
    sudo systemctl status postgresql
    ```
 
 2. **Verify credentials:**
+
    ```bash
    psql -U myriad -h localhost -d myriad
    ```
@@ -458,12 +523,14 @@ sudo systemctl restart myriad
 ### Docker Issues
 
 1. **Check container status:**
+
    ```bash
    docker-compose ps
    docker-compose logs backend
    ```
 
 2. **Restart containers:**
+
    ```bash
    docker-compose restart
    ```
@@ -493,6 +560,7 @@ work_mem = 4MB
 ```
 
 Restart PostgreSQL:
+
 ```bash
 sudo systemctl restart postgresql
 ```
@@ -500,6 +568,7 @@ sudo systemctl restart postgresql
 ### Backend
 
 Set environment variables:
+
 ```env
 RUST_LOG=warn  # Reduce logging in production
 ```

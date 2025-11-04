@@ -1,4 +1,5 @@
 -- Create users table for GitHub authentication
+-- Single admin user system: First registered user becomes admin automatically
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     github_id BIGINT NOT NULL UNIQUE,
@@ -10,6 +11,7 @@ CREATE TABLE users (
     bio TEXT,
     location VARCHAR(255),
     company VARCHAR(255),
+    is_admin BOOLEAN DEFAULT false, -- First user is automatically set as admin
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     last_login_at TIMESTAMP WITH TIME ZONE
@@ -28,6 +30,10 @@ CREATE TABLE sessions (
 -- Create indexes for performance
 CREATE INDEX idx_users_github_id ON users(github_id);
 CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_is_admin ON users(is_admin);
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_token_hash ON sessions(token_hash);
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
+
+-- Add constraint to ensure only one admin exists
+CREATE UNIQUE INDEX idx_unique_admin ON users(is_admin) WHERE is_admin = true;

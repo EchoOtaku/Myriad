@@ -46,6 +46,36 @@ export const checkHealth = async () => {
   return response.data;
 };
 
+// Setup APIs
+export const checkSetupStatus = async () => {
+  const response = await api.get('/api/setup/status');
+  return response.data;
+};
+
+export const saveDatabaseConfig = async (config: {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+}) => {
+  const response = await api.post('/api/setup/database-config', config);
+  return response.data;
+};
+
+export const initDatabase = async () => {
+  const response = await api.post('/api/setup/init-database');
+  return response.data;
+};
+
+export const createAdmin = async (credentials: {
+  username: string;
+  password: string;
+}) => {
+  const response = await api.post('/api/setup/create-admin', credentials);
+  return response.data;
+};
+
 // Configuration
 export const fetchConfig = async () => {
   const response = await api.get('/api/config');

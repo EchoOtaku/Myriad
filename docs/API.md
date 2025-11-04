@@ -17,6 +17,7 @@ Base URL: `http://localhost:3000`
 Check if the API server is running.
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -26,6 +27,7 @@ Check if the API server is running.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Service is healthy
 
 ---
@@ -37,6 +39,7 @@ Check if the API server is running.
 Retrieve current system configuration.
 
 **Response:**
+
 ```json
 {
   "platforms": [
@@ -52,8 +55,8 @@ Retrieve current system configuration.
     }
   ],
   "ai_config": {
-    "provider": "OpenAI",
-    "model": "gpt-4",
+    "provider": "Google Gemini",
+    "model": "gemini-2.0-flash-exp",
     "enabled": true
   },
   "fetch_config": {
@@ -64,6 +67,7 @@ Retrieve current system configuration.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Configuration retrieved successfully
 
 ### POST /api/config
@@ -71,6 +75,7 @@ Retrieve current system configuration.
 Update system configuration.
 
 **Request Body:**
+
 ```json
 {
   "platforms": [
@@ -81,8 +86,8 @@ Update system configuration.
     }
   ],
   "ai_config": {
-    "provider": "OpenAI",
-    "model": "gpt-4",
+    "provider": "Google Gemini",
+    "model": "gemini-2.0-flash-exp",
     "enabled": true
   },
   "fetch_config": {
@@ -93,6 +98,7 @@ Update system configuration.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -101,6 +107,7 @@ Update system configuration.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Configuration updated successfully
 - `400 Bad Request` - Invalid configuration data
 - `500 Internal Server Error` - Failed to update configuration
@@ -114,6 +121,7 @@ Update system configuration.
 List all supported platforms.
 
 **Response:**
+
 ```json
 {
   "platforms": [
@@ -134,6 +142,7 @@ List all supported platforms.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Platforms retrieved successfully
 
 ---
@@ -145,6 +154,7 @@ List all supported platforms.
 Get all fetched user profiles.
 
 **Response:**
+
 ```json
 {
   "profiles": [
@@ -170,6 +180,7 @@ Get all fetched user profiles.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Profiles retrieved successfully
 - `404 Not Found` - No profiles found
 
@@ -178,6 +189,7 @@ Get all fetched user profiles.
 Trigger manual data fetch from platforms.
 
 **Request Body:**
+
 ```json
 {
   "platforms": ["github", "twitter"],
@@ -186,10 +198,12 @@ Trigger manual data fetch from platforms.
 ```
 
 **Parameters:**
+
 - `platforms` (optional): Array of platform names to fetch. If omitted, fetches from all enabled platforms.
 - `force` (optional): If true, fetches even if recently fetched. Default: false.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -199,6 +213,7 @@ Trigger manual data fetch from platforms.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Fetch triggered successfully
 - `400 Bad Request` - Invalid platform names
 - `429 Too Many Requests` - Rate limit exceeded
@@ -213,11 +228,13 @@ Trigger manual data fetch from platforms.
 Get AI analysis results.
 
 **Query Parameters:**
+
 - `type` (optional): Filter by analysis type (e.g., "profile_summary", "skill_extraction")
 - `limit` (optional): Number of results to return. Default: 10
 - `offset` (optional): Pagination offset. Default: 0
 
 **Response:**
+
 ```json
 {
   "analysis": [
@@ -230,7 +247,7 @@ Get AI analysis results.
         "activity_level": "high",
         "interests": ["Open Source", "Web Development"]
       },
-      "ai_model": "gpt-4",
+      "ai_model": "gemini-2.0-flash-exp",
       "created_at": "2025-10-30T12:00:00Z"
     }
   ],
@@ -239,6 +256,7 @@ Get AI analysis results.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Analysis results retrieved successfully
 - `404 Not Found` - No analysis results found
 
@@ -247,6 +265,7 @@ Get AI analysis results.
 Trigger AI analysis of profile data.
 
 **Request Body:**
+
 ```json
 {
   "type": "profile_summary",
@@ -259,6 +278,7 @@ Trigger AI analysis of profile data.
 ```
 
 **Parameters:**
+
 - `type`: Type of analysis to perform
   - `profile_summary` - General summary of user's digital presence
   - `skill_extraction` - Extract and categorize skills
@@ -269,6 +289,7 @@ Trigger AI analysis of profile data.
 - `options` (optional): Additional options for the analysis
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -279,6 +300,7 @@ Trigger AI analysis of profile data.
 ```
 
 **Status Codes:**
+
 - `200 OK` - Analysis triggered successfully
 - `400 Bad Request` - Invalid analysis type or parameters
 - `402 Payment Required` - Insufficient API credits
@@ -298,6 +320,7 @@ All endpoints may return error responses in the following format:
 ```
 
 **Common Status Codes:**
+
 - `400 Bad Request` - Invalid request parameters
 - `404 Not Found` - Resource not found
 - `429 Too Many Requests` - Rate limit exceeded
@@ -315,6 +338,7 @@ API endpoints are subject to rate limiting to prevent abuse:
 - Other endpoints: 60 requests per minute
 
 Rate limit headers are included in responses:
+
 ```
 X-RateLimit-Limit: 60
 X-RateLimit-Remaining: 59
@@ -346,10 +370,12 @@ Future versions will support webhooks for real-time notifications:
 ## CORS
 
 The API supports CORS for frontend access. Default allowed origins:
+
 - `http://localhost:4321` (development)
 - `http://localhost:3000` (development)
 
 Configure additional origins in the `.env` file:
+
 ```env
 CORS_ORIGINS=http://localhost:4321,https://yourdomain.com
 ```
@@ -361,16 +387,19 @@ CORS_ORIGINS=http://localhost:4321,https://yourdomain.com
 ### Testing with cURL
 
 **Health check:**
+
 ```bash
 curl http://localhost:3000/health
 ```
 
 **Get configuration:**
+
 ```bash
 curl http://localhost:3000/api/config
 ```
 
 **Trigger fetch:**
+
 ```bash
 curl -X POST http://localhost:3000/api/fetch \
   -H "Content-Type: application/json" \
@@ -380,16 +409,19 @@ curl -X POST http://localhost:3000/api/fetch \
 ### Testing with PowerShell
 
 **Health check:**
+
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:3000/health"
 ```
 
 **Get configuration:**
+
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:3000/api/config"
 ```
 
 **Trigger fetch:**
+
 ```powershell
 $body = @{
     platforms = @("github")
@@ -410,7 +442,7 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/fetch" `
 The frontend includes a TypeScript client in `frontend/src/lib/api.ts`:
 
 ```typescript
-import { fetchConfig, triggerFetch, fetchAnalysis } from '@lib/api';
+import { fetchConfig, triggerFetch, fetchAnalysis } from "@lib/api";
 
 // Get configuration
 const config = await fetchConfig();
@@ -443,6 +475,7 @@ let config: serde_json::Value = response.json().await?;
 ## Changelog
 
 ### v0.1.0 (2025-10-30)
+
 - Initial API implementation
 - Basic CRUD endpoints for configuration
 - Platform listing endpoint

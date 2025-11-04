@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo clippy:*)",
+      "Bash(cargo build:*)",
+      "Bash(npm run build:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clean:*)",
+      "Bash(chmod:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

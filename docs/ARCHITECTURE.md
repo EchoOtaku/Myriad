@@ -29,11 +29,11 @@ Myriad is built as a modern full-stack application with a clear separation betwe
                           ┌────────▼─────────┐
                           │   PostgreSQL     │
                           │    Database      │
-                          └──────────────────┘
+                          └──────────────────┐
                                    │
                           ┌────────▼─────────┐
-                          │   OpenAI API     │
-                          │  (AI Analysis)   │
+                          │ Google Gemini  │
+                          │  (AI Analysis)  │
                           └──────────────────┘
 ```
 
@@ -46,6 +46,7 @@ Myriad is built as a modern full-stack application with a clear separation betwe
 The frontend is built with Astro, a modern static site generator that allows for fast, content-focused websites with minimal JavaScript. React is used for interactive components.
 
 **Key Features:**
+
 - Server-side rendering for fast initial loads
 - React islands for interactive components
 - Tailwind CSS for styling
@@ -53,6 +54,7 @@ The frontend is built with Astro, a modern static site generator that allows for
 - Vite as the build tool
 
 **Structure:**
+
 ```
 frontend/
 ├── src/
@@ -72,6 +74,7 @@ frontend/
 The backend is built with Rust for performance, safety, and reliability. Axum provides a modern async web framework, while SeaORM handles database operations.
 
 **Key Features:**
+
 - Async/await for concurrent operations
 - Type-safe database queries with SeaORM
 - RESTful API design
@@ -80,6 +83,7 @@ The backend is built with Rust for performance, safety, and reliability. Axum pr
 - Comprehensive logging with tracing
 
 **Structure:**
+
 ```
 backend/
 ├── src/
@@ -106,6 +110,7 @@ backend/
 PostgreSQL is used for its reliability, advanced features (JSONB, full-text search), and excellent support for complex queries.
 
 **Core Tables:**
+
 - `platforms` - Supported social platforms
 - `user_profiles` - User profile data from platforms
 - `user_activities` - User activities and posts
@@ -115,6 +120,7 @@ PostgreSQL is used for its reliability, advanced features (JSONB, full-text sear
 - `fetch_jobs` - Background job tracking
 
 **Schema Management:**
+
 - SQL schema in `database/schema.sql`
 - SeaORM migrations in `backend/migrations/`
 - Automated migration runner
@@ -142,7 +148,7 @@ User → Frontend → Backend API → Analyzer Service
                                    Fetch Data
                                    from Database
                                         ↓
-                                  OpenAI API
+                              Google Gemini API
                                         ↓
                                   Store Results
                                         ↓
@@ -162,17 +168,20 @@ User → Frontend → Backend API → Database Query
 ## Security Considerations
 
 ### API Key Management
+
 - API keys stored encrypted in database
 - Environment variables for sensitive data
 - Never exposed to frontend
 - Rotation support
 
 ### Data Privacy
+
 - User data stored locally or in controlled environment
 - No third-party analytics by default
 - Configurable data retention
 
 ### Network Security
+
 - CORS configuration for API access
 - HTTPS recommended for production
 - Rate limiting on API endpoints (planned)
@@ -180,17 +189,21 @@ User → Frontend → Backend API → Database Query
 ## Scalability
 
 ### Current Design
+
 - Monolithic architecture suitable for single-user or small team use
 - Single PostgreSQL instance
 - All services run on same machine/container
 
 ### Future Scaling Options
+
 1. **Horizontal Scaling**
+
    - Multiple backend instances behind load balancer
    - Shared PostgreSQL database
    - Redis for session/cache (if needed)
 
 2. **Microservices**
+
    - Separate services for each platform integration
    - Message queue for async processing
    - Service mesh for inter-service communication
@@ -203,18 +216,21 @@ User → Frontend → Backend API → Database Query
 ## Performance Considerations
 
 ### Backend
+
 - Async I/O for concurrent API calls
 - Connection pooling for database
 - Efficient serialization with serde
 - Release builds with LTO optimization
 
 ### Frontend
+
 - Static generation for fast loads
 - Code splitting for smaller bundles
 - Image optimization
 - CDN for static assets (production)
 
 ### Database
+
 - Indexed columns for frequent queries
 - JSONB for flexible schema
 - Regular VACUUM and ANALYZE
@@ -223,6 +239,7 @@ User → Frontend → Backend API → Database Query
 ## Deployment Architecture
 
 ### Development
+
 ```
 Local Machine
 ├── PostgreSQL (Docker or local)
@@ -231,6 +248,7 @@ Local Machine
 ```
 
 ### Production (Docker)
+
 ```
 Docker Host
 ├── PostgreSQL Container
@@ -240,6 +258,7 @@ Docker Host
 ```
 
 ### Production (Traditional)
+
 ```
 Server
 ├── PostgreSQL Service
@@ -251,6 +270,7 @@ Server
 ## Technology Choices Rationale
 
 ### Why Rust?
+
 - Memory safety without garbage collection
 - Excellent performance
 - Strong type system prevents many bugs
@@ -258,6 +278,7 @@ Server
 - Efficient resource usage
 
 ### Why Astro?
+
 - Fast by default (minimal JS)
 - Flexible (supports multiple frameworks)
 - Great developer experience
@@ -265,6 +286,7 @@ Server
 - Modern build tools
 
 ### Why PostgreSQL?
+
 - ACID compliance
 - JSONB for flexible data storage
 - Rich query capabilities
@@ -272,6 +294,7 @@ Server
 - Excellent documentation
 
 ### Why SeaORM?
+
 - Async from ground up
 - Type-safe queries
 - Migration management
@@ -281,16 +304,19 @@ Server
 ## Development Workflow
 
 1. **Local Development**
+
    - Use `./scripts/dev.ps1` to start both servers
    - Backend proxies to frontend in development
    - Hot reload for both frontend and backend
 
 2. **Testing**
+
    - Unit tests for backend services
    - Integration tests for API endpoints
    - Frontend component tests (planned)
 
 3. **Building**
+
    - `./scripts/build.ps1` creates production builds
    - Frontend compiled to static files
    - Backend compiled with optimizations

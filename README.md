@@ -7,7 +7,7 @@
 ## 🌟 Features
 
 - **Multi-Platform Integration**: Connect and aggregate data from GitHub, Twitter/X, LinkedIn, and more
-- **AI-Powered Analysis**: Use OpenAI GPT-4 to analyze your digital presence and generate insights
+- **AI-Powered Analysis**: Use Google Gemini to analyze your digital presence and generate insights
 - **Beautiful Visualizations**: Interactive dashboards and charts to visualize your data
 - **Unified Database**: PostgreSQL-based centralized storage for all your platform data
 - **Modern Tech Stack**: Built with Astro (frontend) and Rust (backend) for maximum performance
@@ -28,6 +28,7 @@ Myriad/
 ### Technology Stack
 
 **Frontend:**
+
 - Astro 4.x - Static site generator
 - React 18 - UI components
 - Tailwind CSS - Styling
@@ -35,16 +36,19 @@ Myriad/
 - Chart.js - Data visualization
 
 **Backend:**
+
 - Rust 1.75+ - Systems programming language
 - Axum 0.7 - Web framework
 - SeaORM 0.12 - Database ORM
 - Tokio - Async runtime
-- async-openai - OpenAI API client
+- google-generativeai - Google Gemini API client
 
 **Database:**
+
 - PostgreSQL 16+ - Primary database
 
 **DevOps:**
+
 - Docker & Docker Compose - Containerization
 - PowerShell scripts - Automation
 
@@ -60,44 +64,100 @@ Myriad/
 ### Installation
 
 1. **Clone the repository:**
+
    ```powershell
    git clone https://github.com/yourusername/Myriad.git
    cd Myriad
    ```
 
 2. **Run the setup script:**
+
    ```powershell
    .\scripts\setup.ps1
    ```
 
 3. **Configure environment variables:**
-   Edit `backend/.env` with your API keys and database credentials:
-   ```env
-   DATABASE_URL=postgres://myriad:password@localhost:5432/myriad
-   OPENAI_API_KEY=sk-your-api-key-here
-   GITHUB_TOKEN=ghp_your-github-token-here
-   # ... other configuration
+   Copy the example file and edit with your credentials:
+
+   ```powershell
+   # Copy template
+   cp backend/.env.example backend/.env
+
+   # Edit backend/.env with required values
    ```
 
-4. **Set up the database:**
+   Minimum required configuration:
+
+   ```env
+   # Database
+   DATABASE_URL=postgres://myriad:password@localhost:5432/myriad
+
+   # Server
+   SERVER_HOST=127.0.0.1
+   SERVER_PORT=3000
+   RUST_LOG=info
+
+   # Security
+   JWT_SECRET=your-secret-key-here  # Generate with: openssl rand -hex 32
+   ```
+
+   Optional GitHub OAuth configuration:
+
+   ```env
+   # GitHub OAuth (可选 - 用于额外用户登录和管理员账户绑定)
+   GITHUB_CLIENT_ID=your_github_client_id
+   GITHUB_CLIENT_SECRET=your_github_client_secret
+   GITHUB_REDIRECT_URL=http://localhost:3000/api/auth/github/callback
+   FRONTEND_URL=http://localhost:4321
+   ```
+
+4. **Initialize the system:**
+
+   Visit `http://localhost:4321/setup` and follow the guided setup:
+
+   - **Step 1: Database Initialization** - Set up PostgreSQL tables
+   - **Step 2: Create Admin Account** - Create your local administrator account
+
+   After setup, login at `http://localhost:4321/login`
+
+   # GitHub OAuth (required for login)
+
+   GITHUB_CLIENT_ID=your_client_id
+   GITHUB_CLIENT_SECRET=your_client_secret
+   GITHUB_REDIRECT_URL=http://localhost:3000/api/auth/github/callback
+   FRONTEND_URL=http://localhost:4321
+
+   # AI Service (required for analysis)
+
+   GEMINI_API_KEY=your_api_key_here
+   GEMINI_MODEL=gemini-2.0-flash-exp
+
+   ```
+
+   ```
+
+5. **Set up the database:**
 
    **Option A - Using Docker (Recommended):**
+
    ```powershell
    docker-compose up -d postgres
    ```
 
    **Option B - Local PostgreSQL:**
+
    ```powershell
    createdb myriad
    psql myriad < database/schema.sql
    ```
 
-5. **Start development servers:**
+6. **Start development servers:**
+
    ```powershell
    .\scripts\dev.ps1
    ```
 
-6. **Access the application:**
+7. **Access the application:**
    - Frontend: http://localhost:4321
    - Backend API: http://localhost:3000
    - Health Check: http://localhost:3000/health
@@ -195,7 +255,7 @@ docker-compose up -d frontend
 To use platform integrations, you need to obtain API keys:
 
 1. **GitHub**: Create a [Personal Access Token](https://github.com/settings/tokens)
-2. **OpenAI**: Get an API key from [OpenAI Platform](https://platform.openai.com/)
+2. **Google Gemini**: Get an API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
 3. **Twitter/X**: Apply for [Developer Access](https://developer.twitter.com/)
 4. **LinkedIn**: Create an app in [LinkedIn Developers](https://www.linkedin.com/developers/)
 
@@ -237,7 +297,7 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 - Powered by [Rust](https://www.rust-lang.org/)
 - Styled with [Tailwind CSS](https://tailwindcss.com/)
 - Database: [PostgreSQL](https://www.postgresql.org/)
-- AI: [OpenAI](https://openai.com/)
+- AI: [Google Gemini](https://ai.google.dev/)
 
 ## 📧 Contact
 

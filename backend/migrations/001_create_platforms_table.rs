@@ -18,7 +18,12 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Platforms::Name).string().not_null().unique_key())
+                    .col(
+                        ColumnDef::new(Platforms::Name)
+                            .string()
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(Platforms::DisplayName).string().not_null())
                     .col(ColumnDef::new(Platforms::Icon).string())
                     .col(ColumnDef::new(Platforms::ApiEndpoint).string())
@@ -58,19 +63,35 @@ impl MigrationTrait for Migration {
                 true.into(),
             ])
             .values_panic([
+                "bilibili".into(),
+                "Bilibili".into(),
+                "bilibili".into(),
+                "https://api.bilibili.com".into(),
+                "uid".into(),
+                false.into(),
+            ])
+            .values_panic([
+                "steam".into(),
+                "Steam".into(),
+                "steam".into(),
+                "https://api.steampowered.com".into(),
+                "api_key".into(),
+                false.into(),
+            ])
+            .values_panic([
+                "netease_music".into(),
+                "Netease Music".into(),
+                "netease".into(),
+                "https://music.163.com".into(),
+                "user_id".into(),
+                false.into(),
+            ])
+            .values_panic([
                 "twitter".into(),
                 "Twitter/X".into(),
                 "twitter".into(),
                 "https://api.twitter.com/2".into(),
                 "bearer_token".into(),
-                false.into(),
-            ])
-            .values_panic([
-                "linkedin".into(),
-                "LinkedIn".into(),
-                "linkedin".into(),
-                "https://api.linkedin.com/v2".into(),
-                "oauth".into(),
                 false.into(),
             ])
             .to_owned();
