@@ -31,6 +31,7 @@ interface ReportCard {
     color: string;
     content: CardContent;
     illustration?: string; // 插画 URL
+    generated_at?: string; // 生成时间，用于唯一标识
 }
 
 interface PersonalReport {
@@ -66,16 +67,21 @@ export default function ReportCards() {
         }
 
         // 优先使用 all_cards，如果没有则使用 cards
-        const allCards = currentReport.all_cards || currentReport.cards;
-        console.log(`🎯 [Random] Source: ${currentReport.all_cards ? 'all_cards' : 'cards'}, Total: ${allCards?.length || 0} cards, Need: ${count} cards`);
+        const allCards = currentReport.all_cards && currentReport.all_cards.length > 0 
+            ? currentReport.all_cards 
+            : currentReport.cards;
+        
+        console.log(`🎯 [Random] Source: ${currentReport.all_cards && currentReport.all_cards.length > 0 ? 'all_cards' : 'cards'}, Total: ${allCards?.length || 0} cards, Need: ${count} cards`);
         
         if (!allCards || allCards.length === 0) {
             console.warn('⚠️ [Random] No cards available!');
             return [];
         }
+        
+        // 如果卡片数量小于等于需要的数量，返回所有卡片
         if (allCards.length <= count) {
-            console.log(`✅ [Random] Returning all ${allCards.length} cards`);
-            return allCards;
+            console.log(`✅ [Random] Returning all ${allCards.length} cards (not enough for random selection)`);
+            return [...allCards]; // 返回副本避免直接修改原数组
         }
         
         // Fisher-Yates 洗牌算法
@@ -88,6 +94,12 @@ export default function ReportCards() {
         const result = shuffled.slice(0, count);
         console.log(`✅ [Random] Returning ${result.length} random cards from ${allCards.length} total`);
         console.log(`   Selected cards: ${result.map(c => c.title).join(', ')}`);
+        
+        // 确保返回的卡片数量正确
+        if (result.length !== count && allCards.length >= count) {
+            console.error(`⚠️ [Random] Expected ${count} cards but got ${result.length}!`);
+        }
+        
         return result;
     }, []);
 
@@ -438,6 +450,7 @@ export default function ReportCards() {
                             from_cache: result.from_cache,
                             card_count: result.report.cards.length,
                             all_cards_count: result.report.all_cards?.length || 0,
+                            has_all_cards: !!(result.report.all_cards && result.report.all_cards.length > 0),
                             generated_at: result.report.generated_at,
                             topics: result.report.selected_topics
                         });
@@ -445,6 +458,8 @@ export default function ReportCards() {
                         setReport(result.report);
                         // 从所有卡片中随机抽取6张显示
                         const randomCards = getRandomCards(result.report, 6);
+                        console.log(`📦 [Load] Display ${randomCards.length} cards from report`);
+                        console.log(`📦 [Load] Card IDs: ${randomCards.map(c => c.topic_id).join(', ')}`);
                         setDisplayCards(randomCards);
                         setFromCache(result.from_cache || false);
                         setLoading(false);
@@ -452,6 +467,7 @@ export default function ReportCards() {
                     }
                 }
                 // 没有报告时显示空状态，不自动生成
+                console.log('📦 [Load] No existing report found');
                 setLoading(false);
             } catch (err) {
                 console.error('Failed to load existing report:', err);
@@ -480,6 +496,14 @@ export default function ReportCards() {
             progressBar.style.setProperty('--progress', progressPercent.toString());
         }
     }, [progressPercent]);
+
+    // 监控 displayCards 的变化，确保始终显示6张卡片
+    useEffect(() => {
+        if (displayCards.length > 0 && displayCards.length !== 6) {
+            console.warn(`⚠️ [Display] Expected 6 cards but got ${displayCards.length}!`);
+            console.log(`   Card titles: ${displayCards.map(c => c.title).join(', ')}`);
+        }
+    }, [displayCards]);
 
     // 萌宠走动动画 - 使用上传的像素画
     useEffect(() => {
@@ -655,7 +679,13 @@ export default function ReportCards() {
                     {/* 空状态：无报告时的提示 */}
                     {!loading && !error && (
                         <div className="max-w-md mx-auto">
-                            <div className="text-6xl mb-6">📊</div>
+                            <div className="mb-6 flex items-center justify-center">
+                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                                    <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                </div>
+                            </div>
                             <h2 className="text-2xl font-bold text-gray-800 mb-4">还没有生成报告</h2>
                             <p className="text-gray-600 mb-8">
                                 点击导航岛的灯泡图标开始生成您的个性化数据报告
@@ -664,19 +694,27 @@ export default function ReportCards() {
                                 <h3 className="font-bold text-gray-800 mb-3">报告将包含：</h3>
                                 <ul className="space-y-2 text-sm text-gray-600">
                                     <li className="flex items-start gap-2">
-                                        <span className="text-lg">🎯</span>
+                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
                                         <span>6个精选话题的深度分析</span>
                                     </li>
                                     <li className="flex items-start gap-2">
-                                        <span className="text-lg">🤖</span>
+                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
                                         <span>AI 驱动的个性化洞察</span>
                                     </li>
                                     <li className="flex items-start gap-2">
-                                        <span className="text-lg">📈</span>
+                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
                                         <span>跨平台数据整合</span>
                                     </li>
                                     <li className="flex items-start gap-2">
-                                        <span className="text-lg">⏰</span>
+                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
                                         <span>报告7天有效，过期后自动刷新</span>
                                     </li>
                                 </ul>
@@ -723,13 +761,13 @@ export default function ReportCards() {
                                 {isAdmin ? (
                                     <a
                                         href="/account"
-                                        className="relative cursor-pointer"
+                                        className="relative cursor-pointer group/avatar"
                                     >
                                         {!avatarError ? (
                                             <img
                                                 src={userInfo.avatar}
                                                 alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl"
                                                 crossOrigin="anonymous"
                                                 referrerPolicy="no-referrer"
                                                 onError={() => setAvatarError(true)}
@@ -738,23 +776,23 @@ export default function ReportCards() {
                                             <img
                                                 src={getDefaultAvatar(userInfo.name)}
                                                 alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl"
                                             />
                                         )}
                                         {/* 简约提示角标 */}
-                                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center shadow-lg" style={{ background: 'var(--color-primary)' }}>
+                                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 group-hover/avatar:scale-110 group-hover/avatar:shadow-xl avatar-badge">
                                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
                                             </svg>
                                         </span>
                                     </a>
                                 ) : (
-                                    <div className="relative">
+                                    <div className="relative group/avatar">
                                         {!avatarError ? (
                                             <img
                                                 src={userInfo.avatar}
                                                 alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl cursor-default"
                                                 crossOrigin="anonymous"
                                                 referrerPolicy="no-referrer"
                                                 onError={() => setAvatarError(true)}
@@ -763,7 +801,7 @@ export default function ReportCards() {
                                             <img
                                                 src={getDefaultAvatar(userInfo.name)}
                                                 alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50"
+                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl cursor-default"
                                             />
                                         )}
                                     </div>
@@ -816,38 +854,60 @@ export default function ReportCards() {
                     {/* 右侧区域3：报告信息 */}
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-3">
-                            <span className="text-2xl">✨</span>
+                            <div className="text-2xl">
+                                ✨
+                            </div>
                             <div>
                                 <p className="text-sm font-semibold text-gray-700">
-                                    {fromCache ? '📦 从缓存加载' : '🎉 新鲜生成'}
+                                    {fromCache ? '从缓存加载' : '新鲜生成'}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                    {getExpiryInfo()}天后更新 · 共{report.all_cards?.length || report.cards.length}个话题
+                                    {getExpiryInfo()}天后更新 · 共{(report.all_cards && report.all_cards.length > 0) ? report.all_cards.length : report.cards.length}个话题
                                 </p>
                             </div>
                         </div>
-                        {((report.all_cards && report.all_cards.length > 6) || report.cards.length > 6) && (
-                            <button
-                                onClick={() => {
-                                    console.log('🔄 [Shuffle] Changing cards...');
-                                    const newCards = getRandomCards(report, 6);
-                                    setDisplayCards(newCards);
-                                }}
-                                className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-lg"
-                                aria-label="换一批"
-                            >
-                                🎲 换一批
-                            </button>
-                        )}
+                        {(() => {
+                            // 获取可用的总卡片数
+                            const totalCards = (report.all_cards && report.all_cards.length > 0) 
+                                ? report.all_cards.length 
+                                : report.cards.length;
+                            const shouldShowShuffle = totalCards > 6;
+                            
+                            // 只在组件渲染时输出一次，避免每次渲染都打印
+                            if (typeof window !== 'undefined' && !window.__shuffleButtonLogged) {
+                                console.log(`🔘 [Shuffle Button] Total cards: ${totalCards}, Show button: ${shouldShowShuffle}`);
+                                console.log(`   all_cards: ${report.all_cards?.length || 0}, cards: ${report.cards.length}`);
+                                window.__shuffleButtonLogged = true;
+                            }
+                            
+                            return shouldShowShuffle ? (
+                                <button
+                                    onClick={() => {
+                                        console.log('🔄 [Shuffle] Changing cards...');
+                                        const newCards = getRandomCards(report, 6);
+                                        console.log(`🔄 [Shuffle] Got ${newCards.length} new cards`);
+                                        console.log(`🔄 [Shuffle] Card IDs: ${newCards.map(c => c.topic_id).join(', ')}`);
+                                        setDisplayCards(newCards);
+                                    }}
+                                    className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-lg"
+                                    aria-label="换一批"
+                                >
+                                    <svg className="w-4 h-4 inline-block mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    换一批
+                                </button>
+                            ) : null;
+                        })()}
                     </div>
                 </div>
             </div>
 
             {/* 卡片网格 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {displayCards.map((card) => (
+                {displayCards.slice(0, 6).map((card, index) => (
                     <article
-                        key={card.topic_id}
+                        key={card.generated_at ? `${card.generated_at}-${card.topic_id}` : `card-${index}-${card.topic_id}`}
                         className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card cursor-pointer hover:scale-[1.02] active:scale-[0.98] group"
                         onClick={() => setSelectedCard(card)}
                     >
@@ -1009,7 +1069,11 @@ export default function ReportCards() {
                                 {selectedCard.content.highlight && (
                                     <div className="pt-6 border-t border-gray-200">
                                         <div className="flex items-center gap-2 mb-4">
-                                            <span className="text-2xl animate-pulse-slow">💡</span>
+                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center">
+                                                <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                                </svg>
+                                            </div>
                                             <h3 className="text-base font-bold text-gray-900">AI 洞察</h3>
                                         </div>
                                         <div className="pl-4 border-l-4 transition-all hover:pl-5 ai-insight-border">

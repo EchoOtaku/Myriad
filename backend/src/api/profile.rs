@@ -40,6 +40,8 @@ pub struct ReportCard {
     pub icon: String,
     pub color: String,
     pub content: CardContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_at: Option<String>, // 用于区分不同批次生成的卡片
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -138,22 +140,32 @@ fn get_cached_report(user_id: &str, force_refresh: bool) -> Option<PersonalRepor
             user_id
         );
 
-        // 合并所有历史报告的卡片（去重）
-        let mut all_cards_map: std::collections::HashMap<u8, ReportCard> =
+        // 合并所有历史报告的卡片（使用组合键避免覆盖）
+        let mut all_cards_map: std::collections::HashMap<(String, u8), ReportCard> =
             std::collections::HashMap::new();
 
-        for (_, report, _) in valid_reports.iter() {
+        for (_, report, created_at) in valid_reports.iter() {
+            let timestamp = created_at.to_rfc3339();
             for card in &report.cards {
-                // 使用 topic_id 作为 key，保留最新的卡片
+                // 使用 (生成时间, topic_id) 作为组合key，确保不同批次的卡片不会被覆盖
+                let mut card_with_time = card.clone();
+                card_with_time.generated_at = Some(timestamp.clone());
+
                 all_cards_map
-                    .entry(card.topic_id)
-                    .or_insert_with(|| card.clone());
+                    .entry((timestamp.clone(), card.topic_id))
+                    .or_insert_with(|| card_with_time);
             }
         }
 
-        // 转换为 Vec 并按 topic_id 排序
+        // 转换为 Vec 并按时间倒序排序（最新的在前）
         let mut all_cards: Vec<ReportCard> = all_cards_map.into_values().collect();
-        all_cards.sort_by_key(|card| card.topic_id);
+        all_cards.sort_by(|a, b| {
+            // 按生成时间倒序，时间相同则按 topic_id 排序
+            match (b.generated_at.as_ref(), a.generated_at.as_ref()) {
+                (Some(t1), Some(t2)) => t1.cmp(t2).then(a.topic_id.cmp(&b.topic_id)),
+                _ => a.topic_id.cmp(&b.topic_id),
+            }
+        });
 
         tracing::info!(
             "📦 Merged cards: {} unique cards from {} reports",
@@ -828,6 +840,7 @@ pub async fn generate_report(
                         icon: topic.icon.clone(),
                         color: topic.color.clone(),
                         content,
+                        generated_at: None, // 新生成的卡片暂不设置时间
                     });
 
                     tracing::info!("✓ Generated card {}/6: {}", index + 1, topic.title);
@@ -866,16 +879,24 @@ pub async fn generate_report(
     // 缓存报告
     cache_report(user_id, report.clone());
 
+    // 获取合并后的报告（包含历史all_cards）
+    let final_report = get_cached_report(user_id, false).unwrap_or(report);
+
     tracing::info!(
-        "✓ Personal report generated successfully with {} cards",
-        report.cards.len()
+        "✓ Personal report generated successfully with {} cards (all_cards: {})",
+        final_report.cards.len(),
+        final_report
+            .all_cards
+            .as_ref()
+            .map(|ac| ac.len())
+            .unwrap_or(0)
     );
 
     (
         StatusCode::OK,
         Json(json!({
             "success": true,
-            "report": report,
+            "report": final_report,
             "from_cache": false
         })),
     )

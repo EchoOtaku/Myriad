@@ -837,7 +837,6 @@ const ConfigForm: React.FC = () => {
           >
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-lg">
-                📊
               </div>
               <div className="text-left">
                 <h2 className="text-lg font-bold text-gray-800">报告生成配置</h2>
@@ -915,7 +914,7 @@ const ConfigForm: React.FC = () => {
               </div>
 
               <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
-                <p className="text-xs font-semibold text-blue-900 mb-1">📊 报告话题风格说明：</p>
+                <p className="text-xs font-semibold text-blue-900 mb-1">报告话题风格说明：</p>
                 <p className="text-xs text-blue-700">
                   每次生成报告时，AI会根据所选风格和你的实际数据，动态创建6个独特的分析维度。
                 </p>

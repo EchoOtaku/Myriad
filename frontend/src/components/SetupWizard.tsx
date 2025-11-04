@@ -108,7 +108,7 @@ const SetupWizard: React.FC = () => {
 
   const handleSaveDbConfig = async () => {
     if (!dbConfig.password) {
-      alert('❌ 请输入数据库密码');
+      alert('请输入数据库密码');
       return;
     }
 
@@ -136,12 +136,12 @@ const SetupWizard: React.FC = () => {
       const result = await response.json();
       
       if (result.reload_triggered) {
-        alert('✅ 数据库配置已保存！\n\n🔄 后端正在重新连接数据库...\n\n请稍候，页面将自动检测连接状态。');
+        alert('数据库配置已保存！\n\n后端正在重新连接数据库...\n\n请稍候，页面将自动检测连接状态。');
         
         // 开始轮询检查数据库连接状态
         pollDatabaseConnection();
       } else {
-        alert('✅ 数据库配置已保存！\n\n⚠️ 请手动重启后端服务以应用更改。');
+        alert('数据库配置已保存！\n\n请手动重启后端服务以应用更改。');
       }
     } catch (err: any) {
       alert('❌ 保存配置失败: ' + err.message);
@@ -165,8 +165,8 @@ const SetupWizard: React.FC = () => {
           
           // 检查是否已经连接到数据库（不再是配置模式）
           if (healthData.database_connected && healthData.mode !== 'configuration') {
-            console.log('✅ 数据库连接成功！');
-            alert('🎉 数据库连接成功！\n\n系统已切换到正常模式，现在可以继续配置。');
+            console.log('数据库连接成功！');
+            alert('数据库连接成功！\n\n系统已切换到正常模式，现在可以继续配置。');
             setSavingDb(false);
             setDbConfigured(true);
             checkSetupStatus();
@@ -182,7 +182,7 @@ const SetupWizard: React.FC = () => {
         setTimeout(checkConnection, pollInterval);
       } else {
         // 超时
-        alert('⚠️ 数据库连接超时\n\n配置已保存，但数据库连接可能失败。\n请检查配置是否正确，或手动重启后端服务。');
+        alert('数据库连接超时\n\n配置已保存，但数据库连接可能失败。\n请检查配置是否正确，或手动重启后端服务。');
         setSavingDb(false);
         checkSetupStatus();
       }
@@ -208,14 +208,14 @@ const SetupWizard: React.FC = () => {
       const result = await response.json();
       
       // 显示详细的验证信息
-      let message = '✅ ' + result.message;
+      let message = result.message;
       if (result.verification) {
         const v = result.verification;
-        message += `\n\n📊 验证结果：`;
+        message += `\n\n验证结果：`;
         message += `\n• 总表数：${v.total_tables}`;
-        message += `\n• users 表：${v.users_table ? '✓' : '✗'}`;
-        message += `\n• platforms 表：${v.platforms_table ? '✓' : '✗'}`;
-        message += `\n• configurations 表：${v.configurations_table ? '✓' : '✗'}`;
+        message += `\n• users 表：${v.users_table ? '是' : '否'}`;
+        message += `\n• platforms 表：${v.platforms_table ? '是' : '否'}`;
+        message += `\n• configurations 表：${v.configurations_table ? '是' : '否'}`;
       }
       
       alert(message);
@@ -231,23 +231,23 @@ const SetupWizard: React.FC = () => {
 
   const handleCreateAdmin = async () => {
     if (adminForm.username.length < 3 || adminForm.username.length > 20) {
-      alert('❌ 用户名必须为 3-20 个字符');
+      alert('用户名必须为 3-20 个字符');
       return;
     }
 
     const usernameRegex = /^[a-zA-Z0-9_]+$/;
     if (!usernameRegex.test(adminForm.username)) {
-      alert('❌ 用户名只能包含字母、数字和下划线');
+      alert('用户名只能包含字母、数字和下划线');
       return;
     }
 
     if (adminForm.password.length < 8) {
-      alert('❌ 密码至少需要 8 个字符');
+      alert('密码至少需要 8 个字符');
       return;
     }
 
     if (adminForm.password !== adminForm.confirmPassword) {
-      alert('❌ 两次输入的密码不一致');
+      alert('两次输入的密码不一致');
       return;
     }
 
@@ -268,11 +268,11 @@ const SetupWizard: React.FC = () => {
         throw new Error(errorData.message || '创建管理员账户失败');
       }
 
-      alert('✅ 管理员账户创建成功！');
+      alert('管理员账户创建成功！');
       setAdminCreated(true);
       checkSetupStatus();
     } catch (err: any) {
-      alert('❌ 创建失败: ' + err.message);
+      alert('创建失败: ' + err.message);
     } finally {
       setCreatingAdmin(false);
     }
