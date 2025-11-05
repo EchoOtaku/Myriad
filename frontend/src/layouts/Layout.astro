@@ -1,4 +1,6 @@
 ---
+import PageLoader from '../components/PageLoader.astro';
+
 interface Props {
   title: string;
   description?: string;
@@ -24,6 +26,8 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     />
   </head>
   <body class="antialiased">
+    <!-- 页面加载器 -->
+    <PageLoader />
     <!-- Animated Background -->
     <div id="bg-container" class="fixed inset-0 -z-10 overflow-hidden">
       <!-- Dynamic Wallpaper -->
@@ -958,6 +962,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
     <script>
       import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
+      import { initTransitionSystem } from '../scripts/page-transition';
 
       // 全局状态：存储当前显示的壁纸的实际 URL（重定向后的最终 URL）
       let activeWallpaperUrl: string | null = null;
@@ -1164,9 +1169,51 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         });
       }
       
+      // 页面加载完成处理
+      function handlePageLoaded() {
+        console.log('✅ [Layout] Page loaded');
+        
+        // 隐藏加载器
+        const loader = (window as any).pageLoader;
+        if (loader) {
+          loader.hide(150);
+        }
+        
+        // 简单的淡入动画
+        requestAnimationFrame(() => {
+          const main = document.querySelector('main');
+          if (main) {
+            main.style.opacity = '0';
+            requestAnimationFrame(() => {
+              main.style.transition = 'opacity 0.3s ease';
+              main.style.opacity = '1';
+            });
+          }
+        });
+      }
+      
       // 优先加载关键功能
       setActiveNav();
       setupAuthUI();
+      
+      // 等待页面加载完成
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', handlePageLoaded);
+      } else {
+        // 已经加载完成
+        handlePageLoaded();
+      }
+      
+      // 初始化页面切换系统
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          initTransitionSystem();
+        }, { timeout: 1000 });
+      } else {
+        setTimeout(() => {
+          initTransitionSystem();
+        }, 50);
+      }
       
       // 延迟加载壁纸（使用 requestIdleCallback 或 setTimeout）
       if ('requestIdleCallback' in window) {

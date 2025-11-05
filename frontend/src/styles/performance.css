@@ -2,19 +2,33 @@
    全局性能优化样式
    ============================================ */
 
+/* 页面切换加载动画优化 */
+.page-transition-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.page-transition-loading.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
 /* 硬件加速优化 - 强制GPU渲染 */
 .gpu-accelerate {
-  transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  backface-visibility: hidden;
+  transform: translateZ(0);
   -webkit-backface-visibility: hidden;
-  perspective: 1000px;
+  backface-visibility: hidden;
   -webkit-perspective: 1000px;
+  perspective: 1000px;
 }
 
 /* 滚动性能优化 */
 .smooth-scroll {
-  -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
 }
 
@@ -25,10 +39,8 @@
 }
 
 /* 图片优化 */
-.lazy-image {
-  loading: lazy;
-  decoding: async;
-}
+/* loading 和 decoding 是 HTML 属性，应在 <img> 标签上设置 */
+/* <img loading="lazy" decoding="async"> */
 
 /* 减少重绘的过渡 */
 .optimized-transition {
@@ -163,8 +175,8 @@
 /* 毛玻璃效果优化 */
 .glass-optimized {
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   /* 隔离层叠上下文，提升性能 */
   isolation: isolate;
   will-change: backdrop-filter;
@@ -234,8 +246,8 @@
 
 /* 模态框性能优化 */
 .modal-backdrop {
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   will-change: opacity;
   transition: opacity 0.2s ease;
 }
