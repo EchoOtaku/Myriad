@@ -4,5 +4,4 @@
 // To generate entities, run:
 // sea-orm-cli generate entity -o src/models/entities --database-url $DATABASE_URL
 
-// Uncomment when entities are generated
-// pub mod entities;
+pub mod entities;

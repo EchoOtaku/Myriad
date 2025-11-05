@@ -287,7 +287,7 @@ fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Erro
 }
 
 /// 一键获取所有平台数据（带缓存）
-pub async fn fetch_all_data(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     tracing::info!("Starting fetch all data...");
 
     // 检查缓存
@@ -307,7 +307,7 @@ pub async fn fetch_all_data(State(_db): State<DatabaseConnection>) -> (StatusCod
 
     // 缓存不存在或已过期，重新获取
     tracing::info!("🔄 Fetching fresh platform data...");
-    match fetch_fresh_platform_data().await {
+    match fetch_fresh_platform_data(&db).await {
         Ok(data) => {
             // 保存到缓存
             if let Err(e) = save_platform_data_cache(&data) {
@@ -346,7 +346,7 @@ pub struct RefreshQuery {
 }
 
 pub async fn refresh_platform_data(
-    State(_db): State<DatabaseConnection>,
+    State(db): State<DatabaseConnection>,
     Query(query): Query<RefreshQuery>,
 ) -> (StatusCode, Json<Value>) {
     if !query.force {
@@ -369,7 +369,7 @@ pub async fn refresh_platform_data(
     }
 
     tracing::info!("🔄 Force refreshing platform data...");
-    match fetch_fresh_platform_data().await {
+    match fetch_fresh_platform_data(&db).await {
         Ok(data) => {
             // 保存到缓存
             if let Err(e) = save_platform_data_cache(&data) {
@@ -400,11 +400,17 @@ pub async fn refresh_platform_data(
 }
 
 /// 获取新鲜的平台数据（实际执行API调用）
-async fn fetch_fresh_platform_data() -> Result<Value, Box<dyn std::error::Error>> {
+async fn fetch_fresh_platform_data(
+    db: &DatabaseConnection,
+) -> Result<Value, Box<dyn std::error::Error>> {
     tracing::info!("Starting fetch all data...");
 
     let fetcher = PlatformFetcher::new();
     let mut all_data = json!({});
+    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+
+    // 创建元数据服务
+    let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
 
     // 获取GitHub数据（包含仓库信息）
     if let Ok(github_username) = std::env::var("GITHUB_USERNAME") {
@@ -432,6 +438,16 @@ async fn fetch_fresh_platform_data() -> Result<Value, Box<dyn std::error::Error>
                 tracing::info!("✓ GitHub repos fetched: {} repositories", repos.len());
             }
             Err(e) => tracing::warn!("GitHub repos fetch failed: {}", e),
+        }
+
+        // 保存GitHub数据到数据库
+        if !all_data["github"].is_null() {
+            if let Err(e) = metadata_service
+                .save_platform_metadata(user_id, "github", all_data["github"].clone())
+                .await
+            {
+                tracing::error!("Failed to save GitHub metadata to database: {}", e);
+            }
         }
     }
 
@@ -466,6 +482,16 @@ async fn fetch_fresh_platform_data() -> Result<Value, Box<dyn std::error::Error>
                 }
                 Err(e) => tracing::warn!("Bilibili favorites fetch failed: {}", e),
             }
+
+            // 保存Bilibili数据到数据库
+            if !all_data["bilibili"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "bilibili", all_data["bilibili"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save Bilibili metadata to database: {}", e);
+                }
+            }
         }
     }
 
@@ -497,12 +523,22 @@ async fn fetch_fresh_platform_data() -> Result<Value, Box<dyn std::error::Error>
             }
             Err(e) => tracing::warn!("Steam games fetch failed: {}", e),
         }
+
+        // 保存Steam数据到数据库
+        if !all_data["steam"].is_null() {
+            if let Err(e) = metadata_service
+                .save_platform_metadata(user_id, "steam", all_data["steam"].clone())
+                .await
+            {
+                tracing::error!("Failed to save Steam metadata to database: {}", e);
+            }
+        }
     }
 
     // 获取网易云音乐数据
     if let Ok(user_id_str) = std::env::var("NETEASE_USER_ID") {
-        if let Ok(user_id) = user_id_str.parse::<i64>() {
-            match fetcher.fetch_netease_liked_songs(user_id).await {
+        if let Ok(netease_user_id) = user_id_str.parse::<i64>() {
+            match fetcher.fetch_netease_liked_songs(netease_user_id).await {
                 Ok(songs) => {
                     all_data["netease"]["liked_songs"] = json!(songs);
                     tracing::info!(
@@ -511,6 +547,16 @@ async fn fetch_fresh_platform_data() -> Result<Value, Box<dyn std::error::Error>
                     );
                 }
                 Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
+            }
+
+            // 保存网易云音乐数据到数据库
+            if !all_data["netease"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "netease", all_data["netease"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save Netease metadata to database: {}", e);
+                }
             }
         }
     }
