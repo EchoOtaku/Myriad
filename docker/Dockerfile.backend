@@ -1,5 +1,5 @@
 # Backend Dockerfile - Multi-stage build for optimal size
-ARG RUST_VERSION=1.75
+ARG RUST_VERSION=1.83
 FROM rust:${RUST_VERSION}-slim-bookworm AS builder
 
 # Install build dependencies
