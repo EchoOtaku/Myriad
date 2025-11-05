@@ -64,7 +64,6 @@ const ConfigForm: React.FC = () => {
   // 使用 useCallback 包装处理函数，避免闭包问题
   const handleSave = React.useCallback(async () => {
     if (!config) {
-      console.error('No config to save');
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
           detail: {
@@ -77,7 +76,6 @@ const ConfigForm: React.FC = () => {
     }
 
     setMessage('保存中...');
-    console.log('Saving config...', config);
 
     try {
       const result = await fetchJson(
@@ -89,8 +87,6 @@ const ConfigForm: React.FC = () => {
         },
         '保存配置失败'
       );
-
-      console.log('Save result:', result);
       
       setMessage('✓ 配置已保存！正在重启后端...');
       notifyDirtyState(false);
@@ -117,12 +113,10 @@ const ConfigForm: React.FC = () => {
           setTimeout(() => setMessage(''), 3000);
         }, 5000);
       } catch (restartError) {
-        console.warn('Failed to restart backend:', restartError);
         setMessage('✓ 配置已保存！请手动重启后端生效。');
         setTimeout(() => setMessage(''), 5000);
       }
     } catch (error) {
-      console.error('Save config error:', error);
       const errorMsg = '✗ 保存配置失败：' + (error instanceof Error ? error.message : '网络错误');
       setMessage(errorMsg);
       window.dispatchEvent(
@@ -138,13 +132,11 @@ const ConfigForm: React.FC = () => {
 
   // 重置配置并自动保存
   const handleReset = React.useCallback(async () => {
-    console.log('Resetting config to defaults (clearing all values)...');
     setMessage('正在重置配置...');
     
     try {
       // 加载配置结构
       const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
-      console.log('Loaded config structure:', data);
       
       // 清空所有配置字段的值
       const clearedData = {
@@ -200,7 +192,6 @@ const ConfigForm: React.FC = () => {
         },
       };
       
-      console.log('Cleared config:', clearedData);
       setConfig(clearedData);
       notifyDirtyState(false);
       
@@ -209,7 +200,6 @@ const ConfigForm: React.FC = () => {
       
       // 自动保存
       setMessage('正在保存默认配置...');
-      console.log('Saving cleared config...');
       
       const saveResult = await fetchJson(
         `${API_URL}/api/config`,
@@ -220,8 +210,6 @@ const ConfigForm: React.FC = () => {
         },
         '保存配置失败'
       );
-
-      console.log('Save result:', saveResult);
 
       setMessage('✓ 配置已重置并保存！');
       setTimeout(() => setMessage(''), 5000);
@@ -236,7 +224,6 @@ const ConfigForm: React.FC = () => {
         })
       );
     } catch (error) {
-      console.error('Reset config error:', error);
       const errorMsg = '重置配置失败：' + (error instanceof Error ? error.message : '未知错误');
       setMessage(errorMsg);
       window.dispatchEvent(
@@ -286,7 +273,6 @@ const ConfigForm: React.FC = () => {
       }
     } catch (error) {
       setMessage('✗ 刷新平台数据失败');
-      console.error(error);
       window.dispatchEvent(
         new CustomEvent('platform-data-refresh-result', {
           detail: {
@@ -306,15 +292,12 @@ const ConfigForm: React.FC = () => {
   useEffect(() => {
     // 监听来自页面的保存、重置和刷新事件
     const handleSaveEvent = () => {
-      console.log('Received request-config-save event');
       handleSave();
     };
     const handleResetEvent = () => {
-      console.log('Received config-reset event');
       handleReset();
     };
     const handleRefreshEvent = () => {
-      console.log('Received request-platform-refresh event');
       handleRefreshPlatformData();
     };
 
@@ -349,7 +332,6 @@ const ConfigForm: React.FC = () => {
       window.dispatchEvent(event);
     } catch (error) {
       setMessage('Failed to load configuration');
-      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -387,7 +369,6 @@ const ConfigForm: React.FC = () => {
       setTimeout(() => setMessage(''), 5000);
     } catch (error) {
       setMessage('✗ 连接测试失败');
-      console.error(error);
     } finally {
       setTesting(null);
     }
@@ -411,10 +392,23 @@ const ConfigForm: React.FC = () => {
     const field = newFields.find(f => f.key === fieldKey);
     if (field) {
       field.value = value;
-      setConfig({
-        ...config,
-        ai_config: { ...config.ai_config, config_fields: newFields }
-      });
+      
+      // 如果是 provider 字段变更，需要同时更新 ai_config.provider
+      if (fieldKey === 'provider') {
+        setConfig({
+          ...config,
+          ai_config: { 
+            ...config.ai_config, 
+            provider: value,
+            config_fields: newFields 
+          }
+        });
+      } else {
+        setConfig({
+          ...config,
+          ai_config: { ...config.ai_config, config_fields: newFields }
+        });
+      }
       notifyDirtyState(true);
     }
   };
@@ -497,7 +491,6 @@ const ConfigForm: React.FC = () => {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '生成失败';
       setMessage(`✗ ${errorMsg}`);
-      console.error('Generate illustrations error:', error);
     } finally {
       setGenerating(false);
       setGenerateProgress('');
@@ -721,22 +714,87 @@ const ConfigForm: React.FC = () => {
                   </span>
                 </div>
 
-                {config.ai_config.config_fields.map((field) => (
-                  <div key={field.key}>
-                    <label htmlFor={`ai-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
-                      {field.label}
-                      {field.required && <span className="text-pink-500 ml-1">*</span>}
-                    </label>
-                    <input
-                      id={`ai-${field.key}`}
-                      type={field.field_type}
-                      value={field.value}
-                      onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                    />
-                  </div>
-                ))}
+                {/* AI Provider 选择器 */}
+                {(() => {
+                  const providerField = config.ai_config.config_fields.find(f => f.key === 'provider');
+                  if (providerField) {
+                    return (
+                      <div key="provider">
+                        <label htmlFor="ai-provider" className="block text-xs font-medium text-gray-700 mb-1">
+                          {providerField.label}
+                          {providerField.required && <span className="text-pink-500 ml-1">*</span>}
+                        </label>
+                        <select
+                          id="ai-provider"
+                          value={providerField.value}
+                          onChange={(e) => updateAiFieldValue('provider', e.target.value)}
+                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                        >
+                          <option value="gemini">Google Gemini</option>
+                          <option value="openai">OpenAI Compatible</option>
+                        </select>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* 根据 provider 显示对应的配置字段 */}
+                {(() => {
+                  const currentProvider = config.ai_config.config_fields.find(f => f.key === 'provider')?.value || 'gemini';
+                  
+                  return config.ai_config.config_fields
+                    .filter(field => {
+                      // 跳过 provider 字段(已经单独渲染)
+                      if (field.key === 'provider') return false;
+                      
+                      // 根据当前 provider 过滤字段
+                      if (currentProvider === 'gemini') {
+                        return field.key.startsWith('gemini_');
+                      } else if (currentProvider === 'openai') {
+                        return field.key.startsWith('openai_');
+                      }
+                      return false;
+                    })
+                    .map((field) => (
+                      <div key={field.key}>
+                        <label htmlFor={`ai-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                          {field.label}
+                          {field.required && <span className="text-pink-500 ml-1">*</span>}
+                        </label>
+                        <input
+                          id={`ai-${field.key}`}
+                          type={field.field_type}
+                          value={field.value}
+                          onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                        />
+                      </div>
+                    ));
+                })()}
+                
+                {/* Provider 说明 */}
+                <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                  {config.ai_config.config_fields.find(f => f.key === 'provider')?.value === 'gemini' ? (
+                    <>
+                      <p className="text-xs font-semibold text-purple-900 mb-1">Google Gemini API</p>
+                      <p className="text-xs text-purple-700">
+                        获取 API Key: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">Google AI Studio</a><br/>
+                        推荐模型: gemini-pro, gemini-1.5-flash, gemini-1.5-pro
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-semibold text-blue-900 mb-1">OpenAI 兼容格式</p>
+                      <p className="text-xs text-blue-700">
+                        支持 OpenAI API 和其他兼容服务（如 Azure OpenAI, 第三方代理等）<br/>
+                        Base URL: 官方为 https://api.openai.com/v1，自定义服务需要相应的端点地址<br/>
+                        推荐模型: gpt-3.5-turbo, gpt-4, gpt-4-turbo
+                      </p>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -837,6 +895,9 @@ const ConfigForm: React.FC = () => {
           >
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-lg">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
               <div className="text-left">
                 <h2 className="text-lg font-bold text-gray-800">报告生成配置</h2>
@@ -952,7 +1013,7 @@ const ConfigForm: React.FC = () => {
             <div className="p-4 border-t border-gray-200/50 animate-fade-in">
               <div className="space-y-3">
                 {config.ui_config.config_fields
-                  .filter((field) => !field.key.startsWith('image_gen_') && !field.key.startsWith('pet_'))
+                  .filter((field) => !field.key.startsWith('image_gen_') && !field.key.startsWith('pet_') && !field.key.startsWith('github_'))
                   .map((field) => (
                   <div key={field.key}>
                     <label htmlFor={`ui-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">

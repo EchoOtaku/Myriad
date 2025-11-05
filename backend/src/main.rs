@@ -21,7 +21,8 @@ mod db;
 mod models;
 mod services;
 
-use config::AppConfig;
+use config::{AppConfig, DynamicConfig};
+use services::config_service::ConfigService;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // Global flag to indicate if server is running in configuration mode
@@ -30,6 +31,14 @@ pub static CONFIG_MODE: AtomicBool = AtomicBool::new(false);
 // Global database connection (None in config mode, Some in full mode)
 pub static DB_CONNECTION: once_cell::sync::Lazy<Arc<RwLock<Option<sea_orm::DatabaseConnection>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(None)));
+
+// Global core configuration (hot-reloadable)
+pub static GLOBAL_CONFIG: once_cell::sync::Lazy<Arc<RwLock<AppConfig>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(AppConfig::default())));
+
+// Global dynamic configuration from database (hot-reloadable)
+pub static GLOBAL_DYNAMIC_CONFIG: once_cell::sync::Lazy<Arc<RwLock<DynamicConfig>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(DynamicConfig::default())));
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -55,11 +64,29 @@ async fn run_server() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     let config = AppConfig::from_env()?;
 
+    // Initialize global config
+    *GLOBAL_CONFIG.write().await = config.clone();
+    tracing::info!("✅ Configuration loaded and cached globally");
+
     // Try to initialize database connection if URL is configured
     if !config.database_url.is_empty() {
         match db::connection::establish_connection(&config.database_url).await {
             Ok(db) => {
                 tracing::info!("✅ Database connection established");
+
+                // Load dynamic configuration from database
+                let config_service = ConfigService::new(db.clone());
+                match config_service.load_config().await {
+                    Ok(dynamic_config) => {
+                        *GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
+                        tracing::info!("✅ Dynamic configuration loaded from database");
+                    }
+                    Err(e) => {
+                        tracing::warn!("⚠️  Failed to load dynamic config: {}", e);
+                        tracing::info!("Using default configuration");
+                    }
+                }
+
                 tracing::info!("🌐 Starting in FULL MODE - all features available");
                 *DB_CONNECTION.write().await = Some(db);
                 CONFIG_MODE.store(false, Ordering::Relaxed);
@@ -608,6 +635,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
 
                 match AppConfig::from_env() {
                     Ok(new_config) => {
+                        // Update global config FIRST for hot-reload
+                        *GLOBAL_CONFIG.write().await = new_config.clone();
+                        tracing::info!(
+                            "♻️ Global configuration updated - AI API settings now live!"
+                        );
+
                         if !new_config.database_url.is_empty() {
                             match db::connection::establish_connection(&new_config.database_url)
                                 .await

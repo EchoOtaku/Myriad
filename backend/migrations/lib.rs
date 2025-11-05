@@ -31,6 +31,9 @@ mod create_users;
 #[path = "010_add_local_auth.rs"]
 mod add_local_auth;
 
+#[path = "011_extend_configurations.rs"]
+mod extend_configurations;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -47,6 +50,7 @@ impl MigratorTrait for Migrator {
             Box::new(create_fetch_jobs::Migration),
             Box::new(create_reports::Migration),
             Box::new(add_local_auth::Migration),
+            Box::new(extend_configurations::Migration),
         ]
     }
 }

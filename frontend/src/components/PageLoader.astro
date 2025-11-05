@@ -90,7 +90,6 @@
 
     constructor() {
       this.loader = document.getElementById('page-loader');
-      console.log('🔄 [PageLoader] Initialized');
     }
 
     /**
@@ -120,7 +119,6 @@
           this.loader.classList.add('hidden');
           this.loader.setAttribute('aria-busy', 'false');
           this.isShowing = false;
-          console.log('✅ [PageLoader] Hidden');
         }
       }, delay);
     }

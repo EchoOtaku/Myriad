@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 import { FaUser, FaLock, FaSpinner, FaGithub } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
+import { RateLimitError } from '../utils/rateLimiter';
+import { sanitizeUsername, isValidUsername } from '../utils/inputSanitizer';
 
 const LoginForm: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -21,7 +23,7 @@ const LoginForm: React.FC = () => {
       const data = await fetchJson(`${API_URL}/api/setup/config`);
       setGithubEnabled(data.github_oauth?.client_id_set || false);
     } catch (err) {
-      console.error('Failed to check GitHub OAuth config:', err);
+      // Failed to check GitHub OAuth config
     }
   };
 
@@ -29,8 +31,27 @@ const LoginForm: React.FC = () => {
     e.preventDefault();
     setError('');
 
+    // 输入验证
     if (!formData.username || !formData.password) {
       setError('请填写用户名和密码');
+      return;
+    }
+
+    // 验证用户名格式
+    if (formData.username.length < 3 || formData.username.length > 50) {
+      setError('用户名长度应为3-50个字符');
+      return;
+    }
+
+    // 验证用户名只包含字母、数字、下划线
+    if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
+      setError('用户名只能包含字母、数字和下划线');
+      return;
+    }
+
+    // 验证密码长度
+    if (formData.password.length < 8 || formData.password.length > 128) {
+      setError('密码长度应为8-128个字符');
       return;
     }
 
@@ -50,8 +71,18 @@ const LoginForm: React.FC = () => {
       );
       
       // Validate response data
-      if (!data.token || !data.user) {
+      if (!data.token || typeof data.token !== 'string' || data.token.length < 10) {
         throw new Error('登录响应数据不完整');
+      }
+
+      if (!data.user || typeof data.user !== 'object') {
+        throw new Error('用户信息不完整');
+      }
+
+      // Validate token format (should be JWT)
+      const tokenParts = data.token.split('.');
+      if (tokenParts.length !== 3) {
+        throw new Error('无效的token格式');
       }
 
       // Save JWT token
@@ -68,8 +99,13 @@ const LoginForm: React.FC = () => {
         window.location.href = '/';
       }, 100);
     } catch (err: any) {
-      console.error('Login error:', err);
-      setError(err.message || '登录失败，请稍后重试');
+      // 处理 Rate Limit 错误
+      if (err instanceof RateLimitError) {
+        const seconds = Math.ceil(err.retryAfter / 1000);
+        setError(`登录尝试过于频繁，请在 ${seconds} 秒后重试`);
+      } else {
+        setError(err.message || '登录失败，请稍后重试');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -98,9 +134,14 @@ const LoginForm: React.FC = () => {
               <input
                 type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) => {
+                  const sanitized = sanitizeUsername(e.target.value);
+                  setFormData({ ...formData, username: sanitized });
+                }}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="输入用户名"
+                maxLength={50}
+                autoComplete="username"
                 required
               />
             </div>
@@ -120,6 +161,8 @@ const LoginForm: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="输入密码"
+                maxLength={128}
+                autoComplete="current-password"
                 required
               />
             </div>

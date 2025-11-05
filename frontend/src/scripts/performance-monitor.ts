@@ -12,6 +12,11 @@ interface PerformanceMetrics {
   fps: number; // Frames Per Second
 }
 
+// 性能监控配置
+const ENABLE_LOGGING = import.meta.env.DEV; // 仅在开发环境启用日志
+const FPS_WARNING_THRESHOLD = 30;
+const LONG_TASK_THRESHOLD = 50; // ms
+
 class PerformanceMonitor {
   private metrics: Partial<PerformanceMetrics> = {};
   private fpsFrames: number[] = [];
@@ -52,13 +57,15 @@ class PerformanceMonitor {
           for (const entry of entryList.getEntries()) {
             if (entry.name === 'first-contentful-paint') {
               this.metrics.fcp = entry.startTime;
-              console.log(`✅ FCP: ${entry.startTime.toFixed(2)}ms`);
+              if (ENABLE_LOGGING) {
+                console.log(`✅ FCP: ${entry.startTime.toFixed(2)}ms`);
+              }
             }
           }
         });
         fcpObserver.observe({ entryTypes: ['paint'] });
       } catch (e) {
-        console.warn('FCP monitoring not supported');
+        // FCP monitoring not supported
       }
 
       // Largest Contentful Paint (LCP)
@@ -67,11 +74,13 @@ class PerformanceMonitor {
           const entries = entryList.getEntries();
           const lastEntry = entries[entries.length - 1];
           this.metrics.lcp = lastEntry.startTime;
-          console.log(`✅ LCP: ${lastEntry.startTime.toFixed(2)}ms`);
+          if (ENABLE_LOGGING) {
+            console.log(`✅ LCP: ${lastEntry.startTime.toFixed(2)}ms`);
+          }
         });
         lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
       } catch (e) {
-        console.warn('LCP monitoring not supported');
+        // LCP monitoring not supported
       }
 
       // Cumulative Layout Shift (CLS)
@@ -86,11 +95,13 @@ class PerformanceMonitor {
               this.metrics.cls = clsValue;
             }
           }
-          console.log(`✅ CLS: ${clsValue.toFixed(4)}`);
+          if (ENABLE_LOGGING) {
+            console.log(`✅ CLS: ${clsValue.toFixed(4)}`);
+          }
         });
         clsObserver.observe({ entryTypes: ['layout-shift'] });
       } catch (e) {
-        console.warn('CLS monitoring not supported');
+        // CLS monitoring not supported
       }
 
       // First Input Delay (FID)
@@ -99,12 +110,14 @@ class PerformanceMonitor {
           for (const entry of entryList.getEntries()) {
             // @ts-ignore
             this.metrics.fid = entry.processingStart - entry.startTime;
-            console.log(`✅ FID: ${this.metrics.fid.toFixed(2)}ms`);
+            if (ENABLE_LOGGING) {
+              console.log(`✅ FID: ${this.metrics.fid.toFixed(2)}ms`);
+            }
           }
         });
         fidObserver.observe({ entryTypes: ['first-input'] });
       } catch (e) {
-        console.warn('FID monitoring not supported');
+        // FID monitoring not supported
       }
     }
 
@@ -112,7 +125,9 @@ class PerformanceMonitor {
     if (performance.timing) {
       const ttfb = performance.timing.responseStart - performance.timing.requestStart;
       this.metrics.ttfb = ttfb;
-      console.log(`✅ TTFB: ${ttfb}ms`);
+      if (ENABLE_LOGGING) {
+        console.log(`✅ TTFB: ${ttfb}ms`);
+      }
     }
   }
 
@@ -138,8 +153,8 @@ class PerformanceMonitor {
           this.fpsFrames.shift();
         }
 
-        // FPS低于30时发出警告
-        if (fps < 30) {
+        // FPS低于阈值时发出警告
+        if (ENABLE_LOGGING && fps < FPS_WARNING_THRESHOLD) {
           console.warn(`⚠️ Low FPS detected: ${fps}`);
         }
 
@@ -186,6 +201,8 @@ class PerformanceMonitor {
    * 输出性能报告
    */
   public logReport() {
+    if (!ENABLE_LOGGING) return;
+    
     console.group('📊 Performance Report');
     console.log('FCP (First Contentful Paint):', this.metrics.fcp?.toFixed(2), 'ms');
     console.log('LCP (Largest Contentful Paint):', this.metrics.lcp?.toFixed(2), 'ms');
@@ -200,17 +217,19 @@ class PerformanceMonitor {
    * 检测长任务
    */
   public detectLongTasks() {
-    if ('PerformanceObserver' in window) {
-      try {
-        const observer = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
+    if (!ENABLE_LOGGING || !('PerformanceObserver' in window)) return;
+    
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.duration > LONG_TASK_THRESHOLD) {
             console.warn(`⚠️ Long task detected: ${entry.duration.toFixed(2)}ms`, entry);
           }
-        });
-        observer.observe({ entryTypes: ['longtask'] });
-      } catch (e) {
-        console.warn('Long task monitoring not supported');
-      }
+        }
+      });
+      observer.observe({ entryTypes: ['longtask'] });
+    } catch (e) {
+      // Long task monitoring not supported
     }
   }
 }
@@ -243,7 +262,7 @@ export function quickPerformanceCheck() {
 }
 
 // 自动启动性能监控（仅在开发环境）
-if (typeof window !== 'undefined' && import.meta.env.DEV) {
+if (typeof window !== 'undefined' && ENABLE_LOGGING) {
   console.log('🚀 Performance monitoring started');
   quickPerformanceCheck();
   

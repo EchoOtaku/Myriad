@@ -22,7 +22,6 @@ const description = '一键聚合你的多平台数据，生成AI个人分析报
     try {
       const response = await fetch(`${API_URL}/api/setup/status`);
       if (!response.ok) {
-        console.warn('Could not check setup status');
         return;
       }
 
@@ -30,11 +29,9 @@ const description = '一键聚合你的多平台数据，生成AI个人分析报
 
       // If setup is required and we're not already on the setup page
       if (data.is_setup_required && window.location.pathname !== '/setup') {
-        console.log('Setup required, redirecting...');
         window.location.href = '/setup';
       }
     } catch (error) {
-      console.error('Failed to check setup status:', error);
       // Don't redirect on error - allow user to access the app
     }
   }

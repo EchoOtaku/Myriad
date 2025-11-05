@@ -14,10 +14,20 @@ interface TransitionConfig {
 }
 
 /**
+ * 页面加载器接口定义
+ */
+interface PageLoader {
+  show(): void;
+  hide(duration: number): void;
+  isActive(): boolean;
+}
+
+/**
  * 获取页面加载器实例
  */
-function getPageLoader(): any {
-  return (window as any).pageLoader;
+function getPageLoader(): PageLoader | null {
+  const loader = (window as any).pageLoader;
+  return loader && typeof loader === 'object' ? loader : null;
 }
 
 /**
@@ -29,49 +39,62 @@ export async function navigateWithTransition(
   url: string, 
   config: TransitionConfig = {}
 ): Promise<void> {
+  // 输入验证
+  if (!url || typeof url !== 'string') {
+    throw new Error('Invalid URL provided');
+  }
+
+  // URL 安全性验证
+  try {
+    const targetUrl = new URL(url, window.location.origin);
+    // 只允许同源 URL
+    if (targetUrl.origin !== window.location.origin) {
+      throw new Error('Cross-origin navigation not allowed');
+    }
+  } catch (error) {
+    throw new Error('Invalid URL format');
+  }
+
   const {
     minLoadingTime = 300,
     preload = true
   } = config;
 
+  // 验证配置参数
+  const validMinLoadingTime = Math.max(0, Math.min(minLoadingTime, 5000));
+
   const loader = getPageLoader();
   
-  // 如果当前已在目标页面，不执行跳转
+  // 如果当前已在目标页面,不执行跳转
   if (window.location.href === url) {
     return;
   }
 
   try {
     // 1. 显示加载器
-    if (loader) {
-      loader.show();
-    }
+    loader?.show();
 
     const startTime = Date.now();
 
-    // 2. 预加载页面（可选）
+    // 2. 预加载页面(可选)
     if (preload) {
       await preloadPage(url);
     }
 
     // 3. 确保最小加载时间
     const elapsed = Date.now() - startTime;
-    if (elapsed < minLoadingTime) {
-      await new Promise(resolve => setTimeout(resolve, minLoadingTime - elapsed));
+    if (elapsed < validMinLoadingTime) {
+      await new Promise(resolve => setTimeout(resolve, validMinLoadingTime - elapsed));
     }
 
     // 4. 导航到新页面
     window.location.href = url;
 
   } catch (error) {
-    console.error('❌ [PageTransition] Navigation failed:', error);
-    
     // 隐藏加载器
-    if (loader) {
-      loader.hide(0);
-    }
+    loader?.hide(0);
     
-    // 降级：直接跳转
+    // 降级:直接跳转
     window.location.href = url;
   }
 }
@@ -81,12 +104,21 @@ export async function navigateWithTransition(
  */
 async function preloadPage(url: string): Promise<void> {
   try {
-    const response = await fetch(url, { method: 'HEAD' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch(url, { 
+      method: 'HEAD',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
-      console.warn('⚠️ [PageTransition] Preload failed, status:', response.status);
+      // 静默失败,不影响用户体验
     }
   } catch (error) {
-    console.warn('⚠️ [PageTransition] Preload error:', error);
+    // 静默失败,预加载失败不应阻止导航
   }
 }
 
@@ -97,10 +129,8 @@ export function initPageTransitions(): void {
   // 只在客户端执行
   if (typeof window === 'undefined') return;
 
-  console.log('🔄 [PageTransition] Initializing page transitions');
-
-  // 拦截所有内部链接点击
-  document.addEventListener('click', (e) => {
+  // 使用事件委托优化性能
+  const handleClick = (e: Event): void => {
     const target = e.target as HTMLElement;
     const link = target.closest('a');
     
@@ -119,21 +149,25 @@ export function initPageTransitions(): void {
       // 使用页面切换动画
       navigateWithTransition(link.href, {
         minLoadingTime: 300
+      }).catch(() => {
+        // 如果导航失败,直接跳转
+        window.location.href = link.href;
       });
     }
-  });
+  };
 
-  // 浏览器后退/前进 - 直接跳转，不使用加载器
-  window.addEventListener('popstate', () => {
-    // 浏览器后退/前进时会自动加载页面
-    // 我们只需要在页面加载完成后隐藏加载器
+  // 拦截所有内部链接点击
+  document.addEventListener('click', handleClick, { passive: false });
+
+  // 浏览器后退/前进 - 直接跳转,不使用加载器
+  const handlePopState = (): void => {
     const loader = getPageLoader();
-    if (loader && loader.isActive()) {
+    if (loader?.isActive()) {
       loader.hide(0);
     }
-  });
+  };
 
-  console.log('✅ [PageTransition] Transitions initialized');
+  window.addEventListener('popstate', handlePopState);
 }
 
 /**
@@ -142,15 +176,15 @@ export function initPageTransitions(): void {
 export function animatePageEnter(): void {
   if (typeof window === 'undefined') return;
 
-  // 页面加载完成，隐藏加载器
+  // 页面加载完成,隐藏加载器
   const loader = getPageLoader();
-  if (loader && loader.isActive()) {
+  if (loader?.isActive()) {
     loader.hide(300);
   }
 
   // 为主要内容区域添加淡入动画
   const main = document.querySelector('main');
-  if (main) {
+  if (main && main instanceof HTMLElement) {
     main.style.opacity = '0';
     main.style.transform = 'translateY(10px)';
     
@@ -172,14 +206,27 @@ export function animatePageEnter(): void {
 export function preloadPages(urls: string[]): void {
   if (typeof document === 'undefined') return;
 
-  console.log('🔄 [PageTransition] Preloading pages:', urls);
+  // 验证并过滤 URL
+  const validUrls = urls.filter(url => {
+    try {
+      const targetUrl = new URL(url, window.location.origin);
+      return targetUrl.origin === window.location.origin;
+    } catch {
+      return false;
+    }
+  });
 
-  urls.forEach(url => {
+  // 使用 DocumentFragment 批量添加以提升性能
+  const fragment = document.createDocumentFragment();
+  
+  validUrls.forEach(url => {
     const link = document.createElement('link');
     link.rel = 'prefetch';
     link.href = url;
-    document.head.appendChild(link);
+    fragment.appendChild(link);
   });
+
+  document.head.appendChild(fragment);
 }
 
 /**
@@ -198,8 +245,6 @@ export function initTransitionSystem(): void {
   // 预加载常用页面
   const commonPages = ['/', '/config', '/account', '/login'];
   preloadPages(commonPages);
-
-  console.log('✅ [PageTransition] Transition system ready');
 }
 
 // 兼容旧版API：保留 pageTransitionStyles 导出

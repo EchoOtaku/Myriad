@@ -169,28 +169,62 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
             },
         ],
         ai_config: AiConfig {
-            provider: "Gemini".to_string(),
+            provider: std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string()),
             model: std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string()),
             api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
-            enabled: std::env::var("GEMINI_API_KEY").is_ok(),
+            enabled: std::env::var("GEMINI_API_KEY").is_ok()
+                || std::env::var("OPENAI_API_KEY").is_ok(),
             config_fields: vec![
                 ConfigField {
-                    key: "api_key".to_string(),
+                    key: "provider".to_string(),
+                    label: "AI Provider".to_string(),
+                    field_type: "select".to_string(),
+                    value: std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string()),
+                    placeholder: "gemini".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "gemini_api_key".to_string(),
                     label: "Gemini API Key".to_string(),
                     field_type: "password".to_string(),
                     value: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
                     placeholder: "Get from https://makersuite.google.com/app/apikey".to_string(),
-                    required: true,
+                    required: false,
                 },
                 ConfigField {
-                    key: "model".to_string(),
-                    label: "Model Name".to_string(),
+                    key: "gemini_model".to_string(),
+                    label: "Gemini Model Name".to_string(),
                     field_type: "text".to_string(),
                     value: std::env::var("GEMINI_MODEL")
                         .unwrap_or_else(|_| "gemini-pro".to_string()),
-                    placeholder: "gemini-pro, gemini-pro-vision, gemini-1.5-flash, etc."
-                        .to_string(),
-                    required: true,
+                    placeholder: "gemini-pro, gemini-1.5-flash, gemini-1.5-pro, etc.".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "openai_api_key".to_string(),
+                    label: "OpenAI API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
+                    placeholder: "OpenAI API Key or compatible service key".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "openai_model".to_string(),
+                    label: "OpenAI Model Name".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("OPENAI_MODEL")
+                        .unwrap_or_else(|_| "gpt-3.5-turbo".to_string()),
+                    placeholder: "gpt-3.5-turbo, gpt-4, gpt-4-turbo, etc.".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "openai_base_url".to_string(),
+                    label: "OpenAI Base URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("OPENAI_BASE_URL")
+                        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
+                    placeholder: "https://api.openai.com/v1 or https://api.deepseek.com (base URL only, no /chat/completions)".to_string(),
+                    required: false,
                 },
             ],
         },
@@ -367,7 +401,16 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
     // 读取现有的 .env 文件（如果存在）
     let env_path = Path::new(".env");
     let mut env_content = if env_path.exists() {
-        fs::read_to_string(env_path)?
+        // 尝试读取文件，如果失败则从字节读取并替换非 UTF-8 字符
+        match fs::read_to_string(env_path) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!("Failed to read .env as UTF-8: {}, attempting to recover", e);
+                // 读取字节并尝试转换，替换无效字符
+                let bytes = fs::read(env_path)?;
+                String::from_utf8_lossy(&bytes).into_owned()
+            }
+        }
     } else {
         String::new()
     };
@@ -426,8 +469,12 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
     // 保存 AI 配置
     for field in &config.ai_config.config_fields {
         let key = match field.key.as_str() {
-            "api_key" => "GEMINI_API_KEY",
-            "model" => "GEMINI_MODEL",
+            "provider" => "AI_PROVIDER",
+            "gemini_api_key" => "GEMINI_API_KEY",
+            "gemini_model" => "GEMINI_MODEL",
+            "openai_api_key" => "OPENAI_API_KEY",
+            "openai_model" => "OPENAI_MODEL",
+            "openai_base_url" => "OPENAI_BASE_URL",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
@@ -461,8 +508,17 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         env_content = update_env_var(&env_content, key, &field.value);
     }
 
-    // 写回 .env 文件
-    fs::write(env_path, env_content)?;
+    // 写回 .env 文件，确保使用 UTF-8 编码
+    // 在 Windows 上，确保换行符为 LF，避免编码问题
+    let env_content_normalized = env_content.replace("\r\n", "\n");
+
+    // 验证内容是否为有效的 UTF-8
+    if !env_content_normalized.is_ascii() {
+        tracing::debug!("Config contains non-ASCII characters, ensuring UTF-8 validity");
+    }
+
+    fs::write(env_path, env_content_normalized.as_bytes())?;
+    tracing::info!("✅ Configuration saved to .env file");
 
     // 重新加载环境变量
     if let Err(e) = dotenvy::from_path_override(env_path) {
@@ -485,10 +541,27 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
 fn update_env_var(content: &str, key: &str, value: &str) -> String {
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let key_prefix = format!("{}=", key);
+
+    // 处理值：如果包含空格、特殊字符或中文，用引号包裹
+    let sanitized_value = if value.is_empty() {
+        String::new()
+    } else if value.contains(' ')
+        || value.contains('#')
+        || value.contains('\n')
+        || value.chars().any(|c| c > '\u{007F}')
+    // 包含非 ASCII 字符
+    {
+        // 转义内部的引号和反斜杠
+        let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("\"{}\"", escaped)
+    } else {
+        value.to_string()
+    };
+
     let new_line = if value.is_empty() {
         format!("# {}=", key) // 空值时注释掉
     } else {
-        format!("{}={}", key, value)
+        format!("{}={}", key, sanitized_value)
     };
 
     // 查找是否已存在该键

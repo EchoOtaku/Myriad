@@ -342,7 +342,6 @@ const title = 'Configuration - Myriad';
       const config = await response.json();
       updateConfigStatusDisplay(config);
     } catch (err) {
-      console.error('Failed to load config status:', err);
       const platformCount = document.getElementById('platform-count');
       const aiStatus = document.getElementById('ai-status');
       if (platformCount) platformCount.textContent = '加载失败';
@@ -371,7 +370,7 @@ const title = 'Configuration - Myriad';
         }
       }
     } catch (error) {
-      console.error('Failed to check save status:', error);
+      // Silently fail
     }
   }
 
@@ -413,7 +412,7 @@ const title = 'Configuration - Myriad';
         }
       }
     } catch (error) {
-      console.error('Failed to check cache status:', error);
+      // Silently fail
     }
   }
 
@@ -430,19 +429,15 @@ const title = 'Configuration - Myriad';
 
   function waitForConfigSaveResult(timeout = 30000): Promise<{ success: boolean; message?: string }> {
     return new Promise(resolve => {
-      console.log('Waiting for config save result...');
       
       const handler = (event: Event) => {
-        console.log('Received config-save-result event:', event);
         window.clearTimeout(timer);
         window.removeEventListener('config-save-result', handler as EventListener);
         const detail = (event as CustomEvent<{ success: boolean; message?: string }>).detail;
-        console.log('Save result detail:', detail);
         resolve(detail ?? { success: false, message: '保存结果未知，请重试。' });
       };
 
       const timer = window.setTimeout(() => {
-        console.error('Config save timeout after', timeout, 'ms');
         window.removeEventListener('config-save-result', handler as EventListener);
         resolve({ success: false, message: '保存超时，请检查后端是否正常运行。' });
       }, timeout);
@@ -453,19 +448,15 @@ const title = 'Configuration - Myriad';
 
   function waitForConfigResetResult(timeout = 30000): Promise<{ success: boolean; message?: string }> {
     return new Promise(resolve => {
-      console.log('Waiting for config reset result...');
       
       const handler = (event: Event) => {
-        console.log('Received config-reset-result event:', event);
         window.clearTimeout(timer);
         window.removeEventListener('config-reset-result', handler as EventListener);
         const detail = (event as CustomEvent<{ success: boolean; message?: string }>).detail;
-        console.log('Reset result detail:', detail);
         resolve(detail ?? { success: false, message: '重置结果未知，请重试。' });
       };
 
       const timer = window.setTimeout(() => {
-        console.error('Config reset timeout after', timeout, 'ms');
         window.removeEventListener('config-reset-result', handler as EventListener);
         resolve({ success: false, message: '重置超时，请检查后端是否正常运行。' });
       }, timeout);
@@ -476,7 +467,6 @@ const title = 'Configuration - Myriad';
 
   // 平台数据刷新按钮
   refreshButton?.addEventListener('click', async () => {
-    console.log('🔄 Refresh platform data button clicked');
     const cacheStatus = document.getElementById('cache-status');
     const cacheTime = document.getElementById('cache-time');
     const button = refreshButton as HTMLButtonElement;
@@ -493,7 +483,6 @@ const title = 'Configuration - Myriad';
     
     try {
       // 调用后端API强制刷新平台数据
-      console.log('Calling /api/profile/refresh with force=true');
       const response = await fetch(`${API_URL}/api/profile/refresh?force=true`, {
         method: 'POST'
       });
@@ -503,10 +492,8 @@ const title = 'Configuration - Myriad';
       }
       
       const result = await response.json();
-      console.log('Refresh result:', result);
       
       if (result.success) {
-        console.log('✅ Platform data refreshed successfully');
         
         // 更新缓存状态
         if (cacheStatus) {
@@ -526,7 +513,6 @@ const title = 'Configuration - Myriad';
         throw new Error(result.message || 'Failed to refresh data');
       }
     } catch (error) {
-      console.error('❌ Error refreshing platform data:', error);
       if (cacheStatus) {
         cacheStatus.innerHTML = '<span class="text-red-600">✗ 刷新失败</span>';
       }
@@ -579,7 +565,6 @@ const title = 'Configuration - Myriad';
       return;
     }
     
-    console.log('Save button clicked');
     const button = saveButton as HTMLButtonElement;
     const buttonText = button.querySelector('span:last-child');
     const originalText = buttonText?.textContent;
@@ -595,12 +580,9 @@ const title = 'Configuration - Myriad';
     
     try {
       // 先触发事件让ConfigForm执行保存逻辑
-      console.log('Dispatching request-config-save event');
       window.dispatchEvent(new CustomEvent('request-config-save'));
 
-      console.log('Waiting for save result...');
       const result = await waitForConfigSaveResult();
-      console.log('Got save result:', result);
 
       if (result.success) {
         if (saveStatus) {
@@ -615,7 +597,6 @@ const title = 'Configuration - Myriad';
         alert(result.message || '保存失败，请稍后重试');
       }
     } catch (error) {
-      console.error('❌ Error saving config:', error);
       if (saveStatus) {
         saveStatus.innerHTML = '<span class="text-red-600">✗ 保存失败</span>';
       }
@@ -653,12 +634,9 @@ const title = 'Configuration - Myriad';
     
     try {
       // 触发事件通知ConfigForm重置并保存配置
-      console.log('Dispatching config-reset event');
       window.dispatchEvent(new CustomEvent('config-reset'));
 
-      console.log('Waiting for reset result...');
       const result = await waitForConfigResetResult();
-      console.log('Got reset result:', result);
 
       if (result.success) {
         if (saveStatus) {
@@ -673,7 +651,6 @@ const title = 'Configuration - Myriad';
         alert(result.message || '重置失败，请稍后重试');
       }
     } catch (error) {
-      console.error('❌ Error resetting config:', error);
       if (saveStatus) {
         saveStatus.innerHTML = '<span class="text-red-600">✗ 重置失败</span>';
       }
@@ -710,7 +687,6 @@ const title = 'Configuration - Myriad';
 
   // 获取原始元数据
   document.getElementById('fetch-metadata')?.addEventListener('click', async () => {
-    console.log('🔄 Fetching raw metadata...');
     showLoading('metadata-container');
     
     try {
@@ -718,20 +694,17 @@ const title = 'Configuration - Myriad';
       const result = await response.json();
       
       if (result.success) {
-        console.log('✅ Metadata loaded:', result);
         document.getElementById('metadata-container')!.innerHTML = formatJson(result.data);
       } else {
         showError('metadata-container', result.message || 'Failed to load metadata');
       }
     } catch (error) {
-      console.error('❌ Error fetching metadata:', error);
       showError('metadata-container', error instanceof Error ? error.message : 'Unknown error');
     }
   });
 
   // 获取缓存调试信息
   document.getElementById('fetch-cache-debug')?.addEventListener('click', async () => {
-    console.log('🔄 Fetching cache debug info...');
     showLoading('cache-debug-container');
     
     try {
@@ -739,7 +712,6 @@ const title = 'Configuration - Myriad';
       const result = await response.json();
       
       if (result.success) {
-        console.log('✅ Cache info loaded:', result);
         
         // 美化显示缓存信息
         let html = `
@@ -809,8 +781,6 @@ const title = 'Configuration - Myriad';
             if (!confirm(`确定要删除缓存 ${cacheKey} 吗？`)) {
               return;
             }
-
-            console.log('🗑️ Deleting cache:', cacheKey);
             
             try {
               const response = await fetch(`${API_URL}/api/profile/reports/${cacheKey}`, {
@@ -819,7 +789,6 @@ const title = 'Configuration - Myriad';
               const result = await response.json();
               
               if (result.success) {
-                console.log('✅ Cache deleted successfully');
                 alert('缓存删除成功！');
                 // 刷新列表
                 document.getElementById('fetch-cache-debug')?.click();
@@ -827,7 +796,6 @@ const title = 'Configuration - Myriad';
                 alert(`删除失败: ${result.message}`);
               }
             } catch (error) {
-              console.error('❌ Error deleting cache:', error);
               alert('删除缓存时出错');
             }
           });
@@ -836,14 +804,12 @@ const title = 'Configuration - Myriad';
         showError('cache-debug-container', result.message || 'Failed to load cache info');
       }
     } catch (error) {
-      console.error('❌ Error fetching cache debug info:', error);
       showError('cache-debug-container', error instanceof Error ? error.message : 'Unknown error');
     }
   });
 
   // 获取报告列表（展示所有卡片）
   document.getElementById('fetch-reports')?.addEventListener('click', async () => {
-    console.log('🔄 Fetching reports list...');
     showLoading('reports-container');
     
     try {
@@ -851,7 +817,6 @@ const title = 'Configuration - Myriad';
       const result = await response.json();
       
       if (result.success) {
-        console.log('✅ Reports loaded:', result);
         
         // 获取所有报告的完整数据以展示卡片
         const allCards: any[] = [];
@@ -870,7 +835,7 @@ const title = 'Configuration - Myriad';
               });
             }
           } catch (error) {
-            console.error(`Failed to load report ${report.id}:`, error);
+            // Silently ignore failed report loads
           }
         }
         
@@ -946,7 +911,6 @@ const title = 'Configuration - Myriad';
             e.stopPropagation();
             const cardIndex = parseInt((element as HTMLElement).dataset.cardIndex || '0');
             const card = allCards[cardIndex];
-            console.log('📖 Viewing card:', card);
             
             // 在新窗口显示完整卡片JSON
             const win = window.open('', '_blank');
@@ -992,8 +956,6 @@ const title = 'Configuration - Myriad';
             if (!confirm(`确定要删除这张卡片吗？\n这不会删除整个报告。`)) {
               return;
             }
-
-            console.log('🗑️ Deleting card:', { reportId, cardIndex });
             
             try {
               const response = await fetch(`${API_URL}/api/profile/reports/${reportId}/cards`, {
@@ -1004,7 +966,6 @@ const title = 'Configuration - Myriad';
               const result = await response.json();
               
               if (result.success) {
-                console.log('✅ Card deleted successfully');
                 alert(`✓ 卡片 "${result.deleted_card_title || ''}" 删除成功！`);
                 // 刷新列表
                 document.getElementById('fetch-reports')?.click();
@@ -1012,7 +973,6 @@ const title = 'Configuration - Myriad';
                 alert(`删除失败: ${result.message}`);
               }
             } catch (error) {
-              console.error('❌ Error deleting card:', error);
               alert('删除卡片时出错');
             }
           });
@@ -1021,7 +981,6 @@ const title = 'Configuration - Myriad';
         showError('reports-container', result.message || 'Failed to load reports');
       }
     } catch (error) {
-      console.error('❌ Error fetching reports:', error);
       showError('reports-container', error instanceof Error ? error.message : 'Unknown error');
     }
   });
@@ -1032,7 +991,6 @@ const title = 'Configuration - Myriad';
       return;
     }
 
-    console.log('🗑️ Deleting platform cache...');
     showLoading('cache-debug-container');
     
     try {
@@ -1042,7 +1000,6 @@ const title = 'Configuration - Myriad';
       const result = await response.json();
       
       if (result.success) {
-        console.log('✅ Cache deleted successfully');
         document.getElementById('cache-debug-container')!.innerHTML = 
           '<p class="text-green-400">✅ 缓存删除成功！点击刷新按钮重新加载。</p>';
         alert('缓存删除成功！');
@@ -1053,7 +1010,6 @@ const title = 'Configuration - Myriad';
         alert(`删除失败: ${result.message}`);
       }
     } catch (error) {
-      console.error('❌ Error deleting cache:', error);
       showError('cache-debug-container', error instanceof Error ? error.message : 'Unknown error');
       alert('删除缓存时出错');
     }
@@ -1065,7 +1021,6 @@ const title = 'Configuration - Myriad';
       return;
     }
 
-    console.log('🗑️ Deleting all reports...');
     showLoading('reports-container');
     
     try {
@@ -1075,7 +1030,6 @@ const title = 'Configuration - Myriad';
       const result = await response.json();
       
       if (result.success) {
-        console.log('✅ All reports deleted successfully');
         document.getElementById('reports-container')!.innerHTML = 
           `<p class="text-green-400">✅ ${result.message}</p>`;
         alert(result.message);
@@ -1084,7 +1038,6 @@ const title = 'Configuration - Myriad';
         alert(`删除失败: ${result.message}`);
       }
     } catch (error) {
-      console.error('❌ Error deleting all reports:', error);
       showError('reports-container', error instanceof Error ? error.message : 'Unknown error');
       alert('删除报告时出错');
     }

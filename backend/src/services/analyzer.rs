@@ -1,8 +1,9 @@
-// AI analysis service using Google Gemini API
-use anyhow::{Result, Context};
+// AI analysis service using Google Gemini API or OpenAI-compatible API
+use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+// ============= Gemini API Structures =============
 #[derive(Debug, Serialize)]
 struct GeminiRequest {
     contents: Vec<GeminiContent>,
@@ -38,21 +39,86 @@ struct GeminiResponsePart {
     text: String,
 }
 
+// ============= OpenAI-compatible API Structures =============
+#[derive(Debug, Serialize)]
+struct OpenAIRequest {
+    model: String,
+    messages: Vec<OpenAIMessage>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAIMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIResponse {
+    choices: Vec<OpenAIChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIChoice {
+    message: OpenAIResponseMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIResponseMessage {
+    content: String,
+}
+
+// ============= AI Provider Enum =============
+#[derive(Debug, Clone, PartialEq)]
+pub enum AiProvider {
+    Gemini,
+    OpenAI,
+}
+
+impl AiProvider {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "openai" => Self::OpenAI,
+            _ => Self::Gemini,
+        }
+    }
+}
+
 pub struct AiAnalyzer {
     client: Client,
+    provider: AiProvider,
     api_key: String,
     model: String,
+    base_url: Option<String>, // For OpenAI-compatible APIs
 }
 
 impl AiAnalyzer {
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(
+        provider: AiProvider,
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+    ) -> Self {
         let client = Client::new();
-        Self { client, api_key, model }
+        Self {
+            client,
+            provider,
+            api_key,
+            model,
+            base_url,
+        }
     }
 
     pub async fn analyze_profile(&self, profile_data: &serde_json::Value) -> Result<String> {
+        match self.provider {
+            AiProvider::Gemini => self.analyze_with_gemini(profile_data).await,
+            AiProvider::OpenAI => self.analyze_with_openai(profile_data).await,
+        }
+    }
+
+    async fn analyze_with_gemini(&self, profile_data: &serde_json::Value) -> Result<String> {
         // 检查是否提供了自定义提示词
-        let user_prompt = if let Some(prompt) = profile_data.get("prompt").and_then(|p| p.as_str()) {
+        let user_prompt = if let Some(prompt) = profile_data.get("prompt").and_then(|p| p.as_str())
+        {
             prompt.to_string()
         } else {
             let system_prompt = "You are an expert data analyst specializing in social media and professional profiles.";
@@ -65,9 +131,7 @@ impl AiAnalyzer {
 
         let request_body = GeminiRequest {
             contents: vec![GeminiContent {
-                parts: vec![GeminiPart {
-                    text: user_prompt,
-                }],
+                parts: vec![GeminiPart { text: user_prompt }],
             }],
         };
 
@@ -76,7 +140,10 @@ impl AiAnalyzer {
             self.model, self.api_key
         );
 
-        let response = self.client
+        tracing::info!("🔗 Calling Gemini API (model: {})", self.model);
+
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -85,8 +152,15 @@ impl AiAnalyzer {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow::anyhow!("Gemini API error {}: {}", status, error_text));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow::anyhow!(
+                "Gemini API error {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let gemini_response: GeminiResponse = response
@@ -99,6 +173,92 @@ impl AiAnalyzer {
             .first()
             .and_then(|c| c.content.parts.first())
             .map(|p| p.text.clone())
+            .unwrap_or_else(|| "No analysis generated".to_string());
+
+        Ok(analysis)
+    }
+
+    async fn analyze_with_openai(&self, profile_data: &serde_json::Value) -> Result<String> {
+        // 检查是否提供了自定义提示词
+        let user_content = if let Some(prompt) = profile_data.get("prompt").and_then(|p| p.as_str())
+        {
+            prompt.to_string()
+        } else {
+            format!(
+                "Analyze the following user profile data and provide insights on their professional background, skills, interests, and online presence:\n\n{}",
+                serde_json::to_string_pretty(profile_data)?
+            )
+        };
+
+        let request_body = OpenAIRequest {
+            model: self.model.clone(),
+            messages: vec![
+                OpenAIMessage {
+                    role: "system".to_string(),
+                    content: "You are an expert data analyst specializing in social media and professional profiles.".to_string(),
+                },
+                OpenAIMessage {
+                    role: "user".to_string(),
+                    content: user_content,
+                },
+            ],
+        };
+
+        let base_url = self
+            .base_url
+            .as_deref()
+            .unwrap_or("https://api.openai.com/v1");
+
+        // 智能处理 base_url：如果已经包含 /chat/completions，直接使用；否则拼接
+        let url = if base_url.ends_with("/chat/completions") {
+            tracing::debug!("Base URL already contains /chat/completions, using as-is");
+            base_url.to_string()
+        } else if base_url.ends_with('/') {
+            tracing::debug!("Base URL ends with /, appending chat/completions");
+            format!("{}chat/completions", base_url)
+        } else {
+            tracing::debug!("Base URL needs path separator, appending /chat/completions");
+            format!("{}/chat/completions", base_url)
+        };
+
+        tracing::info!(
+            "🔗 Calling OpenAI-compatible API: {} (model: {})",
+            url,
+            self.model
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to OpenAI API")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow::anyhow!(
+                "OpenAI API error {}: {}",
+                status,
+                error_text
+            ));
+        }
+
+        let openai_response: OpenAIResponse = response
+            .json()
+            .await
+            .context("Failed to parse OpenAI API response")?;
+
+        let analysis = openai_response
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
             .unwrap_or_else(|| "No analysis generated".to_string());
 
         Ok(analysis)

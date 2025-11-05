@@ -492,27 +492,38 @@ pub async fn initialize_env_file() -> Result<Json<Value>, (StatusCode, Json<Valu
 
 /// Environment configuration update request
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct EnvUpdateRequest {
+    // Core configuration (saved to .env)
     pub database_url: Option<String>,
     pub server_host: Option<String>,
     pub server_port: Option<String>,
     pub rust_log: Option<String>,
     pub jwt_secret: Option<String>,
-    pub github_client_id: Option<String>,
-    pub github_client_secret: Option<String>,
-    pub github_redirect_url: Option<String>,
-    pub frontend_url: Option<String>,
+    pub cors_origins: Option<String>,
+
+    // Application configuration (saved to database) - kept for backward compatibility
+    // These will be migrated to the database automatically
     pub gemini_api_key: Option<String>,
     pub gemini_model: Option<String>,
+    pub openai_api_key: Option<String>,
+    pub openai_model: Option<String>,
+    pub openai_base_url: Option<String>,
+    pub deepseek_api_key: Option<String>,
+    pub deepseek_model: Option<String>,
+    pub ai_provider: Option<String>,
     pub topic_style: Option<String>,
     pub github_username: Option<String>,
     pub github_token: Option<String>,
     pub bilibili_uid: Option<String>,
     pub steam_api_key: Option<String>,
     pub steam_id: Option<String>,
+    pub netease_user_id: Option<String>,
     pub twitter_username: Option<String>,
     pub twitter_bearer_token: Option<String>,
-    pub netease_user_id: Option<String>,
+    pub github_client_id: Option<String>,
+    pub github_client_secret: Option<String>,
+    pub github_redirect_url: Option<String>,
 }
 
 /// POST /api/setup/update-env
@@ -553,7 +564,7 @@ pub async fn update_env_file(
     // Update configuration values
     let mut updated_content = content;
 
-    // Helper macro to update env values
+    // Helper macro to update env values (only for core config)
     macro_rules! update_env_var {
         ($field:expr, $key:expr) => {
             if let Some(value) = $field {
@@ -562,34 +573,103 @@ pub async fn update_env_file(
         };
     }
 
+    // Only update core configuration in .env
     update_env_var!(config.database_url, "DATABASE_URL");
     update_env_var!(config.server_host, "SERVER_HOST");
     update_env_var!(config.server_port, "SERVER_PORT");
     update_env_var!(config.rust_log, "RUST_LOG");
     update_env_var!(config.jwt_secret, "JWT_SECRET");
-    update_env_var!(config.github_client_id, "GITHUB_CLIENT_ID");
-    update_env_var!(config.github_client_secret, "GITHUB_CLIENT_SECRET");
-    update_env_var!(config.github_redirect_url, "GITHUB_REDIRECT_URL");
-    update_env_var!(config.frontend_url, "FRONTEND_URL");
-    update_env_var!(config.gemini_api_key, "GEMINI_API_KEY");
-    update_env_var!(config.gemini_model, "GEMINI_MODEL");
-    update_env_var!(config.topic_style, "TOPIC_STYLE");
-    update_env_var!(config.github_username, "GITHUB_USERNAME");
-    update_env_var!(config.github_token, "GITHUB_TOKEN");
-    update_env_var!(config.bilibili_uid, "BILIBILI_UID");
-    update_env_var!(config.steam_api_key, "STEAM_API_KEY");
-    update_env_var!(config.steam_id, "STEAM_ID");
-    update_env_var!(config.twitter_username, "TWITTER_USERNAME");
-    update_env_var!(config.twitter_bearer_token, "TWITTER_BEARER_TOKEN");
-    update_env_var!(config.netease_user_id, "NETEASE_USER_ID");
+    update_env_var!(config.cors_origins, "CORS_ORIGINS");
 
     // Write updated content back to .env
     match fs::write(&env_path, updated_content) {
         Ok(_) => {
             tracing::info!(".env file updated successfully");
+
+            // If database is available, save application configs there
+            if let Some(db) = crate::DB_CONNECTION.read().await.as_ref() {
+                use crate::services::config_service::ConfigService;
+                use serde_json::json;
+                use std::collections::HashMap;
+
+                let config_service = ConfigService::new(db.clone());
+                let mut db_updates = HashMap::new();
+
+                // Map application configs to database
+                if let Some(v) = config.ai_provider {
+                    db_updates.insert("ai_provider".to_string(), json!(v));
+                }
+                if let Some(v) = config.gemini_api_key {
+                    db_updates.insert("gemini_api_key".to_string(), json!(v));
+                }
+                if let Some(v) = config.gemini_model {
+                    db_updates.insert("gemini_model".to_string(), json!(v));
+                }
+                if let Some(v) = config.openai_api_key {
+                    db_updates.insert("openai_api_key".to_string(), json!(v));
+                }
+                if let Some(v) = config.openai_model {
+                    db_updates.insert("openai_model".to_string(), json!(v));
+                }
+                if let Some(v) = config.openai_base_url {
+                    db_updates.insert("openai_base_url".to_string(), json!(v));
+                }
+                if let Some(v) = config.deepseek_api_key {
+                    db_updates.insert("deepseek_api_key".to_string(), json!(v));
+                }
+                if let Some(v) = config.deepseek_model {
+                    db_updates.insert("deepseek_model".to_string(), json!(v));
+                }
+                if let Some(v) = config.topic_style {
+                    db_updates.insert("topic_style".to_string(), json!(v));
+                }
+                if let Some(v) = config.github_username {
+                    db_updates.insert("github_username".to_string(), json!(v));
+                }
+                if let Some(v) = config.github_token {
+                    db_updates.insert("github_token".to_string(), json!(v));
+                }
+                if let Some(v) = config.bilibili_uid {
+                    db_updates.insert("bilibili_uid".to_string(), json!(v));
+                }
+                if let Some(v) = config.steam_api_key {
+                    db_updates.insert("steam_api_key".to_string(), json!(v));
+                }
+                if let Some(v) = config.steam_id {
+                    db_updates.insert("steam_id".to_string(), json!(v));
+                }
+                if let Some(v) = config.netease_user_id {
+                    db_updates.insert("netease_user_id".to_string(), json!(v));
+                }
+                if let Some(v) = config.twitter_bearer_token {
+                    db_updates.insert("twitter_bearer_token".to_string(), json!(v));
+                }
+                if let Some(v) = config.github_client_id {
+                    db_updates.insert("github_client_id".to_string(), json!(v));
+                }
+                if let Some(v) = config.github_client_secret {
+                    db_updates.insert("github_client_secret".to_string(), json!(v));
+                }
+                if let Some(v) = config.github_redirect_url {
+                    db_updates.insert("github_redirect_url".to_string(), json!(v));
+                }
+
+                if !db_updates.is_empty() {
+                    if let Err(e) = config_service.update_configs(db_updates).await {
+                        tracing::warn!("Failed to update database configs: {}", e);
+                    } else {
+                        // Reload dynamic config
+                        if let Ok(new_config) = config_service.load_config().await {
+                            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = new_config;
+                            tracing::info!("Dynamic configuration reloaded");
+                        }
+                    }
+                }
+            }
+
             Ok(Json(json!({
                 "success": true,
-                "message": "Configuration updated successfully. Please restart the backend for changes to take effect.",
+                "message": "Configuration updated successfully.",
                 "path": env_path.display().to_string()
             })))
         }
@@ -664,7 +744,7 @@ pub async fn save_database_config(
 
             return Ok(Json(json!({
                 "success": true,
-                "message": "Database configuration saved successfully. Please restart the backend to connect to the database.",
+                "message": "Database configuration saved successfully.",
                 "path": env_path.display().to_string()
             })));
         }

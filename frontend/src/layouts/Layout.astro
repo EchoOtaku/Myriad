@@ -7,17 +7,23 @@ interface Props {
 }
 
 const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = Astro.props;
+const isDev = import.meta.env.DEV;
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="description" content={description} />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+    
+    <!-- 安全策略 (只保留可以通过 meta 标签设置的) -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    {!isDev && <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' http://localhost:3000 https://api.github.com https://image.pollinations.ai; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" />}
+    
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -784,11 +790,11 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       @keyframes scale-in {
         from {
           opacity: 0;
-          transform: scale(0.95);
+          transform: scale(0.9) translateY(20px);
         }
         to {
           opacity: 1;
-          transform: scale(1);
+          transform: scale(1) translateY(0);
         }
       }
 
@@ -801,12 +807,40 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         }
       }
 
+      @keyframes fade-out {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0;
+        }
+      }
+
+      @keyframes scale-out {
+        from {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+        to {
+          opacity: 0;
+          transform: scale(0.9) translateY(20px);
+        }
+      }
+
       .animate-fade-in {
-        animation: fade-in 0.2s ease-out;
+        animation: fade-in 0.25s ease-out;
+      }
+
+      .animate-fade-out {
+        animation: fade-out 0.2s ease-in;
       }
 
       .animate-scale-in {
-        animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .animate-scale-out {
+        animation: scale-out 0.25s cubic-bezier(0.4, 0, 1, 1);
       }
 
       .animate-pulse-slow {
@@ -874,6 +908,61 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: color-mix(in srgb, var(--color-primary) 60%, transparent);
+      }
+
+      /* 弹窗样式 - 确保在视口中心 */
+      .modal-overlay {
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        overflow-y: auto;
+      }
+
+      .modal-overlay-portal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9999;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        overflow-y: auto;
+        opacity: 0;
+        transition: opacity 0.25s ease-out;
+      }
+
+      .modal-overlay-portal.modal-opening {
+        opacity: 1;
+      }
+
+      .modal-overlay-portal.modal-closing {
+        opacity: 0;
+        transition: opacity 0.2s ease-in;
+      }
+
+      .modal-content {
+        position: relative;
+        background-color: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(40px);
+        -webkit-backdrop-filter: blur(40px);
+        border-radius: 1.5rem;
+        max-width: 56rem;
+        width: 100%;
+        max-height: 85vh;
+        overflow: hidden;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        transform-origin: center center;
       }
 
       /* 渐变工具类 */
@@ -997,7 +1086,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           const cache: WallpaperCache = { apiUrl, actualUrl, timestamp: Date.now() };
           localStorage.setItem('lastWallpaper', JSON.stringify(cache));
         } catch (e) {
-          console.warn('⚠️ [Layout] Failed to save wallpaper cache:', e);
+          // Failed to save wallpaper cache
         }
       }
 
@@ -1007,8 +1096,6 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           // 先获取实际的图片 URL（通过 fetch 会自动跟随重定向）
           const response = await fetch(apiUrl, { method: 'HEAD' });
           const actualUrl = response.url; // 重定向后的最终 URL
-          console.log('🔗 [Layout] API URL:', apiUrl);
-          console.log('🔗 [Layout] Actual image URL:', actualUrl);
           return actualUrl;
         } catch {
           // 如果获取失败，回退到原始 URL
@@ -1018,7 +1105,6 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       // 立即显示缓存的壁纸和颜色
       function showCachedWallpaper(wallpaperEl: HTMLElement, cache: WallpaperCache, blur: number): void {
-        console.log('⚡ [Layout] Using cached wallpaper for instant display');
         wallpaperEl.style.backgroundImage = `url(${cache.actualUrl})`;
         wallpaperEl.style.filter = `blur(${blur}px)`;
         activeWallpaperUrl = cache.actualUrl;
@@ -1027,7 +1113,6 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         extractColorsFromImage(cache.actualUrl).then(colors => {
           if (activeWallpaperUrl === cache.actualUrl) {
             applyColorPalette(colors);
-            console.log('⚡ [Layout] Cached colors applied instantly:', colors);
           }
         });
       }
@@ -1046,13 +1131,10 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             const apiUrl = data.ui_config.wallpaper_url;
             const blur = data.ui_config.wallpaper_blur || 3;
             
-            console.log('🖼️ [Layout] Loading wallpaper from API:', apiUrl);
-            
             // 🚀 优化1: 先检查缓存，立即显示
             const cachedWallpaper = getLastWallpaperCache();
             if (cachedWallpaper && cachedWallpaper.apiUrl === apiUrl) {
               showCachedWallpaper(wallpaperEl, cachedWallpaper, blur);
-              console.log('✅ [Layout] Cached wallpaper displayed instantly');
             }
             
             // 🚀 优化2: 后台获取新的实际 URL
@@ -1060,19 +1142,16 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             
             // 如果实际 URL 和缓存的一样，不需要更新
             if (cachedWallpaper && cachedWallpaper.actualUrl === actualImageUrl) {
-              console.log('✅ [Layout] Wallpaper unchanged, no update needed');
               return;
             }
             
             // URL 不同，需要更新
-            console.log('🔄 [Layout] New wallpaper detected, updating...');
             activeWallpaperUrl = actualImageUrl;
             
             // 🚀 优化3：并行加载新图片和提取颜色
             const img = new Image();
             img.crossOrigin = 'anonymous';
             
-            console.log('🎨 [Layout] Starting color extraction (parallel)');
             const colorPromise = extractColorsFromImage(actualImageUrl);
             
             // 加载新图片
@@ -1081,15 +1160,12 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
                 if (activeWallpaperUrl === actualImageUrl) {
                   wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;
                   wallpaperEl.style.filter = `blur(${blur}px)`;
-                  console.log('✅ [Layout] New wallpaper displayed');
                   resolve();
                 } else {
-                  console.warn('⚠️ [Layout] Wallpaper URL changed, skipping display');
                   reject(new Error('URL changed'));
                 }
               };
               img.onerror = () => {
-                console.error('❌ [Layout] Failed to load wallpaper');
                 reject(new Error('Failed to load wallpaper'));
               };
               img.src = actualImageUrl;
@@ -1102,25 +1178,17 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
               // 使用 requestAnimationFrame 优化颜色应用
               requestAnimationFrame(() => {
                 applyColorPalette(result);
-                console.log('✅ [Layout] New colors applied:', result);
               });
               
               // 保存新的缓存
               saveWallpaperCache(apiUrl, actualImageUrl);
               wallpaperLoadComplete = true;
-            } else {
-              console.warn('⚠️ [Layout] Wallpaper changed during extraction');
-              console.warn(`   Extracted for: ${actualImageUrl}`);
-              console.warn(`   But active is: ${activeWallpaperUrl}`);
-              console.warn('   Colors NOT applied');
             }
             
           } else {
             // 没有配置壁纸，使用默认配色
-            console.log('ℹ️ [Layout] No wallpaper configured, using default colors');
           }
         } catch (error) {
-          console.error('❌ [Layout] Error loading wallpaper/colors:', error);
           // 出错时保持默认配色，不清除颜色
         }
       }
@@ -1161,7 +1229,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             try {
               await (window as any).generateReport();
             } catch (err) {
-              console.error('Report generation failed:', err);
+              // Report generation failed
             } finally {
               generateBtn.classList.remove('loading');
             }
@@ -1171,8 +1239,6 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       
       // 页面加载完成处理
       function handlePageLoaded() {
-        console.log('✅ [Layout] Page loaded');
-        
         // 隐藏加载器
         const loader = (window as any).pageLoader;
         if (loader) {
@@ -1245,7 +1311,6 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
         // 监听登录成功事件
         window.addEventListener('auth-login-success', ((e: CustomEvent) => {
-          console.log('Login success event received, reloading user info');
           loadUserInfo();
         }) as EventListener);
       }
@@ -1321,8 +1386,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
           }));
           
         } catch (error) {
-          console.error('Failed to load user info:', error);
-          // Token无效，清除并显示登录按钮
+          // Token无效,清除并显示登录按钮
           localStorage.removeItem('auth_token');
           hideWithAnimation(userAvatarLink);
           hideWithAnimation(configGroup);

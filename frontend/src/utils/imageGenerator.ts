@@ -24,7 +24,13 @@ const CACHE_EXPIRY_DAYS = 30;
 // 调用后端 AI 生成提示词
 async function generatePromptFromAPI(title: string, summary: string, category: string): Promise<string> {
     try {
-        console.log(`🤖 [AI] Requesting prompt generation for: "${title}"`);
+        // 输入验证
+        if (!title || typeof title !== 'string') {
+            throw new Error('Invalid title');
+        }
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         
         const response = await fetch('http://localhost:3000/api/prompt/generate', {
             method: 'POST',
@@ -32,22 +38,27 @@ async function generatePromptFromAPI(title: string, summary: string, category: s
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                title,
-                summary,
-                category,
+                title: title.substring(0, 500),
+                summary: summary.substring(0, 1000),
+                category: category.substring(0, 100),
             }),
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
         }
         
         const data = await response.json();
-        console.log(`✅ [AI] Generated prompt: "${data.prompt.substring(0, 100)}..."`);
+        
+        if (!data.prompt || typeof data.prompt !== 'string') {
+            throw new Error('Invalid response format');
+        }
         
         return data.prompt;
     } catch (error) {
-        console.error('❌ [AI] Failed to generate prompt, using fallback:', error);
         
         // 降级方案：使用简单的默认提示词
         return `A cute chibi character, ${title}, in Studio Ghibli art style, transparent background, PNG format, no background, isolated subject, masterpiece, highest quality, detailed character design, soft lighting, hand-drawn animation style, Hayao Miyazaki inspired, watercolor texture, gentle colors, whimsical atmosphere, professional illustration, 8K resolution, ultra detailed, cute kawaii style`;
@@ -113,7 +124,6 @@ export function getCachedIllustrations(): Map<number, CardIllustration> {
         
         return illustrations;
     } catch (e) {
-        console.error('Failed to load cached illustrations:', e);
         return new Map();
     }
 }
@@ -130,9 +140,8 @@ export function saveIllustration(cardId: number, illustration: CardIllustration)
         });
         
         localStorage.setItem(IMAGE_CACHE_KEY, JSON.stringify(data));
-        console.log(`✅ [ImageGen] Saved illustration for card ${cardId}`);
     } catch (e) {
-        console.error('Failed to save illustration:', e);
+        // 静默失败,缓存不可用不影响功能
     }
 }
 
@@ -148,7 +157,6 @@ export async function generateCardIllustration(
     const cachedIll = cached.get(cardId);
     
     if (cachedIll) {
-        console.log(`⚡ [ImageGen] Using cached illustration for card ${cardId}`);
         return cachedIll.url;
     }
     
@@ -159,13 +167,12 @@ export async function generateCardIllustration(
         const data = await response.json();
         config = data.ui_config || {};
     } catch (e) {
-        console.warn('Failed to load config, using defaults');
+        // 使用默认配置
     }
     
     // 检查是否启用
     const enabled = config.config_fields?.find((f: any) => f.key === 'image_gen_enabled')?.value !== 'false';
     if (!enabled) {
-        console.log(`⚠️ [ImageGen] AI illustrations disabled in config`);
         return ''; // 返回空字符串表示不生成
     }
     
@@ -174,29 +181,25 @@ export async function generateCardIllustration(
     const width = parseInt(config.config_fields?.find((f: any) => f.key === 'image_gen_width')?.value || '512');
     const height = parseInt(config.config_fields?.find((f: any) => f.key === 'image_gen_height')?.value || '512');
     
-    // 生成提示词（调用后端 AI）
-    console.log(`🎨 [ImageGen] Card ${cardId} - Generating illustration`);
-    console.log(`   Title: "${title}"`);
-    console.log(`   Summary: "${summary.substring(0, 50)}..."`);
+    // 验证尺寸参数
+    const validWidth = Math.max(256, Math.min(width, 2048));
+    const validHeight = Math.max(256, Math.min(height, 2048));
     
+    // 生成提示词（调用后端 AI）
     const prompt = await generateGhibliPrompt(title, summary, category);
-    console.log(`   Generated Prompt: "${prompt.substring(0, 100)}..."`);
     
     // 使用 cardId 作为 seed 确保每张卡片生成不同的图片
     const seed = cardId * 1000 + Date.now() % 1000;
-    console.log(`   Seed: ${seed} (based on cardId ${cardId})`);
     
     // 生成图片 URL
     const imageUrl = generateImageUrl(prompt, {
         model: model as any,
-        width,
-        height,
+        width: validWidth,
+        height: validHeight,
         seed,
         nologo: true,
         enhance: true
     });
-    
-    console.log(`   URL: ${imageUrl.substring(0, 120)}...`);
     
     // 保存到缓存
     const illustration: CardIllustration = {

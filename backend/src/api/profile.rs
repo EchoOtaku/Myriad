@@ -1,4 +1,3 @@
-use crate::services::analyzer::AiAnalyzer;
 use crate::services::fetcher::PlatformFetcher;
 use axum::{
     extract::{Query, State},
@@ -623,25 +622,53 @@ pub async fn generate_report(
         );
     }
 
-    // 获取AI配置
-    let api_key = match std::env::var("GEMINI_API_KEY") {
-        Ok(key) if !key.is_empty() => key,
-        _ => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "success": false,
-                    "message": "Gemini API key not configured"
-                })),
-            );
+    // 获取AI配置 - 从全局动态配置读取以支持热加载
+    let dynamic_config = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
+    let provider = crate::services::analyzer::AiProvider::from_str(&dynamic_config.ai_provider);
+
+    let (api_key, model, base_url) = match provider {
+        crate::services::analyzer::AiProvider::Gemini => {
+            match &dynamic_config.gemini_api_key {
+                Some(key) if !key.is_empty() => {
+                    (key.clone(), dynamic_config.gemini_model.clone(), None)
+                }
+                _ => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "success": false,
+                            "message": "Gemini API key not configured"
+                        })),
+                    );
+                }
+            }
+        }
+        crate::services::analyzer::AiProvider::OpenAI => {
+            match &dynamic_config.openai_api_key {
+                Some(key) if !key.is_empty() => {
+                    (
+                        key.clone(),
+                        dynamic_config.openai_model.clone(),
+                        Some(dynamic_config.openai_base_url.clone())
+                    )
+                }
+                _ => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "success": false,
+                            "message": "OpenAI API key not configured"
+                        })),
+                    );
+                }
+            }
         }
     };
 
-    let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string());
-    let analyzer = AiAnalyzer::new(api_key, model);
+    let analyzer = crate::services::analyzer::AiAnalyzer::new(provider, api_key, model, base_url);
 
     // 获取话题风格配置
-    let topic_style = std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string());
+    let topic_style = dynamic_config.topic_style.clone();
     let style_instruction = get_style_instruction(&topic_style);
 
     tracing::info!("Using topic style: {}", topic_style);

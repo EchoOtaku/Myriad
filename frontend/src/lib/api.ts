@@ -1,21 +1,81 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import { getCSRFToken, getCSRFHeaderName, clearCSRFToken } from '../utils/csrf';
+import { checkRateLimit, RateLimitError } from '../utils/rateLimiter';
 
 const API_BASE_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+
+// 验证 API URL 格式
+const isValidUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+if (!isValidUrl(API_BASE_URL)) {
+  throw new Error('Invalid API_BASE_URL configuration');
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30秒超时
+  validateStatus: (status) => status < 500, // 只有5xx才算网络错误
 });
+
+// 验证 JWT token 格式
+const isValidToken = (token: string): boolean => {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  return parts.length === 3 && parts.every(part => part.length > 0);
+};
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(
   (config) => {
+    // 添加 CSRF Token
+    const csrfToken = getCSRFToken();
+    if (csrfToken) {
+      config.headers[getCSRFHeaderName()] = csrfToken;
+    }
+
+    // 添加认证 Token
     const token = localStorage.getItem('auth_token');
-    if (token) {
+    if (token && isValidToken(token)) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Rate Limiting 检查（仅针对修改操作）
+    if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
+      const endpoint = config.url || '';
+      let rateLimitKey = 'api';
+      
+      if (endpoint.includes('/auth/login')) {
+        rateLimitKey = 'login';
+        if (!checkRateLimit(endpoint, 'login')) {
+          return Promise.reject(new RateLimitError('登录尝试过于频繁，请稍后再试', 300000));
+        }
+      } else if (endpoint.includes('/fetch')) {
+        rateLimitKey = 'fetch';
+        if (!checkRateLimit(endpoint, 'fetch')) {
+          return Promise.reject(new RateLimitError('数据获取请求过于频繁，请稍后再试', 60000));
+        }
+      } else if (endpoint.includes('/analysis')) {
+        rateLimitKey = 'analysis';
+        if (!checkRateLimit(endpoint, 'analysis')) {
+          return Promise.reject(new RateLimitError('分析请求过于频繁，请稍后再试', 60000));
+        }
+      } else {
+        if (!checkRateLimit(endpoint, 'api')) {
+          return Promise.reject(new RateLimitError('请求过于频繁，请稍后再试', 60000));
+        }
+      }
+    }
+
     return config;
   },
   (error) => {
@@ -26,16 +86,29 @@ api.interceptors.request.use(
 // Add response interceptor to handle 401 errors
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  (error: AxiosError | RateLimitError) => {
+    // 处理 Rate Limit 错误
+    if (error instanceof RateLimitError) {
+      return Promise.reject(error);
+    }
+
+    // 处理 Axios 错误
     if (error.response?.status === 401) {
       // Token expired or invalid, clear it and redirect to login
       localStorage.removeItem('auth_token');
+      clearCSRFToken();
       window.dispatchEvent(new CustomEvent('auth-state-changed', { 
         detail: { isAuthenticated: false } 
       }));
-      // Optionally show a message
-      console.warn('Authentication expired, please login again');
     }
+    
+    // 处理 429 Too Many Requests
+    if (error.response?.status === 429) {
+      const retryAfter = error.response.headers['retry-after'];
+      const message = `请求过于频繁，请在 ${retryAfter || 60} 秒后重试`;
+      return Promise.reject(new RateLimitError(message, parseInt(retryAfter || '60000')));
+    }
+
     return Promise.reject(error);
   }
 );
@@ -59,6 +132,23 @@ export const saveDatabaseConfig = async (config: {
   password: string;
   database: string;
 }) => {
+  // 输入验证
+  if (!config.host || config.host.length > 255) {
+    throw new Error('Invalid host');
+  }
+  if (config.port < 1 || config.port > 65535) {
+    throw new Error('Invalid port');
+  }
+  if (!config.username || config.username.length > 100) {
+    throw new Error('Invalid username');
+  }
+  if (!config.password || config.password.length > 255) {
+    throw new Error('Invalid password');
+  }
+  if (!config.database || config.database.length > 100) {
+    throw new Error('Invalid database name');
+  }
+
   const response = await api.post('/api/setup/database-config', config);
   return response.data;
 };
@@ -72,6 +162,19 @@ export const createAdmin = async (credentials: {
   username: string;
   password: string;
 }) => {
+  // 验证用户名
+  if (!credentials.username || credentials.username.length < 3 || credentials.username.length > 50) {
+    throw new Error('Username must be 3-50 characters');
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(credentials.username)) {
+    throw new Error('Username can only contain letters, numbers and underscores');
+  }
+
+  // 验证密码
+  if (!credentials.password || credentials.password.length < 8 || credentials.password.length > 128) {
+    throw new Error('Password must be 8-128 characters');
+  }
+
   const response = await api.post('/api/setup/create-admin', credentials);
   return response.data;
 };

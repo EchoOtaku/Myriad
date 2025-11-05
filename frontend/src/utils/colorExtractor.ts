@@ -33,10 +33,8 @@ export async function extractColorsFromImage(
     options: { forceRefresh?: boolean } = {}
 ): Promise<ColorPalette> {
     const startTime = performance.now();
-    console.log(' [ColorExtractor] Starting:', imageUrl);
 
     if (currentExtractionController) {
-        console.log(' [ColorExtractor] Cancelling previous');
         currentExtractionController.abort();
     }
 
@@ -46,20 +44,17 @@ export async function extractColorsFromImage(
 
     try {
         if (!options.forceRefresh && memoryCache.has(imageUrl)) {
-            console.log(' [ColorExtractor] Hit memory cache');
             return memoryCache.get(imageUrl)!;
         }
 
         if (!options.forceRefresh) {
             const cached = getLocalStorageCache(imageUrl);
             if (cached) {
-                console.log(' [ColorExtractor] Hit localStorage cache');
                 memoryCache.set(imageUrl, cached);
                 return cached;
             }
         }
 
-        console.log(' [ColorExtractor] Extracting...');
         const palette = await extractFromImage(imageUrl, myController.signal);
 
         if (myController.signal.aborted) {
@@ -73,17 +68,12 @@ export async function extractColorsFromImage(
         memoryCache.set(imageUrl, palette);
         saveToLocalStorage(imageUrl, palette);
 
-        const duration = performance.now() - startTime;
-        console.log(` [ColorExtractor] Complete in ${duration.toFixed(0)}ms:`, palette);
-
         return palette;
 
     } catch (error) {
         if (error instanceof Error && error.message.includes('cancel')) {
-            console.log(' [ColorExtractor] Cancelled');
             throw error;
         }
-        console.error(' [ColorExtractor] Failed:', error);
         return getDefaultPalette();
     } finally {
         if (currentExtractionController === myController) {
@@ -130,7 +120,6 @@ async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<
     const scale = Math.min(MAX_CANVAS_SIZE / img.width, MAX_CANVAS_SIZE / img.height, 1);
     canvas.width = Math.floor(img.width * scale);
     canvas.height = Math.floor(img.height * scale);
-    console.log(` [ColorExtractor] Canvas: ${canvas.width}x${canvas.height}`);
 
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -168,10 +157,7 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
         totalSamples++;
     }
 
-    console.log(` [ColorExtractor] ${colorMap.size} vivid colors from ${totalSamples} samples`);
-
     if (colorMap.size === 0) {
-        console.warn('⚠️ [ColorExtractor] No vivid colors found, using default');
         return getDefaultPalette();
     }
 
@@ -204,19 +190,12 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
         );
 
     if (selectedColors.length === 0) {
-        console.warn('⚠️ [ColorExtractor] No colors pass strict filter, using default');
         return getDefaultPalette();
     }
 
     const primary = selectedColors[0];
     const secondary = selectedColors.length > 1 ? selectedColors[1] : primary;
     const accent = selectedColors.length > 2 ? selectedColors[2] : secondary;
-
-    console.log(` [ColorExtractor] Selected colors:`, {
-        primary: `sat=${primary.saturation.toFixed(2)} chroma=${primary.chroma.toFixed(0)}`,
-        secondary: `sat=${secondary.saturation.toFixed(2)} chroma=${secondary.chroma.toFixed(0)}`,
-        accent: `sat=${accent.saturation.toFixed(2)} chroma=${accent.chroma.toFixed(0)}`
-    });
 
     return {
         primary: rgbToHex(primary.r, primary.g, primary.b),
@@ -374,7 +353,7 @@ function saveToLocalStorage(url: string, palette: ColorPalette): void {
         const data: CachedColorData = { url, palette, timestamp: Date.now(), version: CACHE_VERSION };
         localStorage.setItem('wallpaperColorCache', JSON.stringify(data));
     } catch (e) {
-        console.error('Failed to save cache:', e);
+        // 静默失败,缓存不可用不影响功能
     }
 }
 
@@ -385,7 +364,6 @@ export function applyColorPalette(palette: ColorPalette): void {
     root.style.setProperty('--color-accent', palette.accent);
     root.style.setProperty('--color-light', palette.light);
     root.style.setProperty('--color-dark', palette.dark);
-    console.log(' [ColorExtractor] Applied:', palette);
 }
 
 export function clearColors(): void {
@@ -397,7 +375,6 @@ export function clearColors(): void {
         dark: '#475569',
     };
     applyColorPalette(neutralPalette);
-    console.log(' [ColorExtractor] Cleared colors');
 }
 
 export function clearColorCache(url?: string): void {

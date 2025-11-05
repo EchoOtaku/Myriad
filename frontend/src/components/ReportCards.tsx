@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
 
@@ -58,11 +59,12 @@ export default function ReportCards() {
     const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
     const [isAdmin, setIsAdmin] = useState(false); // 是否为管理员
     const [isAuthenticated, setIsAuthenticated] = useState(false); // 是否已登录
+    const [isCardTransitioning, setIsCardTransitioning] = useState(false); // 卡片切换动画状态
+    const [isModalClosing, setIsModalClosing] = useState(false); // 弹窗关闭动画状态
 
     // 从所有卡片中随机抽取指定数量（优先使用all_cards）
     const getRandomCards = useCallback((currentReport: PersonalReport | null, count: number = 6): ReportCard[] => {
         if (!currentReport) {
-            console.warn('⚠️ [Random] No report available!');
             return [];
         }
 
@@ -71,16 +73,12 @@ export default function ReportCards() {
             ? currentReport.all_cards 
             : currentReport.cards;
         
-        console.log(`🎯 [Random] Source: ${currentReport.all_cards && currentReport.all_cards.length > 0 ? 'all_cards' : 'cards'}, Total: ${allCards?.length || 0} cards, Need: ${count} cards`);
-        
         if (!allCards || allCards.length === 0) {
-            console.warn('⚠️ [Random] No cards available!');
             return [];
         }
         
         // 如果卡片数量小于等于需要的数量，返回所有卡片
         if (allCards.length <= count) {
-            console.log(`✅ [Random] Returning all ${allCards.length} cards (not enough for random selection)`);
             return [...allCards]; // 返回副本避免直接修改原数组
         }
         
@@ -92,8 +90,6 @@ export default function ReportCards() {
         }
         
         const result = shuffled.slice(0, count);
-        console.log(`✅ [Random] Returning ${result.length} random cards from ${allCards.length} total`);
-        console.log(`   Selected cards: ${result.map(c => c.title).join(', ')}`);
         
         return result;
     }, []); // 空依赖数组，函数不侚重新创建
@@ -119,13 +115,11 @@ export default function ReportCards() {
                     const user = await response.json();
                     setIsAuthenticated(true);
                     setIsAdmin(user.is_admin === true);
-                    console.log('🔑 [Auth] User admin status:', user.is_admin);
                 } else {
                     setIsAuthenticated(false);
                     setIsAdmin(false);
                 }
             } catch (error) {
-                console.error('❌ [Auth] Failed to check admin status:', error);
                 setIsAuthenticated(false);
                 setIsAdmin(false);
             }
@@ -175,7 +169,6 @@ export default function ReportCards() {
                         platform: userInfoResult.user_info.platform,
                         bio: userInfoResult.user_info.bio
                     });
-                    console.log('✓ User info loaded from cache:', userInfoResult.user_info.platform);
                 }
             }
 
@@ -198,7 +191,7 @@ export default function ReportCards() {
                     }
                 }
             } catch (e) {
-                console.warn('Failed to fetch cached data:', e);
+                // Failed to fetch cached data, continue without it
             }
             
             // 处理各个平台的配置
@@ -286,7 +279,7 @@ export default function ReportCards() {
             
             setPlatformLinks(links);
         } catch (err) {
-            console.error('Failed to fetch user info:', err);
+            // Failed to fetch user info
         }
     };
 
@@ -348,14 +341,6 @@ export default function ReportCards() {
                 setProgress('步骤 3/3: 生成卡片报告...');
                 setProgressPercent(90);
                 
-                console.log('📊 [Report] Generated report data:', {
-                    from_cache: result.from_cache,
-                    card_count: result.report.cards.length,
-                    all_cards_count: result.report.all_cards?.length || 0,
-                    generated_at: result.report.generated_at,
-                    topics: result.report.selected_topics
-                });
-                
                 setReport(result.report);
                 // 从所有卡片中随机抽取6张显示
                 const randomCards = getRandomCards(result.report, 6);
@@ -375,7 +360,6 @@ export default function ReportCards() {
     const handleGenerateReport = useCallback(async (forceRefresh: boolean = false) => {
         // 防止重复调用
         if (loading) {
-            console.warn('⚠️ [Generate] Already generating, ignoring request');
             return;
         }
 
@@ -402,7 +386,6 @@ export default function ReportCards() {
             // 完成
             await new Promise(resolve => setTimeout(resolve, 300)); // 短暂延迟显示100%
         } catch (err) {
-            console.error('Error generating report:', err);
             const message = err instanceof Error ? err.message : 'Unknown error';
             setError(message);
             setProgressPercent(0);
@@ -439,7 +422,7 @@ export default function ReportCards() {
                     }
                 }
             } catch (err) {
-                console.error('Failed to load pet config:', err);
+                // Failed to load pet config
             }
 
             try {
@@ -447,20 +430,9 @@ export default function ReportCards() {
                 if (response.ok) {
                     const result = await response.json();
                     if (result.report && result.report.cards && result.report.cards.length > 0) {
-                        console.log('📦 [Load] Existing report loaded:', {
-                            from_cache: result.from_cache,
-                            card_count: result.report.cards.length,
-                            all_cards_count: result.report.all_cards?.length || 0,
-                            has_all_cards: !!(result.report.all_cards && result.report.all_cards.length > 0),
-                            generated_at: result.report.generated_at,
-                            topics: result.report.selected_topics
-                        });
-                        
                         setReport(result.report);
                         // 从所有卡片中随机抽取6张显示
                         const randomCards = getRandomCards(result.report, 6);
-                        console.log(`📦 [Load] Display ${randomCards.length} cards from report`);
-                        console.log(`📦 [Load] Card IDs: ${randomCards.map(c => c.topic_id).join(', ')}`);
                         setDisplayCards(randomCards);
                         setFromCache(result.from_cache || false);
                         setLoading(false);
@@ -468,10 +440,8 @@ export default function ReportCards() {
                     }
                 }
                 // 没有报告时显示空状态，不自动生成
-                console.log('📦 [Load] No existing report found');
                 setLoading(false);
             } catch (err) {
-                console.error('Failed to load existing report:', err);
                 setError('加载报告失败');
                 setLoading(false);
             }
@@ -501,10 +471,23 @@ export default function ReportCards() {
     // 监控 displayCards 的变化，确保始终显示6张卡片
     useEffect(() => {
         if (displayCards.length > 0 && displayCards.length !== 6) {
-            console.warn(`⚠️ [Display] Expected 6 cards but got ${displayCards.length}!`);
-            console.log(`   Card titles: ${displayCards.map(c => c.title).join(', ')}`);
+            // Expected 6 cards but got different amount
         }
     }, [displayCards]);
+
+    // 弹窗打开时锁定背景滚动
+    useEffect(() => {
+        if (selectedCard && !isModalClosing) {
+            // 使用overflow:hidden锁定滚动，保持位置不变
+            const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+            document.body.style.overflow = 'hidden';
+            document.body.style.paddingRight = `${scrollbarWidth}px`;
+        } else if (!selectedCard) {
+            // 弹窗完全关闭后恢复
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+    }, [selectedCard, isModalClosing]);
 
     // 萌宠走动动画 - 使用上传的像素画
     useEffect(() => {
@@ -874,24 +857,25 @@ export default function ReportCards() {
                                 : report.cards.length;
                             const shouldShowShuffle = totalCards > 6;
                             
-                            // 只在组件渲染时输出一次，避免每次渲染都打印
-                            if (typeof window !== 'undefined' && !window.__shuffleButtonLogged) {
-                                console.log(`🔘 [Shuffle Button] Total cards: ${totalCards}, Show button: ${shouldShowShuffle}`);
-                                console.log(`   all_cards: ${report.all_cards?.length || 0}, cards: ${report.cards.length}`);
-                                window.__shuffleButtonLogged = true;
-                            }
                             
                             return shouldShowShuffle ? (
                                 <button
                                     onClick={() => {
-                                        console.log('🔄 [Shuffle] Changing cards...');
-                                        const newCards = getRandomCards(report, 6);
-                                        console.log(`🔄 [Shuffle] Got ${newCards.length} new cards`);
-                                        console.log(`🔄 [Shuffle] Card IDs: ${newCards.map(c => c.topic_id).join(', ')}`);
-                                        setDisplayCards(newCards);
+                                        if (isCardTransitioning) return; // 防止动画期间重复点击
+                                        setIsCardTransitioning(true);
+                                        // 延迟后切换卡片
+                                        setTimeout(() => {
+                                            const newCards = getRandomCards(report, 6);
+                                            setDisplayCards(newCards);
+                                            // 动画完成后重置状态
+                                            setTimeout(() => {
+                                                setIsCardTransitioning(false);
+                                            }, 100);
+                                        }, 400);
                                     }}
                                     className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-lg"
                                     aria-label="换一批"
+                                    disabled={isCardTransitioning}
                                 >
                                     <svg className="w-4 h-4 inline-block mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -905,7 +889,7 @@ export default function ReportCards() {
             </div>
 
             {/* 卡片网格 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-all duration-500 ease-out ${isCardTransitioning ? 'opacity-0 scale-[0.98]' : 'opacity-100 scale-100'}`}>
                 {displayCards.slice(0, 6).map((card, index) => (
                     <article
                         key={card.generated_at ? `${card.generated_at}-${card.topic_id}` : `card-${index}-${card.topic_id}`}
@@ -977,14 +961,20 @@ export default function ReportCards() {
                 ))}
             </div>
 
-            {/* 详情弹窗 */}
-            {selectedCard && (
+            {/* 详情弹窗 - 使用Portal渲染到body */}
+            {selectedCard && typeof document !== 'undefined' && createPortal(
                 <div 
-                    className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
-                    onClick={() => setSelectedCard(null)}
+                    className={`modal-overlay-portal ${isModalClosing ? 'modal-closing' : 'modal-opening'}`}
+                    onClick={() => {
+                        setIsModalClosing(true);
+                        setTimeout(() => {
+                            setSelectedCard(null);
+                            setIsModalClosing(false);
+                        }, 250);
+                    }}
                 >
                     <div 
-                        className="bg-white/95 backdrop-blur-2xl rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl border border-white/60 animate-scale-in"
+                        className={`modal-content ${isModalClosing ? 'animate-scale-out' : 'animate-scale-in'}`}
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* 滚动内容区 */}
@@ -1020,7 +1010,13 @@ export default function ReportCards() {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => setSelectedCard(null)}
+                                        onClick={() => {
+                                            setIsModalClosing(true);
+                                            setTimeout(() => {
+                                                setSelectedCard(null);
+                                                setIsModalClosing(false);
+                                            }, 250);
+                                        }}
                                         className="text-gray-400 hover:text-gray-700 transition-all duration-200 p-2.5 rounded-xl hover:bg-gray-100 active:scale-90 hover:rotate-90"
                                         aria-label="关闭"
                                     >
@@ -1089,7 +1085,8 @@ export default function ReportCards() {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* 提示信息 */}

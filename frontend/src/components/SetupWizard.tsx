@@ -74,7 +74,6 @@ const SetupWizard: React.FC = () => {
       if (!response.ok) {
         // 如果是 503，说明某些功能还未就绪，但不是连接问题
         if (response.status === 503) {
-          console.warn('Setup endpoints not yet available, using health data');
           // 使用健康检查数据创建基本状态
           setStatus({
             is_setup_required: true,
@@ -100,7 +99,6 @@ const SetupWizard: React.FC = () => {
       setAdminCreated(data.has_admin_user);
     } catch (err) {
       setError('无法连接到后端服务，请确保服务器正在运行');
-      console.error('Failed to check setup status:', err);
     } finally {
       setLoading(false);
     }
@@ -165,7 +163,6 @@ const SetupWizard: React.FC = () => {
           
           // 检查是否已经连接到数据库（不再是配置模式）
           if (healthData.database_connected && healthData.mode !== 'configuration') {
-            console.log('数据库连接成功！');
             alert('数据库连接成功！\n\n系统已切换到正常模式，现在可以继续配置。');
             setSavingDb(false);
             setDbConfigured(true);
@@ -174,7 +171,7 @@ const SetupWizard: React.FC = () => {
           }
         }
       } catch (err) {
-        console.error('轮询检查失败:', err);
+        // 轮询检查失败，继续尝试
       }
 
       // 如果还没成功且未超过最大尝试次数，继续轮询
