@@ -29,9 +29,11 @@ RUN mkdir -p src/api src/db src/models/entities src/services && \
 # Copy actual source code
 COPY backend/src ./src
 
-# Build the actual application with verbose output
-RUN cargo build --release 2>&1 | tee /tmp/build.log && \
-    strip target/release/myriad-backend
+# Build the actual application
+RUN cargo build --release
+
+# Strip binary if build succeeded
+RUN strip target/release/myriad-backend
 
 # Runtime stage - minimal image
 FROM debian:bookworm-slim
