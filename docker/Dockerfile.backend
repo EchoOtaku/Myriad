@@ -17,8 +17,8 @@ COPY backend/migrations ./migrations
 # Copy actual source code early to avoid dummy build issues
 COPY backend/src ./src
 
-# Build the application (capture full output on failure)
-RUN set -o pipefail && cargo build --release --verbose 2>&1 | tee /tmp/cargo-build.log || (echo "=== BUILD FAILED - Last 200 lines ===" && tail -200 /tmp/cargo-build.log && exit 1)
+# Build the application
+RUN cargo build --release
 
 # Strip binary if build succeeded
 RUN strip target/release/myriad-backend
