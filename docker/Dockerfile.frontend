@@ -25,10 +25,10 @@ FROM node:${NODE_VERSION}-alpine
 
 WORKDIR /app
 
-# Install serve globally
+# Install serve globally and create user
 RUN npm install -g serve@14 && \
-    addgroup -g 1000 myriad && \
-    adduser -D -u 1000 -G myriad myriad
+    (addgroup -g 1000 myriad 2>/dev/null || addgroup myriad) && \
+    (adduser -D -u 1000 -G myriad myriad 2>/dev/null || adduser -D -G myriad myriad)
 
 # Copy built assets from builder
 COPY --from=builder --chown=myriad:myriad /app/dist ./dist
