@@ -481,3 +481,414 @@ let config: serde_json::Value = response.json().await?;
 - Platform listing endpoint
 - Fetch trigger endpoint
 - Analysis endpoints (stubs)
+
+---
+
+## 📚 Practical Examples & Usage Guide
+
+This section provides practical examples and common workflows for using the Myriad API.
+
+### Common Workflows
+
+#### 1. Initial Setup Workflow
+
+```bash
+# Step 1: Check API health
+curl http://localhost:3000/health
+
+# Step 2: Get current configuration
+curl http://localhost:3000/api/config
+
+# Step 3: Update configuration with API keys
+curl -X POST http://localhost:3000/api/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "github_token": "ghp_xxxxxxxxxxxx",
+    "steam_api_key": "xxxxxxxxxxxxx",
+    "gemini_api_key": "xxxxxxxxxxxxx"
+  }'
+
+# Step 4: Verify configuration
+curl http://localhost:3000/api/config
+```
+
+#### 2. Data Collection Workflow
+
+```bash
+# Fetch data from all platforms
+curl -X POST http://localhost:3000/api/fetch
+
+# Fetch from specific platforms only
+curl -X POST http://localhost:3000/api/fetch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platforms": ["GitHub", "Steam"]
+  }'
+
+# Force refresh (ignore cache)
+curl -X POST http://localhost:3000/api/fetch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "force": true
+  }'
+```
+
+#### 3. Analysis Workflow
+
+```bash
+# Trigger AI analysis
+curl -X POST http://localhost:3000/api/analysis \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "profile_summary",
+    "options": {
+      "detail_level": "comprehensive"
+    }
+  }'
+
+# Get analysis results
+curl http://localhost:3000/api/analysis
+
+# Get specific analysis type
+curl "http://localhost:3000/api/analysis?type=profile_summary&limit=5"
+```
+
+### Platform-Specific Examples
+
+#### Bilibili API
+
+```bash
+# Get user complete information
+curl "http://localhost:3000/api/bilibili/user?uid=123456"
+
+# Get user basic info
+curl "http://localhost:3000/api/bilibili/user/123456"
+
+# Get favorites list
+curl "http://localhost:3000/api/bilibili/favorites/123456"
+
+# Get bangumi (anime) list
+curl "http://localhost:3000/api/bilibili/bangumi/123456?bangumi_type=1"
+```
+
+**Bangumi Types:**
+
+- `1` - Anime
+- `2` - Movies
+- `3` - Documentaries
+- `4` - TV Shows
+
+#### GitHub API
+
+```bash
+# Get user profile
+curl "http://localhost:3000/api/github/user/username"
+
+# Get user repositories
+curl "http://localhost:3000/api/github/repos/username"
+
+# Get repository details
+curl "http://localhost:3000/api/github/repo/owner/repo-name"
+```
+
+#### Steam API
+
+```bash
+# Get user profile
+curl "http://localhost:3000/api/steam/user/76561198012345678"
+
+# Get owned games
+curl "http://localhost:3000/api/steam/games/76561198012345678"
+
+# Get recent games
+curl "http://localhost:3000/api/steam/recent/76561198012345678"
+```
+
+### JavaScript/TypeScript Examples
+
+#### Using Fetch API
+
+```javascript
+// Get configuration
+async function getConfig() {
+  const response = await fetch("http://localhost:3000/api/config");
+  const config = await response.json();
+  console.log(config);
+}
+
+// Update configuration
+async function updateConfig(newConfig) {
+  const response = await fetch("http://localhost:3000/api/config", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(newConfig),
+  });
+  return response.json();
+}
+
+// Trigger data fetch
+async function triggerFetch(platforms = null) {
+  const body = platforms ? { platforms } : {};
+  const response = await fetch("http://localhost:3000/api/fetch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return response.json();
+}
+
+// Get analysis results
+async function getAnalysis(type = null, limit = 10) {
+  const params = new URLSearchParams();
+  if (type) params.append("type", type);
+  params.append("limit", limit.toString());
+
+  const response = await fetch(`http://localhost:3000/api/analysis?${params}`);
+  return response.json();
+}
+```
+
+#### React Component Example
+
+```typescript
+import { useState, useEffect } from "react";
+
+function ConfigPanel() {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("http://localhost:3000/api/config")
+      .then((res) => res.json())
+      .then((data) => {
+        setConfig(data);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleSave = async (newConfig) => {
+    const response = await fetch("http://localhost:3000/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newConfig),
+    });
+
+    if (response.ok) {
+      alert("Configuration saved!");
+      setConfig(newConfig);
+    }
+  };
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h2>Configuration</h2>
+      <pre>{JSON.stringify(config, null, 2)}</pre>
+      {/* Add form controls here */}
+    </div>
+  );
+}
+```
+
+### Python Examples
+
+```python
+import requests
+
+BASE_URL = "http://localhost:3000"
+
+# Get configuration
+def get_config():
+    response = requests.get(f"{BASE_URL}/api/config")
+    return response.json()
+
+# Update configuration
+def update_config(config):
+    response = requests.post(
+        f"{BASE_URL}/api/config",
+        json=config
+    )
+    return response.json()
+
+# Trigger fetch
+def trigger_fetch(platforms=None, force=False):
+    data = {"force": force}
+    if platforms:
+        data["platforms"] = platforms
+
+    response = requests.post(
+        f"{BASE_URL}/api/fetch",
+        json=data
+    )
+    return response.json()
+
+# Get analysis
+def get_analysis(analysis_type=None, limit=10):
+    params = {"limit": limit}
+    if analysis_type:
+        params["type"] = analysis_type
+
+    response = requests.get(
+        f"{BASE_URL}/api/analysis",
+        params=params
+    )
+    return response.json()
+
+# Example usage
+if __name__ == "__main__":
+    # Get current config
+    config = get_config()
+    print("Current config:", config)
+
+    # Fetch data
+    result = trigger_fetch(platforms=["GitHub", "Steam"])
+    print("Fetch result:", result)
+
+    # Get analysis
+    analysis = get_analysis(analysis_type="profile_summary")
+    print("Analysis:", analysis)
+```
+
+### Error Handling
+
+#### JavaScript
+
+```javascript
+async function safeFetch(url, options = {}) {
+  try {
+    const response = await fetch(url, options);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Request failed");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("API Error:", error.message);
+    // Handle error appropriately
+    throw error;
+  }
+}
+
+// Usage
+try {
+  const config = await safeFetch("http://localhost:3000/api/config");
+  console.log(config);
+} catch (error) {
+  alert(`Failed to load configuration: ${error.message}`);
+}
+```
+
+#### Python
+
+```python
+def safe_api_call(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.ConnectionError:
+            print("Error: Cannot connect to API server")
+        except requests.exceptions.Timeout:
+            print("Error: Request timed out")
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP Error: {e.response.status_code}")
+            print(e.response.json())
+        except Exception as e:
+            print(f"Unexpected error: {str(e)}")
+        return None
+    return wrapper
+
+@safe_api_call
+def get_config():
+    response = requests.get(f"{BASE_URL}/api/config", timeout=5)
+    response.raise_for_status()
+    return response.json()
+```
+
+### Rate Limiting
+
+The API implements rate limiting to prevent abuse:
+
+- **Default limit**: 100 requests per 15 minutes per IP
+- **Fetch endpoint**: 10 requests per hour
+- **Analysis endpoint**: 20 requests per hour
+
+#### Handle Rate Limits
+
+```javascript
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, options);
+
+      if (response.status === 429) {
+        // Rate limited
+        const retryAfter = response.headers.get("Retry-After") || 60;
+        console.log(`Rate limited. Retrying after ${retryAfter}s...`);
+        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+}
+```
+
+### Webhooks (Future)
+
+> **Note:** Webhook support is planned for future releases.
+
+Expected webhook events:
+
+- `fetch.completed` - Data fetch completed
+- `analysis.completed` - Analysis completed
+- `config.updated` - Configuration changed
+- `error.occurred` - Error occurred
+
+---
+
+## 🔒 Authentication (Coming Soon)
+
+Future versions will include authentication:
+
+```bash
+# Login to get token
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "password"}'
+
+# Response
+{
+  "token": "eyJhbGc...",
+  "expires_in": 3600
+}
+
+# Use token in requests
+curl http://localhost:3000/api/config \
+  -H "Authorization: Bearer eyJhbGc..."
+```
+
+---
+
+## 📖 Additional Resources
+
+- **Frontend API Client**: See `frontend/src/lib/api.ts` for TypeScript client implementation
+- **Backend Source**: See `backend/src/api/` for endpoint implementations
+- **Deployment Guide**: [Docker Deployment](deployment/DOCKER_DEPLOYMENT.md)
+- **Architecture**: [System Architecture](development/ARCHITECTURE.md)
+
+---
+
+**API Version**: 0.1.0  
+**Last Updated**: 2025-01-05  
+**Base URL**: http://localhost:3000

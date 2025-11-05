@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs/
+LICENSE
+
+# Environment files
+.env
+.env.*
+!.env.docker
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backend specific
+backend/target/
+backend/.env
+backend/.env.*
+backend/Cargo.lock
+
+# Frontend specific
+frontend/node_modules/
+frontend/dist/
+frontend/.astro/
+frontend/package-lock.json
+
+# Database
+database/*.sql
+!database/schema.sql
+!database/009_create_users_table.sql
+!database/012_create_platform_metadata.sql
+!database/013_create_metadata_history.sql
+
+# Scripts
+scripts/
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile*
+.dockerignore
+
+# Cache and temp files
+*.log
+*.cache
+.cache/
+tmp/
+temp/
+backend/cache/

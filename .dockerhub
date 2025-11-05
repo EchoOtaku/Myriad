@@ -1,0 +1,24 @@
+# Docker Hub 配置
+
+## 镜像命名规范
+
+```
+<dockerhub-username>/myriad-backend:<tag>
+<dockerhub-username>/myriad-frontend:<tag>
+```
+
+## 推荐标签策略
+
+- `latest` - 最新稳定版本
+- `v1.0.0` - 具体版本号
+- `dev` - 开发版本
+- `preview` - 预览版本
+
+## 示例
+
+```
+mirai-mamori/myriad-backend:latest
+mirai-mamori/myriad-backend:v1.0.0
+mirai-mamori/myriad-frontend:latest
+mirai-mamori/myriad-frontend:v1.0.0
+```

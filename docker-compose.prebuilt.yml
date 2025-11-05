@@ -1,3 +1,10 @@
+# =============================================================================
+# Myriad Docker Compose - 使用预构建镜像
+# =============================================================================
+# 此配置使用 Docker Hub 上的预构建镜像，无需本地编译
+# 适合快速部署和生产环境使用
+# =============================================================================
+
 version: '3.8'
 
 services:
@@ -28,11 +35,9 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
-      args:
-        RUST_VERSION: ${RUST_VERSION:-1.75}
+    # 使用 Docker Hub 预构建镜像
+    # 替换 YOUR_DOCKERHUB_USERNAME 为实际的 Docker Hub 用户名
+    image: ${DOCKER_REGISTRY:-docker.io}/${DOCKER_USERNAME:-mirai-mamori}/myriad-backend:${IMAGE_TAG:-latest}
     container_name: myriad-backend
     environment:
       # Database
@@ -66,12 +71,8 @@ services:
       - backend_cache:/app/cache
 
   frontend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
-      args:
-        NODE_VERSION: ${NODE_VERSION:-20}
-        BACKEND_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+    # 使用 Docker Hub 预构建镜像
+    image: ${DOCKER_REGISTRY:-docker.io}/${DOCKER_USERNAME:-mirai-mamori}/myriad-frontend:${IMAGE_TAG:-latest}
     container_name: myriad-frontend
     environment:
       PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}

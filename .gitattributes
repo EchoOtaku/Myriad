@@ -1,2 +1,47 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Source files
+*.rs text
+*.toml text
+*.js text
+*.ts text
+*.tsx text
+*.jsx text
+*.json text
+*.css text
+*.scss text
+*.html text
+*.astro text
+*.md text
+*.yml text
+*.yaml text
+
+# Shell scripts should use LF
+*.sh text eol=lf
+Makefile text eol=lf
+
+# PowerShell scripts should use CRLF
+*.ps1 text eol=crlf
+
+# SQL files
+*.sql text
+
+# Docker files
+Dockerfile* text eol=lf
+docker-compose*.yml text eol=lf
+.dockerignore text eol=lf
+
+# Environment files
+.env* text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary

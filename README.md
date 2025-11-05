@@ -4,6 +4,42 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
+## 🚀 Quick Start
+
+### Option 1: Pre-built Docker Images (Fastest, Recommended ⭐)
+
+Deploy in 2-3 minutes using pre-built images from Docker Hub:
+
+```powershell
+# Windows
+.\scripts\docker\deploy.ps1 -Mode prebuilt
+
+# Linux/Mac
+./scripts/docker/deploy.sh --mode prebuilt
+```
+
+### Option 2: Local Build (For Development)
+
+```powershell
+# Windows
+.\scripts\docker\deploy.ps1 -Mode build
+
+# Linux/Mac
+./scripts/docker/deploy.sh --mode build
+```
+
+### 📚 Documentation
+
+- 📖 **[Documentation Portal](./docs/quick-reference/INDEX.md)** - Central documentation hub
+- 🚀 **[Getting Started](./docs/deployment/GETTING_STARTED.md)** - Deploy in 5 minutes
+- 🐳 **[Docker Guide](./docs/deployment/DOCKER_GUIDE.md)** - Build & publish images
+- 📡 **[API Documentation](./docs/API.md)** - Complete API reference
+- 🏗️ **[Architecture](./docs/development/ARCHITECTURE.md)** - System design
+- 🔧 **[Advanced Deployment](./docs/deployment/DOCKER_DEPLOYMENT.md)** - Production configuration
+- 📝 **[Changelog](./docs/CHANGELOG.md)** - Version history
+
+---
+
 ## 🌟 Features
 
 - **Multi-Platform Integration**: Connect and aggregate data from GitHub, Twitter/X, LinkedIn, and more
@@ -17,12 +53,18 @@
 
 ```
 Myriad/
-├── frontend/          # Astro + React + Tailwind CSS
-├── backend/           # Rust + Axum + SeaORM
-├── database/          # PostgreSQL schema and migrations
-├── scripts/           # Development and build scripts
-├── docker/            # Docker configuration files
-└── docs/              # Documentation
+├── frontend/               # Astro + React + Tailwind CSS
+├── backend/                # Rust + Axum + SeaORM
+├── database/               # PostgreSQL schema
+├── docker/                 # Docker configuration
+├── scripts/                # Automation scripts
+│   ├── docker/            # Docker deployment scripts
+│   └── dev/               # Development scripts
+└── docs/                   # Documentation
+    ├── deployment/        # Deployment guides
+    ├── development/       # Development guides
+    ├── guides/            # User guides
+    └── API.md             # API documentation
 ```
 
 ### Technology Stack
@@ -50,9 +92,11 @@ Myriad/
 **DevOps:**
 
 - Docker & Docker Compose - Containerization
-- PowerShell scripts - Automation
+- Multi-platform scripts (PowerShell & Bash)
 
-## 🚀 Quick Start
+## 💻 Manual Setup (Advanced Users)
+
+For development or manual setup without Docker, see [docs/development/BUILD.md](./docs/development/BUILD.md).
 
 ### Prerequisites
 

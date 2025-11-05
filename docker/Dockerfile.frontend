@@ -1,5 +1,6 @@
-# Frontend Dockerfile
-FROM node:20-alpine as builder
+# Frontend Dockerfile - Multi-stage build
+ARG NODE_VERSION=20
+FROM node:${NODE_VERSION}-alpine as builder
 
 WORKDIR /app
 
@@ -7,25 +8,39 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --only=production=false
 
-# Copy source code
+# Copy source code and config
 COPY frontend/ ./
 
-# Build
+# Build argument for backend URL
+ARG BACKEND_URL=http://localhost:3000
+ENV PUBLIC_API_URL=${BACKEND_URL}
+
+# Build the application
 RUN npm run build
 
-# Runtime stage - using Node.js to serve
-FROM node:20-alpine
+# Runtime stage - lightweight server
+FROM node:${NODE_VERSION}-alpine
 
 WORKDIR /app
 
-# Install serve
-RUN npm install -g serve
+# Install serve globally
+RUN npm install -g serve@14 && \
+    addgroup -g 1000 myriad && \
+    adduser -D -u 1000 -G myriad myriad
 
-# Copy built assets
-COPY --from=builder /app/dist ./dist
+# Copy built assets from builder
+COPY --from=builder --chown=myriad:myriad /app/dist ./dist
+
+# Switch to non-root user
+USER myriad
 
 EXPOSE 4321
 
-CMD ["serve", "-s", "dist", "-l", "4321"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4321 || exit 1
+
+# Serve the built application
+CMD ["serve", "-s", "dist", "-l", "4321", "--no-clipboard"]
