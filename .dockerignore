@@ -30,7 +30,6 @@ desktop.ini
 backend/target/
 backend/.env
 backend/.env.*
-backend/Cargo.lock
 
 # Frontend specific
 frontend/node_modules/
