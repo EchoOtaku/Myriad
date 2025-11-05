@@ -179,10 +179,14 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
         box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
                     inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
         overflow: hidden;
         max-height: 85vh;
+        /* 硬件加速优化 */
+        will-change: transform, opacity;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
       }
 
       /* 动态渐变边框动画 */
@@ -269,7 +273,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       /* Navigation items */
       .nav-item {
-        @apply text-gray-500 transition-all duration-300;
+        @apply text-gray-500;
         position: relative;
         padding: 10px;
         border-radius: 18px;
@@ -279,6 +283,13 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         /* 添加触摸反馈 */
         -webkit-tap-highlight-color: transparent;
         user-select: none;
+        /* 性能优化 */
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+                    color 0.2s ease, 
+                    background-color 0.2s ease,
+                    box-shadow 0.2s ease;
+        will-change: transform;
+        transform: translateZ(0);
       }
 
       .nav-item:hover {
@@ -950,6 +961,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       // 全局状态：存储当前显示的壁纸的实际 URL（重定向后的最终 URL）
       let activeWallpaperUrl: string | null = null;
+      let wallpaperLoadComplete = false;
 
       // 缓存接口
       interface WallpaperCache {
@@ -1015,8 +1027,11 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         });
       }
 
-      // Load wallpaper and extract colors
+      // Load wallpaper and extract colors (with performance optimization)
       async function loadWallpaperAndColors() {
+        // 防止重复加载
+        if (wallpaperLoadComplete) return;
+        
         try {
           const response = await fetch('http://localhost:3000/api/config');
           const data = await response.json();
@@ -1079,11 +1094,15 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             const result = await colorPromise;
             
             if (activeWallpaperUrl === actualImageUrl) {
-              applyColorPalette(result);
-              console.log('✅ [Layout] New colors applied:', result);
+              // 使用 requestAnimationFrame 优化颜色应用
+              requestAnimationFrame(() => {
+                applyColorPalette(result);
+                console.log('✅ [Layout] New colors applied:', result);
+              });
               
               // 保存新的缓存
               saveWallpaperCache(apiUrl, actualImageUrl);
+              wallpaperLoadComplete = true;
             } else {
               console.warn('⚠️ [Layout] Wallpaper changed during extraction');
               console.warn(`   Extracted for: ${actualImageUrl}`);
@@ -1145,10 +1164,22 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         });
       }
       
-      loadWallpaperAndColors();
+      // 优先加载关键功能
       setActiveNav();
-      setupGenerateButton();
       setupAuthUI();
+      
+      // 延迟加载壁纸（使用 requestIdleCallback 或 setTimeout）
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          loadWallpaperAndColors();
+          setupGenerateButton();
+        }, { timeout: 2000 });
+      } else {
+        setTimeout(() => {
+          loadWallpaperAndColors();
+          setupGenerateButton();
+        }, 100);
+      }
 
       // 检查URL中的token参数（OAuth回调）
       const urlParams = new URLSearchParams(window.location.search);

@@ -14,6 +14,9 @@ export default defineConfig({
     port: 4321,
     host: true
   },
+  build: {
+    inlineStylesheets: 'auto',
+  },
   vite: {
     resolve: {
       alias: {
@@ -22,6 +25,17 @@ export default defineConfig({
         '@layouts': path.resolve(__dirname, './src/layouts'),
         '@lib': path.resolve(__dirname, './src/lib'),
         '@config': path.resolve(__dirname, './src/config.ts'),
+      },
+    },
+    build: {
+      cssCodeSplit: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom'],
+            'chart-vendor': ['chart.js', 'react-chartjs-2'],
+          },
+        },
       },
     },
     server: {

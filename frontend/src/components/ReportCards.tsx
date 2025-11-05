@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
 
@@ -95,13 +95,8 @@ export default function ReportCards() {
         console.log(`✅ [Random] Returning ${result.length} random cards from ${allCards.length} total`);
         console.log(`   Selected cards: ${result.map(c => c.title).join(', ')}`);
         
-        // 确保返回的卡片数量正确
-        if (result.length !== count && allCards.length >= count) {
-            console.error(`⚠️ [Random] Expected ${count} cards but got ${result.length}!`);
-        }
-        
         return result;
-    }, []);
+    }, []); // 空依赖数组，函数不侚重新创建
 
     // 检测用户是否为管理员
     useEffect(() => {
@@ -376,8 +371,14 @@ export default function ReportCards() {
         }
     };
 
-    // 一键生成报告
+    // 一键生成报告（添加防抖）
     const handleGenerateReport = useCallback(async (forceRefresh: boolean = false) => {
+        // 防止重复调用
+        if (loading) {
+            console.warn('⚠️ [Generate] Already generating, ignoring request');
+            return;
+        }
+
         // 检查登录状态
         const token = localStorage.getItem('auth_token');
         if (!token) {
@@ -409,7 +410,7 @@ export default function ReportCards() {
             setLoading(false);
             setProgress('');
         }
-    }, [getRandomCards]);
+    }, [loading, getRandomCards]); // 添加loading依赖
 
     // 加载已有报告（优先从缓存读取，不自动生成）
     useEffect(() => {
@@ -919,6 +920,7 @@ export default function ReportCards() {
                                     alt=""
                                     className="w-full h-full object-cover"
                                     loading="lazy"
+                                    decoding="async"
                                 />
                             </div>
                         )}
@@ -1036,6 +1038,7 @@ export default function ReportCards() {
                                             alt={selectedCard.title}
                                             className="w-full h-80 object-cover transition-transform duration-500 hover:scale-105"
                                             loading="lazy"
+                                            decoding="async"
                                         />
                                     </div>
                                 )}
