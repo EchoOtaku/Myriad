@@ -34,6 +34,12 @@ mod add_local_auth;
 #[path = "011_extend_configurations.rs"]
 mod extend_configurations;
 
+#[path = "012_create_platform_metadata.rs"]
+mod create_platform_metadata;
+
+#[path = "013_create_metadata_history.rs"]
+mod create_metadata_history;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -51,6 +57,8 @@ impl MigratorTrait for Migrator {
             Box::new(create_reports::Migration),
             Box::new(add_local_auth::Migration),
             Box::new(extend_configurations::Migration),
+            Box::new(create_platform_metadata::Migration),
+            Box::new(create_metadata_history::Migration),
         ]
     }
 }
