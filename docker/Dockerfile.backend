@@ -11,17 +11,15 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy manifests
+# Copy manifests and migrations (needed for dependency resolution)
 COPY backend/Cargo.toml backend/Cargo.lock* ./
+COPY backend/migrations ./migrations
 
 # Create a dummy main to build dependencies first (caching layer)
-RUN mkdir src && \
+RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src
-
-# Copy migrations source
-COPY backend/migrations ./migrations
+    cargo build --release || true && \
+    rm -rf src target/release/deps/myriad* target/release/myriad*
 
 # Copy actual source code
 COPY backend/src ./src
