@@ -96,13 +96,12 @@ export const CSP_DIRECTIVES = {
     'https://fonts.gstatic.com',
   ],
   
-  // 图片源：允许同源、data URI 和外部图片服务
+  // 图片源:允许同源、data URI 和外部图片服务
   'img-src': [
     "'self'",
     'data:',
     'blob:',
-    'https:', // 允许所有 HTTPS 图片（壁纸服务）
-    'http://localhost:3000', // 本地开发
+    'https:', // 允许所有 HTTPS 图片(壁纸服务)
   ],
   
   // 媒体源

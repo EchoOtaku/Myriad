@@ -1123,7 +1123,9 @@ const isDev = import.meta.env.DEV;
         if (wallpaperLoadComplete) return;
         
         try {
-          const response = await fetch(`${import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'}/api/config`);
+          // API URL: 生产环境为空(使用相对路径), 开发环境为 localhost:3000
+          const apiUrl = import.meta.env.PUBLIC_API_URL || '';
+          const response = await fetch(`${apiUrl}/api/config`);
           const data = await response.json();
           const wallpaperEl = document.getElementById('wallpaper');
           
@@ -1343,7 +1345,8 @@ const isDev = import.meta.env.DEV;
         }
 
         try {
-          const response = await fetch(`${import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'}/api/auth/me`, {
+          const apiUrl = import.meta.env.PUBLIC_API_URL || '';
+          const response = await fetch(`${apiUrl}/api/auth/me`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }
