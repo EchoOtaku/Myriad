@@ -2,7 +2,9 @@ import axios, { AxiosError } from 'axios';
 import { getCSRFToken, getCSRFHeaderName, clearCSRFToken } from '../utils/csrf';
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter';
 
-const API_BASE_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+// 智能 API URL 检测（与 config.ts 保持一致）
+const API_BASE_URL = import.meta.env.PUBLIC_API_URL || 
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 
 // 验证 API URL 格式
 const isValidUrl = (url: string): boolean => {

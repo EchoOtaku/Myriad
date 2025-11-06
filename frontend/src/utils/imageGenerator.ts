@@ -1,6 +1,8 @@
 // AI Image Generation with Pollinations.ai
 // API Docs: https://github.com/pollinations/pollinations/blob/master/APIDOCS.md
 
+import { API_URL } from '../config';
+
 interface ImageGenOptions {
     model?: 'flux' | 'flux-realism' | 'flux-anime' | 'flux-3d' | 'turbo';
     width?: number;
@@ -32,7 +34,7 @@ async function generatePromptFromAPI(title: string, summary: string, category: s
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         
-        const response = await fetch('http://localhost:3000/api/prompt/generate', {
+        const response = await fetch(`${API_URL}/api/prompt/generate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -163,7 +165,7 @@ export async function generateCardIllustration(
     // 从配置读取参数
     let config: any = {};
     try {
-        const response = await fetch('http://localhost:3000/api/config');
+        const response = await fetch(`${API_URL}/api/config`);
         const data = await response.json();
         config = data.ui_config || {};
     } catch (e) {

@@ -15,7 +15,7 @@ import LoginForm from '../components/LoginForm';
   const token = localStorage.getItem('auth_token');
   if (token) {
     // 验证token是否有效
-    fetch('http://localhost:3000/api/auth/me', {
+    fetch(`${import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }

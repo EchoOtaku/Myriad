@@ -22,7 +22,7 @@ const isDev = import.meta.env.DEV;
     
     <!-- 安全策略 (只保留可以通过 meta 标签设置的) -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    {!isDev && <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' http://localhost:3000 https://api.github.com https://image.pollinations.ai; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" />}
+    <!-- CSP 已在 Nginx 中配置，不再通过 meta 标签设置 -->
     
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1123,7 +1123,7 @@ const isDev = import.meta.env.DEV;
         if (wallpaperLoadComplete) return;
         
         try {
-          const response = await fetch('http://localhost:3000/api/config');
+          const response = await fetch(`${import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'}/api/config`);
           const data = await response.json();
           const wallpaperEl = document.getElementById('wallpaper');
           
@@ -1343,7 +1343,7 @@ const isDev = import.meta.env.DEV;
         }
 
         try {
-          const response = await fetch('http://localhost:3000/api/auth/me', {
+          const response = await fetch(`${import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'}/api/auth/me`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }

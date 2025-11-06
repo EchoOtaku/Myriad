@@ -833,7 +833,7 @@ const ConfigForm: React.FC = () => {
                     💡 <strong>如何获取 GitHub OAuth 凭证：</strong><br/>
                     1. 访问 <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">GitHub Developer Settings</a><br/>
                     2. 点击 "New OAuth App" 创建新应用<br/>
-                    3. 填写应用信息，Callback URL 填写：<code className="bg-white px-1 rounded">http://localhost:3000/api/auth/github/callback</code><br/>
+                    3. 填写应用信息，Callback URL 填写：<code className="bg-white px-1 rounded">{API_URL}/api/auth/github/callback</code><br/>
                     4. 创建后复制 Client ID 和生成 Client Secret
                   </p>
                 </div>
@@ -875,9 +875,9 @@ const ConfigForm: React.FC = () => {
                   <input
                     id="github-redirect-url"
                     type="text"
-                    value={config.ui_config.config_fields.find(f => f.key === 'github_redirect_url')?.value || 'http://localhost:3000/api/auth/github/callback'}
+                    value={config.ui_config.config_fields.find(f => f.key === 'github_redirect_url')?.value || `${API_URL}/api/auth/github/callback`}
                     onChange={(e) => updateUiFieldValue('github_redirect_url', e.target.value)}
-                    placeholder="http://localhost:3000/api/auth/github/callback"
+                    placeholder={`${API_URL}/api/auth/github/callback`}
                     className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all"
                   />
                   <p className="text-xs text-gray-500 mt-1">OAuth 回调地址，需与 GitHub App 设置中的一致</p>

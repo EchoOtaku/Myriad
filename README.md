@@ -32,6 +32,7 @@ Deploy in 2-3 minutes using pre-built images from Docker Hub:
 
 - 📖 **[Documentation Portal](./docs/quick-reference/INDEX.md)** - Central documentation hub
 - 🚀 **[Getting Started](./docs/deployment/GETTING_STARTED.md)** - Deploy in 5 minutes
+- 🌐 **[Production Deployment](./docs/deployment/PRODUCTION_DEPLOY.md)** - Complete production setup guide
 - 🐳 **[Docker Guide](./docs/deployment/DOCKER_GUIDE.md)** - Build & publish images
 - 📡 **[API Documentation](./docs/API.md)** - Complete API reference
 - 🏗️ **[Architecture](./docs/development/ARCHITECTURE.md)** - System design

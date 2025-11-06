@@ -159,7 +159,7 @@ export default function ReportCards() {
     const fetchUserInfo = async () => {
         try {
             // 优先从后端缓存获取用户信息
-            const userInfoResponse = await fetch('http://localhost:3000/api/profile/user-info');
+            const userInfoResponse = await fetch(`${API_URL}/api/profile/user-info`);
             if (userInfoResponse.ok) {
                 const userInfoResult = await userInfoResponse.json();
                 if (userInfoResult.success && userInfoResult.user_info) {
@@ -173,7 +173,7 @@ export default function ReportCards() {
             }
 
             // 获取配置以构建平台链接
-            const configResponse = await fetch('http://localhost:3000/api/config');
+            const configResponse = await fetch(`${API_URL}/api/config`);
             const config = await configResponse.json();
             
             const links: PlatformLink[] = [];
@@ -181,7 +181,7 @@ export default function ReportCards() {
             // 尝试获取缓存的平台数据（包含Steam用户名等）
             let cachedData: any = null;
             try {
-                const cacheResponse = await fetch('http://localhost:3000/api/profile/cache-debug');
+                const cacheResponse = await fetch(`${API_URL}/api/profile/cache-debug`);
                 const cacheResult = await cacheResponse.json();
                 if (cacheResult.success && cacheResult.cache_entries && cacheResult.cache_entries.length > 0) {
                     // 找到最新的有效缓存
@@ -289,7 +289,7 @@ export default function ReportCards() {
             setProgress('步骤 1/3: 正在连接平台获取数据...');
             setProgressPercent(10);
 
-            const response = await fetch('http://localhost:3000/api/profile/fetch-all', {
+            const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
                 method: 'POST',
             });
 
@@ -319,8 +319,8 @@ export default function ReportCards() {
             setProgressPercent(55);
             
             const url = forceRefresh 
-                ? 'http://localhost:3000/api/profile/report?force=true'
-                : 'http://localhost:3000/api/profile/report';
+                ? `${API_URL}/api/profile/report?force=true`
+                : `${API_URL}/api/profile/report`;
             
             const response = await fetch(url, {
                 method: 'POST',
