@@ -48,7 +48,8 @@ pub struct BilibiliBangumi {
     pub badge: String,
 }
 
-// Netease Cloud Music 数据结构
+// Netease Cloud Music 数据结构 (已废弃,仅保留以兼容)
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NeteaseSong {
     pub name: String,         // 曲名
@@ -680,8 +681,8 @@ impl PlatformFetcher {
 
     // ==================== Netease Cloud Music API ====================
 
-    /// 获取网易云音乐用户的喜欢列表（我喜欢的音乐）
-    pub async fn fetch_netease_liked_songs(&self, user_id: i64) -> Result<Vec<NeteaseSong>> {
+    /// 获取网易云音乐用户的喜欢列表（我喜欢的音乐）- 返回完整JSON数据
+    pub async fn fetch_netease_liked_songs(&self, user_id: i64) -> Result<Vec<serde_json::Value>> {
         // 网易云音乐API需要通过用户ID获取喜欢的音乐
         // likelist API需要登录态，改用公开的用户歌单API获取"我喜欢的音乐"（通常是第一个歌单）
         // 使用 NeteaseCloudMusicApi 项目：https://github.com/Binaryify/NeteaseCloudMusicApi
@@ -790,24 +791,8 @@ impl PlatformFetcher {
             .as_array()
             .ok_or_else(|| anyhow!("Invalid response: no songs field"))?;
 
-        let mut result = Vec::new();
-        for song in songs {
-            if let (Some(name), Some(artists_arr)) = (song["name"].as_str(), song["ar"].as_array())
-            {
-                // 提取所有歌手名称
-                let artists: Vec<String> = artists_arr
-                    .iter()
-                    .filter_map(|a| a["name"].as_str().map(|s| s.to_string()))
-                    .collect();
-
-                result.push(NeteaseSong {
-                    name: name.to_string(),
-                    artists,
-                });
-            }
-        }
-
-        Ok(result)
+        // 返回完整的歌曲JSON数据，包含封面、歌手等所有信息
+        Ok(songs.clone())
     }
 
     /// 获取网易云音乐用户基本信息（用于验证）

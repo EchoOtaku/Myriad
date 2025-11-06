@@ -639,6 +639,221 @@ fn clean_platform_data(data: &mut Value) {
     tracing::info!("✓ Platform data cleaned (removed unnecessary fields)");
 }
 
+/// 为 AI 分析筛选数据：应用 5W 原则（Who, What, When, Where, Why）
+/// 只保留最关键的信息，减少 token 消耗并提升 AI 分析质量
+fn filter_data_for_ai(data: &Value) -> Value {
+    let mut filtered = json!({});
+
+    // ===== Steam 数据筛选 =====
+    if let Some(steam) = data.get("steam") {
+        let mut steam_filtered = json!({});
+
+        // Who: 用户信息（保留核心身份）
+        if let Some(user) = steam.get("user") {
+            steam_filtered["user"] = json!({
+                "personaname": user.get("personaname"),      // 谁
+                "timecreated": user.get("timecreated"),      // 何时注册
+            });
+        }
+
+        // What: 游戏列表（只保留关键数据）
+        if let Some(games) = steam.get("games").and_then(|g| g.as_array()) {
+            let filtered_games: Vec<Value> = games
+                .iter()
+                .map(|game| {
+                    json!({
+                        "name": game.get("name"),                          // 什么游戏
+                        "playtime_forever": game.get("playtime_forever"),  // 玩了多久
+                        "playtime_2weeks": game.get("playtime_2weeks"),    // 最近活跃度
+                    })
+                })
+                .collect();
+            steam_filtered["games"] = json!(filtered_games);
+            steam_filtered["total_games"] = json!(filtered_games.len());
+        }
+
+        filtered["steam"] = steam_filtered;
+    }
+
+    // ===== Bilibili 数据筛选 =====
+    if let Some(bilibili) = data.get("bilibili") {
+        let mut bilibili_filtered = json!({});
+
+        // What + When: 追番/追剧
+        if let Some(bangumi) = bilibili.get("bangumi").and_then(|b| b.as_array()) {
+            let filtered_bangumi: Vec<Value> = bangumi
+                .iter()
+                .map(|item| {
+                    json!({
+                        "title": item.get("title"),              // 什么番剧
+                        "progress": item.get("progress"),        // 看到哪里
+                        "new_ep": item.get("new_ep"),            // 更新状态
+                        "badge": item.get("badge"),              // 类型标签
+                    })
+                })
+                .collect();
+            bilibili_filtered["bangumi"] = json!(filtered_bangumi);
+            bilibili_filtered["total_bangumi"] = json!(filtered_bangumi.len());
+        }
+
+        // What: 收藏的视频
+        if let Some(favorites) = bilibili.get("favorites").and_then(|f| f.as_array()) {
+            let mut total_videos = 0;
+            let filtered_favorites: Vec<Value> = favorites
+                .iter()
+                .filter_map(|folder| {
+                    if let Some(videos) = folder.get("videos").and_then(|v| v.as_array()) {
+                        total_videos += videos.len();
+                        let filtered_videos: Vec<Value> = videos
+                            .iter()
+                            .map(|video| {
+                                json!({
+                                    "title": video.get("title"),        // 什么视频
+                                    "duration": video.get("duration"),  // 时长
+                                })
+                            })
+                            .collect();
+                        Some(json!({
+                            "title": folder.get("title"),      // 收藏夹名称
+                            "videos": filtered_videos,
+                            "video_count": videos.len(),
+                        }))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            bilibili_filtered["favorites"] = json!(filtered_favorites);
+            bilibili_filtered["total_videos"] = json!(total_videos);
+        }
+
+        filtered["bilibili"] = bilibili_filtered;
+    }
+
+    // ===== 网易云音乐数据筛选 =====
+    if let Some(netease) = data.get("netease") {
+        let mut netease_filtered = json!({});
+
+        // What: 喜欢的歌曲
+        if let Some(songs) = netease.get("liked_songs").and_then(|s| s.as_array()) {
+            let filtered_songs: Vec<Value> = songs
+                .iter()
+                .map(|song| {
+                    json!({
+                        "name": song.get("name"),                // 什么歌
+                        "ar": song.get("ar"),                    // 谁唱的（艺术家）
+                        "al": song.get("al").and_then(|al| al.get("name")), // 专辑
+                    })
+                })
+                .collect();
+            netease_filtered["liked_songs"] = json!(filtered_songs);
+            netease_filtered["total_songs"] = json!(filtered_songs.len());
+        }
+
+        filtered["netease"] = netease_filtered;
+    }
+
+    // ===== GitHub 数据筛选 =====
+    if let Some(github) = data.get("github") {
+        let mut github_filtered = json!({});
+
+        // Who: 用户信息
+        if let Some(user) = github.get("user") {
+            github_filtered["user"] = json!({
+                "login": user.get("login"),              // 谁
+                "name": user.get("name"),
+                "bio": user.get("bio"),                  // 为什么（个人简介）
+                "location": user.get("location"),        // 哪里
+                "created_at": user.get("created_at"),    // 何时
+            });
+        }
+
+        // What: 仓库列表
+        if let Some(repos) = github.get("repos").and_then(|r| r.as_array()) {
+            let filtered_repos: Vec<Value> = repos
+                .iter()
+                .map(|repo| {
+                    json!({
+                        "name": repo.get("name"),                    // 什么项目
+                        "description": repo.get("description"),      // 为什么（项目描述）
+                        "language": repo.get("language"),            // 什么语言
+                        "stargazers_count": repo.get("stargazers_count"), // 影响力
+                        "topics": repo.get("topics"),                // 主题标签
+                    })
+                })
+                .collect();
+            github_filtered["repos"] = json!(filtered_repos);
+            github_filtered["total_repos"] = json!(filtered_repos.len());
+        }
+
+        filtered["github"] = github_filtered;
+    }
+
+    // ===== Twitter/X 数据筛选 =====
+    if let Some(twitter) = data.get("twitter") {
+        let mut twitter_filtered = json!({});
+
+        // Who: 用户信息
+        if let Some(user) = twitter.get("user") {
+            twitter_filtered["user"] = json!({
+                "username": user.get("username"),        // 谁
+                "name": user.get("name"),
+                "description": user.get("description"),  // 为什么（个人简介）
+            });
+        }
+
+        // What: 推文列表
+        if let Some(tweets) = twitter.get("tweets").and_then(|t| t.as_array()) {
+            let filtered_tweets: Vec<Value> = tweets
+                .iter()
+                .map(|tweet| {
+                    json!({
+                        "text": tweet.get("text"),          // 什么内容
+                        "created_at": tweet.get("created_at"), // 何时
+                        "public_metrics": tweet.get("public_metrics"), // 影响力
+                    })
+                })
+                .collect();
+            twitter_filtered["tweets"] = json!(filtered_tweets);
+            twitter_filtered["total_tweets"] = json!(filtered_tweets.len());
+        }
+
+        filtered["twitter"] = twitter_filtered;
+    }
+
+    // ===== Pixiv 数据筛选 =====
+    if let Some(pixiv) = data.get("pixiv") {
+        let mut pixiv_filtered = json!({});
+
+        // Who: 用户信息
+        if let Some(user) = pixiv.get("user") {
+            pixiv_filtered["user"] = json!({
+                "name": user.get("name"),            // 谁
+                "account": user.get("account"),
+            });
+        }
+
+        // What: 收藏作品
+        if let Some(bookmarks) = pixiv.get("bookmarks").and_then(|b| b.as_array()) {
+            pixiv_filtered["total_bookmarks"] = json!(bookmarks.len());
+            // 只保留数量统计，不传递具体作品详情（减少token）
+        }
+
+        filtered["pixiv"] = pixiv_filtered;
+    }
+
+    tracing::debug!(
+        "Original data size: ~{} bytes",
+        serde_json::to_string(data).unwrap_or_default().len()
+    );
+    tracing::debug!(
+        "Filtered data size: ~{} bytes",
+        serde_json::to_string(&filtered).unwrap_or_default().len()
+    );
+
+    filtered
+}
+
 /// 生成个人报告
 #[derive(Deserialize)]
 pub struct GenerateReportQuery {
@@ -673,42 +888,36 @@ pub async fn generate_report(
     let provider = crate::services::analyzer::AiProvider::from_str(&dynamic_config.ai_provider);
 
     let (api_key, model, base_url) = match provider {
-        crate::services::analyzer::AiProvider::Gemini => {
-            match &dynamic_config.gemini_api_key {
-                Some(key) if !key.is_empty() => {
-                    (key.clone(), dynamic_config.gemini_model.clone(), None)
-                }
-                _ => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({
-                            "success": false,
-                            "message": "Gemini API key not configured"
-                        })),
-                    );
-                }
+        crate::services::analyzer::AiProvider::Gemini => match &dynamic_config.gemini_api_key {
+            Some(key) if !key.is_empty() => {
+                (key.clone(), dynamic_config.gemini_model.clone(), None)
             }
-        }
-        crate::services::analyzer::AiProvider::OpenAI => {
-            match &dynamic_config.openai_api_key {
-                Some(key) if !key.is_empty() => {
-                    (
-                        key.clone(),
-                        dynamic_config.openai_model.clone(),
-                        Some(dynamic_config.openai_base_url.clone())
-                    )
-                }
-                _ => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({
-                            "success": false,
-                            "message": "OpenAI API key not configured"
-                        })),
-                    );
-                }
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "Gemini API key not configured"
+                    })),
+                );
             }
-        }
+        },
+        crate::services::analyzer::AiProvider::OpenAI => match &dynamic_config.openai_api_key {
+            Some(key) if !key.is_empty() => (
+                key.clone(),
+                dynamic_config.openai_model.clone(),
+                Some(dynamic_config.openai_base_url.clone()),
+            ),
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "OpenAI API key not configured"
+                    })),
+                );
+            }
+        },
     };
 
     let analyzer = crate::services::analyzer::AiAnalyzer::new(provider, api_key, model, base_url);
@@ -718,6 +927,10 @@ pub async fn generate_report(
     let style_instruction = get_style_instruction(&topic_style);
 
     tracing::info!("Using topic style: {}", topic_style);
+
+    // 🔹 对数据进行5W筛选：只保留最关键的信息供AI分析
+    let filtered_data = filter_data_for_ai(&profile_data);
+    tracing::info!("✓ Data filtered for AI analysis (5W principle applied)");
 
     // 第一步：让AI生成6个维度话题
     let topics_prompt = format!(
@@ -761,7 +974,7 @@ pub async fn generate_report(
 - from-emerald-400 to-green-400
 
 图标示例：🌈 🎮 🔬 🗺️ 🎭 🍜 🌌 🔮 🎪 📊 🎁 ✨ 🎨 💡 🚀 🎯 🌟"#,
-        serde_json::to_string_pretty(&profile_data).unwrap_or_else(|_| "{}".to_string()),
+        serde_json::to_string_pretty(&filtered_data).unwrap_or_else(|_| "{}".to_string()),
         style_instruction
     );
 
@@ -888,7 +1101,7 @@ pub async fn generate_report(
 - tags: ["优秀", "努力", "加油"] ❌"#,
             topic.title,
             topic.analysis_focus,
-            serde_json::to_string_pretty(&profile_data).unwrap_or_else(|_| "{}".to_string())
+            serde_json::to_string_pretty(&filtered_data).unwrap_or_else(|_| "{}".to_string())
         );
 
         match analyzer
@@ -1197,10 +1410,90 @@ pub async fn get_cache_debug_info(
     )
 }
 
-/// 从缓存中获取用户信息（支持多平台）
-pub async fn get_user_info(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    // 从缓存获取平台数据
+/// 从数据库或缓存中获取用户信息（支持多平台）
+/// 优先从数据库获取，若数据库无数据则从缓存获取
+pub async fn get_user_info(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+
+    // 创建元数据服务
+    let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
+
+    // 1. 优先从数据库获取最新数据
+    match metadata_service.get_all_latest_metadata(user_id).await {
+        Ok(db_data) if !db_data.is_empty() => {
+            tracing::info!("📊 Returning user info from database");
+
+            // 优先从 Bilibili 获取
+            if let Some(bilibili_data) = db_data.get("bilibili") {
+                if let Some(bilibili_user) = bilibili_data.get("user") {
+                    return (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "user_info": {
+                                "name": bilibili_user.get("name"),
+                                "avatar": bilibili_user.get("face"),
+                                "bio": bilibili_user.get("sign").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
+                                "platform": "Bilibili"
+                            },
+                            "source": "database"
+                        })),
+                    );
+                }
+            }
+
+            // 其次从 GitHub 获取
+            if let Some(github_data) = db_data.get("github") {
+                if let Some(github_user) = github_data.get("user") {
+                    return (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "user_info": {
+                                "name": github_user.get("name").and_then(|n| n.as_str()).or_else(|| github_user.get("login").and_then(|l| l.as_str())),
+                                "avatar": github_user.get("avatar_url"),
+                                "bio": github_user.get("bio").and_then(|b| b.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
+                                "platform": "GitHub"
+                            },
+                            "source": "database"
+                        })),
+                    );
+                }
+            }
+
+            // 最后从 Steam 获取
+            if let Some(steam_data) = db_data.get("steam") {
+                if let Some(steam_user) = steam_data.get("user") {
+                    return (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "user_info": {
+                                "name": steam_user.get("personaname"),
+                                "avatar": steam_user.get("avatarfull").or_else(|| steam_user.get("avatar")),
+                                "bio": "Steam 玩家",
+                                "platform": "Steam"
+                            },
+                            "source": "database"
+                        })),
+                    );
+                }
+            }
+        }
+        Ok(_) => {
+            tracing::info!("📊 Database is empty, falling back to cache");
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to fetch from database: {}, falling back to cache",
+                e
+            );
+        }
+    }
+
+    // 2. 降级：从缓存文件获取数据
     if let Some(cache) = load_platform_data_cache() {
+        tracing::info!("📦 Returning user info from cache file");
         let data = &cache.data;
 
         // 优先从 Bilibili 获取
@@ -1214,7 +1507,8 @@ pub async fn get_user_info(State(_db): State<DatabaseConnection>) -> (StatusCode
                         "avatar": bilibili_user.get("face"),
                         "bio": bilibili_user.get("sign").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
                         "platform": "Bilibili"
-                    }
+                    },
+                    "source": "cache"
                 })),
             );
         }
@@ -1230,7 +1524,8 @@ pub async fn get_user_info(State(_db): State<DatabaseConnection>) -> (StatusCode
                         "avatar": github_user.get("avatar_url"),
                         "bio": github_user.get("bio").and_then(|b| b.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
                         "platform": "GitHub"
-                    }
+                    },
+                    "source": "cache"
                 })),
             );
         }
@@ -1246,18 +1541,19 @@ pub async fn get_user_info(State(_db): State<DatabaseConnection>) -> (StatusCode
                         "avatar": steam_user.get("avatarfull").or_else(|| steam_user.get("avatar")),
                         "bio": "Steam 玩家",
                         "platform": "Steam"
-                    }
+                    },
+                    "source": "cache"
                 })),
             );
         }
     }
 
-    // 没有缓存或没有用户信息
+    // 3. 数据库和缓存都没有数据
     (
         StatusCode::NOT_FOUND,
         Json(json!({
             "success": false,
-            "message": "No user info found in cache. Please fetch platform data first."
+            "message": "No user info found in database or cache. Please fetch platform data first."
         })),
     )
 }
@@ -1456,4 +1752,339 @@ pub async fn delete_card_from_report(
             })),
         )
     }
+}
+
+/// 将图片URL转换为代理URL（用于处理防盗链）
+fn proxy_image_url(url: &str) -> String {
+    // 检查是否需要代理（Bilibili图片）
+    if url.contains("hdslb.com") || url.contains("bilibili.com") {
+        format!("/api/proxy/image?url={}", urlencoding::encode(url))
+    } else {
+        url.to_string()
+    }
+}
+
+/// 资料库数据项
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LibraryItem {
+    pub id: String,
+    pub item_type: String, // "game", "video", "music"
+    pub title: String,
+    pub cover: Option<String>,
+    pub platform: String,
+    pub metadata: Value,
+}
+
+/// 获取资料库数据（游戏、视频、音乐）
+pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+
+    tracing::info!("📚 Fetching library data for user: {}", user_id);
+
+    // 创建元数据服务
+    let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
+
+    let mut library_items: Vec<LibraryItem> = Vec::new();
+
+    // 1. 优先从数据库获取数据
+    match metadata_service.get_all_latest_metadata(user_id).await {
+        Ok(db_data) if !db_data.is_empty() => {
+            tracing::info!("📊 Loading library data from database");
+
+            // 处理 Steam 游戏数据
+            if let Some(steam_data) = db_data.get("steam") {
+                if let Some(games) = steam_data.get("games").and_then(|g| g.as_array()) {
+                    for game in games {
+                        if let (Some(appid), Some(name)) = (
+                            game.get("appid").and_then(|a| a.as_i64()),
+                            game.get("name").and_then(|n| n.as_str()),
+                        ) {
+                            library_items.push(LibraryItem {
+                                id: format!("steam_game_{}", appid),
+                                item_type: "game".to_string(),
+                                title: name.to_string(),
+                                cover: Some(format!(
+                                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/header.jpg",
+                                    appid
+                                )),
+                                platform: "Steam".to_string(),
+                                metadata: game.clone(),
+                            });
+                        }
+                    }
+                    tracing::info!("✓ Loaded {} Steam games", games.len());
+                }
+            }
+
+            // 处理 Bilibili 视频数据（追番/追剧）
+            if let Some(bilibili_data) = db_data.get("bilibili") {
+                if let Some(bangumi) = bilibili_data.get("bangumi").and_then(|b| b.as_array()) {
+                    tracing::info!("📺 Processing {} bangumi items", bangumi.len());
+                    for item in bangumi {
+                        tracing::debug!("Bangumi item: {:?}", item);
+                        if let (Some(season_id), Some(title), Some(cover)) = (
+                            item.get("season_id").and_then(|s| s.as_i64()),
+                            item.get("title").and_then(|t| t.as_str()),
+                            item.get("cover").and_then(|c| c.as_str()),
+                        ) {
+                            // 创建包含链接信息的metadata
+                            let mut metadata = item.clone();
+                            if let Some(obj) = metadata.as_object_mut() {
+                                obj.insert(
+                                    "url".to_string(),
+                                    json!(format!(
+                                        "https://www.bilibili.com/bangumi/play/ss{}",
+                                        season_id
+                                    )),
+                                );
+                            }
+
+                            library_items.push(LibraryItem {
+                                id: format!("bilibili_bangumi_{}", season_id),
+                                item_type: "video".to_string(),
+                                title: title.to_string(),
+                                cover: Some(proxy_image_url(cover)),
+                                platform: "Bilibili".to_string(),
+                                metadata,
+                            });
+                        }
+                    }
+                    tracing::info!("✓ Loaded {} Bilibili bangumi", bangumi.len());
+                }
+
+                // 处理收藏的视频
+                if let Some(favorites) = bilibili_data.get("favorites").and_then(|f| f.as_array()) {
+                    tracing::info!("📁 Processing {} favorite folders", favorites.len());
+                    for fav_folder in favorites {
+                        if let Some(videos) = fav_folder.get("videos").and_then(|v| v.as_array()) {
+                            tracing::info!("📹 Processing {} videos in folder", videos.len());
+                            for video in videos {
+                                if let (Some(bvid), Some(title), Some(cover)) = (
+                                    video.get("bvid").and_then(|b| b.as_str()),
+                                    video.get("title").and_then(|t| t.as_str()),
+                                    video.get("cover").and_then(|c| c.as_str()),
+                                ) {
+                                    // 创建包含链接信息的metadata
+                                    let mut metadata = video.clone();
+                                    if let Some(obj) = metadata.as_object_mut() {
+                                        obj.insert(
+                                            "url".to_string(),
+                                            json!(format!(
+                                                "https://www.bilibili.com/video/{}",
+                                                bvid
+                                            )),
+                                        );
+                                    }
+
+                                    library_items.push(LibraryItem {
+                                        id: format!("bilibili_video_{}", bvid),
+                                        item_type: "video".to_string(),
+                                        title: title.to_string(),
+                                        cover: Some(proxy_image_url(cover)),
+                                        platform: "Bilibili".to_string(),
+                                        metadata,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    tracing::info!("✓ Loaded {} Bilibili favorite videos", favorites.len());
+                }
+            }
+
+            // 处理网易云音乐数据
+            if let Some(netease_data) = db_data.get("netease") {
+                if let Some(songs) = netease_data.get("liked_songs").and_then(|s| s.as_array()) {
+                    for song in songs {
+                        if let (Some(id), Some(name)) = (
+                            song.get("id").and_then(|i| i.as_i64()),
+                            song.get("name").and_then(|n| n.as_str()),
+                        ) {
+                            let cover = song
+                                .get("al")
+                                .and_then(|al| al.get("picUrl"))
+                                .and_then(|p| p.as_str())
+                                .map(|s| s.to_string());
+
+                            library_items.push(LibraryItem {
+                                id: format!("netease_song_{}", id),
+                                item_type: "music".to_string(),
+                                title: name.to_string(),
+                                cover,
+                                platform: "Netease".to_string(),
+                                metadata: song.clone(),
+                            });
+                        }
+                    }
+                    tracing::info!("✓ Loaded {} Netease songs", songs.len());
+                }
+            }
+        }
+        Ok(_) => {
+            tracing::info!("📊 Database is empty, falling back to cache");
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to fetch from database: {}, falling back to cache",
+                e
+            );
+        }
+    }
+
+    // 2. 如果数据库没有数据，从缓存获取
+    if library_items.is_empty() {
+        if let Some(cache) = load_platform_data_cache() {
+            tracing::info!("📦 Loading library data from cache file");
+            let data = &cache.data;
+
+            // 处理 Steam 游戏
+            if let Some(games) = data
+                .get("steam")
+                .and_then(|s| s.get("games"))
+                .and_then(|g| g.as_array())
+            {
+                for game in games {
+                    if let (Some(appid), Some(name)) = (
+                        game.get("appid").and_then(|a| a.as_i64()),
+                        game.get("name").and_then(|n| n.as_str()),
+                    ) {
+                        library_items.push(LibraryItem {
+                            id: format!("steam_game_{}", appid),
+                            item_type: "game".to_string(),
+                            title: name.to_string(),
+                            cover: Some(format!(
+                                "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/header.jpg",
+                                appid
+                            )),
+                            platform: "Steam".to_string(),
+                            metadata: game.clone(),
+                        });
+                    }
+                }
+            }
+
+            // 处理 Bilibili 番剧
+            if let Some(bangumi) = data
+                .get("bilibili")
+                .and_then(|b| b.get("bangumi"))
+                .and_then(|b| b.as_array())
+            {
+                for item in bangumi {
+                    if let (Some(season_id), Some(title), Some(cover)) = (
+                        item.get("season_id").and_then(|s| s.as_i64()),
+                        item.get("title").and_then(|t| t.as_str()),
+                        item.get("cover").and_then(|c| c.as_str()),
+                    ) {
+                        // 创建包含链接信息的metadata
+                        let mut metadata = item.clone();
+                        if let Some(obj) = metadata.as_object_mut() {
+                            obj.insert(
+                                "url".to_string(),
+                                json!(format!(
+                                    "https://www.bilibili.com/bangumi/play/ss{}",
+                                    season_id
+                                )),
+                            );
+                        }
+
+                        library_items.push(LibraryItem {
+                            id: format!("bilibili_bangumi_{}", season_id),
+                            item_type: "video".to_string(),
+                            title: title.to_string(),
+                            cover: Some(proxy_image_url(cover)),
+                            platform: "Bilibili".to_string(),
+                            metadata,
+                        });
+                    }
+                }
+            }
+
+            // 处理 Bilibili 收藏
+            if let Some(favorites) = data
+                .get("bilibili")
+                .and_then(|b| b.get("favorites"))
+                .and_then(|f| f.as_array())
+            {
+                for fav_folder in favorites {
+                    if let Some(videos) = fav_folder.get("videos").and_then(|v| v.as_array()) {
+                        for video in videos {
+                            if let (Some(bvid), Some(title), Some(cover)) = (
+                                video.get("bvid").and_then(|b| b.as_str()),
+                                video.get("title").and_then(|t| t.as_str()),
+                                video.get("cover").and_then(|c| c.as_str()),
+                            ) {
+                                // 创建包含链接信息的metadata
+                                let mut metadata = video.clone();
+                                if let Some(obj) = metadata.as_object_mut() {
+                                    obj.insert(
+                                        "url".to_string(),
+                                        json!(format!("https://www.bilibili.com/video/{}", bvid)),
+                                    );
+                                }
+
+                                library_items.push(LibraryItem {
+                                    id: format!("bilibili_video_{}", bvid),
+                                    item_type: "video".to_string(),
+                                    title: title.to_string(),
+                                    cover: Some(proxy_image_url(cover)),
+                                    platform: "Bilibili".to_string(),
+                                    metadata,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 处理网易云音乐
+            if let Some(songs) = data
+                .get("netease")
+                .and_then(|n| n.get("liked_songs"))
+                .and_then(|s| s.as_array())
+            {
+                for song in songs {
+                    if let (Some(id), Some(name)) = (
+                        song.get("id").and_then(|i| i.as_i64()),
+                        song.get("name").and_then(|n| n.as_str()),
+                    ) {
+                        let cover = song
+                            .get("al")
+                            .and_then(|al| al.get("picUrl"))
+                            .and_then(|p| p.as_str())
+                            .map(|s| s.to_string());
+
+                        library_items.push(LibraryItem {
+                            id: format!("netease_song_{}", id),
+                            item_type: "music".to_string(),
+                            title: name.to_string(),
+                            cover,
+                            platform: "Netease".to_string(),
+                            metadata: song.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if library_items.is_empty() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "success": false,
+                "message": "No library data found. Please fetch platform data first."
+            })),
+        );
+    }
+
+    tracing::info!("✅ Loaded {} library items in total", library_items.len());
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "items": library_items,
+            "total": library_items.len()
+        })),
+    )
 }

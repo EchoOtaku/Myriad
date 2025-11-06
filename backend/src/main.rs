@@ -565,6 +565,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/profile/cache",
                 delete(api::profile::delete_platform_cache),
             )
+            // Library data route
+            .route("/api/library", get(api::profile::get_library_data))
+            // Image proxy route
+            .route("/api/proxy/image", get(api::proxy::proxy_image))
             // Bilibili API routes
             .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
             .route(

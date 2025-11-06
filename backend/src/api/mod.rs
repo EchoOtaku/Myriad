@@ -9,6 +9,7 @@ pub mod config;
 pub mod platforms;
 pub mod profile;
 pub mod prompt;
+pub mod proxy;
 pub mod setup;
 pub mod steam;
 pub mod system;
