@@ -3,11 +3,16 @@ import { getCSRFToken, getCSRFHeaderName, clearCSRFToken } from '../utils/csrf';
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter';
 
 // 智能 API URL 检测（与 config.ts 保持一致）
-const API_BASE_URL = import.meta.env.PUBLIC_API_URL || 
-  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+// 生产环境使用相对路径（空字符串），开发环境使用 localhost
+const API_BASE_URL = (import.meta.env.PUBLIC_API_URL || '').trim() ||
+  (typeof window !== 'undefined' ? window.location.origin : '');
 
 // 验证 API URL 格式
 const isValidUrl = (url: string): boolean => {
+  // 空字符串是有效的（表示使用相对路径）
+  if (url === '') {
+    return true;
+  }
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';

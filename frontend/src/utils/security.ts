@@ -13,24 +13,25 @@
 
 // 动态获取 API URL
 function getApiUrl(): string {
-  // 优先使用环境变量
-  if (typeof import.meta.env.PUBLIC_API_URL === 'string' && import.meta.env.PUBLIC_API_URL) {
-    return import.meta.env.PUBLIC_API_URL;
+  // 优先使用环境变量（去除首尾空格）
+  const envUrl = (import.meta.env.PUBLIC_API_URL || '').trim();
+  if (envUrl) {
+    return envUrl;
   }
-  
-  // 浏览器环境：使用当前域名
+
+  // 浏览器环境：使用当前域名（空字符串表示相对路径）
   if (typeof window !== 'undefined') {
     const origin = window.location.origin;
-    // 如果是标准端口，直接使用 origin
-    // 否则假设后端在 3000 端口
+    // 如果是标准端口（生产环境），返回空字符串使用相对路径
     if (window.location.port === '' || window.location.port === '80' || window.location.port === '443') {
-      return origin;
+      return '';
     }
-    return 'http://localhost:3000';
+    // 开发环境返回当前 origin
+    return origin;
   }
-  
-  // SSR/构建时默认值
-  return 'http://localhost:3000';
+
+  // SSR/构建时默认值：空字符串（使用相对路径）
+  return '';
 }
 
 // 动态生成 connect-src 列表
@@ -55,13 +56,16 @@ function getConnectSources(): string[] {
     }
   }
   
-  // 添加常见的本地开发地址
+  // 添加常见的本地开发地址（仅开发环境）
   if (typeof window !== 'undefined' && (
-    window.location.hostname === 'localhost' || 
+    window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1'
   )) {
-    sources.push('http://localhost:3000');
-    sources.push('http://127.0.0.1:3000');
+    // 开发环境才添加 localhost 地址
+    if (window.location.port !== '' && window.location.port !== '80' && window.location.port !== '443') {
+      sources.push('http://localhost:3000');
+      sources.push('http://127.0.0.1:3000');
+    }
   }
   
   // 添加其他必需的外部服务

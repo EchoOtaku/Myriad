@@ -14,7 +14,8 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY frontend/ ./
 
 # Build argument for backend URL
-ARG BACKEND_URL=http://localhost:3000
+# 默认为空字符串，使用相对路径（生产环境推荐）
+ARG BACKEND_URL=
 ENV PUBLIC_API_URL=${BACKEND_URL}
 
 # Build the application
