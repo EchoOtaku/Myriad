@@ -11,6 +11,67 @@
  * 请参考 docs/SECURITY_HEADERS.md 了解如何在后端配置这些响应头
  */
 
+// 动态获取 API URL
+function getApiUrl(): string {
+  // 优先使用环境变量
+  if (typeof import.meta.env.PUBLIC_API_URL === 'string' && import.meta.env.PUBLIC_API_URL) {
+    return import.meta.env.PUBLIC_API_URL;
+  }
+  
+  // 浏览器环境：使用当前域名
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    // 如果是标准端口，直接使用 origin
+    // 否则假设后端在 3000 端口
+    if (window.location.port === '' || window.location.port === '80' || window.location.port === '443') {
+      return origin;
+    }
+    return 'http://localhost:3000';
+  }
+  
+  // SSR/构建时默认值
+  return 'http://localhost:3000';
+}
+
+// 动态生成 connect-src 列表
+function getConnectSources(): string[] {
+  const sources = ["'self'"];
+  
+  const apiUrl = getApiUrl();
+  
+  // 添加 API URL（如果不是 'self'）
+  if (apiUrl && apiUrl !== '') {
+    try {
+      const url = new URL(apiUrl);
+      const apiOrigin = url.origin;
+      if (apiOrigin !== (typeof window !== 'undefined' ? window.location.origin : '')) {
+        sources.push(apiOrigin);
+      }
+    } catch {
+      // 如果解析失败，尝试直接添加
+      if (apiUrl.startsWith('http')) {
+        sources.push(apiUrl);
+      }
+    }
+  }
+  
+  // 添加常见的本地开发地址
+  if (typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' || 
+    window.location.hostname === '127.0.0.1'
+  )) {
+    sources.push('http://localhost:3000');
+    sources.push('http://127.0.0.1:3000');
+  }
+  
+  // 添加其他必需的外部服务
+  sources.push('https://api.github.com');
+  sources.push('https://image.pollinations.ai');
+  
+  // 去重
+  return Array.from(new Set(sources));
+}
+
 export const CSP_DIRECTIVES = {
   // 默认源：只允许同源内容
   'default-src': ["'self'"],
@@ -47,13 +108,8 @@ export const CSP_DIRECTIVES = {
   // 媒体源
   'media-src': ["'self'"],
   
-  // 连接源：API 请求
-  'connect-src': [
-    "'self'",
-    'http://localhost:3000',
-    'https://api.github.com',
-    'https://image.pollinations.ai', // AI 图片生成
-  ],
+  // 连接源：API 请求 - 动态生成
+  'connect-src': [], // 将在 generateCSPString 中动态填充
   
   // Frame 源：禁止嵌入
   'frame-src': ["'none'"],
@@ -78,7 +134,10 @@ export const CSP_DIRECTIVES = {
  * 生成 CSP 字符串
  */
 export function generateCSPString(isDev: boolean = false): string {
-  const directives = { ...CSP_DIRECTIVES };
+  const directives: Record<string, string[]> = { ...CSP_DIRECTIVES };
+  
+  // 动态设置 connect-src
+  directives['connect-src'] = getConnectSources();
   
   // 生产环境移除 unsafe-eval
   if (!isDev && directives['script-src']) {

@@ -1,95 +1,121 @@
+# Myriad Docker Compose 配置文件
+# 
+# ============================================================================
+# 环境变量配置说明
+# ============================================================================
+# 
+# 请在项目根目录创建 .env 文件并配置以下变量：
+#
+# --- 必需配置 (REQUIRED) ---
+#
+# POSTGRES_PASSWORD=your_secure_password_here
+#   示例: POSTGRES_PASSWORD=MySecurePass123!@#
+#   说明: PostgreSQL 数据库密码，建议使用 16+ 位强密码
+#
+# JWT_SECRET=your_jwt_secret_here
+#   示例: JWT_SECRET=kJ8mN2pQ5rT7vX9zB3cF6hK8mP0qS4tW6yA9bD2eG5j
+#   说明: JWT 认证密钥，用于用户 Token 加密
+#   生成: openssl rand -base64 32
+#
+# --- 可选配置 (OPTIONAL) ---
+#
+# CORS_ORIGINS=http://localhost:4321
+#   示例: CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+#   说明: 允许访问的前端域名，多个域名用逗号分隔
+#
+# PUBLIC_API_URL=
+#   示例: PUBLIC_API_URL=https://api.yourdomain.com
+#   说明: 公开的 API 地址，留空则自动检测
+#
+
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: myriad-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-myriad}
-      POSTGRES_USER: ${POSTGRES_USER:-myriad}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myriad_password_change_me}
-      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+      POSTGRES_DB: myriad
+      POSTGRES_USER: myriad
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # REQUIRED: Set a secure password
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+      TZ: Asia/Shanghai
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./database/009_create_users_table.sql:/docker-entrypoint-initdb.d/02-users.sql:ro
-      - ./database/012_create_platform_metadata.sql:/docker-entrypoint-initdb.d/03-metadata.sql:ro
-      - ./database/013_create_metadata_history.sql:/docker-entrypoint-initdb.d/04-history.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myriad} -d ${POSTGRES_DB:-myriad}"]
+      test: ["CMD-SHELL", "pg_isready -U myriad -d myriad"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     networks:
-      - myriad-network
-    restart: unless-stopped
+      - myriad-net
+    restart: always
 
+  # Backend API
   backend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
-      args:
-        RUST_VERSION: ${RUST_VERSION:-1.75}
+    image: somekawahitomi/myriad-backend:latest  # 改为 Docker Hub
     container_name: myriad-backend
     environment:
-      # Database
-      DATABASE_URL: postgres://${POSTGRES_USER:-myriad}:${POSTGRES_PASSWORD:-myriad_password_change_me}@postgres:5432/${POSTGRES_DB:-myriad}
-      # Server
+      # Database connection
+      DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
+      
+      # Server config
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 3000
-      FRONTEND_DIST_PATH: /app/frontend/dist
-      # Security - CHANGE IN PRODUCTION!
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production-use-openssl-rand-base64-32}
-      # CORS
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4321,http://localhost:3000,http://localhost:80}
+      
+      # Security - REQUIRED: Generate with: openssl rand -base64 32
+      JWT_SECRET: ${JWT_SECRET}
+      
+      # CORS - OPTIONAL: Set your domain or leave default
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4321}
+      
       # Logging
-      RUST_LOG: ${RUST_LOG:-info,myriad_backend=debug}
-      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+      RUST_LOG: info
+      TZ: Asia/Shanghai
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health", "||" , "exit", "1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-    networks:
-      - myriad-network
-    restart: unless-stopped
+      start_period: 60s
     volumes:
       - backend_cache:/app/cache
+    networks:
+      - myriad-net
+    restart: always
 
+  # Frontend
   frontend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
-      args:
-        NODE_VERSION: ${NODE_VERSION:-20}
-        BACKEND_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+    image: somekawahitomi/myriad-frontend:latest  # 改为 Docker Hub
     container_name: myriad-frontend
     environment:
-      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+      # OPTIONAL: Leave empty to auto-detect domain
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-}
       NODE_ENV: production
+      TZ: Asia/Shanghai
     ports:
-      - "${FRONTEND_PORT:-4321}:4321"
+      - "4321:4321"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4321", "||" , "exit", "1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4321"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
     networks:
-      - myriad-network
-    restart: unless-stopped
+      - myriad-net
+    restart: always
 
 volumes:
   postgres_data:
@@ -98,5 +124,5 @@ volumes:
     driver: local
 
 networks:
-  myriad-network:
+  myriad-net:
     driver: bridge
