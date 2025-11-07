@@ -3,7 +3,7 @@ import { API_URL } from '../config';
 import { FaUser, FaLock, FaSpinner, FaGithub } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
 import { RateLimitError } from '../utils/rateLimiter';
-import { sanitizeUsername, isValidUsername } from '../utils/inputSanitizer';
+import { sanitizeUsername } from '../utils/inputSanitizer';
 
 const LoginForm: React.FC = () => {
   const [formData, setFormData] = useState({

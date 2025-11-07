@@ -24,6 +24,7 @@ struct ImagineRequest {
 
 /// 提交任务的响应
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ImagineSubmitResponse {
     #[serde(default)]
     pub success: Option<bool>,
@@ -35,6 +36,7 @@ pub struct ImagineSubmitResponse {
 
 /// 查询任务进度的响应
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ImagineResponse {
     #[serde(default, alias = "messageId")]
     pub task_id: Option<String>,

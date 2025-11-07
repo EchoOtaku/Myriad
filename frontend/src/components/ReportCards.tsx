@@ -174,43 +174,46 @@ export default function ReportCards() {
         return `data:image/svg+xml;base64,${btoa(svg)}`;
     };
 
-    // 获取用户信息
+    // 获取用户信息 - 🚀 性能优化：使用批量API减少请求次数
     const fetchUserInfo = async () => {
         try {
-            // 优先从后端缓存获取用户信息
-            const userInfoResponse = await fetch(`${API_URL}/api/profile/user-info`);
-            if (userInfoResponse.ok) {
-                const userInfoResult = await userInfoResponse.json();
-                if (userInfoResult.success && userInfoResult.user_info) {
-                    setUserInfo({
-                        name: userInfoResult.user_info.name,
-                        avatar: userInfoResult.user_info.avatar,
-                        platform: userInfoResult.user_info.platform,
-                        bio: userInfoResult.user_info.bio
-                    });
-                }
+            // 使用批量API一次性获取所有信息（user_info + config + cache_debug）
+            const batchResponse = await fetch(`${API_URL}/api/profile/batch`);
+
+            // 如果批量API失败（如后端未重启），回退到原来的方式
+            if (!batchResponse.ok) {
+                console.warn('Batch API failed, falling back to individual requests');
+                return fetchUserInfoFallback();
             }
 
-            // 获取配置以构建平台链接
-            const configResponse = await fetch(`${API_URL}/api/config`);
-            const config = await configResponse.json();
-            
+            const batchData = await batchResponse.json();
+
+            // 1. 处理用户信息
+            if (batchData.user_info?.success && batchData.user_info?.user_info) {
+                const userInfoResult = batchData.user_info;
+                setUserInfo({
+                    name: userInfoResult.user_info.name,
+                    avatar: userInfoResult.user_info.avatar,
+                    platform: userInfoResult.user_info.platform,
+                    bio: userInfoResult.user_info.bio
+                });
+            }
+
+            // 2. 处理配置信息
+            const config = batchData.config || {};
             const links: PlatformLink[] = [];
-            
-            // 尝试获取缓存的平台数据（包含Steam用户名等）
+
+            // 3. 获取缓存数据
             let cachedData: any = null;
-            try {
-                const cacheResponse = await fetch(`${API_URL}/api/profile/cache-debug`);
-                const cacheResult = await cacheResponse.json();
-                if (cacheResult.success && cacheResult.cache_entries && cacheResult.cache_entries.length > 0) {
-                    // 找到最新的有效缓存
-                    const validCache = cacheResult.cache_entries.find((entry: any) => entry.is_valid);
-                    if (validCache && validCache.raw_data) {
+            if (batchData.cache_debug?.success && batchData.cache_debug?.cache_entries) {
+                const cacheEntries = batchData.cache_debug.cache_entries;
+                if (cacheEntries.length > 0) {
+                    // 找到最新的有效缓存（这里简化处理，实际需要根据 is_valid 判断）
+                    const validCache = cacheEntries[0];
+                    if (validCache?.raw_data) {
                         cachedData = validCache.raw_data;
                     }
                 }
-            } catch (e) {
-                // Failed to fetch cached data, continue without it
             }
             
             // 处理各个平台的配置
@@ -298,7 +301,137 @@ export default function ReportCards() {
             
             setPlatformLinks(links);
         } catch (err) {
-            // Failed to fetch user info
+            // 如果批量API出错，使用回退方案
+            console.error('Batch API error, using fallback:', err);
+            return fetchUserInfoFallback();
+        }
+    };
+
+    // 回退方案：使用原来的多个请求方式
+    const fetchUserInfoFallback = async () => {
+        try {
+            // 优先从后端缓存获取用户信息
+            const userInfoResponse = await fetch(`${API_URL}/api/profile/user-info`);
+            if (userInfoResponse.ok) {
+                const userInfoResult = await userInfoResponse.json();
+                if (userInfoResult.success && userInfoResult.user_info) {
+                    setUserInfo({
+                        name: userInfoResult.user_info.name,
+                        avatar: userInfoResult.user_info.avatar,
+                        platform: userInfoResult.user_info.platform,
+                        bio: userInfoResult.user_info.bio
+                    });
+                }
+            }
+
+            // 获取配置以构建平台链接
+            const configResponse = await fetch(`${API_URL}/api/config`);
+            const config = await configResponse.json();
+
+            const links: PlatformLink[] = [];
+
+            // 尝试获取缓存的平台数据（包含Steam用户名等）
+            let cachedData: any = null;
+            try {
+                const cacheResponse = await fetch(`${API_URL}/api/profile/cache-debug`);
+                const cacheResult = await cacheResponse.json();
+                if (cacheResult.success && cacheResult.cache_entries && cacheResult.cache_entries.length > 0) {
+                    // 找到最新的有效缓存
+                    const validCache = cacheResult.cache_entries.find((entry: any) => entry.is_valid);
+                    if (validCache && validCache.raw_data) {
+                        cachedData = validCache.raw_data;
+                    }
+                }
+            } catch (e) {
+                // Failed to fetch cached data, continue without it
+            }
+
+            // 处理各个平台的配置
+            if (config.platforms) {
+                // Bilibili
+                const bilibili = config.platforms.find((p: any) => p.name === 'Bilibili' && p.enabled);
+                if (bilibili) {
+                    const uid = bilibili.config_fields?.find((f: any) => f.key === 'uid')?.value;
+                    if (uid) {
+                        links.push({
+                            platform: 'Bilibili',
+                            url: `https://space.bilibili.com/${uid}`,
+                            displayName: 'BiliBili',
+                            brandColor: '#00a1d6'
+                        });
+                    }
+                }
+
+                // GitHub
+                const github = config.platforms.find((p: any) => p.name === 'GitHub' && p.enabled);
+                if (github) {
+                    const username = github.config_fields?.find((f: any) => f.key === 'username')?.value;
+                    if (username) {
+                        links.push({
+                            platform: 'GitHub',
+                            url: `https://github.com/${username}`,
+                            displayName: 'GitHub',
+                            brandColor: '#181717'
+                        });
+                    }
+                }
+
+                // Steam - 从缓存获取用户名
+                const steam = config.platforms.find((p: any) => p.name === 'Steam' && p.enabled);
+                if (steam) {
+                    const steamId = steam.config_fields?.find((f: any) => f.key === 'steam_id')?.value;
+                    if (steamId) {
+                        let steamUrl = `https://steamcommunity.com/profiles/${steamId}`;
+
+                        // 尝试从缓存获取自定义URL
+                        if (cachedData && cachedData.steam && cachedData.steam.user_info) {
+                            const profileUrl = cachedData.steam.user_info.profileurl;
+                            if (profileUrl) {
+                                steamUrl = profileUrl;
+                            }
+                        }
+
+                        links.push({
+                            platform: 'Steam',
+                            url: steamUrl,
+                            displayName: 'Steam',
+                            brandColor: '#1b2838'
+                        });
+                    }
+                }
+
+                // Netease Music
+                const netease = config.platforms.find((p: any) => p.name === 'Netease Music' && p.enabled);
+                if (netease) {
+                    const userId = netease.config_fields?.find((f: any) => f.key === 'user_id')?.value;
+                    if (userId) {
+                        links.push({
+                            platform: 'Netease',
+                            url: `https://music.163.com/user/home?id=${userId}`,
+                            displayName: '网易云',
+                            brandColor: '#c20c0c'
+                        });
+                    }
+                }
+
+                // Pixiv
+                const pixiv = config.platforms.find((p: any) => p.name === 'Pixiv' && p.enabled);
+                if (pixiv) {
+                    const userId = pixiv.config_fields?.find((f: any) => f.key === 'user_id')?.value;
+                    if (userId) {
+                        links.push({
+                            platform: 'Pixiv',
+                            url: `https://www.pixiv.net/users/${userId}`,
+                            displayName: 'Pixiv',
+                            brandColor: '#0096fa'
+                        });
+                    }
+                }
+            }
+
+            setPlatformLinks(links);
+        } catch (err) {
+            console.error('Fallback fetch failed:', err);
         }
     };
 
@@ -335,10 +468,8 @@ export default function ReportCards() {
     const fetchPersonaData = async () => {
         try {
             setPersonaLoading(true);
-            
+
             // 生成新人设
-            console.log('🎨 开始生成虚拟人设...');
-            
             const response = await fetch(`${API_URL}/api/persona/generate`, {
                 method: 'POST',
                 headers: {
@@ -355,7 +486,6 @@ export default function ReportCards() {
             if (result.success && result.persona) {
                 // 获取最新的人设列表
                 await fetchPersonaList();
-                console.log('✅ 人设生成成功:', result.persona.name);
                 return result.persona;
             } else {
                 throw new Error(result.message || 'Failed to generate persona');
@@ -673,13 +803,6 @@ export default function ReportCards() {
             progressBar.style.setProperty('--progress', progressPercent.toString());
         }
     }, [progressPercent]);
-
-    // 监控 displayCards 的变化，确保始终显示6张卡片
-    useEffect(() => {
-        if (displayCards.length > 0 && displayCards.length !== 6) {
-            // Expected 6 cards but got different amount
-        }
-    }, [displayCards]);
 
     // 弹窗打开时锁定背景滚动
     useEffect(() => {

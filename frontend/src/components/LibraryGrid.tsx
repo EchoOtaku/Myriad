@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
 
@@ -74,12 +74,6 @@ interface CardLayout {
     top: number;
     width: number;
     height: number;
-}
-
-interface CardSize {
-    width: number;
-    height: number;
-    span: number;
 }
 
 export default function LibraryGrid() {
@@ -258,7 +252,8 @@ export default function LibraryGrid() {
     };
 
     // 获取平台品牌色
-    const getPlatformColor = (platform: string) => {
+    // 🚀 性能优化：使用 useCallback 缓存函数，避免每次渲染重新创建
+    const getPlatformColor = useCallback((platform: string) => {
         switch (platform.toLowerCase()) {
             case 'bilibili':
                 return '#00A1D6';
@@ -275,24 +270,10 @@ export default function LibraryGrid() {
             default:
                 return '#6b7280';
         }
-    };
-
-    // 获取类型标签颜色
-    const getTypeColor = (type: string) => {
-        switch (type) {
-            case 'game':
-                return 'bg-gradient-to-br from-purple-500 to-purple-600';
-            case 'video':
-                return 'bg-gradient-to-br from-blue-500 to-blue-600';
-            case 'music':
-                return 'bg-gradient-to-br from-pink-500 to-pink-600';
-            default:
-                return 'bg-gradient-to-br from-gray-500 to-gray-600';
-        }
-    };
+    }, []);
 
     // 获取类型图标
-    const getTypeIcon = (type: string) => {
+    const getTypeIcon = useCallback((type: string) => {
         switch (type) {
             case 'game':
                 return '🎮';
@@ -303,10 +284,10 @@ export default function LibraryGrid() {
             default:
                 return '📦';
         }
-    };
+    }, []);
 
     // 获取额外信息
-    const getExtraInfo = (item: LibraryItem) => {
+    const getExtraInfo = useCallback((item: LibraryItem) => {
         if (item.item_type === 'game' && item.metadata.playtime_forever) {
             const hours = Math.round(item.metadata.playtime_forever / 60);
             return `游玩 ${hours} 小时`;
@@ -319,7 +300,13 @@ export default function LibraryGrid() {
             return item.metadata.progress;
         }
         return null;
-    };
+    }, []);
+
+    // 🚀 性能优化：使用 useMemo 缓存容器高度计算
+    const containerHeight = useMemo(() => {
+        const heights = Array.from(layouts.values()).map(l => l.top + l.height);
+        return Math.max(...heights, 500) + 20;
+    }, [layouts]);
 
     if (loading) {
         return (
@@ -350,11 +337,6 @@ export default function LibraryGrid() {
             </div>
         );
     }
-
-    const containerHeight = Math.max(
-        ...Array.from(layouts.values()).map(l => l.top + l.height),
-        500
-    ) + 20;
 
     return (
         <div className="space-y-8">

@@ -2106,3 +2106,70 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
         })),
     )
 }
+
+/// 批量获取用户信息 - 优化性能，减少前端API调用次数
+///
+/// 这个端点将多个独立的API调用合并为一个请求，显著提升前端加载速度
+#[derive(Debug, Serialize)]
+pub struct BatchUserInfoResponse {
+    pub user_info: Option<Value>,
+    pub config: Option<Value>,
+    pub cache_debug: Option<Value>,
+}
+
+pub async fn get_batch_user_info(
+    State(db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+
+    tracing::info!("📦 Fetching batch user info for: {}", user_id);
+
+    let mut response = BatchUserInfoResponse {
+        user_info: None,
+        config: None,
+        cache_debug: None,
+    };
+
+    // 1. 获取用户基本信息
+    let (status, json) = get_user_info(State(db.clone())).await;
+    if status == StatusCode::OK {
+        response.user_info = Some(json.0);
+    } else {
+        response.user_info = Some(json!({
+            "success": false,
+            "message": "Failed to fetch user info"
+        }));
+    }
+
+    // 2. 获取配置信息
+    let (config_status, config_json) = crate::api::config::get_config(State(db.clone())).await;
+    if config_status == StatusCode::OK {
+        response.config = Some(config_json.0);
+    } else {
+        response.config = Some(json!({
+            "success": false,
+            "message": "Failed to fetch config"
+        }));
+    }
+
+    // 3. 获取缓存调试信息
+    let (cache_status, cache_json) = get_cache_debug_info(State(db.clone())).await;
+    if cache_status == StatusCode::OK {
+        response.cache_debug = Some(cache_json.0);
+    } else {
+        response.cache_debug = Some(json!({
+            "success": false,
+            "message": "Failed to fetch cache info"
+        }));
+    }
+
+    tracing::info!("✓ Batch user info fetched successfully");
+
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(&response).unwrap_or_else(|_| json!({
+            "success": false,
+            "message": "Failed to serialize response"
+        }))),
+    )
+}

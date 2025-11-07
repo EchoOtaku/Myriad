@@ -434,6 +434,27 @@ async fn get_cache_debug_info_wrapper() -> Response {
     }
 }
 
+/// Wrapper for get_batch_user_info that gets DB from global state
+/// 批量获取用户信息 - 性能优化版本，减少多次API调用
+async fn get_batch_user_info_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::profile::get_batch_user_info(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for get_report that gets DB from global state
 async fn get_report_wrapper() -> Response {
     let db_opt = DB_CONNECTION.read().await;
@@ -538,6 +559,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/config/test", post(test_platform_wrapper))
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
+        .route("/api/profile/batch", get(get_batch_user_info_wrapper)) // 🚀 性能优化：批量API
         .route(
             "/api/profile/cache-debug",
             get(get_cache_debug_info_wrapper),

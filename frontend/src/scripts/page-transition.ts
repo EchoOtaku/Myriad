@@ -246,8 +246,3 @@ export function initTransitionSystem(): void {
   const commonPages = ['/', '/config', '/account', '/login'];
   preloadPages(commonPages);
 }
-
-// 兼容旧版API：保留 pageTransitionStyles 导出
-export const pageTransitionStyles = `
-  /* 页面切换动画样式已移至 PageLoader 组件 */
-`;

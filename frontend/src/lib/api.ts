@@ -59,20 +59,16 @@ api.interceptors.request.use(
     // Rate Limiting 检查（仅针对修改操作）
     if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
       const endpoint = config.url || '';
-      let rateLimitKey = 'api';
-      
+
       if (endpoint.includes('/auth/login')) {
-        rateLimitKey = 'login';
         if (!checkRateLimit(endpoint, 'login')) {
           return Promise.reject(new RateLimitError('登录尝试过于频繁，请稍后再试', 300000));
         }
       } else if (endpoint.includes('/fetch')) {
-        rateLimitKey = 'fetch';
         if (!checkRateLimit(endpoint, 'fetch')) {
           return Promise.reject(new RateLimitError('数据获取请求过于频繁，请稍后再试', 60000));
         }
       } else if (endpoint.includes('/analysis')) {
-        rateLimitKey = 'analysis';
         if (!checkRateLimit(endpoint, 'analysis')) {
           return Promise.reject(new RateLimitError('分析请求过于频繁，请稍后再试', 60000));
         }

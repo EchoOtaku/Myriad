@@ -397,6 +397,44 @@ const ConfigForm: React.FC = () => {
     }
   };
 
+  // 🚀 性能优化：统一的字段更新函数，消除代码重复
+  const updateConfigField = (
+    section: 'ai' | 'report' | 'persona' | 'ui',
+    fieldKey: string,
+    value: string,
+    providerFieldKey?: string
+  ) => {
+    if (!config) return;
+
+    const sectionKey = `${section}_config` as 'ai_config' | 'report_config' | 'persona_config' | 'ui_config';
+    const sectionConfig = config[sectionKey];
+    const newFields = [...sectionConfig.config_fields];
+    const field = newFields.find(f => f.key === fieldKey);
+
+    if (field) {
+      field.value = value;
+
+      // 如果是 provider 字段变更，需要同时更新对应的 provider 属性
+      if (providerFieldKey && fieldKey === providerFieldKey) {
+        setConfig({
+          ...config,
+          [sectionKey]: {
+            ...sectionConfig,
+            provider: value,
+            config_fields: newFields
+          }
+        });
+      } else {
+        setConfig({
+          ...config,
+          [sectionKey]: { ...sectionConfig, config_fields: newFields }
+        });
+      }
+      notifyDirtyState(true);
+    }
+  };
+
+  // 保留原有函数作为便捷包装器，向后兼容
   const updateFieldValue = (platformIndex: number, fieldKey: string, value: string) => {
     if (!config) return;
 
@@ -408,90 +446,21 @@ const ConfigForm: React.FC = () => {
       notifyDirtyState(true);
     }
   };
-  const updateAiFieldValue = (fieldKey: string, value: string) => {
-    if (!config) return;
 
-    const newFields = [...config.ai_config.config_fields];
-    const field = newFields.find(f => f.key === fieldKey);
-    if (field) {
-      field.value = value;
-      
-      // 如果是 provider 字段变更，需要同时更新 ai_config.provider
-      if (fieldKey === 'provider') {
-        setConfig({
-          ...config,
-          ai_config: { 
-            ...config.ai_config, 
-            provider: value,
-            config_fields: newFields 
-          }
-        });
-      } else {
-        setConfig({
-          ...config,
-          ai_config: { ...config.ai_config, config_fields: newFields }
-        });
-      }
-      notifyDirtyState(true);
-    }
+  const updateAiFieldValue = (fieldKey: string, value: string) => {
+    updateConfigField('ai', fieldKey, value, 'provider');
   };
 
   const updateReportFieldValue = (fieldKey: string, value: string) => {
-    if (!config) return;
-
-    const newFields = [...config.report_config.config_fields];
-    const field = newFields.find(f => f.key === fieldKey);
-    if (field) {
-      field.value = value;
-      setConfig({
-        ...config,
-        report_config: { ...config.report_config, config_fields: newFields }
-      });
-      notifyDirtyState(true);
-    }
+    updateConfigField('report', fieldKey, value);
   };
 
   const updatePersonaFieldValue = (fieldKey: string, value: string) => {
-    if (!config) return;
-
-    const newFields = [...config.persona_config.config_fields];
-    const field = newFields.find(f => f.key === fieldKey);
-    if (field) {
-      field.value = value;
-      
-      // 如果是 provider 字段变更，需要同时更新 persona_config.provider
-      if (fieldKey === 'persona_image_provider') {
-        setConfig({
-          ...config,
-          persona_config: { 
-            ...config.persona_config, 
-            provider: value,
-            config_fields: newFields 
-          }
-        });
-      } else {
-        setConfig({
-          ...config,
-          persona_config: { ...config.persona_config, config_fields: newFields }
-        });
-      }
-      notifyDirtyState(true);
-    }
+    updateConfigField('persona', fieldKey, value, 'persona_image_provider');
   };
 
   const updateUiFieldValue = (fieldKey: string, value: string) => {
-    if (!config) return;
-
-    const newFields = [...config.ui_config.config_fields];
-    const field = newFields.find(f => f.key === fieldKey);
-    if (field) {
-      field.value = value;
-      setConfig({
-        ...config,
-        ui_config: { ...config.ui_config, config_fields: newFields }
-      });
-      notifyDirtyState(true);
-    }
+    updateConfigField('ui', fieldKey, value);
   };
 
   const togglePlatform = (platformIndex: number) => {
