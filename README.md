@@ -6,9 +6,34 @@
 
 ## 🚀 Quick Start
 
-### Option 1: Pre-built Docker Images (Fastest, Recommended ⭐)
+### 生产环境部署（推荐）
 
-Deploy in 2-3 minutes using pre-built images from Docker Hub:
+**最快 3 分钟部署到生产环境：**
+
+```bash
+# 1. 克隆并配置
+git clone https://github.com/yourusername/Myriad.git
+cd Myriad
+cp .env.production.example .env
+
+# 2. 生成安全密钥（必须）
+openssl rand -base64 32  # 设置为 POSTGRES_PASSWORD
+openssl rand -base64 32  # 设置为 JWT_SECRET
+# 编辑 .env，修改 CORS_ORIGINS 为你的域名
+
+# 3. 运行安全检查
+bash scripts/check-security.sh
+
+# 4. 启动服务
+docker compose up -d
+```
+
+📖 **详细文档：**
+- [⚡ 快速开始](QUICKSTART.md) - 3 分钟部署指南
+- [🔐 生产部署](DEPLOYMENT.md) - 完整安全配置
+- [🐛 故障排查](DEPLOYMENT.md#-故障排查) - 常见问题解决
+
+### 开发环境部署
 
 ```powershell
 # Windows
@@ -16,16 +41,6 @@ Deploy in 2-3 minutes using pre-built images from Docker Hub:
 
 # Linux/Mac
 ./scripts/docker/deploy.sh --mode prebuilt
-```
-
-### Option 2: Local Build (For Development)
-
-```powershell
-# Windows
-.\scripts\docker\deploy.ps1 -Mode build
-
-# Linux/Mac
-./scripts/docker/deploy.sh --mode build
 ```
 
 ### 📚 Documentation

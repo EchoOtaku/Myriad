@@ -38,6 +38,13 @@ impl Default for AppConfig {
 impl AppConfig {
     /// 从环境变量加载配置
     pub fn from_env() -> anyhow::Result<Self> {
+        let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| String::new());
+
+        // Validate JWT secret strength in production
+        if !jwt_secret.is_empty() {
+            Self::validate_jwt_secret(&jwt_secret)?;
+        }
+
         Ok(Self {
             database_url: env::var("DATABASE_URL").unwrap_or_else(|_| String::new()),
             server_host: env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
@@ -48,13 +55,45 @@ impl AppConfig {
                 .parse()?,
             frontend_dist_path: env::var("FRONTEND_DIST_PATH")
                 .unwrap_or_else(|_| "../frontend/dist".to_string()),
-            jwt_secret: env::var("JWT_SECRET").unwrap_or_else(|_| String::new()),
+            jwt_secret,
             cors_origins: env::var("CORS_ORIGINS")
                 .unwrap_or_else(|_| "http://localhost:4321,http://localhost:3000".to_string())
                 .split(',')
                 .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
                 .collect(),
         })
+    }
+
+    /// 验证 JWT Secret 强度
+    fn validate_jwt_secret(secret: &str) -> anyhow::Result<()> {
+        // Minimum length check (32 characters recommended)
+        if secret.len() < 32 {
+            anyhow::bail!(
+                "JWT_SECRET is too weak. Must be at least 32 characters. \
+                Generate a strong secret with: openssl rand -base64 32"
+            );
+        }
+
+        // Warn if using obvious weak values
+        let weak_secrets = [
+            "secret",
+            "your-secret-key-here",
+            "change-me",
+            "changeme",
+            "your_secret_key_here",
+            "your-secret-key-here-change-in-production",
+        ];
+
+        let secret_lower = secret.to_lowercase();
+        if weak_secrets.iter().any(|&weak| secret_lower.contains(weak)) {
+            anyhow::bail!(
+                "JWT_SECRET contains weak/default value. \
+                Generate a strong secret with: openssl rand -base64 32"
+            );
+        }
+
+        Ok(())
     }
 
     /// 验证配置是否完整
@@ -65,6 +104,9 @@ impl AppConfig {
         if self.jwt_secret.is_empty() {
             anyhow::bail!("JWT_SECRET is required");
         }
+
+        Self::validate_jwt_secret(&self.jwt_secret)?;
+
         Ok(())
     }
 }

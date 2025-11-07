@@ -33,10 +33,14 @@ temp/
 .env
 .env.*
 !.env.example
+!.env.production.example
 .env.local
 .env.production
 .env.development
 .env.test
+
+# Docker Compose override (contains sensitive config)
+docker-compose.override.yml
 
 # Database
 *.db

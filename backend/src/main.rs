@@ -515,11 +515,40 @@ async fn get_raw_metadata_wrapper() -> Response {
 
 /// Start unified server with all routes (middleware controls access based on mode)
 async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
-    // Build CORS layer
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // Build CORS layer with security-first configuration
+    use tower_http::cors::AllowOrigin;
+
+    // Parse allowed origins from config
+    let allowed_origins: Vec<axum::http::HeaderValue> = config
+        .cors_origins
+        .iter()
+        .filter_map(|origin| origin.parse().ok())
+        .collect();
+
+    let cors = if allowed_origins.is_empty() {
+        tracing::warn!("⚠️ No CORS origins configured, using permissive settings for development");
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        tracing::info!("✅ CORS configured for origins: {:?}", config.cors_origins);
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(allowed_origins))
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+                axum::http::Method::PUT,
+                axum::http::Method::DELETE,
+                axum::http::Method::OPTIONS,
+            ])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::ACCEPT,
+            ])
+            .allow_credentials(true)
+    };
 
     // Get database connection (might be None in config mode)
     let db_opt = DB_CONNECTION.read().await.clone();
