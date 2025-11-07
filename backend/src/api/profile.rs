@@ -883,8 +883,9 @@ pub async fn generate_report(
         );
     }
 
-    // 获取AI配置 - 从全局动态配置读取以支持热加载
+    // 获取AI配置 - 从数据库读取（已在启动时从环境变量迁移）
     let dynamic_config = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
+
     let provider = crate::services::analyzer::AiProvider::from_str(&dynamic_config.ai_provider);
 
     let (api_key, model, base_url) = match provider {
@@ -893,11 +894,12 @@ pub async fn generate_report(
                 (key.clone(), dynamic_config.gemini_model.clone(), None)
             }
             _ => {
+                tracing::error!("Gemini API key not configured in database");
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": "Gemini API key not configured"
+                        "message": "Gemini API key not configured. Please set it in the configuration page."
                     })),
                 );
             }
@@ -909,11 +911,12 @@ pub async fn generate_report(
                 Some(dynamic_config.openai_base_url.clone()),
             ),
             _ => {
+                tracing::error!("OpenAI API key not configured in database");
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": "OpenAI API key not configured"
+                        "message": "OpenAI API key not configured. Please set it in the configuration page."
                     })),
                 );
             }

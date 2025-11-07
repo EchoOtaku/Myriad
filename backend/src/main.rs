@@ -74,8 +74,35 @@ async fn run_server() -> anyhow::Result<()> {
             Ok(db) => {
                 tracing::info!("✅ Database connection established");
 
+                // Run database migrations automatically on startup (idempotent - skips already applied migrations)
+                use sea_orm_migration::MigratorTrait;
+                tracing::debug!("Checking for pending database migrations...");
+                match migration::Migrator::up(&db, None).await {
+                    Ok(_) => {
+                        tracing::info!("✅ Database migrations up to date");
+                    }
+                    Err(e) => {
+                        // Log the error but don't stop the service
+                        // Migrations might fail if tables already exist from manual setup
+                        tracing::warn!("⚠️  Database migration check failed: {}", e);
+                        tracing::info!("Continuing with existing database schema...");
+                    }
+                }
+
                 // Load dynamic configuration from database
                 let config_service = ConfigService::new(db.clone());
+
+                // Migrate environment variables to database if not already present
+                match config_service.migrate_from_env().await {
+                    Ok(_) => {
+                        tracing::info!("✅ Environment variables synced to database");
+                    }
+                    Err(e) => {
+                        tracing::warn!("⚠️  Failed to migrate env to database: {}", e);
+                    }
+                }
+
+                // Load the merged configuration
                 match config_service.load_config().await {
                     Ok(dynamic_config) => {
                         *GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
