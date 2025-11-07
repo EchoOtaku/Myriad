@@ -40,6 +40,12 @@ mod create_platform_metadata;
 #[path = "013_create_metadata_history.rs"]
 mod create_metadata_history;
 
+#[path = "014_create_virtual_persona.rs"]
+mod create_virtual_persona;
+
+#[path = "015_make_image_fields_optional.rs"]
+mod make_image_fields_optional;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -59,6 +65,8 @@ impl MigratorTrait for Migrator {
             Box::new(extend_configurations::Migration),
             Box::new(create_platform_metadata::Migration),
             Box::new(create_metadata_history::Migration),
+            Box::new(create_virtual_persona::Migration),
+            Box::new(make_image_fields_optional::Migration),
         ]
     }
 }

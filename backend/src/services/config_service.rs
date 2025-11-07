@@ -135,25 +135,36 @@ impl ConfigService {
         }
 
         // 功能配置
-        if let Some(v) = map.get("image_gen_enabled") {
+        if let Some(v) = map.get("persona_image_enabled") {
             if let Some(b) = v.as_bool() {
-                config.image_gen_enabled = b;
+                config.persona_image_enabled = b;
             }
         }
-        if let Some(v) = map.get("image_gen_model") {
+        if let Some(v) = map.get("persona_image_provider") {
             if let Some(s) = v.as_str() {
-                config.image_gen_model = s.to_string();
+                config.persona_image_provider = s.to_string();
             }
         }
-        if let Some(v) = map.get("image_gen_width") {
-            if let Some(n) = v.as_i64() {
-                config.image_gen_width = n as i32;
+        if let Some(v) = map.get("persona_image_model") {
+            if let Some(s) = v.as_str() {
+                config.persona_image_model = s.to_string();
             }
         }
-        if let Some(v) = map.get("image_gen_height") {
+        if let Some(v) = map.get("persona_image_width") {
             if let Some(n) = v.as_i64() {
-                config.image_gen_height = n as i32;
+                config.persona_image_width = n as i32;
             }
+        }
+        if let Some(v) = map.get("persona_image_height") {
+            if let Some(n) = v.as_i64() {
+                config.persona_image_height = n as i32;
+            }
+        }
+        if let Some(v) = map.get("imaginepro_api_key") {
+            config.imaginepro_api_key = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("imaginepro_callback_url") {
+            config.imaginepro_callback_url = v.as_str().map(|s| s.to_string());
         }
         if let Some(v) = map.get("enable_auto_fetch") {
             if let Some(b) = v.as_bool() {
@@ -315,10 +326,13 @@ impl ConfigService {
             ("UI_WALLPAPER_BLUR", "ui_wallpaper_blur"),
             ("PET_ENABLED", "pet_enabled"),
             ("PET_IMAGE_URL", "pet_image_url"),
-            ("IMAGE_GEN_ENABLED", "image_gen_enabled"),
-            ("IMAGE_GEN_MODEL", "image_gen_model"),
-            ("IMAGE_GEN_WIDTH", "image_gen_width"),
-            ("IMAGE_GEN_HEIGHT", "image_gen_height"),
+            ("PERSONA_IMAGE_ENABLED", "persona_image_enabled"),
+            ("PERSONA_IMAGE_PROVIDER", "persona_image_provider"),
+            ("PERSONA_IMAGE_MODEL", "persona_image_model"),
+            ("PERSONA_IMAGE_WIDTH", "persona_image_width"),
+            ("PERSONA_IMAGE_HEIGHT", "persona_image_height"),
+            ("IMAGINEPRO_API_KEY", "imaginepro_api_key"),
+            ("IMAGINEPRO_CALLBACK_URL", "imaginepro_callback_url"),
             ("ENABLE_AUTO_FETCH", "enable_auto_fetch"),
             ("FETCH_INTERVAL_HOURS", "fetch_interval_hours"),
             ("GITHUB_CLIENT_ID", "github_client_id"),

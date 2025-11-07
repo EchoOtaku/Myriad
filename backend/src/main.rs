@@ -569,6 +569,17 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             // Prompt generation
             .route("/api/prompt/generate", post(api::prompt::generate_prompt))
+            // Virtual persona routes
+            .route(
+                "/api/persona/generate",
+                post(api::persona::generate_persona),
+            )
+            .route(
+                "/api/persona/generate-image",
+                post(api::persona::generate_image),
+            )
+            .route("/api/persona/list", get(api::persona::get_persona_list))
+            .route("/api/persona/delete", post(api::persona::delete_persona))
             // Profile report routes (complex ones still conditional)
             .route("/api/profile/fetch-all", post(api::profile::fetch_all_data))
             .route(

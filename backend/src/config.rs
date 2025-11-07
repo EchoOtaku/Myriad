@@ -102,10 +102,13 @@ pub struct DynamicConfig {
     pub pet_image_url: Option<String>,
 
     // 功能配置
-    pub image_gen_enabled: bool,
-    pub image_gen_model: String,
-    pub image_gen_width: i32,
-    pub image_gen_height: i32,
+    pub persona_image_enabled: bool,
+    pub persona_image_provider: String, // "pollinations" 或 "imaginepro"
+    pub persona_image_model: String,
+    pub persona_image_width: i32,
+    pub persona_image_height: i32,
+    pub imaginepro_api_key: Option<String>,
+    pub imaginepro_callback_url: Option<String>,
     pub enable_auto_fetch: bool,
     pub fetch_interval_hours: i32,
 
@@ -143,10 +146,13 @@ impl Default for DynamicConfig {
             pet_enabled: true,
             pet_image_url: None,
 
-            image_gen_enabled: true,
-            image_gen_model: "flux-anime".to_string(),
-            image_gen_width: 512,
-            image_gen_height: 512,
+            persona_image_enabled: true,
+            persona_image_provider: "pollinations".to_string(),
+            persona_image_model: "flux-anime".to_string(),
+            persona_image_width: 512,
+            persona_image_height: 768,
+            imaginepro_api_key: None,
+            imaginepro_callback_url: None,
             enable_auto_fetch: false,
             fetch_interval_hours: 24,
 

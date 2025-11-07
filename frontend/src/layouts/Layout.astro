@@ -154,6 +154,46 @@ const isDev = import.meta.env.DEV;
         }
       }
 
+      /* 渐变球体动画 - 用于虚拟人设按钮 - 液体流动效果 */
+      @keyframes gradient-shift {
+        0% {
+          background-position: 0% 50%;
+          filter: hue-rotate(0deg) brightness(1.1);
+        }
+        20% {
+          background-position: 40% 80%;
+          filter: hue-rotate(30deg) brightness(1.15);
+        }
+        40% {
+          background-position: 100% 20%;
+          filter: hue-rotate(60deg) brightness(1.05);
+        }
+        60% {
+          background-position: 65% 95%;
+          filter: hue-rotate(90deg) brightness(1.2);
+        }
+        80% {
+          background-position: 15% 35%;
+          filter: hue-rotate(45deg) brightness(1.1);
+        }
+        100% {
+          background-position: 0% 50%;
+          filter: hue-rotate(0deg) brightness(1.1);
+        }
+      }
+
+      @keyframes gradient-flow {
+        0% {
+          background-position: 0% 0%;
+        }
+        50% {
+          background-position: 100% 100%;
+        }
+        100% {
+          background-position: 0% 0%;
+        }
+      }
+
       .animate-blob {
         animation: blob 7s infinite;
       }
@@ -637,65 +677,6 @@ const isDev = import.meta.env.DEV;
       .generate-btn:focus-visible {
         outline: 2px solid var(--color-primary);
         outline-offset: 4px;
-      }
-
-      /* Shuffle button - 使用壁纸提取的颜色渐变 */
-      .shuffle-btn {
-        position: relative;
-        background: linear-gradient(135deg, 
-          color-mix(in srgb, var(--color-primary) 15%, transparent), 
-          color-mix(in srgb, var(--color-secondary) 15%, transparent)
-        );
-        border: 2px solid transparent;
-        cursor: pointer;
-        z-index: 1;
-        color: var(--color-dark);
-        font-weight: 500;
-        /* 硬件加速优化 */
-        transform: translateZ(0);
-        backface-visibility: hidden;
-      }
-
-      .shuffle-btn::before {
-        content: '';
-        position: absolute;
-        inset: -2px;
-        border-radius: 16px;
-        z-index: -1;
-        pointer-events: none;
-        overflow: hidden;
-      }
-
-      .shuffle-btn::after {
-        content: '';
-        position: absolute;
-        inset: -2px;
-        border-radius: 16px;
-        padding: 2px;
-        z-index: -1;
-        pointer-events: none;
-        /* 使用壁纸提取的 primary 和 secondary 颜色 */
-        background: linear-gradient(
-          135deg,
-          var(--color-primary) 0%,
-          var(--color-secondary) 100%
-        );
-        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
-        will-change: transform;
-        transform: translateZ(0);
-        backface-visibility: hidden;
-        /* 平滑过渡颜色变化 */
-        transition: background 0.6s ease-in-out;
-      }
-
-      .shuffle-btn:hover {
-        background: linear-gradient(135deg, 
-          color-mix(in srgb, var(--color-primary) 25%, transparent), 
-          color-mix(in srgb, var(--color-secondary) 25%, transparent)
-        );
-        box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 30%, transparent);
       }
 
       /* Smooth scrolling */

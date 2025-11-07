@@ -2,4 +2,5 @@
 pub mod analyzer;
 pub mod config_service;
 pub mod fetcher;
+pub mod imaginepro;
 pub mod metadata_service;

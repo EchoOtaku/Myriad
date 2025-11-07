@@ -6,6 +6,7 @@ pub mod auth;
 pub mod auth_local;
 pub mod bilibili;
 pub mod config;
+pub mod persona;
 pub mod platforms;
 pub mod profile;
 pub mod prompt;

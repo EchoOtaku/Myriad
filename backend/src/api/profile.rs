@@ -286,6 +286,21 @@ fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+/// 获取缓存或新鲜数据（内部使用，返回原始数据）
+pub async fn get_cached_or_fresh_data(
+    db: &DatabaseConnection,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    // 先检查缓存
+    if let Some(cache) = load_platform_data_cache() {
+        tracing::info!("📦 Using cached platform data");
+        return Ok(cache.data);
+    }
+
+    // 缓存不存在或已过期，获取新鲜数据
+    tracing::info!("🔄 Fetching fresh platform data...");
+    fetch_fresh_platform_data(db).await
+}
+
 /// 一键获取所有平台数据（带缓存）
 pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     tracing::info!("Starting fetch all data...");
@@ -641,7 +656,7 @@ fn clean_platform_data(data: &mut Value) {
 
 /// 为 AI 分析筛选数据：应用 5W 原则（Who, What, When, Where, Why）
 /// 只保留最关键的信息，减少 token 消耗并提升 AI 分析质量
-fn filter_data_for_ai(data: &Value) -> Value {
+pub fn filter_data_for_ai(data: &Value) -> Value {
     let mut filtered = json!({});
 
     // ===== Steam 数据筛选 =====

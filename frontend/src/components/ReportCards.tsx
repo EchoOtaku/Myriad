@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
+import './ReportCards.css';
 
 interface UserInfo {
     name: string;
@@ -43,6 +44,20 @@ interface PersonalReport {
     selected_topics: number[];
 }
 
+interface VirtualPersona {
+    slot: number; // 槽位号（0或1）
+    name: string;
+    personality: string;
+    appearance: string;
+    hobbies: string[];
+    life_style: string;
+    visual_style?: string;
+    image_prompt: string;
+    image_url?: string;
+    generated_at: string;
+    has_image: boolean;
+}
+
 export default function ReportCards() {
     const [selectedCard, setSelectedCard] = useState<ReportCard | null>(null);
     const [loading, setLoading] = useState(false);
@@ -58,9 +73,17 @@ export default function ReportCards() {
     const [petImageUrl, setPetImageUrl] = useState('https://api.fuukei.org/myriad/frontend/public/furina.png');
     const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
     const [isAdmin, setIsAdmin] = useState(false); // 是否为管理员
-    const [isAuthenticated, setIsAuthenticated] = useState(false); // 是否已登录
     const [isCardTransitioning, setIsCardTransitioning] = useState(false); // 卡片切换动画状态
     const [isModalClosing, setIsModalClosing] = useState(false); // 弹窗关闭动画状态
+    const [showPersonaModal, setShowPersonaModal] = useState(false); // 虚拟人物弹窗状态
+    const [personaData, setPersonaData] = useState<VirtualPersona | null>(null); // 当前显示的虚拟人物数据
+    const [personaList, setPersonaList] = useState<VirtualPersona[]>([]); // 虚拟人物列表（最多2个）
+    const [currentPersonaIndex, setCurrentPersonaIndex] = useState(0); // 当前显示的人设索引
+    const [personaLoading, setPersonaLoading] = useState(false); // 虚拟人物加载状态
+    const [personaEnabled, setPersonaEnabled] = useState(true); // 虚拟人物功能是否启用
+    const [editingImagePrompt, setEditingImagePrompt] = useState(false); // 是否在编辑图片prompt
+    const [imagePrompt, setImagePrompt] = useState(''); // 图片prompt编辑内容
+    const [generatingImage, setGeneratingImage] = useState(false); // 是否正在生成图片
 
     // 从所有卡片中随机抽取指定数量（优先使用all_cards）
     const getRandomCards = useCallback((currentReport: PersonalReport | null, count: number = 6): ReportCard[] => {
@@ -99,7 +122,6 @@ export default function ReportCards() {
         const checkAdminStatus = async () => {
             const token = localStorage.getItem('auth_token');
             if (!token) {
-                setIsAuthenticated(false);
                 setIsAdmin(false);
                 return;
             }
@@ -113,14 +135,11 @@ export default function ReportCards() {
 
                 if (response.ok) {
                     const user = await response.json();
-                    setIsAuthenticated(true);
                     setIsAdmin(user.is_admin === true);
                 } else {
-                    setIsAuthenticated(false);
                     setIsAdmin(false);
                 }
             } catch (error) {
-                setIsAuthenticated(false);
                 setIsAdmin(false);
             }
         };
@@ -312,6 +331,188 @@ export default function ReportCards() {
         }
     };
 
+    // 获取虚拟人物数据列表
+    const fetchPersonaData = async () => {
+        try {
+            setPersonaLoading(true);
+            
+            // 生成新人设
+            console.log('🎨 开始生成虚拟人设...');
+            
+            const response = await fetch(`${API_URL}/api/persona/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({}),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to generate persona: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            if (result.success && result.persona) {
+                // 获取最新的人设列表
+                await fetchPersonaList();
+                console.log('✅ 人设生成成功:', result.persona.name);
+                return result.persona;
+            } else {
+                throw new Error(result.message || 'Failed to generate persona');
+            }
+        } catch (err) {
+            console.error('Failed to fetch persona:', err);
+            throw err;
+        } finally {
+            setPersonaLoading(false);
+        }
+    };
+
+    // 获取人设列表
+    const fetchPersonaList = async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/persona/list`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch persona list: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            if (result.success && result.personas) {
+                setPersonaList(result.personas);
+                if (result.personas.length > 0) {
+                    // 设置当前显示的人设为第一个（或保持当前索引）
+                    const index = currentPersonaIndex < result.personas.length ? currentPersonaIndex : 0;
+                    setCurrentPersonaIndex(index);
+                    setPersonaData(result.personas[index]);
+                } else {
+                    setPersonaData(null);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch persona list:', err);
+        }
+    };
+
+    // 切换人设
+    const switchPersona = (direction: 'prev' | 'next') => {
+        if (personaList.length === 0) return;
+        
+        let newIndex;
+        if (direction === 'next') {
+            newIndex = (currentPersonaIndex + 1) % personaList.length;
+        } else {
+            newIndex = (currentPersonaIndex - 1 + personaList.length) % personaList.length;
+        }
+        
+        setCurrentPersonaIndex(newIndex);
+        setPersonaData(personaList[newIndex]);
+    };
+
+    // 打开虚拟人物弹窗
+    const openPersonaModal = async () => {
+        setShowPersonaModal(true);
+        // 加载人设列表
+        await fetchPersonaList();
+    };
+
+    // 生成人物图片
+    const generatePersonaImage = async (prompt: string) => {
+        try {
+            setGeneratingImage(true);
+            
+            // 获取当前人设的slot
+            const currentSlot = personaData?.slot || 0;
+            
+            const response = await fetch(`${API_URL}/api/persona/generate-image`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                },
+                body: JSON.stringify({ 
+                    image_prompt: prompt,
+                    slot: currentSlot 
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to generate image: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            if (result.success && result.image_url && personaData) {
+                // 更新本地personaData
+                setPersonaData({
+                    ...personaData,
+                    image_url: result.image_url,
+                    image_prompt: prompt,
+                    has_image: true,
+                });
+                setEditingImagePrompt(false);
+                return result.image_url;
+            } else {
+                throw new Error(result.message || 'Failed to generate image');
+            }
+        } catch (err) {
+            console.error('Failed to generate image:', err);
+            alert('生成图片失败: ' + (err instanceof Error ? err.message : 'Unknown error'));
+            throw err;
+        } finally {
+            setGeneratingImage(false);
+        }
+    };
+
+    // 删除人设
+    const deletePersona = async (slot: number) => {
+        if (!confirm(`确定要删除这个人设吗？此操作不可恢复。`)) {
+            return;
+        }
+
+        try {
+            setPersonaLoading(true);
+            const response = await fetch(`${API_URL}/api/persona/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ slot }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to delete persona: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            if (result.success) {
+                // 刷新人设列表
+                await fetchPersonaList();
+                
+                // 如果删除的是当前显示的人设，切换到第一个
+                if (personaList.length > 0 && currentPersonaIndex >= personaList.length) {
+                    setCurrentPersonaIndex(0);
+                    setPersonaData(personaList[0]);
+                } else if (personaList.length === 0) {
+                    setPersonaData(null);
+                }
+                
+                alert('人设已删除');
+            } else {
+                throw new Error(result.message || 'Failed to delete persona');
+            }
+        } catch (err) {
+            console.error('Failed to delete persona:', err);
+            alert('删除失败: ' + (err instanceof Error ? err.message : 'Unknown error'));
+        } finally {
+            setPersonaLoading(false);
+        }
+    };
+
     // 生成报告
     const generateReport = async (data: any, forceRefresh: boolean = false) => {
         try {
@@ -408,6 +609,7 @@ export default function ReportCards() {
                     const configData = await configResponse.json();
                     const petEnabledValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'pet_enabled')?.value;
                     const petImageValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'pet_image_url')?.value;
+                    const personaEnabledValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'persona_image_enabled')?.value;
                     
                     if (petEnabledValue !== undefined) {
                         const enabled = petEnabledValue === 'true' || petEnabledValue === true;
@@ -420,9 +622,13 @@ export default function ReportCards() {
                             document.documentElement.style.setProperty('--pet-image-url', `url('${petImageValue}')`);
                         }
                     }
+                    if (personaEnabledValue !== undefined) {
+                        const enabled = personaEnabledValue === 'true' || personaEnabledValue === true;
+                        setPersonaEnabled(enabled);
+                    }
                 }
             } catch (err) {
-                // Failed to load pet config
+                // Failed to load config
             }
 
             try {
@@ -873,17 +1079,45 @@ export default function ReportCards() {
                                             }, 100);
                                         }, 400);
                                     }}
-                                    className="shuffle-btn relative px-5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-lg"
+                                    className="shuffle-btn shuffle-btn-style group relative h-12 px-5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-95 shadow-md hover:shadow-xl flex items-center gap-2"
                                     aria-label="换一批"
                                     disabled={isCardTransitioning}
                                 >
-                                    <svg className="w-4 h-4 inline-block mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                     </svg>
-                                    换一批
+                                    <span>换一批</span>
                                 </button>
                             ) : null;
                         })()}
+                        
+                        {/* 虚拟人物按钮 - 仅在启用时显示 */}
+                        {personaEnabled && (
+                            <button
+                                onClick={openPersonaModal}
+                                className="persona-avatar-btn persona-avatar-btn-style group relative flex-shrink-0 w-12 h-12 rounded-full shadow-md hover:shadow-xl transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center overflow-visible"
+                                aria-label="Virtual Persona"
+                            >
+                                {/* 复杂的虚拟人物图标 */}
+                                <svg className="w-6 h-6 icon-primary-color" fill="currentColor" viewBox="0 0 24 24">
+                                    {/* 头部轮廓 */}
+                                    <circle cx="12" cy="8" r="3.5" opacity="0.9"/>
+                                    {/* 身体 */}
+                                    <path d="M12 12c-3.5 0-6 2-6 4.5V20h12v-3.5c0-2.5-2.5-4.5-6-4.5z" opacity="0.9"/>
+                                    {/* 装饰星星 */}
+                                    <path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6z" opacity="0.7"/>
+                                    <path d="M19.5 14.6L17 16l1.4-2.5L17 11l2.5 1.4L22 11l-1.4 2.5L22 16l-2.5-1.4z" opacity="0.7"/>
+                                    {/* AI光环 */}
+                                    <circle cx="12" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="0.8" opacity="0.5" strokeDasharray="2,2"/>
+                                </svg>
+                                
+                                {/* Hover提示文字 - 使用绝对定位避免布局变化 */}
+                                <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 shadow-lg z-50">
+                                    虚拟人设
+                                    <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></span>
+                                </span>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1080,6 +1314,323 @@ export default function ReportCards() {
                                                 {selectedCard.content.highlight}
                                             </p>
                                         </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* 虚拟人物弹窗 */}
+            {showPersonaModal && createPortal(
+                <div
+                    className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-6 ${isModalClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+                    onClick={() => {
+                        setIsModalClosing(true);
+                        setTimeout(() => {
+                            setShowPersonaModal(false);
+                            setIsModalClosing(false);
+                        }, 200);
+                    }}
+                >
+                    <div
+                        className={`bg-white/95 backdrop-blur-2xl rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl border border-white/60 ${isModalClosing ? 'animate-scale-out' : 'animate-scale-in'}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="overflow-y-auto max-h-[85vh] custom-scrollbar">
+                            <div className="p-10 relative">
+                                {/* 加载遮罩 - 覆盖整个内容区域 */}
+                                {personaLoading && (
+                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
+                                        <div className="text-center">
+                                            <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-transparent mx-auto mb-4 loading-spinner-border"></div>
+                                            <p className="text-lg font-semibold mb-2 loading-text-primary">
+                                                AI 正在生成虚拟人物设定
+                                            </p>
+                                            <p className="text-sm text-gray-500">
+                                                这可能需要 20-40 秒，请耐心等待...
+                                            </p>
+                                            <div className="mt-4 flex items-center justify-center gap-1">
+                                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce bounce-delay-0"></div>
+                                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce bounce-delay-150"></div>
+                                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce bounce-delay-300"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {personaData ? (
+                                    <>
+                                        {/* 头部 */}
+                                        <div className="flex items-start justify-between mb-10">
+                                            <div className="flex items-start gap-5 flex-1">
+                                                {/* 左侧切换按钮 */}
+                                                {personaList.length > 1 && (
+                                                    <button
+                                                        onClick={() => switchPersona('prev')}
+                                                        className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 persona-nav-btn-bg"
+                                                        title="上一个人设"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                                
+                                                <div 
+                                                    className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg text-3xl flex-shrink-0 transition-transform hover:scale-110 persona-icon-gradient"
+                                                >
+                                                    <svg className="w-9 h-9 text-white drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+                                                        <path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6zm12 9.8L22 14l-1.4 2.5L22 19l-2.5-1.4L17 19l1.4-2.5L17 14l2.5 1.4zM22 2l-1.4 2.5L22 7l-2.5-1.4L17 7l1.4-2.5L17 2l2.5 1.4L22 2zm-8.66 10.78l2.12-2.12 2.83 2.83-2.12 2.12-2.83-2.83zm-1.41-1.42L1.39 21.9l2.83 2.83 10.54-10.54-2.83-2.83z"/>
+                                                    </svg>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <h2 className="text-2xl font-bold text-gray-900 mb-1">{personaData.name}</h2>
+                                                            {personaList.length > 1 && (
+                                                                <p className="text-sm text-gray-500">
+                                                                    人设 {currentPersonaIndex + 1} / {personaList.length}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        {/* 新增人设按钮 - 仅管理员且未满时显示 */}
+                                                        {isAdmin && personaList.length < 2 && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await fetchPersonaData();
+                                                                    } catch (err) {
+                                                                        alert('生成失败: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                                                                    }
+                                                                }}
+                                                                disabled={personaLoading}
+                                                                className="px-4 py-2 text-white font-semibold rounded-lg transition-all duration-300 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 btn-primary-bg"
+                                                            >
+                                                                <span>➕</span>
+                                                                <span>新增人设</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* 右侧切换按钮 */}
+                                                {personaList.length > 1 && (
+                                                    <button
+                                                        onClick={() => switchPersona('next')}
+                                                        className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 persona-nav-btn-bg"
+                                                        title="下一个人设"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                                            <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    setIsModalClosing(true);
+                                                    setTimeout(() => {
+                                                        setShowPersonaModal(false);
+                                                        setIsModalClosing(false);
+                                                    }, 200);
+                                                }}
+                                                className="text-gray-400 hover:text-gray-700 transition-all p-2 rounded-lg hover:bg-gray-100 active:scale-95 ml-4"
+                                                aria-label="关闭"
+                                            >
+                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                {/* 人物图片 */}
+                                {personaData.image_url && (
+                                    <div className="mb-6 rounded-2xl overflow-hidden p-4 persona-image-container-bg">
+                                        <img
+                                            src={personaData.image_url}
+                                            alt={personaData.name}
+                                            className="w-full h-auto max-h-96 object-contain rounded-xl"
+                                            onError={(e) => {
+                                                e.currentTarget.parentElement!.style.display = 'none';
+                                            }}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* 图片生成提示词编辑（管理员专用） */}
+                                {isAdmin && (
+                                    <div className="mb-6 p-4 rounded-2xl persona-prompt-edit-bg">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                                <span>🎨</span>
+                                                图片生成提示词
+                                            </h3>
+                                            {!editingImagePrompt && (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingImagePrompt(true);
+                                                        setImagePrompt(personaData.image_prompt || '');
+                                                    }}
+                                                    className="text-sm px-3 py-1.5 rounded-lg transition-colors btn-primary-bg text-white"
+                                                >
+                                                    编辑
+                                                </button>
+                                            )}
+                                        </div>
+                                        
+                                        {editingImagePrompt ? (
+                                            <div>
+                                                <textarea
+                                                    value={imagePrompt}
+                                                    onChange={(e) => setImagePrompt(e.target.value)}
+                                                    className="w-full h-32 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                    placeholder="输入英文图片生成提示词..."
+                                                />
+                                                <div className="flex gap-2 mt-3">
+                                                    <button
+                                                        onClick={() => generatePersonaImage(imagePrompt)}
+                                                        disabled={generatingImage || !imagePrompt.trim()}
+                                                        className="flex-1 px-4 py-2 text-white font-semibold rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:shadow-lg btn-primary-bg"
+                                                    >
+                                                        {generatingImage ? (
+                                                            <>
+                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                                                <span>生成中...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span>✨</span>
+                                                                <span>生成图片</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingImagePrompt(false);
+                                                            setImagePrompt('');
+                                                        }}
+                                                        className="px-4 py-2 text-gray-700 rounded-lg transition-all btn-secondary-bg"
+                                                    >
+                                                        取消
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-2">
+                                                    💡 提示：修改后点击"生成图片"按钮即可生成新的人物形象
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                                                    {personaData.image_prompt || '暂无提示词'}
+                                                </p>
+                                                {!personaData.has_image && (
+                                                    <button
+                                                        onClick={() => generatePersonaImage(personaData.image_prompt)}
+                                                        disabled={generatingImage || !personaData.image_prompt}
+                                                        className="mt-3 w-full px-4 py-2 text-white font-semibold rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:shadow-lg btn-primary-bg"
+                                                    >
+                                                        {generatingImage ? (
+                                                            <>
+                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                                                <span>生成中...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span>🎨</span>
+                                                                <span>生成人物形象</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* 性格特征 */}
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                        <span>💫</span>
+                                        性格特征
+                                    </h3>
+                                    <p className="text-gray-700 leading-relaxed">{personaData.personality}</p>
+                                </div>
+
+                                {/* 外貌描述 */}
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                        <span>👤</span>
+                                        外貌描述
+                                    </h3>
+                                    <p className="text-gray-700 leading-relaxed">{personaData.appearance}</p>
+                                </div>
+
+                                {/* 兴趣爱好 */}
+                                {personaData.hobbies && personaData.hobbies.length > 0 && (
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                            <span>🎮</span>
+                                            兴趣爱好
+                                        </h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {personaData.hobbies.map((hobby: string, i: number) => (
+                                                <span
+                                                    key={i}
+                                                    className="px-3 py-1.5 rounded-full text-sm font-medium hobby-tag-style"
+                                                >
+                                                    {hobby}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 生活方式 */}
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                        <span>🌟</span>
+                                        生活方式
+                                    </h3>
+                                    <p className="text-gray-700 leading-relaxed">{personaData.life_style}</p>
+                                </div>
+
+                                {/* 管理按钮区域 - 仅管理员可见 */}
+                                {isAdmin && personaData && (
+                                    <div className="pt-6 border-t border-gray-200 space-y-3">
+                                        {/* 删除当前人设按钮 */}
+                                        <button
+                                            onClick={() => deletePersona(personaData.slot)}
+                                            disabled={personaLoading}
+                                            className="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-xl transition-all duration-300 hover:bg-red-600 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                        >
+                                            <span>🗑️</span>
+                                            <span>删除当前人设</span>
+                                        </button>
+                                        
+                                        <p className="text-xs text-gray-500 text-center">
+                                            {personaList.length === 1 
+                                                ? '💡 删除后可以生成新的人设'
+                                                : '💡 已有2个人设，删除后可生成新人设'
+                                            }
+                                        </p>
+                                    </div>
+                                )}
+                                    </>
+                                ) : (
+                                    <div className="text-center py-20">
+                                        <p className="text-gray-600 mb-4">暂无虚拟人物数据</p>
+                                        {isAdmin && (
+                                            <button
+                                                onClick={() => fetchPersonaData()}
+                                                className="px-6 py-3 text-white font-semibold rounded-xl transition-all duration-300 hover:shadow-lg btn-primary-bg"
+                                            >
+                                                生成虚拟人物
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>

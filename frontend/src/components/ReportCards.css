@@ -1,0 +1,102 @@
+/* ReportCards 组件样式 */
+
+/* 换一批按钮样式 */
+.shuffle-btn-style {
+    background: rgba(255, 255, 255, 0.8);
+    border: 2px solid transparent;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
+                      linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, #000) 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    color: var(--color-primary);
+}
+
+/* 虚拟人物按钮样式 */
+.persona-avatar-btn-style {
+    background: rgba(255, 255, 255, 0.8);
+    border: 2px solid transparent;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
+                      linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, #000) 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+}
+
+/* SVG 图标主色 */
+.icon-primary-color {
+    color: var(--color-primary);
+}
+
+/* 加载动画边框样式 */
+.loading-spinner-border {
+    border-color: var(--color-primary);
+    border-top-color: transparent;
+}
+
+/* 加载文本主色 */
+.loading-text-primary {
+    color: var(--color-primary);
+}
+
+/* 动画延迟 - 点1 */
+.bounce-delay-0 {
+    animation-delay: 0ms;
+}
+
+/* 动画延迟 - 点2 */
+.bounce-delay-150 {
+    animation-delay: 150ms;
+}
+
+/* 动画延迟 - 点3 */
+.bounce-delay-300 {
+    animation-delay: 300ms;
+}
+
+/* 切换按钮背景 */
+.persona-nav-btn-bg {
+    background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* 虚拟人物图标背景（彩虹渐变） */
+.persona-icon-gradient {
+    background: conic-gradient(from 0deg at 50% 50%, 
+        #ef4444, #f97316, #facc15, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444);
+    background-size: 600% 600%;
+    animation: gradient-shift 8s ease-in-out infinite;
+}
+
+/* 主按钮背景 */
+.btn-primary-bg {
+    background: var(--color-primary);
+}
+
+/* 图片容器背景 */
+.persona-image-container-bg {
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+/* 图片提示词编辑区背景 */
+.persona-prompt-edit-bg {
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+/* 取消按钮背景 */
+.btn-secondary-bg {
+    background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* 兴趣标签样式 */
+.hobby-tag-style {
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    color: var(--color-primary);
+}
+
+/* 渐变动画关键帧 */
+@keyframes gradient-shift {
+    0%, 100% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+}

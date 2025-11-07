@@ -8,6 +8,7 @@ pub struct ConfigResponse {
     pub platforms: Vec<PlatformConfig>,
     pub ai_config: AiConfig,
     pub report_config: ReportConfig,
+    pub persona_config: PersonaConfig,
     pub ui_config: UiConfig,
 }
 
@@ -42,6 +43,13 @@ pub struct AiConfig {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReportConfig {
     pub topic_style: String,
+    pub config_fields: Vec<ConfigField>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PersonaConfig {
+    pub enabled: bool,
+    pub provider: String,
     pub config_fields: Vec<ConfigField>,
 }
 
@@ -239,6 +247,77 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                 required: true,
             }],
         },
+        persona_config: PersonaConfig {
+            enabled: std::env::var("PERSONA_IMAGE_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            provider: std::env::var("PERSONA_IMAGE_PROVIDER")
+                .unwrap_or_else(|_| "pollinations".to_string()),
+            config_fields: vec![
+                ConfigField {
+                    key: "persona_image_enabled".to_string(),
+                    label: "Enable Virtual Persona".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: std::env::var("PERSONA_IMAGE_ENABLED")
+                        .unwrap_or_else(|_| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "persona_image_provider".to_string(),
+                    label: "Image Provider".to_string(),
+                    field_type: "select".to_string(),
+                    value: std::env::var("PERSONA_IMAGE_PROVIDER")
+                        .unwrap_or_else(|_| "pollinations".to_string()),
+                    placeholder: "pollinations or imaginepro".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "persona_image_model".to_string(),
+                    label: "Image Model (Pollinations)".to_string(),
+                    field_type: "select".to_string(),
+                    value: std::env::var("PERSONA_IMAGE_MODEL")
+                        .unwrap_or_else(|_| "flux-anime".to_string()),
+                    placeholder: "flux-anime".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "persona_image_width".to_string(),
+                    label: "Image Width".to_string(),
+                    field_type: "number".to_string(),
+                    value: std::env::var("PERSONA_IMAGE_WIDTH")
+                        .unwrap_or_else(|_| "512".to_string()),
+                    placeholder: "512".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "persona_image_height".to_string(),
+                    label: "Image Height".to_string(),
+                    field_type: "number".to_string(),
+                    value: std::env::var("PERSONA_IMAGE_HEIGHT")
+                        .unwrap_or_else(|_| "768".to_string()),
+                    placeholder: "768".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "imaginepro_api_key".to_string(),
+                    label: "ImaginePro API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: std::env::var("IMAGINEPRO_API_KEY").unwrap_or_default(),
+                    placeholder: "Required for Midjourney generation".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "imaginepro_callback_url".to_string(),
+                    label: "ImaginePro Callback URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("IMAGINEPRO_CALLBACK_URL").unwrap_or_default(),
+                    placeholder: "Optional webhook endpoint".to_string(),
+                    required: false,
+                },
+            ],
+        },
         ui_config: UiConfig {
             wallpaper_url: std::env::var("UI_WALLPAPER_URL").unwrap_or_else(|_| {
                 "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()
@@ -276,39 +355,6 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     field_type: "number".to_string(),
                     value: std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()),
                     placeholder: "3".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "image_gen_enabled".to_string(),
-                    label: "Enable AI Illustrations".to_string(),
-                    field_type: "checkbox".to_string(),
-                    value: std::env::var("IMAGE_GEN_ENABLED")
-                        .unwrap_or_else(|_| "true".to_string()),
-                    placeholder: "true".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "image_gen_model".to_string(),
-                    label: "AI Model".to_string(),
-                    field_type: "text".to_string(),
-                    value: std::env::var("IMAGE_GEN_MODEL").unwrap_or_else(|_| "flux".to_string()),
-                    placeholder: "flux".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "image_gen_width".to_string(),
-                    label: "Image Width (px)".to_string(),
-                    field_type: "number".to_string(),
-                    value: std::env::var("IMAGE_GEN_WIDTH").unwrap_or_else(|_| "512".to_string()),
-                    placeholder: "512".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "image_gen_height".to_string(),
-                    label: "Image Height (px)".to_string(),
-                    field_type: "number".to_string(),
-                    value: std::env::var("IMAGE_GEN_HEIGHT").unwrap_or_else(|_| "512".to_string()),
-                    placeholder: "512".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -484,6 +530,21 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
     for field in &config.report_config.config_fields {
         let key = match field.key.as_str() {
             "topic_style" => "TOPIC_STYLE",
+            _ => continue,
+        };
+        env_content = update_env_var(&env_content, key, &field.value);
+    }
+
+    // 保存虚拟人设配置
+    for field in &config.persona_config.config_fields {
+        let key = match field.key.as_str() {
+            "persona_image_enabled" => "PERSONA_IMAGE_ENABLED",
+            "persona_image_provider" => "PERSONA_IMAGE_PROVIDER",
+            "persona_image_model" => "PERSONA_IMAGE_MODEL",
+            "persona_image_width" => "PERSONA_IMAGE_WIDTH",
+            "persona_image_height" => "PERSONA_IMAGE_HEIGHT",
+            "imaginepro_api_key" => "IMAGINEPRO_API_KEY",
+            "imaginepro_callback_url" => "IMAGINEPRO_CALLBACK_URL",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
