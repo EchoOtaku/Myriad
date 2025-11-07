@@ -15,7 +15,10 @@
       "Bash(powershell -Command \"(Get-Content ''C:\\Users\\Think\\Documents\\GitHub\\Myriad\\backend\\src\\api\\profile.rs'' | Measure-Object -Line).Lines\")",
       "Bash(powershell -Command \"Get-Content ''C:\\Users\\Think\\Documents\\GitHub\\Myriad\\backend\\src\\api\\profile.rs'' | Select-Object -Last 30\")",
       "Bash(powershell -Command:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cargo run:*)",
+      "Bash(timeout /t 5)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

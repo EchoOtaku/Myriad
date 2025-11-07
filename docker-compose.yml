@@ -87,6 +87,40 @@ services:
       # Logging
       RUST_LOG: ${RUST_LOG:-info}
       TZ: Asia/Shanghai
+
+      # Application configs (Optional - synced to database on startup)
+      GITHUB_USERNAME: ${GITHUB_USERNAME:-}
+      BILIBILI_UID: ${BILIBILI_UID:-}
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
+      STEAM_ID: ${STEAM_ID:-}
+      NETEASE_USER_ID: ${NETEASE_USER_ID:-}
+
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-3.5-turbo}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+
+      TOPIC_STYLE: ${TOPIC_STYLE:-}
+      UI_WALLPAPER_URL: ${UI_WALLPAPER_URL:-}
+      UI_WALLPAPER_BLUR: ${UI_WALLPAPER_BLUR:-3}
+
+      IMAGE_GEN_ENABLED: ${IMAGE_GEN_ENABLED:-true}
+      IMAGE_GEN_MODEL: ${IMAGE_GEN_MODEL:-flux}
+      IMAGE_GEN_WIDTH: ${IMAGE_GEN_WIDTH:-512}
+      IMAGE_GEN_HEIGHT: ${IMAGE_GEN_HEIGHT:-512}
+
+      PET_ENABLED: ${PET_ENABLED:-true}
+      PET_IMAGE_URL: ${PET_IMAGE_URL:-}
+
+      PERSONA_IMAGE_ENABLED: ${PERSONA_IMAGE_ENABLED:-true}
+      PERSONA_IMAGE_MODEL: ${PERSONA_IMAGE_MODEL:-flux-anime}
+      PERSONA_IMAGE_WIDTH: ${PERSONA_IMAGE_WIDTH:-512}
+      PERSONA_IMAGE_HEIGHT: ${PERSONA_IMAGE_HEIGHT:-1024}
+      PERSONA_IMAGE_PROVIDER: ${PERSONA_IMAGE_PROVIDER:-pollinations}
+
+      IMAGINEPRO_API_KEY: ${IMAGINEPRO_API_KEY:-}
+      GITHUB_REDIRECT_URL: ${GITHUB_REDIRECT_URL:-}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     depends_on:

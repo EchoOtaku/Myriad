@@ -125,3 +125,4 @@ test-results/
 *.backup
 *.old
 *~
+nul
