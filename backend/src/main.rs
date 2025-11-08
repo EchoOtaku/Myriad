@@ -593,6 +593,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             get(get_config_wrapper).post(update_config_wrapper),
         )
         .route("/api/config/test", post(test_platform_wrapper))
+        .route("/api/config/metadata", get(api::config::get_site_metadata))
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)) // 🚀 性能优化：批量API

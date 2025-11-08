@@ -376,6 +376,30 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     required: false,
                 },
                 ConfigField {
+                    key: "site_title".to_string(),
+                    label: "网站标题".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("SITE_TITLE").unwrap_or_else(|_| "Myriad - 数字自我发现".to_string()),
+                    placeholder: "Myriad - 数字自我发现".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_description".to_string(),
+                    label: "网站描述".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("SITE_DESCRIPTION").unwrap_or_else(|_| "一键聚合你的多平台数据，生成AI个人分析报告".to_string()),
+                    placeholder: "一键聚合你的多平台数据，生成AI个人分析报告".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_favicon".to_string(),
+                    label: "网站图标 URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("SITE_FAVICON").unwrap_or_else(|_| "/favicon.svg".to_string()),
+                    placeholder: "/favicon.svg".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "github_client_id".to_string(),
                     label: "GitHub OAuth Client ID".to_string(),
                     field_type: "text".to_string(),
@@ -561,6 +585,9 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "image_gen_height" => "IMAGE_GEN_HEIGHT",
             "pet_enabled" => "PET_ENABLED",
             "pet_image_url" => "PET_IMAGE_URL",
+            "site_title" => "SITE_TITLE",
+            "site_description" => "SITE_DESCRIPTION",
+            "site_favicon" => "SITE_FAVICON",
             "github_client_id" => "GITHUB_CLIENT_ID",
             "github_client_secret" => "GITHUB_CLIENT_SECRET",
             "github_redirect_url" => "GITHUB_REDIRECT_URL",
@@ -842,4 +869,15 @@ pub async fn test_platform(
             Json(json!({"success": false, "message": "Platform test not implemented yet"})),
         ),
     }
+}
+
+/// 获取公开的网站元数据（不需要认证）
+pub async fn get_site_metadata() -> (StatusCode, Json<Value>) {
+    let metadata = json!({
+        "site_title": std::env::var("SITE_TITLE").unwrap_or_else(|_| "Myriad - 数字自我发现".to_string()),
+        "site_description": std::env::var("SITE_DESCRIPTION").unwrap_or_else(|_| "一键聚合你的多平台数据，生成AI个人分析报告".to_string()),
+        "site_favicon": std::env::var("SITE_FAVICON").unwrap_or_else(|_| "/favicon.svg".to_string()),
+    });
+
+    (StatusCode::OK, Json(metadata))
 }

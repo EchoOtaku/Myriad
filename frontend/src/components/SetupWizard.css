@@ -7,6 +7,10 @@
   transform: translateZ(0);
 }
 
+html.dark .setup-spinner {
+  color: var(--color-primary);
+}
+
 .setup-retry-button {
   background-color: var(--color-dark);
   transition: background-color 0.2s ease, transform 0.15s ease;
@@ -42,6 +46,10 @@
   transition: all 0.2s ease;
 }
 
+html.dark .setup-step-active {
+  color: #f9fafb;
+}
+
 .setup-step-completed {
   color: var(--color-primary);
   transition: all 0.2s ease;
@@ -52,14 +60,29 @@
   transition: all 0.2s ease;
 }
 
+html.dark .setup-step-disabled {
+  color: #4b5563;
+}
+
 .setup-db-icon-wrapper {
   background: linear-gradient(to bottom right, var(--color-accent), var(--color-light));
   color: var(--color-dark);
 }
 
+html.dark .setup-db-icon-wrapper {
+  background: linear-gradient(to bottom right, rgba(203, 213, 225, 0.2), rgba(203, 213, 225, 0.1));
+  color: #cbd5e1;
+}
+
 .setup-admin-icon-wrapper {
   background: linear-gradient(to bottom right, var(--color-primary), var(--color-secondary));
   color: white;
+}
+
+html.dark .setup-admin-icon-wrapper {
+  background: linear-gradient(to bottom right, var(--color-primary), var(--color-secondary));
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .setup-save-button {
@@ -105,4 +128,81 @@
 
 .setup-create-admin-button:active:not(:disabled) {
   transform: scale(0.98);
+}
+
+/* ========================================
+   Mobile Responsive Enhancements
+   ======================================== */
+
+/* 移动端按钮优化 */
+@media (max-width: 640px) {
+  .setup-retry-button,
+  .setup-complete-link,
+  .setup-save-button,
+  .setup-migrate-button,
+  .setup-create-admin-button {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    min-height: 44px;
+  }
+
+  /* 步骤图标优化 */
+  .setup-db-icon-wrapper,
+  .setup-admin-icon-wrapper {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.25rem;
+  }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 375px) {
+  .setup-retry-button,
+  .setup-complete-link,
+  .setup-save-button,
+  .setup-migrate-button,
+  .setup-create-admin-button {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* ========================================
+   Enhanced Dark Mode Support
+   ======================================== */
+
+/* 深色模式按钮增强 */
+html.dark .setup-save-button,
+html.dark .setup-migrate-button {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+html.dark .setup-save-button:hover:not(:disabled),
+html.dark .setup-migrate-button:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+html.dark .setup-create-admin-button {
+  background-color: rgba(71, 85, 105, 0.8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+html.dark .setup-create-admin-button:hover:not(:disabled) {
+  background-color: var(--color-secondary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* 深色模式加载状态 */
+html.dark .setup-spinner {
+  filter: drop-shadow(0 0 8px var(--color-primary));
+}
+
+/* 深色模式焦点状态 */
+html.dark .setup-retry-button:focus-visible,
+html.dark .setup-complete-link:focus-visible,
+html.dark .setup-save-button:focus-visible,
+html.dark .setup-migrate-button:focus-visible,
+html.dark .setup-create-admin-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }

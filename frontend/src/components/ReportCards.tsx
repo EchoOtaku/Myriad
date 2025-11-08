@@ -1004,29 +1004,29 @@ export default function ReportCards() {
                 <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-lg z-50">
                     <div className="max-w-4xl mx-auto px-6 py-6">
                         <div className="mb-3 text-center">
-                            <p className="text-sm font-medium text-gray-700">{progress}</p>
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{progress}</p>
                         </div>
                         
                         {/* 进度条 - 使用动态颜色 */}
-                        <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="relative w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                             <div 
                                 className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
                                 data-progress={progressPercent}
                             ></div>
                         </div>
                         
-                        <p className="text-xs text-gray-500 text-center mt-2">{progressPercent}% 完成</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">{progressPercent}% 完成</p>
                     </div>
                 </div>
             )}
 
-            {/* 报告信息条 */}
-            <div className="mb-6 glass rounded-3xl p-5 border shadow-lg report-info-card relative">
-                {/* 动态萌宠 - 使用精灵图动画 */}
+            {/* 报告信息条 - 移动端堆叠布局 */}
+            <div className="mb-6 glass rounded-3xl p-4 md:p-5 border shadow-lg report-info-card relative">
+                {/* 动态萌宠 - 使用精灵图动画 - 桌面端显示 */}
                 {petEnabled && (
                     <div 
                         id="pet-walker"
-                        className="pet-walker absolute left-0 cursor-pointer z-10"
+                        className="pet-walker absolute left-0 cursor-pointer z-10 hidden md:block"
                         onClick={(e) => {
                             const pet = e.currentTarget;
                             pet.classList.add('pet-excited');
@@ -1037,7 +1037,7 @@ export default function ReportCards() {
                     </div>
                 )}
 
-                <div className="flex items-center justify-between gap-6">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6">
                     {/* 左侧区域1：用户信息 */}
                     <div className="flex items-center gap-4">
                         {userInfo ? (
@@ -1092,8 +1092,8 @@ export default function ReportCards() {
                                     </div>
                                 )}
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-800">{userInfo.name}</h3>
-                                    <p className="text-xs text-gray-500">
+                                    <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">{userInfo.name}</h3>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
                                         {userInfo.bio}
                                     </p>
                                 </div>
@@ -1109,9 +1109,9 @@ export default function ReportCards() {
                         )}
                     </div>
                     
-                    {/* 中间区域2：社交网络胶囊 - 智能2行布局 */}
+                    {/* 中间区域2：社交网络胶囊 - 移动端全宽，桌面端居中 */}
                     {platformLinks.length > 0 && (
-                        <div className="flex-1 max-w-sm">
+                        <div className="w-full md:flex-1 md:max-w-sm order-3 md:order-2">
                             <div 
                                 className="flex flex-wrap gap-2"
                             >
@@ -1136,21 +1136,22 @@ export default function ReportCards() {
                         </div>
                     )}
 
-                    {/* 右侧区域3：报告信息 */}
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-3">
-                            <div className="text-2xl">
+                    {/* 右侧区域3：报告信息 - 移动端简化显示 */}
+                    <div className="flex items-center gap-3 md:gap-6 order-2 md:order-3 w-full md:w-auto justify-between md:justify-start">
+                        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+                            <div className="text-xl md:text-2xl">
                                 ✨
                             </div>
                             <div>
-                                <p className="text-sm font-semibold text-gray-700">
+                                <p className="text-xs md:text-sm font-semibold text-gray-800 dark:text-gray-200">
                                     {fromCache ? '从缓存加载' : '新鲜生成'}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
                                     {getExpiryInfo()}天后更新 · 共{(report.all_cards && report.all_cards.length > 0) ? report.all_cards.length : report.cards.length}个话题
                                 </p>
                             </div>
                         </div>
+                        <div className="flex items-center gap-2 md:gap-3">
                         {(() => {
                             // 获取可用的总卡片数
                             const totalCards = (report.all_cards && report.all_cards.length > 0) 
@@ -1174,14 +1175,14 @@ export default function ReportCards() {
                                             }, 100);
                                         }, 400);
                                     }}
-                                    className="shuffle-btn shuffle-btn-style group relative h-12 px-5 rounded-2xl text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-95 shadow-md hover:shadow-xl flex items-center gap-2"
+                                    className="shuffle-btn shuffle-btn-style group relative h-10 md:h-12 px-3 md:px-5 rounded-2xl text-xs md:text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-95 shadow-md hover:shadow-xl flex items-center gap-1.5 md:gap-2"
                                     aria-label="换一批"
                                     disabled={isCardTransitioning}
                                 >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                     </svg>
-                                    <span>换一批</span>
+                                    <span className="hidden sm:inline">换一批</span>
                                 </button>
                             ) : null;
                         })()}
@@ -1190,7 +1191,7 @@ export default function ReportCards() {
                         {personaEnabled && (
                             <button
                                 onClick={openPersonaModal}
-                                className="persona-avatar-btn persona-avatar-btn-style group relative flex-shrink-0 w-12 h-12 rounded-full shadow-md hover:shadow-xl transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center overflow-visible"
+                                className="persona-avatar-btn persona-avatar-btn-style group relative flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-full shadow-md hover:shadow-xl transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center overflow-visible"
                                 aria-label="Virtual Persona"
                             >
                                 {/* 复杂的虚拟人物图标 */}
@@ -1206,19 +1207,20 @@ export default function ReportCards() {
                                     <circle cx="12" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="0.8" opacity="0.5" strokeDasharray="2,2"/>
                                 </svg>
                                 
-                                {/* Hover提示文字 - 使用绝对定位避免布局变化 */}
-                                <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 shadow-lg z-50">
+                                {/* Hover提示文字 - 移动端不显示 */}
+                                <span className="hidden md:block absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 shadow-lg z-50">
                                     虚拟人设
-                                    <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></span>
+                                    <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900 dark:border-r-gray-700"></span>
                                 </span>
                             </button>
                         )}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* 卡片网格 */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-all duration-500 ease-out ${isCardTransitioning ? 'opacity-0 scale-[0.98]' : 'opacity-100 scale-100'}`}>
+            {/* 卡片网格 - 移动端优化 */}
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 transition-all duration-500 ease-out ${isCardTransitioning ? 'opacity-0 scale-[0.98]' : 'opacity-100 scale-100'}`}>
                 {displayCards.slice(0, 6).map((card, index) => (
                     <article
                         key={card.generated_at ? `${card.generated_at}-${card.topic_id}` : `card-${index}-${card.topic_id}`}
@@ -1238,7 +1240,7 @@ export default function ReportCards() {
                                         e.stopPropagation();
                                         setSelectedCard(card);
                                     }}
-                                    className="text-gray-400 hover:text-gray-600 transition-all duration-200 p-2 rounded-full hover:bg-gray-100 active:scale-90 opacity-0 group-hover:opacity-100"
+                                    className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-90 opacity-0 group-hover:opacity-100"
                                     aria-label="查看详情"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1248,12 +1250,12 @@ export default function ReportCards() {
                             </div>
 
                             {/* Card Title */}
-                            <h2 className="text-sm text-gray-600 mb-2 transition-colors duration-200 group-hover:text-gray-800">
+                            <h2 className="text-sm text-gray-600 dark:text-gray-400 mb-2 transition-colors duration-200 group-hover:text-gray-800 dark:group-hover:text-gray-200">
                                 {card.title}
                             </h2>
 
                             {/* Card Summary */}
-                            <p className="text-xl font-bold text-gray-900 line-clamp-2 mb-3 transition-colors duration-200 group-hover:text-gray-950">
+                            <p className="text-xl font-bold text-gray-900 dark:text-gray-100 line-clamp-2 mb-3 transition-colors duration-200 group-hover:text-gray-950 dark:group-hover:text-white">
                                 {card.content.summary}
                             </p>
 
@@ -1302,16 +1304,16 @@ export default function ReportCards() {
                                             {selectedCard.icon}
                                         </div>
                                         <div>
-                                            <h2 className="text-2xl font-bold text-gray-900 mb-3">
+                                            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">
                                                 {selectedCard.title}
                                             </h2>
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <span className="text-sm text-gray-500">
+                                                <span className="text-sm text-gray-500 dark:text-gray-400">
                                                     {selectedCard.category}
                                                 </span>
                                                 {selectedCard.content.tags && selectedCard.content.tags.length > 0 && (
                                                     <>
-                                                        <span className="text-gray-300">·</span>
+                                                        <span className="text-gray-300 dark:text-gray-600">·</span>
                                                         {selectedCard.content.tags.map((tag, i) => (
                                                             <span key={i} className="tag-badge px-2.5 py-1 rounded-full text-xs font-medium text-white transition-all duration-200 hover:scale-110 hover:shadow-md cursor-default">
                                                                 {tag}
@@ -1330,7 +1332,7 @@ export default function ReportCards() {
                                                 setIsModalClosing(false);
                                             }, 250);
                                         }}
-                                        className="text-gray-400 hover:text-gray-700 transition-all duration-200 p-2.5 rounded-xl hover:bg-gray-100 active:scale-90 hover:rotate-90"
+                                        className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all duration-200 p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-90 hover:rotate-90"
                                         aria-label="关闭"
                                     >
                                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1354,7 +1356,7 @@ export default function ReportCards() {
 
                                 {/* 摘要 */}
                                 <div className="mb-8">
-                                    <p className="text-lg text-gray-800 leading-relaxed font-medium">
+                                    <p className="text-lg text-gray-800 dark:text-gray-200 leading-relaxed font-medium">
                                         {selectedCard.content.summary}
                                     </p>
                                 </div>
@@ -1365,10 +1367,10 @@ export default function ReportCards() {
                                         <div className="space-y-4">
                                             {selectedCard.content.details.map((detail, i) => (
                                                 <div key={i} className="flex items-start gap-4 transition-all duration-200 hover:translate-x-2 hover:bg-gray-50 p-3 rounded-xl -mx-3">
-                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center mt-0.5 transition-transform duration-200 group-hover:scale-110">
+                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 dark:bg-gray-700 text-white text-xs font-bold flex items-center justify-center mt-0.5 transition-transform duration-200 group-hover:scale-110">
                                                         {i + 1}
                                                     </span>
-                                                    <p className="flex-1 text-base text-gray-700 leading-relaxed">
+                                                    <p className="flex-1 text-base text-gray-700 dark:text-gray-300 leading-relaxed">
                                                         {detail}
                                                     </p>
                                                 </div>
@@ -1463,9 +1465,9 @@ export default function ReportCards() {
                                                 <div className="flex-1">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <h2 className="text-2xl font-bold text-gray-900 mb-1">{personaData.name}</h2>
+                                                            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">{personaData.name}</h2>
                                                             {personaList.length > 1 && (
-                                                                <p className="text-sm text-gray-500">
+                                                                <p className="text-sm text-gray-500 dark:text-gray-400">
                                                                     人设 {currentPersonaIndex + 1} / {personaList.length}
                                                                 </p>
                                                             )}
@@ -1512,7 +1514,7 @@ export default function ReportCards() {
                                                         setIsModalClosing(false);
                                                     }, 200);
                                                 }}
-                                                className="text-gray-400 hover:text-gray-700 transition-all p-2 rounded-lg hover:bg-gray-100 active:scale-95 ml-4"
+                                                className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 ml-4"
                                                 aria-label="关闭"
                                             >
                                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1539,7 +1541,7 @@ export default function ReportCards() {
                                 {isAdmin && (
                                     <div className="mb-6 p-4 rounded-2xl persona-prompt-edit-bg">
                                         <div className="flex items-center justify-between mb-3">
-                                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                                                 <span>🎨</span>
                                                 图片生成提示词
                                             </h3>
@@ -1561,7 +1563,7 @@ export default function ReportCards() {
                                                 <textarea
                                                     value={imagePrompt}
                                                     onChange={(e) => setImagePrompt(e.target.value)}
-                                                    className="w-full h-32 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                    className="w-full h-32 p-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                                     placeholder="输入英文图片生成提示词..."
                                                 />
                                                 <div className="flex gap-2 mt-3">
@@ -1587,18 +1589,18 @@ export default function ReportCards() {
                                                             setEditingImagePrompt(false);
                                                             setImagePrompt('');
                                                         }}
-                                                        className="px-4 py-2 text-gray-700 rounded-lg transition-all btn-secondary-bg"
+                                                        className="px-4 py-2 text-gray-700 dark:text-gray-300 rounded-lg transition-all btn-secondary-bg"
                                                     >
                                                         取消
                                                     </button>
                                                 </div>
-                                                <p className="text-xs text-gray-500 mt-2">
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                                                     💡 提示：修改后点击"生成图片"按钮即可生成新的人物形象
                                                 </p>
                                             </div>
                                         ) : (
                                             <div>
-                                                <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                                                <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
                                                     {personaData.image_prompt || '暂无提示词'}
                                                 </p>
                                                 {!personaData.has_image && (
@@ -1627,26 +1629,26 @@ export default function ReportCards() {
 
                                 {/* 性格特征 */}
                                 <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                    <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-3 flex items-center gap-2">
                                         <span>💫</span>
                                         性格特征
                                     </h3>
-                                    <p className="text-gray-700 leading-relaxed">{personaData.personality}</p>
+                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{personaData.personality}</p>
                                 </div>
 
                                 {/* 外貌描述 */}
                                 <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                    <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-3 flex items-center gap-2">
                                         <span>👤</span>
                                         外貌描述
                                     </h3>
-                                    <p className="text-gray-700 leading-relaxed">{personaData.appearance}</p>
+                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{personaData.appearance}</p>
                                 </div>
 
                                 {/* 兴趣爱好 */}
                                 {personaData.hobbies && personaData.hobbies.length > 0 && (
                                     <div className="mb-6">
-                                        <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-3 flex items-center gap-2">
                                             <span>🎮</span>
                                             兴趣爱好
                                         </h3>
@@ -1665,16 +1667,16 @@ export default function ReportCards() {
 
                                 {/* 生活方式 */}
                                 <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                    <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-3 flex items-center gap-2">
                                         <span>🌟</span>
                                         生活方式
                                     </h3>
-                                    <p className="text-gray-700 leading-relaxed">{personaData.life_style}</p>
+                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{personaData.life_style}</p>
                                 </div>
 
                                 {/* 管理按钮区域 - 仅管理员可见 */}
                                 {isAdmin && personaData && (
-                                    <div className="pt-6 border-t border-gray-200 space-y-3">
+                                    <div className="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-3">
                                         {/* 删除当前人设按钮 */}
                                         <button
                                             onClick={() => deletePersona(personaData.slot)}
@@ -1685,7 +1687,7 @@ export default function ReportCards() {
                                             <span>删除当前人设</span>
                                         </button>
                                         
-                                        <p className="text-xs text-gray-500 text-center">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
                                             {personaList.length === 1 
                                                 ? '💡 删除后可以生成新的人设'
                                                 : '💡 已有2个人设，删除后可生成新人设'
@@ -1696,7 +1698,7 @@ export default function ReportCards() {
                                     </>
                                 ) : (
                                     <div className="text-center py-20">
-                                        <p className="text-gray-600 mb-4">暂无虚拟人物数据</p>
+                                        <p className="text-gray-600 dark:text-gray-400 mb-4">暂无虚拟人物数据</p>
                                         {isAdmin && (
                                             <button
                                                 onClick={() => fetchPersonaData()}
@@ -1715,7 +1717,7 @@ export default function ReportCards() {
             )}
 
             {/* 提示信息 */}
-            <div className="mt-8 text-center text-sm text-gray-500">
+            <div className="mt-6 md:mt-8 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400 px-4">
                 <p>报告每7天自动更新一次，每次随机选择6个话题进行分析</p>
                 <p className="mt-1">点击导航岛的灯泡图标可立即重新生成</p>
             </div>

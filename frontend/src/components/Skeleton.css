@@ -1,0 +1,49 @@
+/* Skeleton Components - Dark Mode Support */
+
+/* 深色模式骨架屏背景色 */
+html.dark .animate-pulse .bg-gray-200 {
+    background-color: rgba(55, 65, 81, 0.5) !important; /* gray-700 with opacity */
+}
+
+html.dark .animate-pulse .bg-gray-200\/70 {
+    background-color: rgba(55, 65, 81, 0.4) !important;
+}
+
+/* 深色模式下的卡片边框 */
+html.dark .report-card {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+html.dark .report-info-card {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 深色模式按钮悬浮 */
+html.dark .animate-pulse button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* 骨架屏动画优化 */
+@keyframes skeleton-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+html.dark .animate-pulse {
+    animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 移动端骨架屏优化 */
+@media (max-width: 640px) {
+    .report-info-card {
+        padding: 1rem !important;
+    }
+
+    .report-info-card .flex {
+        gap: 1rem !important;
+    }
+}

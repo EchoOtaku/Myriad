@@ -488,7 +488,7 @@ const ConfigForm: React.FC = () => {
   if (!config) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center text-pink-600">
+        <div className="text-center text-pink-600 dark:text-pink-400">
           <p className="text-xl mb-2">⚠️</p>
           <p className="text-sm">加载配置失败</p>
         </div>
@@ -526,12 +526,12 @@ const ConfigForm: React.FC = () => {
                 🌐
               </div>
               <div className="text-left">
-                <h2 className="text-lg font-bold text-gray-800">数据平台配置</h2>
-                <p className="text-xs text-gray-500">配置各个数据源平台的访问凭证</p>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">数据平台配置</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">配置各个数据源平台的访问凭证</p>
               </div>
             </div>
             <svg
-              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'platforms' ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 text-gray-600 dark:text-gray-400 transition-transform ${expandedSection === 'platforms' ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -556,8 +556,8 @@ const ConfigForm: React.FC = () => {
                             <PlatformIcon platform={platform.name} className="w-7 h-7" />
                           </div>
                           <div>
-                            <h3 className="text-base font-bold text-gray-800">{platform.name}</h3>
-                            <p className="text-xs text-gray-500 mt-0.5">{platform.description}</p>
+                            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">{platform.name}</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{platform.description}</p>
                           </div>
                         </div>
 
@@ -605,9 +605,9 @@ const ConfigForm: React.FC = () => {
                         <div className="mt-3 space-y-3 animate-fade-in">
                           {platform.config_fields.map((field) => (
                             <div key={field.key}>
-                              <label htmlFor={`platform-${index}-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                              <label htmlFor={`platform-${index}-${field.key}`} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 {field.label}
-                                {field.required && <span className="text-pink-500 ml-1">*</span>}
+                                {field.required && <span className="text-pink-500 dark:text-pink-400 ml-1">*</span>}
                               </label>
                               <input
                                 id={`platform-${index}-${field.key}`}
@@ -615,7 +615,7 @@ const ConfigForm: React.FC = () => {
                                 value={field.value}
                                 onChange={(e) => updateFieldValue(index, field.key, e.target.value)}
                                 placeholder={field.placeholder}
-                                className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                                className="w-full px-3 py-2 text-sm bg-white/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                               />
                             </div>
                           ))}
@@ -659,12 +659,12 @@ const ConfigForm: React.FC = () => {
                 <FaBrain className="w-6 h-6" />
               </div>
               <div className="text-left">
-                <h2 className="text-lg font-bold text-gray-800">AI 配置</h2>
-                <p className="text-xs text-gray-500">配置AI模型和API密钥</p>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">AI 配置</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">配置AI模型和API密钥</p>
               </div>
             </div>
             <svg
-              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'ai' ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 text-gray-600 dark:text-gray-400 transition-transform ${expandedSection === 'ai' ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -678,8 +678,8 @@ const ConfigForm: React.FC = () => {
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-white/50 rounded-lg border border-gray-200">
                   <div>
-                    <p className="text-sm font-medium text-gray-700">Provider: {config.ai_config.provider}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Model: {config.ai_config.model}</p>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider: {config.ai_config.provider}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Model: {config.ai_config.model}</p>
                   </div>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${config.ai_config.enabled
                     ? 'bg-green-500/20 text-green-600 border border-green-500/30'
@@ -695,15 +695,15 @@ const ConfigForm: React.FC = () => {
                   if (providerField) {
                     return (
                       <div key="provider">
-                        <label htmlFor="ai-provider" className="block text-xs font-medium text-gray-700 mb-1">
+                        <label htmlFor="ai-provider" className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                           {providerField.label}
-                          {providerField.required && <span className="text-pink-500 ml-1">*</span>}
+                          {providerField.required && <span className="text-pink-500 dark:text-pink-400 ml-1">*</span>}
                         </label>
                         <select
                           id="ai-provider"
                           value={providerField.value}
                           onChange={(e) => updateAiFieldValue('provider', e.target.value)}
-                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                          className="w-full px-3 py-2 text-sm bg-white/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                         >
                           <option value="gemini">Google Gemini</option>
                           <option value="openai">OpenAI Compatible</option>
@@ -733,9 +733,9 @@ const ConfigForm: React.FC = () => {
                     })
                     .map((field) => (
                       <div key={field.key}>
-                        <label htmlFor={`ai-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                        <label htmlFor={`ai-${field.key}`} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                           {field.label}
-                          {field.required && <span className="text-pink-500 ml-1">*</span>}
+                          {field.required && <span className="text-pink-500 dark:text-pink-400 ml-1">*</span>}
                         </label>
                         <input
                           id={`ai-${field.key}`}
@@ -743,7 +743,7 @@ const ConfigForm: React.FC = () => {
                           value={field.value}
                           onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
                           placeholder={field.placeholder}
-                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                          className="w-full px-3 py-2 text-sm bg-white/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                         />
                       </div>
                     ));
@@ -753,16 +753,16 @@ const ConfigForm: React.FC = () => {
                 <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
                   {config.ai_config.config_fields.find(f => f.key === 'provider')?.value === 'gemini' ? (
                     <>
-                      <p className="text-xs font-semibold text-purple-900 mb-1">Google Gemini API</p>
-                      <p className="text-xs text-purple-700">
-                        获取 API Key: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">Google AI Studio</a><br/>
+                      <p className="text-xs font-semibold text-purple-900 dark:text-purple-300 mb-1">Google Gemini API</p>
+                      <p className="text-xs text-purple-700 dark:text-purple-400">
+                        获取 API Key: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 hover:underline font-medium">Google AI Studio</a><br/>
                         推荐模型: gemini-pro, gemini-1.5-flash, gemini-1.5-pro
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="text-xs font-semibold text-blue-900 mb-1">OpenAI 兼容格式</p>
-                      <p className="text-xs text-blue-700">
+                      <p className="text-xs font-semibold text-blue-900 dark:text-blue-300 mb-1">OpenAI 兼容格式</p>
+                      <p className="text-xs text-blue-700 dark:text-blue-400">
                         支持 OpenAI API 和其他兼容服务（如 Azure OpenAI, 第三方代理等）<br/>
                         Base URL: 官方为 https://api.openai.com/v1，自定义服务需要相应的端点地址<br/>
                         推荐模型: gpt-3.5-turbo, gpt-4, gpt-4-turbo
@@ -786,12 +786,12 @@ const ConfigForm: React.FC = () => {
                 🔐
               </div>
               <div className="text-left">
-                <h2 className="text-lg font-bold text-gray-800">GitHub OAuth 配置</h2>
-                <p className="text-xs text-gray-500">配置 GitHub OAuth 应用以启用社交登录</p>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">GitHub OAuth 配置</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">配置 GitHub OAuth 应用以启用社交登录</p>
               </div>
             </div>
             <svg
-              className={`w-5 h-5 text-gray-600 transition-transform ${expandedSection === 'oauth' ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 text-gray-600 dark:text-gray-400 transition-transform ${expandedSection === 'oauth' ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1227,27 +1227,74 @@ const ConfigForm: React.FC = () => {
 
           {expandedSection === 'ui' && (
             <div className="p-4 border-t border-gray-200/50 animate-fade-in">
-              <div className="space-y-3">
-                {config.ui_config.config_fields
-                  .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_'))
-                  .map((field) => (
-                  <div key={field.key}>
-                    <label htmlFor={`ui-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
-                      {field.label}
-                      {field.required && <span className="text-pink-500 ml-1">*</span>}
-                    </label>
-                    <input
-                      id={`ui-${field.key}`}
-                      type={field.field_type}
-                      value={field.value}
-                      onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      min={field.field_type === 'number' ? '0' : undefined}
-                      max={field.field_type === 'number' ? '10' : undefined}
-                      className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                    />
-                  </div>
-                ))}
+              {/* 网站元数据子分类 */}
+              <div className="mb-5 p-4 bg-white/30 rounded-lg border border-indigo-200/50">
+                <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <span>🌐</span>
+                  <span>网站元数据</span>
+                </h3>
+                <div className="space-y-3">
+                  {config.ui_config.config_fields
+                    .filter((field) => ['site_title', 'site_description', 'site_favicon'].includes(field.key))
+                    .map((field) => (
+                    <div key={field.key}>
+                      <label htmlFor={`ui-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                        {field.label}
+                        {field.required && <span className="text-pink-500 ml-1">*</span>}
+                      </label>
+                      {field.key === 'site_description' ? (
+                        <textarea
+                          id={`ui-${field.key}`}
+                          value={field.value}
+                          onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          rows={2}
+                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-none"
+                        />
+                      ) : (
+                        <input
+                          id={`ui-${field.key}`}
+                          type={field.field_type}
+                          value={field.value}
+                          onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">💡 提示：这些设置会影响浏览器标签和搜索引擎显示</p>
+              </div>
+
+              {/* 背景和主题子分类 */}
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <span>🎨</span>
+                  <span>背景和主题</span>
+                </h3>
+                <div className="space-y-3">
+                  {config.ui_config.config_fields
+                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !['site_title', 'site_description', 'site_favicon'].includes(field.key))
+                    .map((field) => (
+                    <div key={field.key}>
+                      <label htmlFor={`ui-${field.key}`} className="block text-xs font-medium text-gray-700 mb-1">
+                        {field.label}
+                        {field.required && <span className="text-pink-500 ml-1">*</span>}
+                      </label>
+                      <input
+                        id={`ui-${field.key}`}
+                        type={field.field_type}
+                        value={field.value}
+                        onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                        placeholder={field.placeholder}
+                        min={field.field_type === 'number' ? '0' : undefined}
+                        max={field.field_type === 'number' ? '10' : undefined}
+                        className="w-full px-3 py-2 text-sm bg-white/50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

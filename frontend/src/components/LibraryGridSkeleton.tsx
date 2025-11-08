@@ -1,3 +1,5 @@
+import './Skeleton.css';
+
 export default function LibraryGridSkeleton() {
     return (
         <div className="space-y-8">

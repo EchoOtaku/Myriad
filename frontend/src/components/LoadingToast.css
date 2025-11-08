@@ -1,0 +1,17 @@
+/* LoadingToast Component Styles */
+
+.loading-toast-spinner {
+    border-top-color: var(--color-primary);
+}
+
+/* 深色模式优化 */
+html.dark .loading-toast-spinner {
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+/* 移动端优化 */
+@media (max-width: 640px) {
+    .loading-toast-container {
+        max-width: calc(100vw - 2rem);
+    }
+}

@@ -277,13 +277,13 @@ const SetupWizard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center px-4">
         <div className="text-center">
           <FaSpinner 
-            className="animate-spin text-6xl mx-auto mb-4 setup-spinner"
+            className="animate-spin text-5xl sm:text-6xl mx-auto mb-4 setup-spinner"
             style={{ color: 'var(--color-primary)' }}
           />
-          <p className="text-gray-600">检查系统状态...</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">检查系统状态...</p>
         </div>
       </div>
     );
@@ -291,16 +291,16 @@ const SetupWizard: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="max-w-md glass rounded-2xl shadow-xl p-8 text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FaExclamationTriangle className="text-3xl text-red-600" />
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-md w-full glass rounded-2xl shadow-xl p-6 sm:p-8 text-center">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FaExclamationTriangle className="text-2xl sm:text-3xl text-red-600 dark:text-red-400" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">连接失败</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">连接失败</h2>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6">{error}</p>
           <button
             onClick={checkSetupStatus}
-            className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button"
+            className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-[44px] text-sm sm:text-base"
           >
             重试
           </button>
@@ -314,19 +314,19 @@ const SetupWizard: React.FC = () => {
   // 如果设置完成，显示完成页面
   if (!status.is_setup_required) {
     return (
-      <div className="min-h-screen px-4 py-12">
+      <div className="min-h-screen px-4 py-8 md:py-12 pb-24 md:pb-12">
         <div className="max-w-4xl mx-auto">
-          <div className="glass rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <FaCheck className="text-4xl text-green-600" />
+          <div className="glass rounded-2xl shadow-xl p-6 sm:p-8 text-center">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <FaCheck className="text-3xl sm:text-4xl text-green-600 dark:text-green-400" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">系统配置完成！</h2>
-            <p className="text-gray-600 mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">系统配置完成！</h2>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6 sm:mb-8">
               您的 Myriad 系统已经准备就绪，可以开始使用了。
             </p>
             <a
               href="/login"
-              className="inline-block px-8 py-3 text-white rounded-lg transition-colors setup-complete-link"
+              className="inline-flex px-6 sm:px-8 py-3 text-sm sm:text-base text-white rounded-lg transition-colors setup-complete-link min-h-[44px] items-center justify-center"
             >
               前往登录
             </a>
@@ -337,32 +337,34 @@ const SetupWizard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen px-4 py-12">
+    <div className="min-h-screen px-4 sm:px-6 py-8 md:py-12 pb-24 md:pb-12">
       <div className="max-w-6xl mx-auto">
         {/* 进度标签栏 */}
-        <div className="flex justify-center mb-6">
-          <div className="glass rounded-xl p-1.5 inline-flex gap-1.5">
+        <div className="flex justify-center mb-4 md:mb-6">
+          <div className="glass rounded-xl p-1.5 inline-flex gap-1 sm:gap-1.5 w-full sm:w-auto">
             <div
-              className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center gap-2 ${
+              className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
                 !dbConfigured
-                  ? 'bg-white shadow-sm setup-step-active'
+                  ? 'bg-white dark:bg-gray-800 shadow-sm setup-step-active'
                   : 'setup-step-completed'
               }`}
             >
-              {dbConfigured ? <FaCheck className="text-green-600" /> : <FaDatabase />}
-              <span>数据库配置</span>
+              {dbConfigured ? <FaCheck className="text-green-600 dark:text-green-400" /> : <FaDatabase />}
+              <span className="hidden sm:inline">数据库配置</span>
+              <span className="sm:hidden">数据库</span>
             </div>
             <div
-              className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center gap-2 ${
+              className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
                 dbConfigured && !adminCreated
-                  ? 'bg-white shadow-sm setup-step-active'
+                  ? 'bg-white dark:bg-gray-800 shadow-sm setup-step-active'
                   : dbConfigured && adminCreated
                     ? 'setup-step-completed'
                     : 'setup-step-disabled'
               }`}
             >
-              {adminCreated ? <FaCheck className="text-green-600" /> : <FaUser />}
-              <span>管理员账户</span>
+              {adminCreated ? <FaCheck className="text-green-600 dark:text-green-400" /> : <FaUser />}
+              <span className="hidden sm:inline">管理员账户</span>
+              <span className="sm:hidden">管理员</span>
             </div>
           </div>
         </div>
@@ -370,27 +372,27 @@ const SetupWizard: React.FC = () => {
         <div className="space-y-6">
           {/* 数据库配置卡片 */}
           {!dbConfigured && (
-            <div className="glass rounded-xl p-5">
-              <div className="flex items-start justify-between gap-6">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-4">
+            <div className="glass rounded-xl p-4 md:p-5">
+              <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
+                <div className="flex-1 w-full md:w-auto">
+                  <div className="flex items-center gap-3 mb-3 md:mb-4">
                     <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl setup-db-icon-wrapper"
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl setup-db-icon-wrapper"
                     >
                       <FaDatabase />
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-gray-800">数据库配置</h2>
-                      <p className="text-xs text-gray-500 mt-0.5">配置 PostgreSQL 数据库连接并运行迁移</p>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">数据库配置</h2>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">配置 PostgreSQL 数据库连接并运行迁移</p>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-3 md:space-y-4">
                     {/* 配置模式提示 */}
                     {!dbConfigured && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <FaExclamationTriangle className="text-amber-600 mt-0.5 flex-shrink-0" />
+                          <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
                           <div>
                             <p className="text-sm font-semibold text-amber-800 mb-1">
                               🔧 后端运行在配置模式

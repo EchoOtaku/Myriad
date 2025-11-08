@@ -11,6 +11,13 @@
     color: var(--color-primary);
 }
 
+html.dark .shuffle-btn-style {
+    background: rgba(26, 26, 26, 0.8);
+    background-image: linear-gradient(rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.8)), 
+                      linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, #fff) 100%);
+    color: var(--color-primary);
+}
+
 /* 虚拟人物按钮样式 */
 .persona-avatar-btn-style {
     background: rgba(255, 255, 255, 0.8);
@@ -19,6 +26,12 @@
                       linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, #000) 100%);
     background-origin: border-box;
     background-clip: padding-box, border-box;
+}
+
+html.dark .persona-avatar-btn-style {
+    background: rgba(26, 26, 26, 0.8);
+    background-image: linear-gradient(rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.8)), 
+                      linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, #fff) 100%);
 }
 
 /* SVG 图标主色 */
@@ -73,4 +86,72 @@
     50% {
         background-position: 100% 50%;
     }
+}
+
+/* ========================================
+   Mobile Responsive Enhancements
+   ======================================== */
+
+/* 移动端按钮优化 */
+@media (max-width: 640px) {
+    .shuffle-btn-style,
+    .persona-avatar-btn-style {
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+    }
+
+    /* 虚拟人物卡片移动端优化 */
+    .persona-nav-btn-bg {
+        padding: 0.5rem;
+    }
+
+    /* 标签样式移动端优化 */
+    .hobby-tag-style {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+    }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 375px) {
+    .shuffle-btn-style,
+    .persona-avatar-btn-style {
+        padding: 0.625rem 0.875rem;
+        font-size: 0.8125rem;
+    }
+}
+
+/* ========================================
+   Enhanced Dark Mode Support
+   ======================================== */
+
+/* 深色模式下的阴影增强 */
+html.dark .shuffle-btn-style:hover,
+html.dark .persona-avatar-btn-style:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* 深色模式下的按钮聚焦状态 */
+html.dark .shuffle-btn-style:focus-visible,
+html.dark .persona-avatar-btn-style:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* 深色模式下的标签样式增强 */
+html.dark .hobby-tag-style {
+    background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+/* 深色模式下的图片容器 */
+html.dark .persona-image-container-bg {
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* 深色模式下的编辑区域 */
+html.dark .persona-prompt-edit-bg {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
 }

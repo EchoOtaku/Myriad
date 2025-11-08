@@ -22,7 +22,11 @@
       "Bash(docker compose:*)",
       "Bash(docker logs:*)",
       "Bash(docker volume:*)",
-      "Bash(docker network:*)"
+      "Bash(docker network:*)",
+      "Bash(dir \"c:\\Users\\Think\\Documents\\GitHub\\Myriad\")",
+      "Bash(dir \"c:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\")",
+      "Bash(dir:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

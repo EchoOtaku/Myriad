@@ -6,20 +6,20 @@ const title = 'Configuration - Myriad';
 ---
 
 <Layout title={title}>
-  <div class="min-h-screen px-4 py-12">
+  <div class="min-h-screen px-3 xs:px-4 sm:px-6 py-6 sm:py-8 md:py-12 pb-28 sm:pb-24 md:pb-12">
     <div class="max-w-7xl mx-auto">
       <!-- 标签栏 -->
-      <div class="flex justify-center mb-6">
-        <div class="glass rounded-xl p-1.5 inline-flex gap-1.5">
+      <div class="flex justify-center mb-4 md:mb-6">
+        <div class="glass rounded-xl p-1.5 inline-flex gap-1.5 w-full sm:w-auto">
           <button
             id="tab-config"
-            class="tab-button active px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300"
+            class="tab-button active flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300"
           >
             ⚙️ 配置
           </button>
           <button
             id="tab-debug"
-            class="tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300"
+            class="tab-button flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300"
           >
             📊 数据管理
           </button>
@@ -29,75 +29,76 @@ const title = 'Configuration - Myriad';
       <!-- 配置页面内容 -->
       <div id="content-config" class="tab-content">
         <!-- 配置状态卡片 -->
-        <div class="max-w-6xl mx-auto mb-6">
-          <div class="glass rounded-xl p-5">
-            <div class="flex items-start justify-between gap-6">
+        <div class="max-w-6xl mx-auto mb-4 md:mb-6">
+          <div class="glass rounded-xl p-4 md:p-5">
+            <div class="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
               <!-- 左侧：配置状态信息 -->
-              <div class="flex-1">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center text-2xl">
+              <div class="flex-1 w-full md:w-auto">
+                <div class="flex items-center gap-3 mb-3 md:mb-4">
+                  <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/50 dark:to-pink-900/50 flex items-center justify-center text-xl sm:text-2xl">
                     ⚙️
                   </div>
                   <div>
-                    <h2 class="text-lg font-bold text-gray-800">配置状态</h2>
-                    <p class="text-xs text-gray-500 mt-0.5">当前配置概览和保存状态</p>
+                    <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">配置状态</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">当前配置概览和保存状态</p>
                   </div>
                 </div>
                 
-                <div class="grid grid-cols-3 gap-3">
+                <div class="grid grid-cols-3 gap-2 sm:gap-3">
                   <!-- 状态卡片 -->
-                  <div class="bg-white/50 rounded-lg p-3 border border-gray-200/50">
-                    <p class="text-xs text-gray-500 mb-1.5">平台配置</p>
-                    <p class="text-base font-bold text-gray-800" id="platform-count">-</p>
+                  <div class="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">平台配置</p>
+                    <p class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100" id="platform-count">-</p>
                   </div>
-                  <div class="bg-white/50 rounded-lg p-3 border border-gray-200/50">
-                    <p class="text-xs text-gray-500 mb-1.5">AI 配置</p>
-                    <p class="text-base font-bold text-gray-800" id="ai-status">-</p>
+                  <div class="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">AI 配置</p>
+                    <p class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100" id="ai-status">-</p>
                   </div>
-                  <div class="bg-white/50 rounded-lg p-3 border border-gray-200/50">
-                    <p class="text-xs text-gray-500 mb-1.5">保存状态</p>
-                    <p class="text-base font-bold" id="save-status">
-                      <span class="text-yellow-600">未保存</span>
+                  <div class="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">保存状态</p>
+                    <p class="text-sm sm:text-base font-bold" id="save-status">
+                      <span class="text-yellow-600 dark:text-yellow-500">未保存</span>
                     </p>
                   </div>
                 </div>
 
                 <!-- 数据缓存区域 -->
-                <div class="mt-3 bg-white/50 rounded-lg p-3 border border-gray-200/50">
-                  <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                      <p class="text-xs text-gray-500 mb-1.5">平台数据缓存</p>
-                      <div class="flex items-center gap-2">
-                        <p class="text-base font-bold text-gray-800" id="cache-status">
+                <div class="mt-3 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">平台数据缓存</p>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <p class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100" id="cache-status">
                           <span class="text-gray-400">未缓存</span>
                         </p>
-                        <p class="text-xs text-gray-500" id="cache-time">-</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400" id="cache-time">-</p>
                       </div>
                     </div>
                     <button
                       id="refresh-platform-data"
-                      class="refresh-button px-3 py-1.5 rounded-lg font-semibold text-xs transition-all duration-300 flex items-center gap-1.5 shadow-sm"
+                      class="refresh-button px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-xs transition-all duration-300 flex items-center gap-1 sm:gap-1.5 shadow-sm shrink-0"
                       title="刷新平台数据"
                     >
                       <span>🔄</span>
-                      <span>刷新</span>
+                      <span class="hidden sm:inline">刷新</span>
                     </button>
                   </div>
                 </div>
               </div>
 
               <!-- 右侧：操作按钮 -->
-              <div class="flex flex-col gap-2">
+              <div class="flex md:flex-col gap-2 w-full md:w-auto">
                 <button
                   id="save-config"
-                  class="save-button px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center gap-2 shadow-md"
+                  class="save-button flex-1 md:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-2 shadow-md min-h-[44px]"
                 >
                   <span>💾</span>
-                  <span>保存配置</span>
+                  <span class="hidden sm:inline">保存配置</span>
+                  <span class="sm:hidden">保存</span>
                 </button>
                 <button
                   id="reset-config"
-                  class="reset-button px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center gap-2"
+                  class="reset-button flex-1 md:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-2 min-h-[44px]"
                 >
                   <span>🔄</span>
                   <span>重置</span>
@@ -122,8 +123,8 @@ const title = 'Configuration - Myriad';
                     📋
                   </div>
                   <div>
-                    <h3 class="text-lg font-bold text-gray-800">API 原始元数据</h3>
-                    <p class="text-xs text-gray-500">查看从各平台API获取的原始数据</p>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">API 原始元数据</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">查看从各平台API获取的原始数据</p>
                   </div>
                 </div>
                 <button
@@ -136,9 +137,9 @@ const title = 'Configuration - Myriad';
               </div>
               <div
                 id="metadata-container"
-                class="mt-3 bg-gray-800 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
+                class="mt-3 bg-gray-800 dark:bg-gray-900 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
               >
-                <p class="text-gray-400 text-sm">点击刷新按钮加载数据...</p>
+                <p class="text-gray-400 dark:text-gray-500 text-sm">点击刷新按钮加载数据...</p>
               </div>
             </div>
           </div>
@@ -152,8 +153,8 @@ const title = 'Configuration - Myriad';
                     💾
                   </div>
                   <div>
-                    <h3 class="text-lg font-bold text-gray-800">缓存详细信息</h3>
-                    <p class="text-xs text-gray-500">查看报告缓存状态和有效期</p>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">缓存详细信息</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">查看报告缓存状态和有效期</p>
                   </div>
                 </div>
                 <div class="flex gap-2">
@@ -191,8 +192,8 @@ const title = 'Configuration - Myriad';
                     📊
                   </div>
                   <div>
-                    <h3 class="text-lg font-bold text-gray-800">所有报告列表</h3>
-                    <p class="text-xs text-gray-500">查看和浏览历史生成的报告</p>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">所有报告列表</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">查看和浏览历史生成的报告</p>
                   </div>
                 </div>
                 <button
@@ -1054,11 +1055,21 @@ const title = 'Configuration - Myriad';
     transform: translateY(0);
   }
 
+  html.dark .tab-button {
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.1);
+  }
+
   .tab-button:hover {
     color: rgba(0, 0, 0, 0.8);
     background: rgba(255, 255, 255, 0.4);
     border-color: var(--color-primary);
     transform: translateY(-1px);
+  }
+
+  html.dark .tab-button:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.15);
   }
 
   .tab-button:active {
@@ -1107,11 +1118,23 @@ const title = 'Configuration - Myriad';
     transform: translateY(0);
   }
 
+  html.dark .reset-button {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
   .reset-button:hover {
     background: rgba(255, 255, 255, 0.8);
     border-color: rgba(0, 0, 0, 0.2);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  html.dark .reset-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
   }
 
   .reset-button:active {
