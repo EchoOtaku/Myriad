@@ -203,105 +203,201 @@ pub async fn github_callback(
 
     // TODO: Use SeaORM entities here
     // For now, we'll use raw SQL queries via SeaORM
+    use sea_orm::Value as SeaValue;
 
-    // Check if this is the first user (will become admin)
-    let count_result = _db
+    // 账户处理策略：
+    // 1. 检查是否有管理员已绑定此 GitHub ID (linked_github_id) -> 使用管理员账户登录
+    // 2. 检查是否有 GitHub 用户已存在 (github_id) -> 更新并使用该用户
+    // 3. 否则 -> 创建新的普通 GitHub 用户
+
+    // Step 1: 检查是否有本地管理员已绑定此 GitHub ID
+    let linked_admin_check = _db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT COUNT(*) as count FROM users",
-            vec![],
+            "SELECT id, username, is_admin FROM users
+             WHERE auth_provider = 'local'
+             AND linked_github_id = $1
+             LIMIT 1",
+            vec![SeaValue::BigInt(Some(user_info.id))],
         ))
         .await
         .map_err(|e| {
-            tracing::error!("Failed to check user count: {:?}", e);
+            tracing::error!("Failed to check for linked admin: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
             )
         })?;
 
-    let user_count: i64 = count_result
-        .and_then(|row| row.try_get("", "count").ok())
-        .unwrap_or(0);
-
-    // GitHub OAuth users are always normal users (is_admin = false)
-    let is_admin = false;
-
-    tracing::info!("GitHub user registration. User count: {}. Admin status: false (GitHub users cannot be admin)", user_count);
-
-    // Create or update user in database
-    use sea_orm::Value as SeaValue;
-
-    let insert_query = "INSERT INTO users (github_id, username, display_name, email, avatar_url, github_profile_url, bio, location, company, is_admin, auth_provider, last_login_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'github', CURRENT_TIMESTAMP)
-         ON CONFLICT (github_id)
-         DO UPDATE SET
-           username = EXCLUDED.username,
-           display_name = EXCLUDED.display_name,
-           email = EXCLUDED.email,
-           avatar_url = EXCLUDED.avatar_url,
-           github_profile_url = EXCLUDED.github_profile_url,
-           bio = EXCLUDED.bio,
-           location = EXCLUDED.location,
-           company = EXCLUDED.company,
-           last_login_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP
-         RETURNING id";
-
-    let user_result = _db
+    // Step 2: 检查该 GitHub ID 是否已作为独立用户存在
+    let github_user_check = _db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            insert_query,
+            "SELECT id, username FROM users WHERE github_id = $1",
+            vec![SeaValue::BigInt(Some(user_info.id))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to check GitHub user: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    // 决定处理策略
+    let user_id = if let Some(admin_row) = linked_admin_check {
+        // 场景 1: 管理员已绑定此 GitHub 账户 -> 使用管理员账户登录
+        let admin_id: i32 = admin_row.try_get("", "id").map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to read admin data"})),
+            )
+        })?;
+        let admin_username: String = admin_row.try_get("", "username").unwrap_or_else(|_| "admin".to_string());
+
+        tracing::info!(
+            "✅ GitHub account {} is linked to admin account (id: {}, username: {})",
+            user_info.login,
+            admin_id,
+            admin_username
+        );
+
+        // 更新管理员的最后登录时间和头像
+        _db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE users SET
+                avatar_url = $1,
+                last_login_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2",
             vec![
-                SeaValue::BigInt(Some(user_info.id)),
+                SeaValue::String(Some(Box::new(user_info.avatar_url.clone()))),
+                SeaValue::Int(Some(admin_id)),
+            ],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update admin: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to update admin"})),
+            )
+        })?;
+
+        admin_id
+    } else if let Some(github_user_row) = github_user_check {
+        // 场景 2: GitHub 用户已存在 -> 更新现有用户
+        let existing_user_id: i32 = github_user_row.try_get("", "id").map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to read user data"})),
+            )
+        })?;
+
+        tracing::info!("Updating existing GitHub user: {}", user_info.login);
+
+        _db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE users SET
+                username = $1,
+                display_name = $2,
+                email = $3,
+                avatar_url = $4,
+                github_profile_url = $5,
+                bio = $6,
+                location = $7,
+                company = $8,
+                last_login_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $9",
+            vec![
                 SeaValue::String(Some(Box::new(user_info.login.clone()))),
                 user_info.name.as_ref().map_or(SeaValue::String(None), |s| {
                     SeaValue::String(Some(Box::new(s.clone())))
                 }),
-                user_info
-                    .email
-                    .as_ref()
-                    .map_or(SeaValue::String(None), |s| {
-                        SeaValue::String(Some(Box::new(s.clone())))
-                    }),
+                user_info.email.as_ref().map_or(SeaValue::String(None), |s| {
+                    SeaValue::String(Some(Box::new(s.clone())))
+                }),
                 SeaValue::String(Some(Box::new(user_info.avatar_url.clone()))),
                 SeaValue::String(Some(Box::new(user_info.html_url.clone()))),
                 user_info.bio.as_ref().map_or(SeaValue::String(None), |s| {
                     SeaValue::String(Some(Box::new(s.clone())))
                 }),
-                user_info
-                    .location
-                    .as_ref()
-                    .map_or(SeaValue::String(None), |s| {
-                        SeaValue::String(Some(Box::new(s.clone())))
-                    }),
-                user_info
-                    .company
-                    .as_ref()
-                    .map_or(SeaValue::String(None), |s| {
-                        SeaValue::String(Some(Box::new(s.clone())))
-                    }),
-                SeaValue::Bool(Some(is_admin)),
+                user_info.location.as_ref().map_or(SeaValue::String(None), |s| {
+                    SeaValue::String(Some(Box::new(s.clone())))
+                }),
+                user_info.company.as_ref().map_or(SeaValue::String(None), |s| {
+                    SeaValue::String(Some(Box::new(s.clone())))
+                }),
+                SeaValue::Int(Some(existing_user_id)),
             ],
         ))
         .await
         .map_err(|e| {
-            tracing::error!("Failed to create/update user: {:?}", e);
+            tracing::error!("Failed to update GitHub user: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to save user to database"})),
+                Json(json!({"error": "Failed to update user"})),
             )
         })?;
 
-    let user_id: i32 = user_result
-        .and_then(|row| row.try_get("", "id").ok())
-        .ok_or_else(|| {
-            tracing::error!("Failed to get user ID from query result");
+        existing_user_id
+    } else {
+        // 场景 3: 创建新的普通GitHub用户
+        tracing::info!("Creating new GitHub user: {}", user_info.login);
+
+        let insert_result = _db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "INSERT INTO users (github_id, username, display_name, email, avatar_url, github_profile_url, bio, location, company, is_admin, auth_provider, last_login_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, 'github', CURRENT_TIMESTAMP)
+                 RETURNING id",
+                vec![
+                    SeaValue::BigInt(Some(user_info.id)),
+                    SeaValue::String(Some(Box::new(user_info.login.clone()))),
+                    user_info.name.as_ref().map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                    user_info.email.as_ref().map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                    SeaValue::String(Some(Box::new(user_info.avatar_url.clone()))),
+                    SeaValue::String(Some(Box::new(user_info.html_url.clone()))),
+                    user_info.bio.as_ref().map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                    user_info.location.as_ref().map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                    user_info.company.as_ref().map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                ],
+            ))
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create GitHub user: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to create user"})),
+                )
+            })?
+            .ok_or_else(|| {
+                tracing::error!("Insert returned no result");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to create user"})),
+                )
+            })?;
+
+        insert_result.try_get("", "id").map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Failed to get user ID"})),
             )
-        })?;
+        })?
+    };
 
     // Generate JWT token
     let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
