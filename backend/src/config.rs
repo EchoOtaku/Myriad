@@ -17,6 +17,10 @@ pub struct AppConfig {
     pub jwt_secret: String,
     /// CORS允许的源
     pub cors_origins: Vec<String>,
+    /// 基础URL（用于自动生成OAuth回调等URL）
+    pub base_url: Option<String>,
+    /// 前端URL（用于OAuth成功后重定向）
+    pub frontend_url: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -31,6 +35,8 @@ impl Default for AppConfig {
                 "http://localhost:4321".to_string(),
                 "http://localhost:3000".to_string(),
             ],
+            base_url: None,
+            frontend_url: None,
         }
     }
 }
@@ -62,6 +68,12 @@ impl AppConfig {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
+            base_url: env::var("BASE_URL")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            frontend_url: env::var("FRONTEND_URL")
+                .ok()
+                .filter(|s| !s.is_empty()),
         })
     }
 

@@ -19,6 +19,7 @@ mod api;
 mod config;
 mod db;
 mod models;
+mod oauth_url_builder;
 mod services;
 
 use config::{AppConfig, DynamicConfig};
@@ -67,6 +68,12 @@ async fn run_server() -> anyhow::Result<()> {
     // Initialize global config
     *GLOBAL_CONFIG.write().await = config.clone();
     tracing::info!("✅ Configuration loaded and cached globally");
+
+    // Validate OAuth configuration
+    use oauth_url_builder::OAuthUrlBuilder;
+    if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config() {
+        tracing::warn!("⚠️  GitHub OAuth validation warning: {}", e);
+    }
 
     // Try to initialize database connection if URL is configured
     if !config.database_url.is_empty() {

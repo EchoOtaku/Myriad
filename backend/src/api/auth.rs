@@ -1,6 +1,6 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::env;
+
+use crate::oauth_url_builder::OAuthUrlBuilder;
 
 // JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,7 +71,10 @@ pub struct User {
 
 /// GET /api/auth/github/login
 /// Redirect user to GitHub OAuth page
-pub async fn github_login() -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
+/// 支持动态环境检测，自动适配开发/生产环境
+pub async fn github_login(
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
         tracing::error!("GITHUB_CLIENT_ID environment variable not set");
         (
@@ -92,8 +97,9 @@ pub async fn github_login() -> Result<impl IntoResponse, (StatusCode, Json<Value
         )
     })?;
 
-    let redirect_url = env::var("GITHUB_REDIRECT_URL")
-        .unwrap_or_else(|_| "http://localhost:3000/api/auth/github/callback".to_string());
+    // 使用智能URL构建器，支持环境变量和请求头检测
+    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
+    tracing::info!("🔐 GitHub OAuth login initiated with redirect URL: {}", redirect_url);
 
     let client = BasicClient::new(
         ClientId::new(client_id),
@@ -114,9 +120,11 @@ pub async fn github_login() -> Result<impl IntoResponse, (StatusCode, Json<Value
 
 /// GET /api/auth/github/callback
 /// Handle GitHub OAuth callback
+/// 支持动态环境检测，自动适配开发/生产环境
 pub async fn github_callback(
     Query(params): Query<AuthCallbackQuery>,
     State(_db): State<DatabaseConnection>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     tracing::info!("🔐 GitHub OAuth callback received");
 
@@ -135,10 +143,12 @@ pub async fn github_callback(
             Json(json!({"error": "GitHub OAuth not configured"})),
         )
     })?;
-    let redirect_url = env::var("GITHUB_REDIRECT_URL")
-        .unwrap_or_else(|_| "http://localhost:3000/api/auth/github/callback".to_string());
-    let frontend_url =
-        env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:4321".to_string());
+
+    // 使用智能URL构建器，确保与登录时使用的URL一致
+    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
+    let frontend_url = OAuthUrlBuilder::get_frontend_url(Some(&headers));
+
+    tracing::info!("🔐 OAuth callback - redirect_url: {}, frontend_url: {}", redirect_url, frontend_url);
 
     let client = BasicClient::new(
         ClientId::new(client_id),
@@ -460,7 +470,10 @@ pub async fn get_current_user(
 
 /// GET /api/auth/github/link
 /// Redirect user to GitHub OAuth page for linking account
-pub async fn github_link() -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
+/// 支持动态环境检测，自动适配开发/生产环境
+pub async fn github_link(
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
         tracing::error!("GITHUB_CLIENT_ID environment variable not set");
         (
@@ -483,8 +496,8 @@ pub async fn github_link() -> Result<impl IntoResponse, (StatusCode, Json<Value>
         )
     })?;
 
-    let redirect_url = env::var("GITHUB_REDIRECT_URL")
-        .unwrap_or_else(|_| "http://localhost:3000/api/auth/github/callback".to_string());
+    // 使用智能URL构建器，支持环境变量和请求头检测
+    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
 
     let client = BasicClient::new(
         ClientId::new(client_id),
@@ -566,8 +579,8 @@ pub async fn link_github_account(
         )
     })?;
 
-    let redirect_url = env::var("GITHUB_REDIRECT_URL")
-        .unwrap_or_else(|_| "http://localhost:3000/api/auth/github/callback".to_string());
+    // 使用智能URL构建器（账户链接流程也需要正确的回调URL）
+    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(None);
 
     let client = BasicClient::new(
         ClientId::new(client_id),
