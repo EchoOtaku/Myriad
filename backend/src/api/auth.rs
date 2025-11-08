@@ -725,9 +725,26 @@ pub async fn link_github_account(
             )
         })?;
 
+    // 先删除可能存在的独立 GitHub 用户记录（避免冲突）
+    let delete_result = db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM users WHERE github_id = $1 AND auth_provider = 'github'",
+        vec![SeaValue::BigInt(Some(github_user.id))],
+    ))
+    .await;
+
+    if let Ok(result) = delete_result {
+        if result.rows_affected() > 0 {
+            tracing::info!(
+                "🗑️  Deleted existing GitHub user record (github_id: {}) before linking to admin",
+                github_user.id
+            );
+        }
+    }
+
     // Update user: set linked_github_id and disable local login
-    let update_query = "UPDATE users 
-                        SET linked_github_id = $1, 
+    let update_query = "UPDATE users
+                        SET linked_github_id = $1,
                             local_login_disabled = true,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = $2
@@ -751,9 +768,10 @@ pub async fn link_github_account(
     })?;
 
     tracing::info!(
-        "✅ GitHub account linked successfully: {} -> {}",
+        "✅ GitHub account linked successfully: {} -> {} (github_id: {})",
         request.user_id,
-        github_user.login
+        github_user.login,
+        github_user.id
     );
 
     Ok(Json(json!({
