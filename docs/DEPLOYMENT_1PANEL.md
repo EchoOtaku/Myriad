@@ -307,7 +307,88 @@ docker logs myriad-frontend
 
 ## 🔧 常见问题
 
-### 问题 1: 502 Bad Gateway
+### 问题 1: 数据库迁移失败 - 重复键约束错误
+
+**表现：** 后端日志显示：
+```
+❌ 数据库迁移失败: 迁移失败: Execution Error: error returned from database:
+duplicate key value violates unique constraint "configurations_key_key"
+Detail: Key (key)=(ai_provider) already exists.
+```
+
+**原因：** 数据库处于不一致状态 - 某些表已创建但迁移跟踪表（seaql_migrations）丢失，导致迁移系统尝试重新运行所有迁移并插入重复数据。
+
+**解决方案 1：重置数据库（推荐 - 适用于新部署或测试环境）**
+
+⚠️ **警告：此操作会删除所有数据！**
+
+```bash
+# 1. 停止所有容器
+docker compose down
+
+# 2. 删除数据库卷（清除所有数据）
+docker volume rm myriad_postgres_data
+
+# 3. 重新启动（会自动运行迁移）
+docker compose up -d
+
+# 4. 查看日志确认迁移成功
+docker logs -f myriad-backend
+# 应该看到：✅ Database migrations up to date
+```
+
+**解决方案 2：手动修复迁移状态（适用于生产环境，保留现有数据）**
+
+如果你有重要数据不能删除：
+
+```bash
+# 1. 连接到数据库
+docker exec -it myriad-postgres psql -U myriad -d myriad
+
+# 2. 检查迁移表是否存在
+SELECT * FROM seaql_migrations;
+# 如果显示 "relation does not exist"，说明迁移表丢失
+
+# 3. 重新创建迁移跟踪表并标记所有迁移为已完成
+CREATE TABLE IF NOT EXISTS seaql_migrations (
+    version VARCHAR(255) PRIMARY KEY,
+    applied_at BIGINT NOT NULL
+);
+
+# 4. 插入所有已应用的迁移记录（根据实际情况调整版本号）
+INSERT INTO seaql_migrations (version, applied_at) VALUES
+    ('m20240101_000001_create_platforms_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000002_create_user_profiles_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000003_create_user_activities_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000004_create_analysis_results_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000005_create_configurations_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000006_create_api_keys_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000007_create_fetch_jobs_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000008_create_reports_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000009_create_users_table', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000010_add_local_auth', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000011_extend_configurations', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000012_create_platform_metadata', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000013_create_metadata_history', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000014_create_virtual_persona', EXTRACT(EPOCH FROM NOW())::BIGINT),
+    ('m20240101_000015_make_image_fields_optional', EXTRACT(EPOCH FROM NOW())::BIGINT)
+ON CONFLICT DO NOTHING;
+
+# 5. 退出数据库
+\q
+
+# 6. 重启后端
+docker restart myriad-backend
+```
+
+**预防措施：**
+- 始终使用 `docker compose down`（不带 `-v`）来停止容器，保留数据卷
+- 定期备份数据库（见下文"数据备份"章节）
+- 在测试环境验证配置后再部署到生产环境
+
+---
+
+### 问题 2: 502 Bad Gateway
 
 **原因：** 1Panel OpenResty 无法连接到容器
 
@@ -336,7 +417,7 @@ curl http://127.0.0.1:4321
 firewall-cmd --list-ports
 ```
 
-### 问题 2: CORS 错误
+### 问题 3: CORS 错误
 
 **表现：** 浏览器控制台显示跨域错误
 
@@ -357,7 +438,7 @@ CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com,https://api.yourd
 docker restart myriad-backend
 ```
 
-### 问题 3: SSL 证书申请失败
+### 问题 4: SSL 证书申请失败
 
 **可能原因：**
 - 域名未正确解析到服务器 IP
@@ -380,7 +461,7 @@ netstat -tlnp | grep :80
 3. 查看 1Panel 日志：
    - 1Panel → 日志 → 系统日志
 
-### 问题 4: 容器无法启动
+### 问题 5: 容器无法启动
 
 **解决方案：**
 

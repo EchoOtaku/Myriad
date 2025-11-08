@@ -20,7 +20,9 @@
       "Bash(timeout /t 5)",
       "Bash(nul)",
       "Bash(docker compose:*)",
-      "Bash(docker logs:*)"
+      "Bash(docker logs:*)",
+      "Bash(docker volume:*)",
+      "Bash(docker network:*)"
     ],
     "deny": [],
     "ask": []

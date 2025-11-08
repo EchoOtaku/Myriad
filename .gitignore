@@ -126,3 +126,5 @@ test-results/
 *.old
 *~
 nul
+.claude/settings.local.json
+/.claude

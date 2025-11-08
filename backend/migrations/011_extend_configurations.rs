@@ -80,29 +80,14 @@ impl MigrationTrait for Migration {
         ];
 
         for (key, value, desc, category, is_encrypted) in platform_configs {
-            manager
-                .exec_stmt(
-                    Query::insert()
-                        .into_table(Configurations::Table)
-                        .columns([
-                            Configurations::Key,
-                            Configurations::Value,
-                            Configurations::Description,
-                            Configurations::Category,
-                            Configurations::IsEncrypted,
-                            Configurations::IsPublic,
-                        ])
-                        .values_panic([
-                            key.into(),
-                            Expr::cust(format!("'{}'::jsonb", value)),
-                            desc.into(),
-                            category.into(),
-                            is_encrypted.into(),
-                            false.into(),
-                        ])
-                        .to_owned(),
-                )
-                .await?;
+            // Use raw SQL with ON CONFLICT to handle existing keys
+            let sql = format!(
+                "INSERT INTO configurations (key, value, description, category, is_encrypted, is_public) \
+                 VALUES ('{}', '{}'::jsonb, '{}', '{}', {}, false) \
+                 ON CONFLICT (key) DO NOTHING",
+                key, value, desc, category, is_encrypted
+            );
+            manager.get_connection().execute_unprepared(&sql).await?;
         }
 
         // 插入 AI 配置
@@ -168,29 +153,14 @@ impl MigrationTrait for Migration {
         ];
 
         for (key, value, desc, category, is_encrypted) in ai_configs {
-            manager
-                .exec_stmt(
-                    Query::insert()
-                        .into_table(Configurations::Table)
-                        .columns([
-                            Configurations::Key,
-                            Configurations::Value,
-                            Configurations::Description,
-                            Configurations::Category,
-                            Configurations::IsEncrypted,
-                            Configurations::IsPublic,
-                        ])
-                        .values_panic([
-                            key.into(),
-                            Expr::cust(format!("'{}'::jsonb", value)),
-                            desc.into(),
-                            category.into(),
-                            is_encrypted.into(),
-                            true.into(),
-                        ])
-                        .to_owned(),
-                )
-                .await?;
+            // Use raw SQL with ON CONFLICT to handle existing keys
+            let sql = format!(
+                "INSERT INTO configurations (key, value, description, category, is_encrypted, is_public) \
+                 VALUES ('{}', '{}'::jsonb, '{}', '{}', {}, true) \
+                 ON CONFLICT (key) DO NOTHING",
+                key, value, desc, category, is_encrypted
+            );
+            manager.get_connection().execute_unprepared(&sql).await?;
         }
 
         // 插入 UI 配置
@@ -226,29 +196,14 @@ impl MigrationTrait for Migration {
         ];
 
         for (key, value, desc, category, is_encrypted) in ui_configs {
-            manager
-                .exec_stmt(
-                    Query::insert()
-                        .into_table(Configurations::Table)
-                        .columns([
-                            Configurations::Key,
-                            Configurations::Value,
-                            Configurations::Description,
-                            Configurations::Category,
-                            Configurations::IsEncrypted,
-                            Configurations::IsPublic,
-                        ])
-                        .values_panic([
-                            key.into(),
-                            Expr::cust(format!("'{}'::jsonb", value)),
-                            desc.into(),
-                            category.into(),
-                            is_encrypted.into(),
-                            true.into(),
-                        ])
-                        .to_owned(),
-                )
-                .await?;
+            // Use raw SQL with ON CONFLICT to handle existing keys
+            let sql = format!(
+                "INSERT INTO configurations (key, value, description, category, is_encrypted, is_public) \
+                 VALUES ('{}', '{}'::jsonb, '{}', '{}', {}, true) \
+                 ON CONFLICT (key) DO NOTHING",
+                key, value, desc, category, is_encrypted
+            );
+            manager.get_connection().execute_unprepared(&sql).await?;
         }
 
         // 插入图像生成配置
@@ -284,29 +239,14 @@ impl MigrationTrait for Migration {
         ];
 
         for (key, value, desc, category, is_encrypted) in image_configs {
-            manager
-                .exec_stmt(
-                    Query::insert()
-                        .into_table(Configurations::Table)
-                        .columns([
-                            Configurations::Key,
-                            Configurations::Value,
-                            Configurations::Description,
-                            Configurations::Category,
-                            Configurations::IsEncrypted,
-                            Configurations::IsPublic,
-                        ])
-                        .values_panic([
-                            key.into(),
-                            Expr::cust(format!("'{}'::jsonb", value)),
-                            desc.into(),
-                            category.into(),
-                            is_encrypted.into(),
-                            true.into(),
-                        ])
-                        .to_owned(),
-                )
-                .await?;
+            // Use raw SQL with ON CONFLICT to handle existing keys
+            let sql = format!(
+                "INSERT INTO configurations (key, value, description, category, is_encrypted, is_public) \
+                 VALUES ('{}', '{}'::jsonb, '{}', '{}', {}, true) \
+                 ON CONFLICT (key) DO NOTHING",
+                key, value, desc, category, is_encrypted
+            );
+            manager.get_connection().execute_unprepared(&sql).await?;
         }
 
         // 插入功能开关配置
@@ -328,29 +268,14 @@ impl MigrationTrait for Migration {
         ];
 
         for (key, value, desc, category, is_encrypted) in feature_configs {
-            manager
-                .exec_stmt(
-                    Query::insert()
-                        .into_table(Configurations::Table)
-                        .columns([
-                            Configurations::Key,
-                            Configurations::Value,
-                            Configurations::Description,
-                            Configurations::Category,
-                            Configurations::IsEncrypted,
-                            Configurations::IsPublic,
-                        ])
-                        .values_panic([
-                            key.into(),
-                            Expr::cust(format!("'{}'::jsonb", value)),
-                            desc.into(),
-                            category.into(),
-                            is_encrypted.into(),
-                            true.into(),
-                        ])
-                        .to_owned(),
-                )
-                .await?;
+            // Use raw SQL with ON CONFLICT to handle existing keys
+            let sql = format!(
+                "INSERT INTO configurations (key, value, description, category, is_encrypted, is_public) \
+                 VALUES ('{}', '{}'::jsonb, '{}', '{}', {}, true) \
+                 ON CONFLICT (key) DO NOTHING",
+                key, value, desc, category, is_encrypted
+            );
+            manager.get_connection().execute_unprepared(&sql).await?;
         }
 
         // OAuth 配置
@@ -379,29 +304,14 @@ impl MigrationTrait for Migration {
         ];
 
         for (key, value, desc, category, is_encrypted) in oauth_configs {
-            manager
-                .exec_stmt(
-                    Query::insert()
-                        .into_table(Configurations::Table)
-                        .columns([
-                            Configurations::Key,
-                            Configurations::Value,
-                            Configurations::Description,
-                            Configurations::Category,
-                            Configurations::IsEncrypted,
-                            Configurations::IsPublic,
-                        ])
-                        .values_panic([
-                            key.into(),
-                            Expr::cust(format!("'{}'::jsonb", value)),
-                            desc.into(),
-                            category.into(),
-                            is_encrypted.into(),
-                            false.into(),
-                        ])
-                        .to_owned(),
-                )
-                .await?;
+            // Use raw SQL with ON CONFLICT to handle existing keys
+            let sql = format!(
+                "INSERT INTO configurations (key, value, description, category, is_encrypted, is_public) \
+                 VALUES ('{}', '{}'::jsonb, '{}', '{}', {}, false) \
+                 ON CONFLICT (key) DO NOTHING",
+                key, value, desc, category, is_encrypted
+            );
+            manager.get_connection().execute_unprepared(&sql).await?;
         }
 
         Ok(())
