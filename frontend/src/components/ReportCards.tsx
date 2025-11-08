@@ -77,6 +77,7 @@ export default function ReportCards() {
     const [isAdmin, setIsAdmin] = useState(false); // 是否为管理员
     const [isCardTransitioning, setIsCardTransitioning] = useState(false); // 卡片切换动画状态
     const [isModalClosing, setIsModalClosing] = useState(false); // 弹窗关闭动画状态
+    const [contentReady, setContentReady] = useState(false); // 内容是否准备好显示
     const [showPersonaModal, setShowPersonaModal] = useState(false); // 虚拟人物弹窗状态
     const [personaData, setPersonaData] = useState<VirtualPersona | null>(null); // 当前显示的虚拟人物数据
     const [personaList, setPersonaList] = useState<VirtualPersona[]>([]); // 虚拟人物列表（最多2个）
@@ -774,6 +775,8 @@ export default function ReportCards() {
                         setDisplayCards(randomCards);
                         setFromCache(result.from_cache || false);
                         setLoading(false);
+                        // 短暂延迟后显示内容，确保淡入效果
+                        setTimeout(() => setContentReady(true), 100);
                         return;
                     }
                 }
@@ -993,7 +996,9 @@ export default function ReportCards() {
 
     return (
         <>
-        <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className={`max-w-6xl mx-auto px-4 py-8 transition-all duration-700 ease-out ${
+            contentReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`}>
             {/* 生成报告时的进度条 */}
             {loading && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-lg z-50">
@@ -1220,22 +1225,7 @@ export default function ReportCards() {
                         className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card cursor-pointer hover:scale-[1.02] active:scale-[0.98] group"
                         onClick={() => setSelectedCard(card)}
                     >
-                        {/* 插画背景 */}
-                        {card.illustration && (
-                            <div className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity duration-300 rounded-3xl overflow-hidden">
-                                <img
-                                    src={card.illustration}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                    loading="lazy"
-                                    decoding="async"
-                                />
-                            </div>
-                        )}
-
-                        <div className="relative z-10">
-                            {/* Card Header */}
-                            <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-4">
                                 <div
                                     className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg text-2xl`}
                                 >
@@ -1280,7 +1270,6 @@ export default function ReportCards() {
                                     ))}
                                 </div>
                             )}
-                        </div>
                     </article>
                 ))}
             </div>

@@ -145,14 +145,15 @@ export default function LibraryGrid() {
                 // 随机打乱数据
                 const shuffled = [...data.items].sort(() => Math.random() - 0.5);
                 setItems(shuffled);
+                setLoading(false);
+                // 短暂延迟后显示内容，确保淡入效果
+                setTimeout(() => setContentReady(true), 100);
             } else {
                 throw new Error('No library data available');
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error';
             setError(message);
-        } finally {
-            setContentReady(true);
             setLoading(false);
         }
     };
@@ -385,7 +386,9 @@ export default function LibraryGrid() {
     }
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className={`space-y-8 transition-all duration-700 ease-out ${
+            contentReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`}>
             {/* 筛选器 */}
             <div className="flex justify-center mb-6">
                 <div className="glass rounded-xl p-1.5 inline-flex gap-1.5">
