@@ -18,7 +18,9 @@
       "Bash(git checkout:*)",
       "Bash(cargo run:*)",
       "Bash(timeout /t 5)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(docker compose:*)",
+      "Bash(docker logs:*)"
     ],
     "deny": [],
     "ask": []
