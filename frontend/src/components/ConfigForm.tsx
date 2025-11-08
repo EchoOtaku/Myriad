@@ -478,7 +478,7 @@ const ConfigForm: React.FC = () => {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-green-500 border-t-transparent"></div>
+          <div className="inline-block animate-spin rounded-full h-10 w-10 border-3 border-white/30" style={{ borderTopColor: 'var(--color-primary)' }}></div>
           <p className="mt-3 text-gray-600 text-sm">加载配置中...</p>
         </div>
       </div>
@@ -628,7 +628,7 @@ const ConfigForm: React.FC = () => {
                           >
                             {testing === platform.name ? (
                               <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/50" style={{ borderTopColor: 'white' }}></div>
                                 <span>测试中...</span>
                               </>
                             ) : (

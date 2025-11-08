@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
+import LibraryGridSkeleton from './LibraryGridSkeleton';
+import LoadingToast from './LoadingToast';
 
 // 添加样式到页面
 if (typeof document !== 'undefined' && !document.getElementById('library-grid-styles')) {
@@ -50,6 +52,19 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
                 transform: translateY(0);
             }
         }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
     `;
     document.head.appendChild(style);
 }
@@ -79,8 +94,11 @@ interface CardLayout {
 export default function LibraryGrid() {
     const [items, setItems] = useState<LibraryItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [contentReady, setContentReady] = useState(false); // 内容是否准备好显示
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
+    const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
+    const [isTransitioning, setIsTransitioning] = useState(false); // 子分组切换动画状态
     const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map());
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -88,13 +106,19 @@ export default function LibraryGrid() {
         fetchLibraryData();
     }, []);
 
+    // 当有数据时，确保内容可以显示
+    useEffect(() => {
+        if (items.length > 0 && !loading) {
+            setContentReady(true);
+        }
+    }, [items, loading]);
+
+    // 合并：当 filter 或 items 变化时，重新计算布局
     useEffect(() => {
         if (filteredItems.length > 0) {
             calculateLayouts();
         }
-    }, [filter, items]);
 
-    useEffect(() => {
         const handleResize = () => {
             if (filteredItems.length > 0) {
                 calculateLayouts();
@@ -108,6 +132,7 @@ export default function LibraryGrid() {
     const fetchLibraryData = async () => {
         try {
             setLoading(true);
+            setContentReady(false);
             const response = await fetch(`${API_URL}/api/library`);
             
             if (!response.ok) {
@@ -127,6 +152,7 @@ export default function LibraryGrid() {
             const message = err instanceof Error ? err.message : 'Unknown error';
             setError(message);
         } finally {
+            setContentReady(true);
             setLoading(false);
         }
     };
@@ -302,49 +328,69 @@ export default function LibraryGrid() {
         return null;
     }, []);
 
+    // 判断是否为子分组之间的切换（游戏↔视频、游戏↔音乐、视频↔音乐）
+    const needsTransition = (from: string, to: string) => {
+        return from !== 'all' && to !== 'all' && from !== to;
+    };
+
+    // 处理筛选器切换
+    const handleFilterChange = (newFilter: 'all' | 'game' | 'video' | 'music') => {
+        if (newFilter === filter) return;
+        
+        // 如果是子分组之间的切换，添加过渡动画
+        if (needsTransition(filter, newFilter)) {
+            setIsTransitioning(true);
+            // 等待退出动画（缩短到200ms）
+            setTimeout(() => {
+                setPrevFilter(filter);
+                setFilter(newFilter);
+                // 等待进入动画
+                setTimeout(() => {
+                    setIsTransitioning(false);
+                }, 50);
+            }, 200);
+        } else {
+            // 全部 ↔ 子分组，直接切换不需要动画
+            setPrevFilter(filter);
+            setFilter(newFilter);
+        }
+    };
+
     // 🚀 性能优化：使用 useMemo 缓存容器高度计算
     const containerHeight = useMemo(() => {
         const heights = Array.from(layouts.values()).map(l => l.top + l.height);
         return Math.max(...heights, 500) + 20;
     }, [layouts]);
 
+    // 显示骨架屏：正在加载
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[500px]">
-                <div className="text-center">
-                    <div className="relative w-20 h-20 mx-auto mb-6">
-                        <div className="absolute inset-0 border-4 border-blue-200 rounded-full"></div>
-                        <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-                    </div>
-                    <p className="text-lg text-gray-700 font-medium">加载你的数字世界...</p>
-                    <p className="text-sm text-gray-500 mt-2">正在整理资料库</p>
-                </div>
-            </div>
+            <>
+                <LibraryGridSkeleton />
+                <LoadingToast message="正在整理资料库..." show={true} />
+            </>
         );
     }
 
     if (error) {
         return (
-            <div className="flex items-center justify-center min-h-[500px]">
-                <div className="text-center max-w-md bg-white rounded-3xl shadow-xl p-10">
-                    <div className="text-7xl mb-6">📚</div>
-                    <h3 className="text-2xl font-bold text-gray-800 mb-3">资料库为空</h3>
-                    <p className="text-gray-600 mb-6">{error}</p>
-                    <p className="text-sm text-gray-500 bg-gray-50 rounded-2xl px-4 py-3">
-                        💡 提示：请先在配置页面获取平台数据
-                    </p>
-                </div>
-            </div>
+            <>
+                <LibraryGridSkeleton />
+                <LoadingToast 
+                    message="资料库为空，请先在配置页面获取平台数据" 
+                    show={true} 
+                />
+            </>
         );
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 animate-fade-in">
             {/* 筛选器 */}
             <div className="flex justify-center mb-6">
                 <div className="glass rounded-xl p-1.5 inline-flex gap-1.5">
                     <button
-                        onClick={() => setFilter('all')}
+                        onClick={() => handleFilterChange('all')}
                         className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
                             filter === 'all' ? 'active' : ''
                         }`}
@@ -352,7 +398,7 @@ export default function LibraryGrid() {
                         全部
                     </button>
                     <button
-                        onClick={() => setFilter('game')}
+                        onClick={() => handleFilterChange('game')}
                         className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
                             filter === 'game' ? 'active' : ''
                         }`}
@@ -360,7 +406,7 @@ export default function LibraryGrid() {
                         🎮 游戏
                     </button>
                     <button
-                        onClick={() => setFilter('video')}
+                        onClick={() => handleFilterChange('video')}
                         className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
                             filter === 'video' ? 'active' : ''
                         }`}
@@ -368,7 +414,7 @@ export default function LibraryGrid() {
                         🎬 视频
                     </button>
                     <button
-                        onClick={() => setFilter('music')}
+                        onClick={() => handleFilterChange('music')}
                         className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
                             filter === 'music' ? 'active' : ''
                         }`}
@@ -382,7 +428,9 @@ export default function LibraryGrid() {
             {/* @ts-ignore - Dynamic height calculation requires inline style */}
             <div 
                 ref={containerRef}
-                className="relative w-full transition-all duration-500 ease-in-out"
+                className={`relative w-full transition-all duration-300 ease-in-out ${
+                    isTransitioning ? 'opacity-0 scale-[0.975]' : 'opacity-100 scale-100'
+                }`}
                 // eslint-disable-next-line react/forbid-dom-props
                 style={{ 
                     height: `${containerHeight}px`, 
@@ -392,6 +440,9 @@ export default function LibraryGrid() {
                 {filteredItems.map((item, index) => {
                     const layout = layouts.get(item.id);
                     if (!layout) return null;
+
+                    // 子分组切换时不使用卡片动画，使用容器的统一过渡
+                    const shouldAnimate = !needsTransition(prevFilter, filter);
 
                     return (
                         // @ts-ignore - Dynamic positioning requires inline styles
@@ -405,7 +456,7 @@ export default function LibraryGrid() {
                                 width: `${layout.width}px`,
                                 height: `${layout.height}px`,
                                 opacity: layout.top === 0 ? 0 : 1,
-                                animation: `fadeInUp 0.5s ease-out ${index * 0.04}s forwards`
+                                animation: shouldAnimate ? `fadeInUp 0.5s ease-out ${index * 0.04}s forwards` : 'none'
                             }}
                         >
                             {item.item_type === 'music' ? (
@@ -416,8 +467,9 @@ export default function LibraryGrid() {
                                             <img
                                                 src={item.cover}
                                                 alt={item.title}
-                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                loading="lazy"
+                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                loading="eager"
+                                                decoding="async"
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
                                                 }}
@@ -466,8 +518,9 @@ export default function LibraryGrid() {
                                             <img
                                                 src={item.cover}
                                                 alt={item.title}
-                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                loading="lazy"
+                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                loading="eager"
+                                                decoding="async"
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
                                                 }}
@@ -524,8 +577,9 @@ export default function LibraryGrid() {
                                                 <img
                                                     src={item.cover}
                                                     alt={item.title}
-                                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                    loading="lazy"
+                                                    className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                    loading="eager"
+                                                    decoding="async"
                                                     onError={(e) => {
                                                         (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
                                                     }}
@@ -568,13 +622,12 @@ export default function LibraryGrid() {
                 })}
             </div>
 
-            {/* 空状态 */}
+            {/* 空状态提示 - 使用Toast */}
             {filteredItems.length === 0 && (
-                <div className="text-center py-20 bg-white rounded-3xl shadow-xl">
-                    <div className="text-7xl mb-6">🔍</div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">此分类暂无内容</h3>
-                    <p className="text-gray-500">试试切换到其他分类吧</p>
-                </div>
+                <LoadingToast 
+                    message="此分类暂无内容，试试切换其他分类" 
+                    show={true} 
+                />
             )}
         </div>
     );

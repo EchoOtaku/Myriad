@@ -175,7 +175,7 @@ const LoginForm: React.FC = () => {
           >
             {submitting ? (
               <>
-                <FaSpinner className="animate-spin" />
+                <FaSpinner className="animate-spin" style={{ color: 'white' }} />
                 <span>登录中...</span>
               </>
             ) : (

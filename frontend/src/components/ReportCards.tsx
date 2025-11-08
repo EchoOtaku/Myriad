@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
+import ReportCardsSkeleton from './ReportCardsSkeleton';
+import LoadingToast from './LoadingToast';
 import './ReportCards.css';
 
 interface UserInfo {
@@ -959,83 +961,26 @@ export default function ReportCards() {
     // 移除自动生成插图的 useEffect
     // 插图现在需要在配置页面手动生成
 
+    // 初始加载状态 - 显示骨架屏
+    if (loading && !report) {
+        return (
+            <>
+                <ReportCardsSkeleton />
+                <LoadingToast message="正在加载报告..." show={true} />
+            </>
+        );
+    }
+
+    // 无报告且加载完成 - 显示骨架屏+提示
     if (!report) {
         return (
-            <div className="max-w-7xl mx-auto px-4 py-16">
-                <div className="text-center">
-                    {error && (
-                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl mb-4 max-w-md mx-auto">
-                            {error}
-                        </div>
-                    )}
-
-                    {loading && (
-                        <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-lg z-50">
-                            <div className="max-w-4xl mx-auto px-6 py-6">
-                                <div className="mb-3 text-center">
-                                    <p className="text-sm font-medium text-gray-700">{progress}</p>
-                                </div>
-                                
-                                {/* 进度条 - 使用动态颜色 */}
-                                <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                                    <div 
-                                        className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
-                                        data-progress={progressPercent}
-                                    ></div>
-                                </div>
-                                
-                                <p className="text-xs text-gray-500 text-center mt-2">{progressPercent}% 完成</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 空状态：无报告时的提示 */}
-                    {!loading && !error && (
-                        <div className="max-w-md mx-auto">
-                            <div className="mb-6 flex items-center justify-center">
-                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                                    <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                    </svg>
-                                </div>
-                            </div>
-                            <h2 className="text-2xl font-bold text-gray-800 mb-4">还没有生成报告</h2>
-                            <p className="text-gray-600 mb-8">
-                                点击导航岛的灯泡图标开始生成您的个性化数据报告
-                            </p>
-                            <div className="glass rounded-2xl p-6 text-left">
-                                <h3 className="font-bold text-gray-800 mb-3">报告将包含：</h3>
-                                <ul className="space-y-2 text-sm text-gray-600">
-                                    <li className="flex items-start gap-2">
-                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        <span>6个精选话题的深度分析</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        <span>AI 驱动的个性化洞察</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        <span>跨平台数据整合</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        <span>报告7天有效，过期后自动刷新</span>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+            <>
+                <ReportCardsSkeleton />
+                <LoadingToast 
+                    message={error || "点击导航岛的灯泡图标开始生成报告"} 
+                    show={true} 
+                />
+            </>
         );
     }
 
@@ -1047,7 +992,29 @@ export default function ReportCards() {
     };
 
     return (
+        <>
         <div className="max-w-6xl mx-auto px-4 py-8">
+            {/* 生成报告时的进度条 */}
+            {loading && (
+                <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-lg z-50">
+                    <div className="max-w-4xl mx-auto px-6 py-6">
+                        <div className="mb-3 text-center">
+                            <p className="text-sm font-medium text-gray-700">{progress}</p>
+                        </div>
+                        
+                        {/* 进度条 - 使用动态颜色 */}
+                        <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                                className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
+                                data-progress={progressPercent}
+                            ></div>
+                        </div>
+                        
+                        <p className="text-xs text-gray-500 text-center mt-2">{progressPercent}% 完成</p>
+                    </div>
+                </div>
+            )}
+
             {/* 报告信息条 */}
             <div className="mb-6 glass rounded-3xl p-5 border shadow-lg report-info-card relative">
                 {/* 动态萌宠 - 使用精灵图动画 */}
@@ -1468,18 +1435,13 @@ export default function ReportCards() {
                                 {personaLoading && (
                                     <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
                                         <div className="text-center">
-                                            <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-transparent mx-auto mb-4 loading-spinner-border"></div>
-                                            <p className="text-lg font-semibold mb-2 loading-text-primary">
+                                            <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 mx-auto mb-4" style={{ borderTopColor: 'var(--color-primary)' }}></div>
+                                            <p className="text-lg font-semibold mb-2 text-gray-700">
                                                 AI 正在生成虚拟人物设定
                                             </p>
                                             <p className="text-sm text-gray-500">
                                                 这可能需要 20-40 秒，请耐心等待...
                                             </p>
-                                            <div className="mt-4 flex items-center justify-center gap-1">
-                                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce bounce-delay-0"></div>
-                                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce bounce-delay-150"></div>
-                                                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce bounce-delay-300"></div>
-                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -1621,7 +1583,7 @@ export default function ReportCards() {
                                                     >
                                                         {generatingImage ? (
                                                             <>
-                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white"></div>
                                                                 <span>生成中...</span>
                                                             </>
                                                         ) : (
@@ -1658,7 +1620,7 @@ export default function ReportCards() {
                                                     >
                                                         {generatingImage ? (
                                                             <>
-                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/50" style={{ borderTopColor: 'white' }}></div>
                                                                 <span>生成中...</span>
                                                             </>
                                                         ) : (
@@ -1769,5 +1731,6 @@ export default function ReportCards() {
                 <p className="mt-1">点击导航岛的灯泡图标可立即重新生成</p>
             </div>
         </div>
+        </>
     );
 }

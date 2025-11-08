@@ -26,32 +26,6 @@
     color: var(--color-primary);
 }
 
-/* 加载动画边框样式 */
-.loading-spinner-border {
-    border-color: var(--color-primary);
-    border-top-color: transparent;
-}
-
-/* 加载文本主色 */
-.loading-text-primary {
-    color: var(--color-primary);
-}
-
-/* 动画延迟 - 点1 */
-.bounce-delay-0 {
-    animation-delay: 0ms;
-}
-
-/* 动画延迟 - 点2 */
-.bounce-delay-150 {
-    animation-delay: 150ms;
-}
-
-/* 动画延迟 - 点3 */
-.bounce-delay-300 {
-    animation-delay: 300ms;
-}
-
 /* 切换按钮背景 */
 .persona-nav-btn-bg {
     background: color-mix(in srgb, var(--color-primary) 20%, transparent);

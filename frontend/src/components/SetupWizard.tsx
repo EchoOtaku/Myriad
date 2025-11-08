@@ -281,6 +281,7 @@ const SetupWizard: React.FC = () => {
         <div className="text-center">
           <FaSpinner 
             className="animate-spin text-6xl mx-auto mb-4 setup-spinner"
+            style={{ color: 'var(--color-primary)' }}
           />
           <p className="text-gray-600">检查系统状态...</p>
         </div>
@@ -466,7 +467,7 @@ const SetupWizard: React.FC = () => {
                         disabled={savingDb || !dbConfig.password}
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
-                        {savingDb ? <FaSpinner className="animate-spin" /> : '💾'}
+                        {savingDb ? <FaSpinner className="animate-spin" style={{ color: 'white' }} /> : '💾'}
                         <span>{savingDb ? '保存中...' : '保存并连接数据库'}</span>
                       </button>
                     </div>
@@ -516,7 +517,7 @@ const SetupWizard: React.FC = () => {
                               disabled={migratingDb}
                               className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
                             >
-                              {migratingDb ? <FaSpinner className="animate-spin" /> : <FaDatabase />}
+                              {migratingDb ? <FaSpinner className="animate-spin" style={{ color: 'white' }} /> : <FaDatabase />}
                               <span>{migratingDb ? '初始化中...' : '初始化数据库表'}</span>
                             </button>
                           </div>
@@ -583,7 +584,7 @@ const SetupWizard: React.FC = () => {
                           disabled={creatingAdmin}
                           className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
-                          {creatingAdmin ? <FaSpinner className="animate-spin" /> : <FaUser />}
+                          {creatingAdmin ? <FaSpinner className="animate-spin" style={{ color: 'white' }} /> : <FaUser />}
                           <span>{creatingAdmin ? '创建中...' : '创建管理员账户'}</span>
                         </button>
                       </>
