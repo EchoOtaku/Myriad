@@ -1,0 +1,289 @@
+/* ==========================================
+   全局控制面板样式
+   ========================================== */
+
+/* 控制面板触发按钮 */
+.global-control-trigger {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 999;
+}
+
+.control-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  background: rgba(255, 255, 255, 0.75);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 2px solid color-mix(in srgb, var(--color-primary, #94a3b8) 40%, transparent);
+  border-radius: 50%;
+  color: var(--color-primary, #94a3b8);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+}
+
+html.dark .control-trigger-btn {
+  background: rgba(26, 26, 26, 0.8);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 50%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+}
+
+.control-trigger-btn:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 60%, transparent);
+  transform: scale(1.08) rotate(90deg);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+}
+
+html.dark .control-trigger-btn:hover {
+  background: rgba(26, 26, 26, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+}
+
+.control-trigger-btn:active {
+  transform: scale(1.02) rotate(90deg);
+}
+
+/* 控制面板遮罩 */
+.control-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  z-index: 998;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 控制面板主体 */
+.control-panel {
+  position: fixed;
+  top: 4.5rem;
+  right: 1rem;
+  width: 20rem;
+  max-width: calc(100vw - 2rem);
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 2px solid color-mix(in srgb, var(--color-primary, #94a3b8) 40%, transparent);
+  border-radius: 1.25rem;
+  box-shadow: 0 12px 48px color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  z-index: 999;
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+html.dark .control-panel {
+  background: rgba(26, 26, 26, 0.9);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 50%, transparent);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 控制面板头部 */
+.control-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .control-panel-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.control-panel-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.control-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  border-radius: 0.5rem;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.control-close-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+  transform: rotate(90deg);
+}
+
+html.dark .control-close-btn {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+html.dark .control-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 控制面板内容 */
+.control-panel-content {
+  padding: 1rem;
+}
+
+/* 控制项 */
+.control-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0.875rem;
+  transition: all 0.2s;
+}
+
+.control-item:hover {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+}
+
+html.dark .control-item {
+  background: rgba(55, 65, 81, 0.4);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .control-item:hover {
+  background: rgba(55, 65, 81, 0.6);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+}
+
+.control-item-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.control-item-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent),
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 15%, transparent)
+  );
+  border-radius: 0.75rem;
+}
+
+.control-item-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.125rem 0;
+}
+
+.control-item-desc {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* 切换开关 */
+.control-toggle {
+  position: relative;
+  width: 3rem;
+  height: 1.75rem;
+  background: #d1d5db;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+.control-toggle:hover {
+  background: #9ca3af;
+}
+
+.control-toggle.active {
+  background: var(--color-primary, #94a3b8);
+}
+
+.control-toggle.active:hover {
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 90%, black);
+}
+
+.control-toggle-slider {
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.control-toggle.active .control-toggle-slider {
+  transform: translateX(1.25rem);
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .global-control-trigger {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .control-trigger-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .control-panel {
+    top: 4rem;
+    right: 0.75rem;
+    width: calc(100vw - 1.5rem);
+  }
+}

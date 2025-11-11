@@ -155,3 +155,63 @@ html.dark .persona-prompt-edit-bg {
     background: color-mix(in srgb, var(--color-primary) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
+
+/* ========================================
+   Loading Spinners
+   ======================================== */
+
+/* 虚拟人物加载旋转器 */
+.persona-loading-spinner {
+    border-top-color: var(--color-primary);
+}
+
+html.dark .persona-loading-spinner {
+    box-shadow: 0 0 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+/* 图片生成旋转器 */
+.generating-image-spinner {
+    border-top-color: white;
+}
+
+html.dark .generating-image-spinner {
+    border-top-color: white;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+}
+
+/* ========================================
+   Custom Scrollbar - 自定义滚动条
+   ======================================== */
+
+/* 弹窗滚动条样式 */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* 深色模式滚动条 */
+html.dark .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}

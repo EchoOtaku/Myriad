@@ -26,7 +26,8 @@
       "Bash(dir \"c:\\Users\\Think\\Documents\\GitHub\\Myriad\")",
       "Bash(dir \"c:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\")",
       "Bash(dir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npx astro check)"
     ],
     "deny": [],
     "ask": []

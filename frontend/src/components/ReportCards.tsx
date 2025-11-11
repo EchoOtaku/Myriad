@@ -1001,7 +1001,7 @@ export default function ReportCards() {
         }`}>
             {/* 生成报告时的进度条 */}
             {loading && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-lg z-50">
+                <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-gray-900/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 shadow-lg dark:shadow-black/30 z-50">
                     <div className="max-w-4xl mx-auto px-6 py-6">
                         <div className="mb-3 text-center">
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{progress}</p>
@@ -1366,8 +1366,8 @@ export default function ReportCards() {
                                     <div className="mb-8">
                                         <div className="space-y-4">
                                             {selectedCard.content.details.map((detail, i) => (
-                                                <div key={i} className="flex items-start gap-4 transition-all duration-200 hover:translate-x-2 hover:bg-gray-50 p-3 rounded-xl -mx-3">
-                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 dark:bg-gray-700 text-white text-xs font-bold flex items-center justify-center mt-0.5 transition-transform duration-200 group-hover:scale-110">
+                                                <div key={i} className="flex items-start gap-4 transition-all duration-200 hover:translate-x-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 p-3 rounded-xl -mx-3">
+                                                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-900 dark:bg-gray-600 text-white text-xs font-bold flex items-center justify-center mt-0.5 transition-transform duration-200 group-hover:scale-110">
                                                         {i + 1}
                                                     </span>
                                                     <p className="flex-1 text-base text-gray-700 dark:text-gray-300 leading-relaxed">
@@ -1381,17 +1381,17 @@ export default function ReportCards() {
 
                                 {/* AI 洞察 */}
                                 {selectedCard.content.highlight && (
-                                    <div className="pt-6 border-t border-gray-200">
+                                    <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
                                         <div className="flex items-center gap-2 mb-4">
-                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center">
-                                                <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-100 to-orange-100 dark:from-yellow-900/40 dark:to-orange-900/40 flex items-center justify-center">
+                                                <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                                 </svg>
                                             </div>
-                                            <h3 className="text-base font-bold text-gray-900">AI 洞察</h3>
+                                            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">AI 洞察</h3>
                                         </div>
                                         <div className="pl-4 border-l-4 transition-all hover:pl-5 ai-insight-border">
-                                            <p className="text-base text-gray-700 leading-relaxed italic">
+                                            <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed italic">
                                                 {selectedCard.content.highlight}
                                             </p>
                                         </div>
@@ -1424,13 +1424,13 @@ export default function ReportCards() {
                             <div className="p-10 relative">
                                 {/* 加载遮罩 - 覆盖整个内容区域 */}
                                 {personaLoading && (
-                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
+                                    <div className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
                                         <div className="text-center">
-                                            <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 mx-auto mb-4" style={{ borderTopColor: 'var(--color-primary)' }}></div>
-                                            <p className="text-lg font-semibold mb-2 text-gray-700">
+                                            <div className="persona-loading-spinner animate-spin rounded-full h-12 w-12 border-4 border-gray-200 dark:border-gray-700 mx-auto mb-4"></div>
+                                            <p className="text-lg font-semibold mb-2 text-gray-700 dark:text-gray-300">
                                                 AI 正在生成虚拟人物设定
                                             </p>
-                                            <p className="text-sm text-gray-500">
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">
                                                 这可能需要 20-40 秒，请耐心等待...
                                             </p>
                                         </div>
@@ -1611,7 +1611,7 @@ export default function ReportCards() {
                                                     >
                                                         {generatingImage ? (
                                                             <>
-                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/50" style={{ borderTopColor: 'white' }}></div>
+                                                                <div className="generating-image-spinner animate-spin rounded-full h-4 w-4 border-2 border-white/50"></div>
                                                                 <span>生成中...</span>
                                                             </>
                                                         ) : (

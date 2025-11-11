@@ -1,6 +1,6 @@
 ---
 import Layout from '@layouts/Layout.astro';
-import ConfigForm from '../components/ConfigForm.tsx';
+import ModernConfigForm from '../components/ModernConfigForm.tsx';
 
 const title = 'Configuration - Myriad';
 ---
@@ -8,20 +8,31 @@ const title = 'Configuration - Myriad';
 <Layout title={title}>
   <div class="min-h-screen px-3 xs:px-4 sm:px-6 py-6 sm:py-8 md:py-12 pb-28 sm:pb-24 md:pb-12">
     <div class="max-w-7xl mx-auto">
-      <!-- 标签栏 -->
+      <!-- 标签栏 - 紧凑设计 -->
       <div class="flex justify-center mb-4 md:mb-6">
-        <div class="glass rounded-xl p-1.5 inline-flex gap-1.5 w-full sm:w-auto">
+        <div class="glass rounded-xl p-1.5 inline-flex gap-1.5 w-full sm:w-auto shadow-md border tab-container-border">
           <button
             id="tab-config"
-            class="tab-button active flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300"
+            class="tab-button active flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px]"
           >
-            ⚙️ 配置
+            <span class="flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <span>配置</span>
+            </span>
           </button>
           <button
             id="tab-debug"
-            class="tab-button flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300"
+            class="tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px]"
           >
-            📊 数据管理
+            <span class="flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+              <span>数据管理</span>
+            </span>
           </button>
         </div>
       </div>
@@ -35,43 +46,43 @@ const title = 'Configuration - Myriad';
               <!-- 左侧：配置状态信息 -->
               <div class="flex-1 w-full md:w-auto">
                 <div class="flex items-center gap-3 mb-3 md:mb-4">
-                  <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/50 dark:to-pink-900/50 flex items-center justify-center text-xl sm:text-2xl">
+                  <div class="config-status-icon w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl">
                     ⚙️
                   </div>
                   <div>
-                    <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">配置状态</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">当前配置概览和保存状态</p>
+                    <h2 class="config-title text-base sm:text-lg font-bold">配置状态</h2>
+                    <p class="config-subtitle text-xs mt-0.5">当前配置概览和保存状态</p>
                   </div>
                 </div>
-                
+
                 <div class="grid grid-cols-3 gap-2 sm:gap-3">
                   <!-- 状态卡片 -->
-                  <div class="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">平台配置</p>
-                    <p class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100" id="platform-count">-</p>
+                  <div class="status-card rounded-lg p-2 sm:p-3 border">
+                    <p class="status-label text-xs mb-1 sm:mb-1.5">平台配置</p>
+                    <p class="status-value text-sm sm:text-base font-bold" id="platform-count">-</p>
                   </div>
-                  <div class="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">AI 配置</p>
-                    <p class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100" id="ai-status">-</p>
+                  <div class="status-card rounded-lg p-2 sm:p-3 border">
+                    <p class="status-label text-xs mb-1 sm:mb-1.5">AI 配置</p>
+                    <p class="status-value text-sm sm:text-base font-bold" id="ai-status">-</p>
                   </div>
-                  <div class="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">保存状态</p>
+                  <div class="status-card rounded-lg p-2 sm:p-3 border">
+                    <p class="status-label text-xs mb-1 sm:mb-1.5">保存状态</p>
                     <p class="text-sm sm:text-base font-bold" id="save-status">
-                      <span class="text-yellow-600 dark:text-yellow-500">未保存</span>
+                      <span class="status-unsaved">未保存</span>
                     </p>
                   </div>
                 </div>
 
                 <!-- 数据缓存区域 -->
-                <div class="mt-3 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 sm:p-3 border border-gray-200/50 dark:border-gray-700/50">
+                <div class="status-card mt-3 rounded-lg p-2 sm:p-3 border">
                   <div class="flex items-center justify-between gap-2">
                     <div class="flex-1 min-w-0">
-                      <p class="text-xs text-gray-500 dark:text-gray-400 mb-1 sm:mb-1.5">平台数据缓存</p>
+                      <p class="status-label text-xs mb-1 sm:mb-1.5">平台数据缓存</p>
                       <div class="flex items-center gap-2 flex-wrap">
-                        <p class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100" id="cache-status">
+                        <p class="status-value text-sm sm:text-base font-bold" id="cache-status">
                           <span class="text-gray-400">未缓存</span>
                         </p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400" id="cache-time">-</p>
+                        <p class="status-label text-xs" id="cache-time">-</p>
                       </div>
                     </div>
                     <button
@@ -108,7 +119,7 @@ const title = 'Configuration - Myriad';
           </div>
         </div>
 
-        <ConfigForm client:load />
+        <ModernConfigForm client:load />
       </div>
 
       <!-- 调试页面内容 -->
@@ -119,17 +130,17 @@ const title = 'Configuration - Myriad';
             <div class="glass rounded-xl p-4">
               <div class="flex justify-between items-center mb-3">
                 <div class="flex items-center space-x-3">
-                  <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-lg">
+                  <div class="debug-icon-blue w-10 h-10 rounded-lg flex items-center justify-center text-lg">
                     📋
                   </div>
                   <div>
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">API 原始元数据</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">查看从各平台API获取的原始数据</p>
+                    <h3 class="debug-title text-lg font-bold">API 原始元数据</h3>
+                    <p class="debug-subtitle text-xs">查看从各平台API获取的原始数据</p>
                   </div>
                 </div>
                 <button
                   id="fetch-metadata"
-                  class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
+                  class="debug-button-blue px-4 py-2 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
                 >
                   <span>🔄</span>
                   <span>刷新</span>
@@ -137,9 +148,9 @@ const title = 'Configuration - Myriad';
               </div>
               <div
                 id="metadata-container"
-                class="mt-3 bg-gray-800 dark:bg-gray-900 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
+                class="debug-container mt-3 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
               >
-                <p class="text-gray-400 dark:text-gray-500 text-sm">点击刷新按钮加载数据...</p>
+                <p class="debug-placeholder text-sm">点击刷新按钮加载数据...</p>
               </div>
             </div>
           </div>
@@ -149,25 +160,25 @@ const title = 'Configuration - Myriad';
             <div class="glass rounded-xl p-4">
               <div class="flex justify-between items-center mb-3">
                 <div class="flex items-center space-x-3">
-                  <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center text-green-600 text-lg">
+                  <div class="debug-icon-green w-10 h-10 rounded-lg flex items-center justify-center text-lg">
                     💾
                   </div>
                   <div>
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">缓存详细信息</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">查看报告缓存状态和有效期</p>
+                    <h3 class="debug-title text-lg font-bold">缓存详细信息</h3>
+                    <p class="debug-subtitle text-xs">查看报告缓存状态和有效期</p>
                   </div>
                 </div>
                 <div class="flex gap-2">
                   <button
                     id="fetch-cache-debug"
-                    class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
+                    class="debug-button-green px-4 py-2 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
                   >
                     <span>🔄</span>
                     <span>刷新</span>
                   </button>
                   <button
                     id="delete-cache"
-                    class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
+                    class="debug-button-red px-4 py-2 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
                   >
                     <span>🗑️</span>
                     <span>删除缓存</span>
@@ -176,9 +187,9 @@ const title = 'Configuration - Myriad';
               </div>
               <div
                 id="cache-debug-container"
-                class="mt-3 bg-gray-800 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
+                class="debug-container mt-3 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
               >
-                <p class="text-gray-400 text-sm">点击刷新按钮加载数据...</p>
+                <p class="debug-placeholder text-sm">点击刷新按钮加载数据...</p>
               </div>
             </div>
           </div>
@@ -188,17 +199,17 @@ const title = 'Configuration - Myriad';
             <div class="glass rounded-xl p-4">
               <div class="flex justify-between items-center mb-3">
                 <div class="flex items-center space-x-3">
-                  <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 text-lg">
+                  <div class="debug-icon-purple w-10 h-10 rounded-lg flex items-center justify-center text-lg">
                     📊
                   </div>
                   <div>
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">所有报告列表</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">查看和浏览历史生成的报告</p>
+                    <h3 class="debug-title text-lg font-bold">所有报告列表</h3>
+                    <p class="debug-subtitle text-xs">查看和浏览历史生成的报告</p>
                   </div>
                 </div>
                 <button
                   id="fetch-reports"
-                  class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
+                  class="debug-button-purple px-4 py-2 text-white text-sm font-semibold rounded-lg transition-all duration-300 flex items-center space-x-1.5 shadow-md"
                 >
                   <span>🔄</span>
                   <span>刷新</span>
@@ -206,9 +217,9 @@ const title = 'Configuration - Myriad';
               </div>
               <div
                 id="reports-container"
-                class="mt-3 bg-gray-800 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
+                class="debug-container mt-3 rounded-lg p-4 overflow-auto max-h-[500px] text-sm"
               >
-                <p class="text-gray-400 text-sm">点击刷新按钮加载数据...</p>
+                <p class="debug-placeholder text-sm">点击刷新按钮加载数据...</p>
               </div>
             </div>
           </div>
@@ -1046,45 +1057,253 @@ const title = 'Configuration - Myriad';
 </script>
 
 <style>
-  /* 标签按钮样式 */
+  /* ========================================
+     标签栏容器样式
+     ======================================== */
+
+  .tab-container-border {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  html.dark .tab-container-border {
+    border-color: rgba(75, 85, 99, 0.4);
+  }
+
+  /* ========================================
+     配置状态卡片样式
+     ======================================== */
+
+  /* 配置状态图标 */
+  .config-status-icon {
+    background: linear-gradient(to bottom right, rgb(243, 232, 255), rgb(251, 207, 232));
+  }
+
+  html.dark .config-status-icon {
+    background: linear-gradient(to bottom right, rgba(88, 28, 135, 0.5), rgba(131, 24, 67, 0.5));
+  }
+
+  /* 配置标题和副标题 */
+  .config-title {
+    color: rgb(31, 41, 55);
+  }
+
+  html.dark .config-title {
+    color: rgb(243, 244, 246);
+  }
+
+  .config-subtitle {
+    color: rgb(107, 114, 128);
+  }
+
+  html.dark .config-subtitle {
+    color: rgb(156, 163, 175);
+  }
+
+  /* 状态卡片 */
+  .status-card {
+    background: rgba(255, 255, 255, 0.5);
+    border-color: rgba(229, 231, 235, 0.5);
+  }
+
+  html.dark .status-card {
+    background: rgba(31, 41, 55, 0.5);
+    border-color: rgba(55, 65, 81, 0.5);
+  }
+
+  /* 状态标签和值 */
+  .status-label {
+    color: rgb(107, 114, 128);
+  }
+
+  html.dark .status-label {
+    color: rgb(156, 163, 175);
+  }
+
+  .status-value {
+    color: rgb(31, 41, 55);
+  }
+
+  html.dark .status-value {
+    color: rgb(243, 244, 246);
+  }
+
+  /* 保存状态颜色 */
+  .status-unsaved {
+    color: rgb(202, 138, 4);
+  }
+
+  html.dark .status-unsaved {
+    color: rgb(234, 179, 8);
+  }
+
+  /* ========================================
+     调试页面样式
+     ======================================== */
+
+  /* 调试图标 - 蓝色 */
+  .debug-icon-blue {
+    background: linear-gradient(to bottom right, rgb(219, 234, 254), rgb(191, 219, 254));
+    color: rgb(37, 99, 235);
+  }
+
+  html.dark .debug-icon-blue {
+    background: linear-gradient(to bottom right, rgba(30, 64, 175, 0.3), rgba(37, 99, 235, 0.2));
+    color: rgb(96, 165, 250);
+  }
+
+  /* 调试图标 - 绿色 */
+  .debug-icon-green {
+    background: linear-gradient(to bottom right, rgb(220, 252, 231), rgb(187, 247, 208));
+    color: rgb(22, 163, 74);
+  }
+
+  html.dark .debug-icon-green {
+    background: linear-gradient(to bottom right, rgba(20, 83, 45, 0.3), rgba(22, 163, 74, 0.2));
+    color: rgb(74, 222, 128);
+  }
+
+  /* 调试图标 - 紫色 */
+  .debug-icon-purple {
+    background: linear-gradient(to bottom right, rgb(243, 232, 255), rgb(233, 213, 255));
+    color: rgb(126, 34, 206);
+  }
+
+  html.dark .debug-icon-purple {
+    background: linear-gradient(to bottom right, rgba(88, 28, 135, 0.3), rgba(126, 34, 206, 0.2));
+    color: rgb(192, 132, 252);
+  }
+
+  /* 调试标题和副标题 */
+  .debug-title {
+    color: rgb(31, 41, 55);
+  }
+
+  html.dark .debug-title {
+    color: rgb(243, 244, 246);
+  }
+
+  .debug-subtitle {
+    color: rgb(107, 114, 128);
+  }
+
+  html.dark .debug-subtitle {
+    color: rgb(156, 163, 175);
+  }
+
+  /* 调试按钮 - 蓝色 */
+  .debug-button-blue {
+    background-color: rgb(59, 130, 246);
+  }
+
+  .debug-button-blue:hover {
+    background-color: rgb(37, 99, 235);
+  }
+
+  /* 调试按钮 - 绿色 */
+  .debug-button-green {
+    background-color: rgb(34, 197, 94);
+  }
+
+  .debug-button-green:hover {
+    background-color: rgb(22, 163, 74);
+  }
+
+  /* 调试按钮 - 红色 */
+  .debug-button-red {
+    background-color: rgb(239, 68, 68);
+  }
+
+  .debug-button-red:hover {
+    background-color: rgb(220, 38, 38);
+  }
+
+  /* 调试按钮 - 紫色 */
+  .debug-button-purple {
+    background-color: rgb(168, 85, 247);
+  }
+
+  .debug-button-purple:hover {
+    background-color: rgb(147, 51, 234);
+  }
+
+  /* 调试容器 */
+  .debug-container {
+    background: rgb(31, 41, 55);
+  }
+
+  html.dark .debug-container {
+    background: rgb(17, 24, 39);
+  }
+
+  /* 调试占位符文字 */
+  .debug-placeholder {
+    color: rgb(156, 163, 175);
+  }
+
+  html.dark .debug-placeholder {
+    color: rgb(107, 114, 128);
+  }
+
+  /* ========================================
+     标签按钮样式
+     ======================================== */
+
   .tab-button {
-    color: rgba(0, 0, 0, 0.6);
-    background: rgba(255, 255, 255, 0.3);
-    backdrop-filter: blur(10px);
-    border: 2px solid transparent;
-    transform: translateY(0);
+    position: relative;
+    color: rgba(0, 0, 0, 0.65);
+    background: transparent;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
   }
 
   html.dark .tab-button {
-    color: rgba(255, 255, 255, 0.6);
-    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.65);
   }
 
-  .tab-button:hover {
-    color: rgba(0, 0, 0, 0.8);
-    background: rgba(255, 255, 255, 0.4);
-    border-color: var(--color-primary);
-    transform: translateY(-1px);
+  /* 非激活状态悬浮 */
+  .tab-button:not(.active):hover {
+    color: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.05);
   }
 
-  html.dark .tab-button:hover {
+  html.dark .tab-button:not(.active):hover {
     color: rgba(255, 255, 255, 0.9);
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
   }
 
-  .tab-button:active {
-    transform: translateY(0);
-  }
-
+  /* 激活状态 */
   .tab-button.active {
     color: white;
     background: var(--color-primary);
-    border-color: var(--color-primary);
-    box-shadow: 0 4px 20px color-mix(in srgb, var(--color-primary) 50%, transparent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 35%, transparent),
+                0 4px 16px color-mix(in srgb, var(--color-primary) 25%, transparent),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
   }
 
+  /* 深色模式激活状态增强 */
+  html.dark .tab-button.active {
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 45%, transparent),
+                0 4px 20px color-mix(in srgb, var(--color-primary) 35%, transparent),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+                0 0 0 1px color-mix(in srgb, var(--color-primary) 60%, transparent);
+  }
+
+  /* 激活状态悬浮 */
   .tab-button.active:hover {
-    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--color-primary) 95%, white);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 45%, transparent),
+                0 6px 24px color-mix(in srgb, var(--color-primary) 30%, transparent),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.25);
+  }
+
+  html.dark .tab-button.active:hover {
+    background: color-mix(in srgb, var(--color-primary) 90%, white);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 55%, transparent),
+                0 6px 28px color-mix(in srgb, var(--color-primary) 40%, transparent),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+                0 0 0 1px color-mix(in srgb, var(--color-primary) 70%, transparent);
   }
 
   /* 保存和重置按钮样式 */
@@ -1184,5 +1403,127 @@ const title = 'Configuration - Myriad';
   #cache-debug-container::-webkit-scrollbar-thumb:hover,
   #reports-container::-webkit-scrollbar-thumb:hover {
     background: #6b7280;
+  }
+
+  /* ========================================
+     Mobile Optimizations
+     ======================================== */
+
+  /* 移动端标签按钮优化 */
+  @media (max-width: 640px) {
+    .tab-button {
+      min-width: auto;
+      font-size: 0.875rem;
+    }
+
+    /* 移动端触摸反馈 - 使用 active 替代 hover */
+    .tab-button:not(.active):active {
+      background: rgba(0, 0, 0, 0.08);
+      transform: scale(0.98);
+    }
+
+    html.dark .tab-button:not(.active):active {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* 激活按钮移动端触摸反馈 */
+    .tab-button.active:active {
+      transform: scale(0.98);
+    }
+
+    /* 移动端按钮组间距 */
+    .save-button,
+    .reset-button,
+    .refresh-button {
+      padding: 0.75rem 1.25rem;
+      font-size: 0.9rem;
+    }
+
+    /* 移动端触摸反馈 */
+    .save-button:active,
+    .reset-button:active,
+    .refresh-button:active {
+      transform: scale(0.97);
+    }
+  }
+
+  /* 超小屏幕优化 */
+  @media (max-width: 375px) {
+    .tab-button {
+      font-size: 0.8125rem;
+    }
+
+    .save-button,
+    .reset-button,
+    .refresh-button {
+      padding: 0.625rem 1rem;
+      font-size: 0.85rem;
+    }
+  }
+
+  /* ========================================
+     Enhanced Transitions
+     ======================================== */
+
+  .tab-button {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .tab-button.active {
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .save-button,
+  .reset-button,
+  .refresh-button {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Focus states for accessibility */
+  .tab-button:focus-visible,
+  .save-button:focus-visible,
+  .reset-button:focus-visible,
+  .refresh-button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* ========================================
+     Dark Mode Enhancements
+     ======================================== */
+
+  /* 深色模式按钮阴影增强 */
+  html.dark .tab-button.active {
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--color-primary) 60%, transparent),
+                0 0 0 1px color-mix(in srgb, var(--color-primary) 50%, transparent);
+  }
+
+  html.dark .save-button {
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+
+  html.dark .save-button:hover {
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 50%, transparent);
+  }
+
+  /* 深色模式滚动条 */
+  html.dark #metadata-container::-webkit-scrollbar-track,
+  html.dark #cache-debug-container::-webkit-scrollbar-track,
+  html.dark #reports-container::-webkit-scrollbar-track {
+    background: rgba(31, 41, 55, 0.5);
+  }
+
+  html.dark #metadata-container::-webkit-scrollbar-thumb,
+  html.dark #cache-debug-container::-webkit-scrollbar-thumb,
+  html.dark #reports-container::-webkit-scrollbar-thumb {
+    background: rgba(75, 85, 99, 0.8);
+  }
+
+  html.dark #metadata-container::-webkit-scrollbar-thumb:hover,
+  html.dark #cache-debug-container::-webkit-scrollbar-thumb:hover,
+  html.dark #reports-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(107, 114, 128, 0.9);
   }
 </style>

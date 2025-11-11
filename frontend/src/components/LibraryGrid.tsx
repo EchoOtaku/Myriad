@@ -9,37 +9,92 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
     const style = document.createElement('style');
     style.id = 'library-grid-styles';
     style.textContent = `
+        /* 标签栏容器样式 */
+        .tab-container-border {
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        html.dark .tab-container-border {
+            border-color: rgba(75, 85, 99, 0.4);
+        }
+
+        /* 标签按钮样式 - 与 config 页面统一 */
         .tab-button {
-            color: rgba(0, 0, 0, 0.6);
-            background: rgba(255, 255, 255, 0.3);
-            backdrop-filter: blur(10px);
-            border: 2px solid transparent;
-            transform: translateY(0);
-            cursor: pointer;
             position: relative;
-            z-index: 1;
+            color: rgba(0, 0, 0, 0.65);
+            background: transparent;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        
-        .tab-button:hover {
-            color: rgba(0, 0, 0, 0.8);
-            background: rgba(255, 255, 255, 0.4);
-            border-color: var(--color-primary, #94a3b8);
-            transform: translateY(-1px);
+
+        html.dark .tab-button {
+            color: rgba(255, 255, 255, 0.65);
         }
-        
-        .tab-button:active {
-            transform: translateY(0);
+
+        /* 非激活状态悬浮 */
+        .tab-button:not(.active):hover {
+            color: rgba(0, 0, 0, 0.85);
+            background: rgba(0, 0, 0, 0.05);
         }
-        
+
+        html.dark .tab-button:not(.active):hover {
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* 激活状态 */
         .tab-button.active {
             color: white;
-            background: var(--color-primary, #94a3b8);
-            border-color: var(--color-primary, #94a3b8);
-            box-shadow: 0 4px 20px rgba(148, 163, 184, 0.5);
+            background: var(--color-primary);
+            box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 35%, transparent),
+                        0 4px 16px color-mix(in srgb, var(--color-primary) 25%, transparent),
+                        inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        
+
+        /* 深色模式激活状态增强 */
+        html.dark .tab-button.active {
+            box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 45%, transparent),
+                        0 4px 20px color-mix(in srgb, var(--color-primary) 35%, transparent),
+                        inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+                        0 0 0 1px color-mix(in srgb, var(--color-primary) 60%, transparent);
+        }
+
+        /* 激活状态悬浮 */
         .tab-button.active:hover {
-            transform: translateY(-1px);
+            background: color-mix(in srgb, var(--color-primary) 95%, white);
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 45%, transparent),
+                        0 6px 24px color-mix(in srgb, var(--color-primary) 30%, transparent),
+                        inset 0 1px 0 0 rgba(255, 255, 255, 0.25);
+        }
+
+        html.dark .tab-button.active:hover {
+            background: color-mix(in srgb, var(--color-primary) 90%, white);
+            box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 55%, transparent),
+                        0 6px 28px color-mix(in srgb, var(--color-primary) 40%, transparent),
+                        inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+                        0 0 0 1px color-mix(in srgb, var(--color-primary) 70%, transparent);
+        }
+
+        /* 移动端触摸反馈 */
+        @media (max-width: 640px) {
+            .tab-button:not(.active):active {
+                background: rgba(0, 0, 0, 0.08);
+                transform: scale(0.98);
+            }
+
+            html.dark .tab-button:not(.active):active {
+                background: rgba(255, 255, 255, 0.12);
+            }
+
+            .tab-button.active:active {
+                transform: scale(0.98);
+            }
         }
         
         @keyframes fadeInUp {
@@ -389,40 +444,60 @@ export default function LibraryGrid() {
         <div className={`space-y-8 transition-all duration-700 ease-out ${
             contentReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
         }`}>
-            {/* 筛选器 */}
-            <div className="flex justify-center mb-6">
-                <div className="glass rounded-xl p-1.5 inline-flex gap-1.5">
+            {/* 筛选器 - 紧凑设计 */}
+            <div className="flex justify-center mb-4 md:mb-6">
+                <div className="glass rounded-xl p-1.5 inline-flex gap-1.5 w-full sm:w-auto shadow-md border tab-container-border">
                     <button
                         onClick={() => handleFilterChange('all')}
-                        className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
+                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
                             filter === 'all' ? 'active' : ''
                         }`}
                     >
-                        全部
+                        <span className="flex items-center justify-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                            </svg>
+                            <span>全部</span>
+                        </span>
                     </button>
                     <button
                         onClick={() => handleFilterChange('game')}
-                        className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
+                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
                             filter === 'game' ? 'active' : ''
                         }`}
                     >
-                        🎮 游戏
+                        <span className="flex items-center justify-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                            </svg>
+                            <span>游戏</span>
+                        </span>
                     </button>
                     <button
                         onClick={() => handleFilterChange('video')}
-                        className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
+                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
                             filter === 'video' ? 'active' : ''
                         }`}
                     >
-                        🎬 视频
+                        <span className="flex items-center justify-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                            </svg>
+                            <span>视频</span>
+                        </span>
                     </button>
                     <button
                         onClick={() => handleFilterChange('music')}
-                        className={`tab-button px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 ${
+                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
                             filter === 'music' ? 'active' : ''
                         }`}
                     >
-                        🎵 音乐
+                        <span className="flex items-center justify-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                            <span>音乐</span>
+                        </span>
                     </button>
                 </div>
             </div>

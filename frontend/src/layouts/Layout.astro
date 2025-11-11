@@ -77,6 +77,10 @@ const isDev = import.meta.env.DEV;
   <body class="antialiased">
     <!-- 页面加载器 -->
     <PageLoader />
+
+    <!-- 全局控制面板 -->
+    <div id="global-control-panel-root"></div>
+
     <!-- Animated Background -->
     <div id="bg-container" class="fixed inset-0 -z-10 overflow-hidden">
       <!-- Dynamic Wallpaper -->
@@ -148,21 +152,6 @@ const isDev = import.meta.env.DEV;
             <button id="generate-report-btn" class="nav-item generate-btn" title="生成报告" aria-label="生成数据报告">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-              </svg>
-            </button>
-          </div>
-
-          <!-- 深色模式切换按钮 -->
-          <div class="nav-group nav-group-spaced" data-group="theme">
-            <div class="nav-separator hidden md:block"></div>
-            <button id="theme-toggle" class="nav-item theme-toggle-btn" title="切换深色模式" aria-label="切换深色/浅色模式">
-              <!-- 太阳图标（浅色模式） -->
-              <svg class="w-5 h-5 sun-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
-              </svg>
-              <!-- 月亮图标（深色模式） -->
-              <svg class="w-5 h-5 moon-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
               </svg>
             </button>
           </div>
@@ -583,22 +572,6 @@ const isDev = import.meta.env.DEV;
         box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary) 30%, transparent);
       }
       
-      /* 主题切换按钮特殊样式 */
-      .theme-toggle-btn .sun-icon {
-        display: block;
-      }
-      
-      .theme-toggle-btn .moon-icon {
-        display: none;
-      }
-      
-      html.dark .theme-toggle-btn .sun-icon {
-        display: none;
-      }
-      
-      html.dark .theme-toggle-btn .moon-icon {
-        display: block;
-      }
 
       .nav-item:active {
         transform: scale(1.02);
@@ -955,14 +928,9 @@ const isDev = import.meta.env.DEV;
         }
       }
 
-      /* 移动端主题切换按钮优化 */
+      /* 移动端优化 */
       @media (max-width: 767px) {
-        .theme-toggle-btn {
-          /* 移动端主题按钮在最右侧 */
-          position: relative;
-        }
-
-        /* 移动端隐藏主题按钮前的分隔线,改为用间距 */
+        /* 移动端样式优化 */
         [data-group="theme"] .nav-separator {
           display: none;
         }
@@ -1486,6 +1454,55 @@ const isDev = import.meta.env.DEV;
       /* 移除旧的library样式，使用新的瀑布流布局 */
 
       /* ========================================
+         Tailwind 颜色类全局覆盖 - 使用 CSS 变量
+         ======================================== */
+
+      /* 文本颜色覆盖 */
+      .text-gray-700 { color: var(--text-primary) !important; }
+      .text-gray-800 { color: var(--text-primary) !important; }
+      .text-gray-600 { color: var(--text-secondary) !important; }
+      .text-gray-500 { color: var(--text-tertiary) !important; }
+      .text-gray-400 { color: var(--text-muted) !important; }
+      .text-gray-300 { color: var(--text-secondary) !important; }
+
+      html.dark .dark\:text-gray-100 { color: var(--text-primary) !important; }
+      html.dark .dark\:text-gray-300 { color: var(--text-secondary) !important; }
+      html.dark .dark\:text-gray-400 { color: var(--text-tertiary) !important; }
+      html.dark .dark\:text-gray-500 { color: var(--text-muted) !important; }
+
+      /* 背景颜色覆盖 */
+      html.dark .dark\:bg-gray-700 { background-color: var(--bg-tertiary) !important; }
+      html.dark .dark\:bg-gray-800\/50 { background-color: color-mix(in srgb, var(--bg-tertiary) 50%, transparent) !important; }
+      html.dark .dark\:hover\:bg-gray-700:hover { background-color: var(--bg-hover) !important; }
+
+      /* 边框颜色覆盖 */
+      .border-gray-200\/50 { border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important; }
+      .border-gray-300 { border-color: var(--border-color) !important; }
+      html.dark .dark\:border-gray-600 { border-color: var(--border-color) !important; }
+      html.dark .dark\:border-gray-700\/50 { border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important; }
+
+      /* 主题色覆盖 */
+      .bg-indigo-500,
+      .bg-indigo-600 {
+        background-color: var(--color-primary) !important;
+      }
+      .hover\:bg-indigo-600:hover,
+      html.dark .dark\:hover\:bg-indigo-700:hover {
+        background-color: color-mix(in srgb, var(--color-primary) 90%, black) !important;
+      }
+      .focus\:ring-indigo-500:focus {
+        --tw-ring-color: color-mix(in srgb, var(--color-primary) 50%, transparent) !important;
+      }
+      .bg-gray-900 {
+        background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)) !important;
+      }
+      .hover\:bg-gray-800:hover {
+        background: linear-gradient(135deg,
+          color-mix(in srgb, var(--color-primary) 90%, black),
+          color-mix(in srgb, var(--color-secondary) 90%, black)) !important;
+      }
+
+      /* ========================================
          Form and Input Styles - Dark Mode Support
          ======================================== */
 
@@ -1719,8 +1736,16 @@ const isDev = import.meta.env.DEV;
       import { initTransitionSystem } from '../scripts/page-transition';
 
       // 全局状态：存储当前显示的壁纸的实际 URL（重定向后的最终 URL）
-      let activeWallpaperUrl: string | null = null;
-      let wallpaperLoadComplete = false;
+      // 使用 window 对象存储，避免页面切换时重置
+      declare global {
+        interface Window {
+          _activeWallpaperUrl?: string | null;
+          _wallpaperLoadComplete?: boolean;
+        }
+      }
+
+      let activeWallpaperUrl: string | null = window._activeWallpaperUrl || null;
+      let wallpaperLoadComplete: boolean = window._wallpaperLoadComplete || false;
 
       // 缓存接口
       interface WallpaperCache {
@@ -1773,7 +1798,8 @@ const isDev = import.meta.env.DEV;
         wallpaperEl.style.backgroundImage = `url(${cache.actualUrl})`;
         wallpaperEl.style.filter = `blur(${blur}px)`;
         activeWallpaperUrl = cache.actualUrl;
-        
+        window._activeWallpaperUrl = cache.actualUrl;
+
         // 立即提取并应用缓存的颜色（从 colorExtractor 的缓存）
         extractColorsFromImage(cache.actualUrl).then(colors => {
           if (activeWallpaperUrl === cache.actualUrl) {
@@ -1814,6 +1840,7 @@ const isDev = import.meta.env.DEV;
             
             // URL 不同，需要更新
             activeWallpaperUrl = actualImageUrl;
+            window._activeWallpaperUrl = actualImageUrl;
             
             // 🚀 优化3：并行加载新图片和提取颜色
             const img = new Image();
@@ -1850,6 +1877,7 @@ const isDev = import.meta.env.DEV;
               // 保存新的缓存
               saveWallpaperCache(apiUrl, actualImageUrl);
               wallpaperLoadComplete = true;
+              window._wallpaperLoadComplete = true;
             }
             
           } else {
@@ -2140,15 +2168,38 @@ const isDev = import.meta.env.DEV;
       // 隐藏动画辅助函数
       function hideWithAnimation(element: HTMLElement | null) {
         if (!element) return;
-        
+
         element.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
         element.style.opacity = '0';
         element.style.transform = 'scale(0.8)';
-        
+
         // 动画结束后真正隐藏
         setTimeout(() => {
           element.style.display = 'none';
         }, 200);
+      }
+    </script>
+
+    <!-- 全局控制面板脚本 -->
+    <script>
+      import { createRoot } from 'react-dom/client';
+      import { createElement } from 'react';
+      import GlobalControlPanel from '../components/GlobalControlPanel.tsx';
+
+      // 确保在 DOM 加载完成后渲染全局控制面板
+      function initGlobalControlPanel() {
+        const rootElement = document.getElementById('global-control-panel-root');
+        if (rootElement && !rootElement.hasChildNodes()) {
+          const root = createRoot(rootElement);
+          root.render(createElement(GlobalControlPanel));
+        }
+      }
+
+      // 立即尝试渲染（如果DOM已经准备好）
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initGlobalControlPanel);
+      } else {
+        initGlobalControlPanel();
       }
     </script>
   </body>
