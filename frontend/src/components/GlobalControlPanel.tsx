@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './GlobalControlPanel.css';
 
 const GlobalControlPanel: React.FC = () => {
@@ -10,7 +10,7 @@ const GlobalControlPanel: React.FC = () => {
     setIsDark(document.documentElement.classList.contains('dark'));
   }, []);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     const html = document.documentElement;
     const newIsDark = !isDark;
 
@@ -31,13 +31,21 @@ const GlobalControlPanel: React.FC = () => {
     if (metaThemeColor) {
       metaThemeColor.setAttribute('content', newIsDark ? '#1a1a1a' : '#fef3c7');
     }
-  };
+  }, [isDark]);
+
+  const handleTogglePanel = useCallback(() => {
+    setIsOpen(prev => !prev);
+  }, []);
+
+  const handleClosePanel = useCallback(() => {
+    setIsOpen(false);
+  }, []);
 
   return (
     <React.Fragment>
       <div className="global-control-trigger">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={handleTogglePanel}
           className="control-trigger-btn"
           aria-label="打开控制面板"
           title="控制面板"
@@ -57,14 +65,14 @@ const GlobalControlPanel: React.FC = () => {
         <React.Fragment>
           <div
             className="control-panel-overlay"
-            onClick={() => setIsOpen(false)}
+            onClick={handleClosePanel}
           />
 
           <div className="control-panel">
             <div className="control-panel-header">
               <h3 className="control-panel-title">控制中心</h3>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={handleClosePanel}
                 className="control-close-btn"
                 aria-label="关闭"
               >

@@ -32,8 +32,6 @@ export async function extractColorsFromImage(
     imageUrl: string,
     options: { forceRefresh?: boolean } = {}
 ): Promise<ColorPalette> {
-    const startTime = performance.now();
-
     if (currentExtractionController) {
         currentExtractionController.abort();
     }

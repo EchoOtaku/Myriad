@@ -7,7 +7,6 @@ interface Props {
 }
 
 const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = Astro.props;
-const isDev = import.meta.env.DEV;
 ---
 
 <!doctype html>
@@ -1741,6 +1740,7 @@ const isDev = import.meta.env.DEV;
         interface Window {
           _activeWallpaperUrl?: string | null;
           _wallpaperLoadComplete?: boolean;
+          _themeInitialized?: boolean;
         }
       }
 
@@ -1953,63 +1953,69 @@ const isDev = import.meta.env.DEV;
         });
       }
       
-      // 深色模式切换功能
-      function setupThemeToggle() {
-        const themeToggle = document.getElementById('theme-toggle');
+      // 初始化主题（只在页面首次加载时执行）
+      function initializeTheme() {
+        // 避免重复初始化
+        if (window._themeInitialized) return;
+        window._themeInitialized = true;
+
         const html = document.documentElement;
-        
-        // 从localStorage读取主题设置，或使用系统偏好
-        const getPreferredTheme = () => {
-          const stored = localStorage.getItem('theme');
-          if (stored) {
-            return stored;
-          }
-          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        };
-        
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+
         // 应用主题
-        const applyTheme = (theme: string) => {
-          if (theme === 'dark') {
-            html.classList.add('dark');
-            html.classList.remove('light');
-          } else {
-            html.classList.add('light');
-            html.classList.remove('dark');
-          }
-          localStorage.setItem('theme', theme);
-          
-          // 更新meta theme-color
-          const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-          if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', theme === 'dark' ? '#1a1a1a' : '#fef3c7');
-          }
-        };
-        
-        // 初始化主题
-        const currentTheme = getPreferredTheme();
-        applyTheme(currentTheme);
-        
-        // 切换按钮事件
-        if (themeToggle) {
-          themeToggle.addEventListener('click', () => {
-            const newTheme = html.classList.contains('dark') ? 'light' : 'dark';
-            applyTheme(newTheme);
-          });
+        if (theme === 'dark') {
+          html.classList.add('dark');
+          html.classList.remove('light');
+        } else {
+          html.classList.add('light');
+          html.classList.remove('dark');
         }
-        
-        // 监听系统主题变化
+
+        // 更新 meta theme-color
+        const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+        if (metaThemeColor) {
+          metaThemeColor.setAttribute('content', theme === 'dark' ? '#1a1a1a' : '#fef3c7');
+        }
+
+        // 监听系统主题变化（仅当用户未手动设置时）
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
           if (!localStorage.getItem('theme')) {
-            applyTheme(e.matches ? 'dark' : 'light');
+            const newTheme = e.matches ? 'dark' : 'light';
+            if (newTheme === 'dark') {
+              html.classList.add('dark');
+              html.classList.remove('light');
+            } else {
+              html.classList.add('light');
+              html.classList.remove('dark');
+            }
+            if (metaThemeColor) {
+              metaThemeColor.setAttribute('content', newTheme === 'dark' ? '#1a1a1a' : '#fef3c7');
+            }
           }
         });
       }
       
+      // 注册 Service Worker（离线支持和缓存优化）
+      if ('serviceWorker' in navigator && import.meta.env.PROD) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(
+            (registration) => {
+              console.log('[SW] Service Worker registered:', registration.scope);
+            },
+            (err) => {
+              console.log('[SW] Service Worker registration failed:', err);
+            }
+          );
+        });
+      }
+
       // 优先加载关键功能
       setActiveNav();
       setupAuthUI();
-      setupThemeToggle();
-      
+      initializeTheme();
+
       // 等待页面加载完成
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', handlePageLoaded);
@@ -2017,7 +2023,7 @@ const isDev = import.meta.env.DEV;
         // 已经加载完成
         handlePageLoaded();
       }
-      
+
       // 初始化页面切换系统
       if ('requestIdleCallback' in window) {
         requestIdleCallback(() => {
@@ -2058,7 +2064,7 @@ const isDev = import.meta.env.DEV;
         loadUserInfo();
 
         // 监听登录成功事件
-        window.addEventListener('auth-login-success', ((e: CustomEvent) => {
+        window.addEventListener('auth-login-success', (() => {
           loadUserInfo();
         }) as EventListener);
       }
@@ -2068,12 +2074,9 @@ const isDev = import.meta.env.DEV;
         const token = localStorage.getItem('auth_token');
         const loginBtn = document.getElementById('login-btn');
         const userAvatarLink = document.getElementById('user-avatar-link');
-        const configNavBtn = document.getElementById('config-nav-btn');
-        const userSection = document.getElementById('user-section');
-        
+
         // 获取导航组
         const configGroup = document.querySelector('[data-group="config"]') as HTMLElement;
-        const userGroup = document.querySelector('[data-group="user"]') as HTMLElement;
         const reportGroup = document.querySelector('[data-group="report"]') as HTMLElement;
         
         if (!token) {

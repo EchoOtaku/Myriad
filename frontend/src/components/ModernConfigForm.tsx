@@ -3,7 +3,14 @@ import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
 import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
+import { useDebounce } from '../hooks/useDebounce';
 import './ModernConfigForm.css';
+
+// 注意：懒加载配置组件已创建但暂未使用，以保持稳定性
+// 可在后续迭代中逐步替换现有实现
+// const PlatformConfigSection = lazy(() => import('./config/PlatformConfigSection'));
+// const AiConfigSection = lazy(() => import('./config/AiConfigSection'));
+// const GenericConfigSection = lazy(() => import('./config/GenericConfigSection'));
 
 interface ConfigField {
   key: string;
@@ -67,6 +74,51 @@ interface QuickAccessItem {
   subsection?: string;
 }
 
+// 优化：提取为独立的 memo 组件避免不必要的重渲染
+interface QuickAccessCardProps {
+  item: QuickAccessItem;
+  isActive: boolean;
+  isFavorite: boolean;
+  onCardClick: (section: string) => void;
+  onToggleFavorite: (id: string) => void;
+}
+
+const QuickAccessCard = React.memo<QuickAccessCardProps>(({
+  item,
+  isActive,
+  isFavorite,
+  onCardClick,
+  onToggleFavorite
+}) => {
+  const handleCardClick = React.useCallback(() => {
+    onCardClick(item.section);
+  }, [onCardClick, item.section]);
+
+  const handleFavoriteClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleFavorite(item.id);
+  }, [onToggleFavorite, item.id]);
+
+  return (
+    <div
+      onClick={handleCardClick}
+      className={`quick-access-card ${isActive ? 'active' : ''}`}
+    >
+      <span className="card-icon">{item.icon}</span>
+      <span className="card-label">{item.label}</span>
+      <button
+        onClick={handleFavoriteClick}
+        className={`favorite-btn ${isFavorite ? 'active' : ''}`}
+        aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+      >
+        <FaStar />
+      </button>
+    </div>
+  );
+});
+
+QuickAccessCard.displayName = 'QuickAccessCard';
+
 const ModernConfigForm: React.FC = () => {
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,8 +133,11 @@ const ModernConfigForm: React.FC = () => {
     return saved ? JSON.parse(saved) : ['platforms', 'ai'];
   });
 
-  // 快速访问项
-  const quickAccessItems: QuickAccessItem[] = [
+  // 使用防抖优化搜索性能 - 避免频繁搜索
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // 快速访问项（使用 useMemo 避免每次渲染重新创建数组）
+  const quickAccessItems: QuickAccessItem[] = useMemo(() => [
     { id: 'platforms', label: '数据平台', icon: '🌐', section: 'platforms' },
     { id: 'ai', label: 'AI配置', icon: '🤖', section: 'ai' },
     { id: 'report', label: '报告生成', icon: '📊', section: 'report' },
@@ -90,7 +145,7 @@ const ModernConfigForm: React.FC = () => {
     { id: 'ui', label: 'UI界面', icon: '🎨', section: 'ui' },
     { id: 'oauth', label: 'OAuth登录', icon: '🔐', section: 'oauth' },
     { id: 'pet', label: '宠物吉祥物', icon: '🐱', section: 'pet' },
-  ];
+  ], []);
 
   // 搜索功能
   const searchableContent = useMemo(() => {
@@ -166,19 +221,20 @@ const ModernConfigForm: React.FC = () => {
     return items;
   }, [config]);
 
+  // 使用防抖后的搜索查询优化性能
   const filteredContent = useMemo(() => {
-    if (!searchQuery.trim()) return searchableContent;
-    
-    const query = searchQuery.toLowerCase();
-    return searchableContent.filter(item => 
+    if (!debouncedSearchQuery.trim()) return searchableContent;
+
+    const query = debouncedSearchQuery.toLowerCase();
+    return searchableContent.filter(item =>
       item.title.toLowerCase().includes(query) ||
       item.description.toLowerCase().includes(query) ||
       item.keywords.some(k => k.includes(query))
     );
-  }, [searchQuery, searchableContent]);
+  }, [debouncedSearchQuery, searchableContent]);
 
   // 切换收藏
-  const toggleFavorite = (section: string) => {
+  const toggleFavorite = React.useCallback((section: string) => {
     setFavorites(prev => {
       const updated = prev.includes(section)
         ? prev.filter(s => s !== section)
@@ -188,13 +244,13 @@ const ModernConfigForm: React.FC = () => {
       }
       return updated;
     });
-  };
+  }, []);
 
   // 处理节切换
-  const handleSectionChange = (section: string) => {
+  const handleSectionChange = React.useCallback((section: string) => {
     setActiveSection(section);
     setSearchQuery('');
-  };
+  }, []);
 
   const handleSave = React.useCallback(async () => {
     if (!config) {
@@ -348,9 +404,33 @@ const ModernConfigForm: React.FC = () => {
     }
   }, []);
 
+  const notifyDirtyState = React.useCallback((dirty: boolean) => {
+    window.dispatchEvent(
+      new CustomEvent('config-dirty-state', {
+        detail: { dirty },
+      })
+    );
+  }, []);
+
+  const loadConfig = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
+      setConfig(data);
+      notifyDirtyState(false);
+
+      const event = new CustomEvent('config-loaded', { detail: data });
+      window.dispatchEvent(event);
+    } catch (error) {
+      setMessage('Failed to load configuration');
+    } finally {
+      setLoading(false);
+    }
+  }, [notifyDirtyState]);
+
   useEffect(() => {
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   useEffect(() => {
     const handleSaveEvent = () => handleSave();
@@ -365,31 +445,7 @@ const ModernConfigForm: React.FC = () => {
     };
   }, [handleSave, handleReset]);
 
-  const notifyDirtyState = (dirty: boolean) => {
-    window.dispatchEvent(
-      new CustomEvent('config-dirty-state', {
-        detail: { dirty },
-      })
-    );
-  };
-
-  const loadConfig = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
-      setConfig(data);
-      notifyDirtyState(false);
-      
-      const event = new CustomEvent('config-loaded', { detail: data });
-      window.dispatchEvent(event);
-    } catch (error) {
-      setMessage('Failed to load configuration');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTest = async (platformName: string) => {
+  const handleTest = React.useCallback(async (platformName: string) => {
     const platform = config?.platforms.find(p => p.name === platformName);
     if (!platform) return;
 
@@ -422,9 +478,9 @@ const ModernConfigForm: React.FC = () => {
     } finally {
       setTesting(null);
     }
-  };
+  }, [config]);
 
-  const updateConfigField = (
+  const updateConfigField = React.useCallback((
     section: 'ai' | 'report' | 'persona' | 'ui',
     fieldKey: string,
     value: string,
@@ -457,9 +513,9 @@ const ModernConfigForm: React.FC = () => {
       }
       notifyDirtyState(true);
     }
-  };
+  }, [config, notifyDirtyState]);
 
-  const updateFieldValue = (platformIndex: number, fieldKey: string, value: string) => {
+  const updateFieldValue = React.useCallback((platformIndex: number, fieldKey: string, value: string) => {
     if (!config) return;
 
     const newPlatforms = [...config.platforms];
@@ -469,32 +525,32 @@ const ModernConfigForm: React.FC = () => {
       setConfig({ ...config, platforms: newPlatforms });
       notifyDirtyState(true);
     }
-  };
+  }, [config, notifyDirtyState]);
 
-  const updateAiFieldValue = (fieldKey: string, value: string) => {
+  const updateAiFieldValue = React.useCallback((fieldKey: string, value: string) => {
     updateConfigField('ai', fieldKey, value, 'provider');
-  };
+  }, [updateConfigField]);
 
-  const updateReportFieldValue = (fieldKey: string, value: string) => {
+  const updateReportFieldValue = React.useCallback((fieldKey: string, value: string) => {
     updateConfigField('report', fieldKey, value);
-  };
+  }, [updateConfigField]);
 
-  const updatePersonaFieldValue = (fieldKey: string, value: string) => {
+  const updatePersonaFieldValue = React.useCallback((fieldKey: string, value: string) => {
     updateConfigField('persona', fieldKey, value, 'persona_image_provider');
-  };
+  }, [updateConfigField]);
 
-  const updateUiFieldValue = (fieldKey: string, value: string) => {
+  const updateUiFieldValue = React.useCallback((fieldKey: string, value: string) => {
     updateConfigField('ui', fieldKey, value);
-  };
+  }, [updateConfigField]);
 
-  const togglePlatform = (platformIndex: number) => {
+  const togglePlatform = React.useCallback((platformIndex: number) => {
     if (!config) return;
 
     const newPlatforms = [...config.platforms];
     newPlatforms[platformIndex].enabled = !newPlatforms[platformIndex].enabled;
     setConfig({ ...config, platforms: newPlatforms });
     notifyDirtyState(true);
-  };
+  }, [config]);
 
   if (loading) {
     return (
@@ -601,24 +657,14 @@ const ModernConfigForm: React.FC = () => {
                   {favorites.map(fav => {
                     const item = quickAccessItems.find(i => i.id === fav);
                     return item ? (
-                      <div
+                      <QuickAccessCard
                         key={item.id}
-                        onClick={() => handleSectionChange(item.section)}
-                        className={`quick-access-card ${activeSection === item.section ? 'active' : ''}`}
-                      >
-                        <span className="card-icon">{item.icon}</span>
-                        <span className="card-label">{item.label}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleFavorite(item.id);
-                          }}
-                          className="favorite-btn active"
-                          aria-label="Remove from favorites"
-                        >
-                          <FaStar />
-                        </button>
-                      </div>
+                        item={item}
+                        isActive={activeSection === item.section}
+                        isFavorite={true}
+                        onCardClick={handleSectionChange}
+                        onToggleFavorite={toggleFavorite}
+                      />
                     ) : null;
                   })}
                 </div>
@@ -632,24 +678,14 @@ const ModernConfigForm: React.FC = () => {
               </div>
               <div className="quick-access-grid">
                 {quickAccessItems.map(item => (
-                  <div
+                  <QuickAccessCard
                     key={item.id}
-                    onClick={() => handleSectionChange(item.section)}
-                    className={`quick-access-card ${activeSection === item.section ? 'active' : ''}`}
-                  >
-                    <span className="card-icon">{item.icon}</span>
-                    <span className="card-label">{item.label}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavorite(item.id);
-                      }}
-                      className={`favorite-btn ${favorites.includes(item.id) ? 'active' : ''}`}
-                      aria-label={favorites.includes(item.id) ? 'Remove from favorites' : 'Add to favorites'}
-                    >
-                      <FaStar />
-                    </button>
-                  </div>
+                    item={item}
+                    isActive={activeSection === item.section}
+                    isFavorite={favorites.includes(item.id)}
+                    onCardClick={handleSectionChange}
+                    onToggleFavorite={toggleFavorite}
+                  />
                 ))}
               </div>
             </div>
