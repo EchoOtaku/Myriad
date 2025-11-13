@@ -1,0 +1,154 @@
+/* ========================================
+   全局页面切换动画样式
+   统一的进入和退出动画
+   ======================================== */
+
+/* ========================================
+   防止滚动条导致的布局偏移 - 自定义滚动条方案
+   ======================================== */
+
+/*
+ * 完全隐藏浏览器原生滚动条，使用自定义UI滚动条
+ * 这样可以从根本上避免布局偏移问题
+ */
+
+/* 隐藏所有原生滚动条 - 全局应用 */
+html,
+body,
+* {
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE/Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+    display: none !important; /* Chrome/Safari/Opera */
+    width: 0 !important;
+    height: 0 !important;
+}
+
+html {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+body {
+    overflow-x: hidden;
+}
+
+/* CSS 变量 */
+:root {
+    --scrollbar-width: 6px;
+    --scrollbar-track-color: rgba(0, 0, 0, 0.1);
+    --scrollbar-thumb-color: rgba(0, 0, 0, 0.3);
+    --scrollbar-thumb-hover-color: rgba(0, 0, 0, 0.5);
+}
+
+html.dark {
+    --scrollbar-track-color: rgba(255, 255, 255, 0.1);
+    --scrollbar-thumb-color: rgba(255, 255, 255, 0.3);
+    --scrollbar-thumb-hover-color: rgba(255, 255, 255, 0.5);
+}
+
+/* ========================================
+   基础页面动画类
+   ======================================== */
+
+/* 页面内容淡入 - 用于子元素 */
+@keyframes page-content-enter {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 页面内容淡出 - 用于子元素 */
+@keyframes page-content-exit {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-15px);
+    }
+}
+
+/* ========================================
+   页面内容动画辅助类
+   ======================================== */
+
+/* 页面内容进入动画 */
+.page-content-enter {
+    animation: page-content-enter 0.48s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; /* 0.6s → 0.48s */
+}
+
+/* 页面内容退出动画 */
+.page-content-exit {
+    animation: page-content-exit 0.24s cubic-bezier(0.4, 0, 1, 1) forwards; /* 0.3s → 0.24s */
+}
+
+/* 错峰动画 - 为多个元素添加延迟（加快20%） */
+.page-content-enter[data-delay="1"] {
+    animation-delay: 80ms; /* 100ms → 80ms */
+}
+
+.page-content-enter[data-delay="2"] {
+    animation-delay: 160ms; /* 200ms → 160ms */
+}
+
+.page-content-enter[data-delay="3"] {
+    animation-delay: 240ms; /* 300ms → 240ms */
+}
+
+.page-content-enter[data-delay="4"] {
+    animation-delay: 320ms; /* 400ms → 320ms */
+}
+
+/* ========================================
+   滚动优化
+   ======================================== */
+
+/* 页面切换时禁用滚动 */
+.page-transitioning {
+    overflow: hidden;
+    height: 100vh;
+}
+
+/* ========================================
+   减少动画偏好支持
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .page-content-enter,
+    .page-content-exit {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+    }
+
+    /* 简化 framer-motion 动画 */
+    * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ========================================
+   移动端优化
+   ======================================== */
+
+@media (max-width: 640px) {
+    /* 移动端缩短动画时长 */
+    .page-content-enter {
+        animation-duration: 0.32s; /* 0.4s → 0.32s */
+    }
+
+    .page-content-exit {
+        animation-duration: 0.16s; /* 0.2s → 0.16s */
+    }
+}

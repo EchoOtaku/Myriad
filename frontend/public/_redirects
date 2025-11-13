@@ -1,0 +1,15 @@
+# SPA 路由重定向规则
+# 适用于 Netlify, Vercel, Cloudflare Pages 等平台
+# 所有非文件请求都重定向到 index.html，让客户端路由处理
+
+# API 请求代理到后端（如果需要）
+/api/*  http://localhost:3000/api/:splat  200
+/health http://localhost:3000/health  200
+
+# 静态资源直接访问
+/assets/*  /assets/:splat  200
+/favicon.svg  /favicon.svg  200
+/sw.js  /sw.js  200
+
+# 所有其他路由都回退到 index.html
+/*    /index.html   200

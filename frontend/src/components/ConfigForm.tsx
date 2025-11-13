@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
+import Toast from './Toast';
 import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
 import { useDebounce } from '../hooks/useDebounce';
-import './ModernConfigForm.css';
+import './ConfigForm.css';
 
 // 注意：懒加载配置组件已创建但暂未使用，以保持稳定性
 // 可在后续迭代中逐步替换现有实现
@@ -120,6 +122,7 @@ const QuickAccessCard = React.memo<QuickAccessCardProps>(({
 QuickAccessCard.displayName = 'QuickAccessCard';
 
 const ModernConfigForm: React.FC = () => {
+  const navigate = useNavigate();
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
@@ -139,6 +142,7 @@ const ModernConfigForm: React.FC = () => {
   // 快速访问项（使用 useMemo 避免每次渲染重新创建数组）
   const quickAccessItems: QuickAccessItem[] = useMemo(() => [
     { id: 'platforms', label: '数据平台', icon: '🌐', section: 'platforms' },
+    { id: 'data', label: '数据管理', icon: '💾', section: 'data' },
     { id: 'ai', label: 'AI配置', icon: '🤖', section: 'ai' },
     { id: 'report', label: '报告生成', icon: '📊', section: 'report' },
     { id: 'persona', label: '虚拟人设', icon: '🎭', section: 'persona' },
@@ -248,9 +252,14 @@ const ModernConfigForm: React.FC = () => {
 
   // 处理节切换
   const handleSectionChange = React.useCallback((section: string) => {
+    // 如果是数据管理，直接跳转到专门页面
+    if (section === 'data') {
+      navigate('/data-management');
+      return;
+    }
     setActiveSection(section);
     setSearchQuery('');
-  }, []);
+  }, [navigate]);
 
   const handleSave = React.useCallback(async () => {
     if (!config) {
@@ -573,11 +582,7 @@ const ModernConfigForm: React.FC = () => {
   return (
     <div className="modern-config-container">
       {/* 消息提示 */}
-      {message && (
-        <div className={`modern-toast ${message.includes('✓') ? 'success' : 'error'}`}>
-          {message}
-        </div>
-      )}
+      {message && <Toast message={message} />}
 
       {/* 配置导航卡片 */}
       <div className="config-nav-card">
@@ -588,6 +593,28 @@ const ModernConfigForm: React.FC = () => {
               <h3 className="nav-title">配置项目</h3>
               <p className="nav-subtitle">选择要配置的项目</p>
             </div>
+          </div>
+          <div className="nav-header-actions">
+            <button
+              onClick={handleReset}
+              className="nav-action-button reset-button"
+              aria-label="重置配置"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>重置配置</span>
+            </button>
+            <button
+              onClick={handleSave}
+              className="nav-action-button save-button"
+              aria-label="保存配置"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>保存配置</span>
+            </button>
           </div>
         </div>
         
@@ -925,13 +952,6 @@ const ModernConfigForm: React.FC = () => {
                     )}
                   </div>
                 ))}
-
-                <div className="info-card">
-                  <p className="info-title">报告话题风格说明</p>
-                  <p className="info-text">
-                    每次生成报告时，AI会根据所选风格和你的实际数据，动态创建6个独特的分析维度。
-                  </p>
-                </div>
               </div>
             </div>
           )}
@@ -1303,12 +1323,6 @@ const ModernConfigForm: React.FC = () => {
                     </div>
                   </div>
                 )}
-
-                <div className="info-card">
-                  <p className="info-text">
-                    🎮 宠物会在报告信息卡上随机行走，推荐使用带透明背景的像素风或可爱角色图片。点击宠物可触发特殊动画！
-                  </p>
-                </div>
               </div>
             </div>
           )}

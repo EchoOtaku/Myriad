@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
-import ReportCardsSkeleton from './ReportCardsSkeleton';
-import LoadingToast from './LoadingToast';
+import Loader from './Loader';
 import './ReportCards.css';
 
 interface UserInfo {
@@ -76,8 +75,11 @@ export default function ReportCards() {
     const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
     const [isAdmin, setIsAdmin] = useState(false); // 是否为管理员
     const [isCardTransitioning, setIsCardTransitioning] = useState(false); // 卡片切换动画状态
-    const [isModalClosing, setIsModalClosing] = useState(false); // 弹窗关闭动画状态
+    const [isCardModalClosing, setIsCardModalClosing] = useState(false); // 卡片弹窗关闭动画状态
+    const [isPersonaModalClosing, setIsPersonaModalClosing] = useState(false); // 虚拟人物弹窗关闭动画状态
     const [contentReady, setContentReady] = useState(false); // 内容是否准备好显示
+    const [cardAnimationPhase, setCardAnimationPhase] = useState<'enter' | 'exit' | 'idle'>('idle'); // 卡片动画阶段
+    const [pageExiting, setPageExiting] = useState(false); // 页面是否正在退出
     const [showPersonaModal, setShowPersonaModal] = useState(false); // 虚拟人物弹窗状态
     const [personaData, setPersonaData] = useState<VirtualPersona | null>(null); // 当前显示的虚拟人物数据
     const [personaList, setPersonaList] = useState<VirtualPersona[]>([]); // 虚拟人物列表（最多2个）
@@ -703,6 +705,11 @@ export default function ReportCards() {
             setError('请先登录后再生成报告');
             // 可选：显示一个提示模态框或跳转到登录
             alert('请先登录后再生成报告');
+            // 移除loading类
+            const generateBtn = document.getElementById('generate-report-btn');
+            if (generateBtn) {
+                generateBtn.classList.remove('loading');
+            }
             return;
         }
 
@@ -716,7 +723,7 @@ export default function ReportCards() {
 
             // 2. 生成报告（强制刷新）
             await generateReport(data, forceRefresh);
-            
+
             // 完成
             await new Promise(resolve => setTimeout(resolve, 300)); // 短暂延迟显示100%
         } catch (err) {
@@ -726,8 +733,22 @@ export default function ReportCards() {
         } finally {
             setLoading(false);
             setProgress('');
+
+            // 移除loading类，恢复原状
+            const generateBtn = document.getElementById('generate-report-btn');
+            if (generateBtn) {
+                generateBtn.classList.remove('loading');
+            }
         }
     }, [loading, getRandomCards]); // 添加loading依赖
+
+    // 监听页面卸载，触发退出动画
+    useEffect(() => {
+        return () => {
+            // 组件即将卸载时，标记页面正在退出
+            setPageExiting(true);
+        };
+    }, []);
 
     // 加载已有报告（优先从缓存读取，不自动生成）
     useEffect(() => {
@@ -809,19 +830,32 @@ export default function ReportCards() {
         }
     }, [progressPercent]);
 
-    // 弹窗打开时锁定背景滚动
+    // 发送进度事件给AppLayout显示
     useEffect(() => {
-        if (selectedCard && !isModalClosing) {
+        if (loading) {
+            window.dispatchEvent(new CustomEvent('report-progress', {
+                detail: { progress, progressPercent }
+            }));
+        } else {
+            window.dispatchEvent(new CustomEvent('report-progress-end'));
+        }
+    }, [loading, progress, progressPercent]);
+
+    // 统一的弹窗滚动锁定 - 支持多个弹窗
+    useEffect(() => {
+        const hasOpenModal = (selectedCard && !isCardModalClosing) || (showPersonaModal && !isPersonaModalClosing);
+
+        if (hasOpenModal) {
             // 使用overflow:hidden锁定滚动，保持位置不变
             const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
             document.body.style.overflow = 'hidden';
             document.body.style.paddingRight = `${scrollbarWidth}px`;
-        } else if (!selectedCard) {
-            // 弹窗完全关闭后恢复
+        } else {
+            // 所有弹窗关闭后恢复
             document.body.style.overflow = '';
             document.body.style.paddingRight = '';
         }
-    }, [selectedCard, isModalClosing]);
+    }, [selectedCard, showPersonaModal, isCardModalClosing, isPersonaModalClosing]);
 
     // 萌宠走动动画 - 使用上传的像素画
     useEffect(() => {
@@ -946,44 +980,30 @@ export default function ReportCards() {
         };
     }, [report, petEnabled, petImageUrl]);
 
-    // 设置平台链接的 CSS 变量
-    useEffect(() => {
-        if (!platformLinks.length) return;
-        
-        // 为每个平台链接元素设置 CSS 变量
-        const links = document.querySelectorAll('.platform-link');
-        links.forEach((link) => {
-            const brandColor = link.getAttribute('data-brand-color');
-            if (brandColor) {
-                (link as HTMLElement).style.setProperty('--brand-color', brandColor);
-            }
-        });
-    }, [platformLinks]);
+    // 品牌色通过内联样式直接设置，无需useEffect
 
     // 为每张卡片生成插画
     // 移除自动生成插图的 useEffect
     // 插图现在需要在配置页面手动生成
 
-    // 初始加载状态 - 显示骨架屏
+    // 初始加载状态 - 显示简约加载动画
     if (loading && !report) {
         return (
-            <>
-                <ReportCardsSkeleton />
-                <LoadingToast message="正在加载报告..." show={true} />
-            </>
+            <div className="flex items-center justify-center min-h-[600px]">
+                <Loader size="large" />
+            </div>
         );
     }
 
-    // 无报告且加载完成 - 显示骨架屏+提示
+    // 无报告且加载完成 - 显示提示
     if (!report) {
         return (
-            <>
-                <ReportCardsSkeleton />
-                <LoadingToast 
-                    message={error || "点击导航岛的灯泡图标开始生成报告"} 
-                    show={true} 
-                />
-            </>
+            <div className="flex flex-col items-center justify-center min-h-[600px] gap-6">
+                <Loader size="large" />
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-md">
+                    {error || "点击导航岛的灯泡图标开始生成报告"}
+                </p>
+            </div>
         );
     }
 
@@ -996,32 +1016,16 @@ export default function ReportCards() {
 
     return (
         <>
-        <div className={`max-w-6xl mx-auto px-4 py-8 transition-all duration-700 ease-out ${
-            contentReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`}>
-            {/* 生成报告时的进度条 */}
-            {loading && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-gray-900/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 shadow-lg dark:shadow-black/30 z-50">
-                    <div className="max-w-4xl mx-auto px-6 py-6">
-                        <div className="mb-3 text-center">
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{progress}</p>
-                        </div>
-                        
-                        {/* 进度条 - 使用动态颜色 */}
-                        <div className="relative w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                            <div 
-                                className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
-                                data-progress={progressPercent}
-                            ></div>
-                        </div>
-                        
-                        <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">{progressPercent}% 完成</p>
-                    </div>
-                </div>
-            )}
+        <div className="max-w-6xl mx-auto px-4 py-8">
 
             {/* 报告信息条 - 移动端堆叠布局 */}
-            <div className="mb-6 glass rounded-3xl p-4 md:p-5 border shadow-lg report-info-card relative">
+            <div className={`mb-6 glass rounded-3xl p-4 md:p-5 border shadow-lg report-info-card relative ${
+                pageExiting
+                    ? 'info-card-exit-animated'
+                    : contentReady
+                        ? 'info-card-animated'
+                        : 'opacity-0'
+            }`}>
                 {/* 动态萌宠 - 使用精灵图动画 - 桌面端显示 */}
                 {petEnabled && (
                     <div 
@@ -1115,23 +1119,38 @@ export default function ReportCards() {
                             <div 
                                 className="flex flex-wrap gap-2"
                             >
-                                {platformLinks.map((link) => (
-                                    <a
-                                        key={link.platform}
-                                        href={link.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="platform-link inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold no-underline transition-all duration-250 backdrop-blur-sm cursor-pointer whitespace-nowrap"
-                                        data-brand-color={link.brandColor}
-                                        title={`访问 ${link.displayName}`}
-                                    >
-                                        <PlatformIcon 
-                                            platform={link.platform} 
-                                            className="w-4 h-4 transition-transform duration-250 group-hover:scale-110"
-                                        />
-                                        <span>{link.displayName}</span>
-                                    </a>
-                                ))}
+                                {platformLinks.map((link) => {
+                                    // 深色平台需要在深色模式下使用反色
+                                    const isDarkPlatform = ['#181717', '#1b2838'].includes(link.brandColor);
+                                    const lightModeColor = link.brandColor;
+                                    // GitHub反色: #e6e6e6, Steam反色: #5a8fc7
+                                    const darkModeColor = link.brandColor === '#181717' ? '#e6e6e6' : 
+                                                         link.brandColor === '#1b2838' ? '#5a8fc7' : 
+                                                         link.brandColor;
+                                    
+                                    return (
+                                        <a
+                                            key={link.platform}
+                                            href={link.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="platform-link inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold no-underline transition-all duration-250 backdrop-blur-sm cursor-pointer whitespace-nowrap"
+                                            style={{
+                                                '--brand-color-light': lightModeColor,
+                                                '--brand-color-dark': darkModeColor,
+                                            } as React.CSSProperties}
+                                            data-brand-color={link.brandColor}
+                                            data-dark-platform={isDarkPlatform ? 'true' : 'false'}
+                                            title={`访问 ${link.displayName}`}
+                                        >
+                                            <PlatformIcon 
+                                                platform={link.platform} 
+                                                className="w-4 h-4 transition-transform duration-250"
+                                            />
+                                            <span>{link.displayName}</span>
+                                        </a>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -1165,15 +1184,20 @@ export default function ReportCards() {
                                     onClick={() => {
                                         if (isCardTransitioning) return; // 防止动画期间重复点击
                                         setIsCardTransitioning(true);
-                                        // 延迟后切换卡片
+                                        setCardAnimationPhase('exit'); // 开始退出动画
+
+                                        // 等待退出动画完成（6张卡片 × 32ms延迟 + 320ms动画时长 = 512ms）
                                         setTimeout(() => {
                                             const newCards = getRandomCards(report, 6);
                                             setDisplayCards(newCards);
-                                            // 动画完成后重置状态
+                                            setCardAnimationPhase('enter'); // 切换到进入动画
+
+                                            // 等待进入动画完成后重置状态（6张卡片 × 64ms + 160ms + 480ms = 800ms）
                                             setTimeout(() => {
                                                 setIsCardTransitioning(false);
-                                            }, 100);
-                                        }, 400);
+                                                setCardAnimationPhase('idle');
+                                            }, 800);
+                                        }, 512);
                                     }}
                                     className="shuffle-btn shuffle-btn-style group relative h-10 md:h-12 px-3 md:px-5 rounded-2xl text-xs md:text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-95 shadow-md hover:shadow-xl flex items-center gap-1.5 md:gap-2"
                                     aria-label="换一批"
@@ -1191,26 +1215,27 @@ export default function ReportCards() {
                         {personaEnabled && (
                             <button
                                 onClick={openPersonaModal}
-                                className="persona-avatar-btn persona-avatar-btn-style group relative flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-full shadow-md hover:shadow-xl transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center overflow-visible"
+                                className="persona-avatar-btn persona-avatar-btn-style group relative flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-full shadow-md hover:shadow-xl transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center"
                                 aria-label="Virtual Persona"
                             >
-                                {/* 复杂的虚拟人物图标 */}
-                                <svg className="w-6 h-6 icon-primary-color" fill="currentColor" viewBox="0 0 24 24">
-                                    {/* 头部轮廓 */}
+                                {/* 移动端：简化图标 */}
+                                <svg className="w-5 h-5 md:w-6 md:h-6 icon-primary-color md:hidden" fill="currentColor" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="8" r="4"/>
+                                    <path d="M12 13c-4 0-7 2.5-7 5v3h14v-3c0-2.5-3-5-7-5z"/>
+                                </svg>
+                                
+                                {/* 桌面端：完整图标 */}
+                                <svg className="hidden md:block w-6 h-6 icon-primary-color" fill="currentColor" viewBox="0 0 24 24">
                                     <circle cx="12" cy="8" r="3.5" opacity="0.9"/>
-                                    {/* 身体 */}
                                     <path d="M12 12c-3.5 0-6 2-6 4.5V20h12v-3.5c0-2.5-2.5-4.5-6-4.5z" opacity="0.9"/>
-                                    {/* 装饰星星 */}
                                     <path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6z" opacity="0.7"/>
                                     <path d="M19.5 14.6L17 16l1.4-2.5L17 11l2.5 1.4L22 11l-1.4 2.5L22 16l-2.5-1.4z" opacity="0.7"/>
-                                    {/* AI光环 */}
                                     <circle cx="12" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="0.8" opacity="0.5" strokeDasharray="2,2"/>
                                 </svg>
                                 
-                                {/* Hover提示文字 - 移动端不显示 */}
+                                {/* Hover提示文字 - 仅桌面端 */}
                                 <span className="hidden md:block absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 shadow-lg z-50">
                                     虚拟人设
-                                    <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900 dark:border-r-gray-700"></span>
                                 </span>
                             </button>
                         )}
@@ -1220,11 +1245,31 @@ export default function ReportCards() {
             </div>
 
             {/* 卡片网格 - 移动端优化 */}
-            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 transition-all duration-500 ease-out ${isCardTransitioning ? 'opacity-0 scale-[0.98]' : 'opacity-100 scale-100'}`}>
-                {displayCards.slice(0, 6).map((card, index) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                {displayCards.slice(0, 6).map((card, index) => {
+                    // 确定卡片动画类
+                    let animationClass = 'opacity-0';
+                    if (pageExiting) {
+                        // 页面退出时的动画
+                        animationClass = 'card-exit-animated';
+                    } else if (cardAnimationPhase === 'exit') {
+                        // 换一批时的退出动画
+                        animationClass = 'card-exit-animated';
+                    } else if (cardAnimationPhase === 'enter') {
+                        // 换一批时的进入动画
+                        animationClass = 'card-animated';
+                    } else if (contentReady) {
+                        // 首次加载的进入动画
+                        animationClass = 'card-animated';
+                    }
+
+                    return (
                     <article
-                        key={card.generated_at ? `${card.generated_at}-${card.topic_id}` : `card-${index}-${card.topic_id}`}
-                        className="glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card cursor-pointer hover:scale-[1.02] active:scale-[0.98] group"
+                        key={`card-${index}-${card.topic_id}`}
+                        className={`glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card cursor-pointer hover:scale-[1.02] active:scale-[0.98] group ${animationClass}`}
+                        style={{
+                            '--card-index': index
+                        } as React.CSSProperties}
                         onClick={() => setSelectedCard(card)}
                     >
                         <div className="flex items-center justify-between mb-4">
@@ -1273,23 +1318,24 @@ export default function ReportCards() {
                                 </div>
                             )}
                     </article>
-                ))}
+                    );
+                })}
             </div>
 
             {/* 详情弹窗 - 使用Portal渲染到body */}
             {selectedCard && typeof document !== 'undefined' && createPortal(
-                <div 
-                    className={`modal-overlay-portal ${isModalClosing ? 'modal-closing' : 'modal-opening'}`}
+                <div
+                    className={`modal-backdrop fixed inset-0 bg-black/30 dark:bg-black/50 z-50 flex items-center justify-center p-6 ${isCardModalClosing ? 'closing' : ''}`}
                     onClick={() => {
-                        setIsModalClosing(true);
+                        setIsCardModalClosing(true);
                         setTimeout(() => {
                             setSelectedCard(null);
-                            setIsModalClosing(false);
-                        }, 250);
+                            setIsCardModalClosing(false);
+                        }, 300);
                     }}
                 >
-                    <div 
-                        className={`modal-content ${isModalClosing ? 'animate-scale-out' : 'animate-scale-in'}`}
+                    <div
+                        className={`modal-content glass rounded-3xl shadow-2xl border max-w-4xl w-full ${isCardModalClosing ? 'closing' : ''}`}
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* 滚动内容区 */}
@@ -1326,10 +1372,10 @@ export default function ReportCards() {
                                     </div>
                                     <button
                                         onClick={() => {
-                                            setIsModalClosing(true);
+                                            setIsCardModalClosing(true);
                                             setTimeout(() => {
                                                 setSelectedCard(null);
-                                                setIsModalClosing(false);
+                                                setIsCardModalClosing(false);
                                             }, 250);
                                         }}
                                         className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all duration-200 p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-90 hover:rotate-90"
@@ -1407,17 +1453,17 @@ export default function ReportCards() {
             {/* 虚拟人物弹窗 */}
             {showPersonaModal && createPortal(
                 <div
-                    className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-6 ${isModalClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+                    className={`modal-backdrop fixed inset-0 bg-black/30 dark:bg-black/50 z-50 flex items-center justify-center p-6 ${isPersonaModalClosing ? 'closing' : ''}`}
                     onClick={() => {
-                        setIsModalClosing(true);
+                        setIsPersonaModalClosing(true);
                         setTimeout(() => {
                             setShowPersonaModal(false);
-                            setIsModalClosing(false);
-                        }, 200);
+                            setIsPersonaModalClosing(false);
+                        }, 300);
                     }}
                 >
                     <div
-                        className={`bg-white/95 backdrop-blur-2xl rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl border border-white/60 ${isModalClosing ? 'animate-scale-out' : 'animate-scale-in'}`}
+                        className={`modal-content glass rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl border ${isPersonaModalClosing ? 'closing' : ''}`}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="overflow-y-auto max-h-[85vh] custom-scrollbar">
@@ -1508,10 +1554,10 @@ export default function ReportCards() {
                                             </div>
                                             <button
                                                 onClick={() => {
-                                                    setIsModalClosing(true);
+                                                    setIsPersonaModalClosing(true);
                                                     setTimeout(() => {
                                                         setShowPersonaModal(false);
-                                                        setIsModalClosing(false);
+                                                        setIsPersonaModalClosing(false);
                                                     }, 200);
                                                 }}
                                                 className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 ml-4"

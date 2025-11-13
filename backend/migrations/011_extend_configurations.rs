@@ -342,6 +342,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(DeriveIden)]
+#[allow(dead_code)]
 enum Configurations {
     Table,
     Key,

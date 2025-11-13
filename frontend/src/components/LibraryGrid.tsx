@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
-import LibraryGridSkeleton from './LibraryGridSkeleton';
-import LoadingToast from './LoadingToast';
+import Loader from './Loader';
+import { QuickTransition } from './SkeletonTransition';
+import { usePagedLoad } from '../hooks/useVirtualScroll';
+import { useNotification } from '../contexts/NotificationContext';
 
 // 添加样式到页面
 if (typeof document !== 'undefined' && !document.getElementById('library-grid-styles')) {
@@ -81,6 +83,22 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
                         0 0 0 1px color-mix(in srgb, var(--color-primary) 70%, transparent);
         }
 
+        /* 逐行显示动画 */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .library-card-container {
+            animation: fadeInUp 0.5s ease-out backwards;
+        }
+
         /* 移动端触摸反馈 */
         @media (max-width: 640px) {
             .tab-button:not(.active):active {
@@ -97,17 +115,6 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             }
         }
         
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
         .animate-fade-in {
             animation: fadeIn 0.5s ease-out forwards;
         }
@@ -118,6 +125,80 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             }
             to {
                 opacity: 1;
+            }
+        }
+        
+        /* 卡片容器样式 */
+        .library-card-container {
+            transition: left 0.4s ease-out, top 0.4s ease-out, width 0.4s ease-out, height 0.4s ease-out;
+        }
+        
+        /* 平台图标背景 */
+        .platform-icon-bg {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 9999px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+            background-color: color-mix(in srgb, var(--platform-color, #6b7280) 8%, transparent);
+        }
+        
+        .platform-icon-bg svg,
+        .platform-icon-bg img {
+            color: var(--platform-color, #6b7280);
+        }
+        
+        /* 加载按钮样式 */
+        .load-more-btn {
+            padding: 0.625rem 1.5rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+            font-weight: 500;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        
+        .load-more-btn:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 加载spinner */
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+            border-radius: 9999px;
+            height: 1.25rem;
+            width: 1.25rem;
+            border-width: 2px;
+            border-style: solid;
+            border-color: transparent;
+        }
+        
+        .loading-spinner.primary-spinner {
+            border-top-color: var(--color-primary, #3b82f6);
+            border-right-color: var(--color-primary, #3b82f6);
+        }
+        
+        /* 加载按钮主题色 */
+        .load-more-btn.primary-load-btn {
+            background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+            color: var(--color-primary, #3b82f6);
+            border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
+        }
+        
+        .load-more-btn.primary-load-btn:hover {
+            background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
+        }
+        
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
             }
         }
     `;
@@ -147,47 +228,68 @@ interface CardLayout {
 }
 
 export default function LibraryGrid() {
-    const [items, setItems] = useState<LibraryItem[]>([]);
+    const [allItems, setAllItems] = useState<LibraryItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [contentReady, setContentReady] = useState(false); // 内容是否准备好显示
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
     const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
     const [isTransitioning, setIsTransitioning] = useState(false); // 子分组切换动画状态
     const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map());
     const containerRef = useRef<HTMLDivElement>(null);
+    const { showInfo } = useNotification();
+    
+    // 筛选后的所有项目
+    const filteredAllItems = filter === 'all' 
+        ? allItems 
+        : allItems.filter(item => item.item_type === filter);
+    
+    // 使用分页加载 Hook - 初始加载40个，每次加载20个
+    const { items, loadMore, hasMore, loading: loadingMore } = usePagedLoad(
+        filteredAllItems,
+        { pageSize: 20, initialPages: 2, threshold: 800 }
+    );
 
     useEffect(() => {
         fetchLibraryData();
     }, []);
 
-    // 当有数据时，确保内容可以显示
-    useEffect(() => {
-        if (items.length > 0 && !loading) {
-            setContentReady(true);
-        }
-    }, [items, loading]);
-
     // 合并：当 filter 或 items 变化时，重新计算布局
     useEffect(() => {
-        if (filteredItems.length > 0) {
-            calculateLayouts();
-        }
-
-        const handleResize = () => {
-            if (filteredItems.length > 0) {
+        if (items.length > 0) {
+            // 筛选切换时立即计算，避免位置跳变
+            if (isTransitioning) {
                 calculateLayouts();
+            } else {
+                // 其他情况添加短暂防抖
+                const timeoutId = setTimeout(() => {
+                    calculateLayouts();
+                }, 30);
+                return () => clearTimeout(timeoutId);
             }
+        }
+    }, [filter, items, isTransitioning]);
+    
+    useEffect(() => {
+        let resizeTimeout: NodeJS.Timeout;
+        const handleResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (items.length > 0) {
+                    calculateLayouts();
+                }
+            }, 150);
         };
         
         window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, [filter, items]);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            clearTimeout(resizeTimeout);
+        };
+    }, [items]);
 
     const fetchLibraryData = async () => {
         try {
             setLoading(true);
-            setContentReady(false);
             const response = await fetch(`${API_URL}/api/library`);
             
             if (!response.ok) {
@@ -199,10 +301,8 @@ export default function LibraryGrid() {
             if (data.success) {
                 // 随机打乱数据
                 const shuffled = [...data.items].sort(() => Math.random() - 0.5);
-                setItems(shuffled);
+                setAllItems(shuffled);
                 setLoading(false);
-                // 短暂延迟后显示内容，确保淡入效果
-                setTimeout(() => setContentReady(true), 100);
             } else {
                 throw new Error('No library data available');
             }
@@ -213,9 +313,21 @@ export default function LibraryGrid() {
         }
     };
 
-    const filteredItems = filter === 'all' 
-        ? items 
-        : items.filter(item => item.item_type === filter);
+    // 显示错误通知
+    useEffect(() => {
+        if (error) {
+            showInfo('资料库为空，请先在配置页面获取平台数据');
+        }
+    }, [error, showInfo]);
+
+    // 显示空状态通知
+    useEffect(() => {
+        if (!loading && filteredAllItems.length === 0 && !error) {
+            showInfo('此分类暂无内容，试试切换其他分类');
+        }
+    }, [loading, filteredAllItems.length, error, showInfo]);
+
+    // filteredItems 现在由 usePagedLoad 提供的 items 代替
 
     // 获取卡片尺寸配置 - 统一高度
     const getCardSize = (type: string, containerWidth: number) => {
@@ -266,7 +378,7 @@ export default function LibraryGrid() {
         }
     };
 
-    // 智能瀑布流布局算法 - 考虑卡片跨度
+    // 智能瀑布流布局算法 - 考虑卡片跨度 + 逐行动画
     const calculateLayouts = () => {
         if (!containerRef.current) return;
 
@@ -286,7 +398,7 @@ export default function LibraryGrid() {
         const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
 
         // 检查是否只有大卡片（游戏/视频）
-        const hasOnlyLargeCards = filteredItems.every(item => 
+        const hasOnlyLargeCards = items.every(item => 
             item.item_type === 'game' || item.item_type === 'video'
         );
         
@@ -297,7 +409,11 @@ export default function LibraryGrid() {
             centerOffset = (baseWidth + gap) / 2;
         }
 
-        filteredItems.forEach((item) => {
+        // 计算每行的起始高度，用于逐行动画
+        const rowTops: number[] = [];
+        let currentRowTop = gap;
+
+        items.forEach((item) => {
             const size = getCardSize(item.item_type, containerWidth);
             const span = size.span || 1;
             
@@ -316,6 +432,12 @@ export default function LibraryGrid() {
             
             const left = gap + bestColumn * (baseWidth + gap) + centerOffset;
             const top = minHeight;
+            
+            // 检测是否开始新行（top值大幅增加）
+            if (rowTops.length === 0 || Math.abs(top - currentRowTop) > 50) {
+                currentRowTop = top;
+                rowTops.push(top);
+            }
             
             newLayouts.set(item.id, {
                 left,
@@ -393,21 +515,17 @@ export default function LibraryGrid() {
     const handleFilterChange = (newFilter: 'all' | 'game' | 'video' | 'music') => {
         if (newFilter === filter) return;
         
+        setPrevFilter(filter);
+        
         // 如果是子分组之间的切换，添加过渡动画
         if (needsTransition(filter, newFilter)) {
             setIsTransitioning(true);
-            // 等待退出动画（缩短到200ms）
             setTimeout(() => {
-                setPrevFilter(filter);
                 setFilter(newFilter);
-                // 等待进入动画
-                setTimeout(() => {
-                    setIsTransitioning(false);
-                }, 50);
+                setTimeout(() => setIsTransitioning(false), 150);
             }, 200);
         } else {
-            // 全部 ↔ 子分组，直接切换不需要动画
-            setPrevFilter(filter);
+            // 全部 ↔ 子分组，直接切换
             setFilter(newFilter);
         }
     };
@@ -418,32 +536,26 @@ export default function LibraryGrid() {
         return Math.max(...heights, 500) + 20;
     }, [layouts]);
 
-    // 显示骨架屏：正在加载
-    if (loading) {
+    // 初次加载时显示简洁的加载指示
+    if (loading && allItems.length === 0) {
         return (
-            <>
-                <LibraryGridSkeleton />
-                <LoadingToast message="正在整理资料库..." show={true} />
-            </>
+            <div className="flex items-center justify-center min-h-[600px]">
+                <Loader size="large" />
+            </div>
         );
     }
 
-    if (error) {
-        return (
-            <>
-                <LibraryGridSkeleton />
-                <LoadingToast 
-                    message="资料库为空，请先在配置页面获取平台数据" 
-                    show={true} 
-                />
-            </>
-        );
-    }
-
+    // 内容过渡动画
     return (
-        <div className={`space-y-8 transition-all duration-700 ease-out ${
-            contentReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`}>
+        <div 
+            className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out"
+        >
+            {error ? (
+                <div className="flex items-center justify-center min-h-[400px]">
+                    {/* 错误提示已移至角落通知 */}
+                </div>
+            ) : (
+        <div className="space-y-8">
             {/* 筛选器 - 紧凑设计 */}
             <div className="flex justify-center mb-4 md:mb-6">
                 <div className="glass rounded-xl p-1.5 inline-flex gap-1.5 w-full sm:w-auto shadow-md border tab-container-border">
@@ -502,41 +614,42 @@ export default function LibraryGrid() {
                 </div>
             </div>
 
-            {/* 瀑布流容器 */}
-            {/* @ts-ignore - Dynamic height calculation requires inline style */}
-            <div 
-                ref={containerRef}
-                className={`relative w-full transition-all duration-300 ease-in-out ${
-                    isTransitioning ? 'opacity-0 scale-[0.975]' : 'opacity-100 scale-100'
-                }`}
-                // eslint-disable-next-line react/forbid-dom-props
-                style={{ 
-                    height: `${containerHeight}px`, 
-                    minHeight: '400px'
-                }}
-            >
-                {filteredItems.map((item, index) => {
-                    const layout = layouts.get(item.id);
-                    if (!layout) return null;
+            {/* 瀑布流容器 - 使用快速过渡 */}
+            <QuickTransition transitioning={isTransitioning}>
+                {/* Dynamic height required for waterfall layout */}
+                <div 
+                    ref={containerRef}
+                    className="relative w-full"
+                    style={{ 
+                        height: `${containerHeight}px`, 
+                        minHeight: '400px',
+                        transition: 'height 0.4s ease-out'
+                    }}
+                >
+                    {items.map((item, index) => {
+                        const layout = layouts.get(item.id);
+                        if (!layout) return null;
 
-                    // 子分组切换时不使用卡片动画，使用容器的统一过渡
-                    const shouldAnimate = !needsTransition(prevFilter, filter);
-
-                    return (
-                        // @ts-ignore - Dynamic positioning requires inline styles
-                        <div
-                            key={item.id}
-                            className="absolute transition-all duration-700 ease-in-out group"
-                            // eslint-disable-next-line react/forbid-dom-props
-                            style={{
-                                left: `${layout.left}px`,
-                                top: `${layout.top}px`,
-                                width: `${layout.width}px`,
-                                height: `${layout.height}px`,
-                                opacity: layout.top === 0 ? 0 : 1,
-                                animation: shouldAnimate ? `fadeInUp 0.5s ease-out ${index * 0.04}s forwards` : 'none'
-                            }}
-                        >
+                        const platformColor = getPlatformColor(item.platform);
+                        
+                        // 计算卡片所在行（基于 top 值分组）
+                        const rowIndex = Math.floor(layout.top / 300); // 每300px算一行
+                        const animationDelay = rowIndex * 0.08; // 每行延迟80ms
+                        
+                        {/* Dynamic positioning required for waterfall layout */}
+                        return (
+                            <div
+                                key={item.id}
+                                className="absolute group library-card-container"
+                                style={{
+                                    left: `${layout.left}px`,
+                                    top: `${layout.top}px`,
+                                    width: `${layout.width}px`,
+                                    height: `${layout.height}px`,
+                                    '--platform-color': platformColor,
+                                    animationDelay: `${animationDelay}s`
+                                } as React.CSSProperties}
+                            >
                             {item.item_type === 'music' ? (
                                 // 音乐卡片：正方形专辑封面
                                 <div className="relative bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
@@ -573,9 +686,8 @@ export default function LibraryGrid() {
                                     
                                     {/* 右上角平台图标（音乐） */}
                                     <div className="absolute top-3 right-3 group/platform">
-                                        {/* @ts-ignore - Dynamic platform color requires inline style */}
-                                        <div className="w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-300" style={{ backgroundColor: getPlatformColor(item.platform) + '15' }}>
-                                            <PlatformIcon platform={item.platform} className="w-5 h-5" style={{ color: getPlatformColor(item.platform) }} />
+                                        <div className="platform-icon-bg">
+                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
                                         </div>
                                         {/* hover显示平台名称 */}
                                         <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
@@ -628,9 +740,8 @@ export default function LibraryGrid() {
                                     
                                     {/* 右上角平台图标（视频） */}
                                     <div className="absolute top-3 right-3 group/platform">
-                                        {/* @ts-ignore - Dynamic platform color requires inline style */}
-                                        <div className="w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-300" style={{ backgroundColor: getPlatformColor(item.platform) + '15' }}>
-                                            <PlatformIcon platform={item.platform} className="w-5 h-5" style={{ color: getPlatformColor(item.platform) }} />
+                                        <div className="platform-icon-bg">
+                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
                                         </div>
                                         {/* hover显示平台名称 */}
                                         <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
@@ -683,9 +794,8 @@ export default function LibraryGrid() {
                                         
                                         {/* 平台图标 */}
                                         <div className="absolute top-3 right-3 group/platform z-10">
-                                            {/* @ts-ignore - Dynamic platform color requires inline style */}
-                                            <div className="w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-300" style={{ backgroundColor: getPlatformColor(item.platform) + '15' }}>
-                                                <PlatformIcon platform={item.platform} className="w-5 h-5" style={{ color: getPlatformColor(item.platform) }} />
+                                            <div className="platform-icon-bg">
+                                                <PlatformIcon platform={item.platform} className="w-5 h-5" />
                                             </div>
                                             {/* hover显示平台名称 */}
                                             <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
@@ -698,14 +808,30 @@ export default function LibraryGrid() {
                         </div>
                     );
                 })}
-            </div>
+                </div>
+            </QuickTransition>
 
-            {/* 空状态提示 - 使用Toast */}
-            {filteredItems.length === 0 && (
-                <LoadingToast 
-                    message="此分类暂无内容，试试切换其他分类" 
-                    show={true} 
-                />
+            {/* 加载更多指示器 */}
+            {hasMore && (
+                <div className="flex justify-center mt-8 mb-4">
+                    {loadingMore ? (
+                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                            <div className="loading-spinner primary-spinner"></div>
+                            <span className="text-sm">加载更多...</span>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={loadMore}
+                            className="load-more-btn primary-load-btn"
+                        >
+                            加载更多 ({filteredAllItems.length - items.length} 项待加载)
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* 空状态提示已移至角落通知 */}
+        </div>
             )}
         </div>
     );

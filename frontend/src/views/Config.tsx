@@ -1,0 +1,74 @@
+/**
+ * 系统配置视图组件
+ */
+
+import { useState, useEffect } from 'react';
+import AnimatedView from '../components/AnimatedView';
+import { useNavigate } from 'react-router-dom';
+import ConfigForm from '../components/ConfigForm';
+import { API_URL } from '../config';
+
+export default function Config() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // 检查管理员权限
+  useEffect(() => {
+    async function checkAdmin() {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        const user = await response.json();
+        if (!user.is_admin) {
+          navigate('/', { replace: true });
+          return;
+        }
+
+        setIsAdmin(true);
+      } catch (error) {
+        navigate('/login', { replace: true });
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    checkAdmin();
+  }, [navigate]);
+
+  if (loading) {
+    return (
+      <AnimatedView className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">加载中...</p>
+        </div>
+      </AnimatedView>
+    );
+  }
+
+  if (!isAdmin) {
+    return null;
+  }
+
+  return (
+    <AnimatedView className="min-h-screen px-4 sm:px-6 py-8 md:py-12 pb-24 md:pb-12">
+      <div className="max-w-6xl mx-auto">
+        <ConfigForm />
+      </div>
+    </AnimatedView>
+  );
+}

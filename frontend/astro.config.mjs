@@ -17,6 +17,8 @@ export default defineConfig({
   build: {
     inlineStylesheets: 'auto',
   },
+  // SPA 模式：所有路由都重定向到 index.html
+  trailingSlash: 'never',
   vite: {
     resolve: {
       alias: {
@@ -33,7 +35,9 @@ export default defineConfig({
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom'],
+            'react-router': ['react-router-dom'],
             'chart-vendor': ['chart.js', 'react-chartjs-2'],
+            'framer-motion': ['framer-motion'],
           },
         },
       },

@@ -1,0 +1,107 @@
+/**
+ * 路由加载指示器 - 左上角光效
+ * 与导航岛对齐
+ */
+
+.route-loader-indicator {
+    position: fixed;
+    top: 1.5rem;
+    left: 1.5rem;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+/* 桌面端：垂直导航岛，指示器在上方 */
+@media (min-width: 768px) {
+    .route-loader-indicator {
+        top: 1.5rem;
+        left: 1.5rem;
+    }
+}
+
+/* 移动端：水平导航岛，指示器在左上角 */
+@media (max-width: 767px) {
+    .route-loader-indicator {
+        top: 1rem;
+        left: 1rem;
+    }
+}
+
+/* 清晰的光点 */
+.route-loader-light {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-primary, #6366f1);
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--color-primary, #6366f1) 40%, transparent),
+                0 0 6px 1px color-mix(in srgb, var(--color-primary, #6366f1) 60%, transparent);
+}
+
+/* 进入状态 - 淡入 + 脉动 */
+.route-loader-light.entering {
+    animation: light-enter 0.3s ease-out forwards,
+               light-pulse 1.2s ease-in-out 0.3s infinite;
+}
+
+/* 退出状态 - 淡出 */
+.route-loader-light.exiting {
+    animation: light-exit 0.4s ease-in forwards;
+}
+
+/* 进入动画 - 从透明到可见 */
+@keyframes light-enter {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+        filter: blur(4px);
+    }
+    100% {
+        opacity: 0.8;
+        transform: scale(1);
+        filter: blur(0);
+    }
+}
+
+/* 脉动动画 */
+@keyframes light-pulse {
+    0%, 100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+/* 退出动画 - 从可见到透明 */
+@keyframes light-exit {
+    0% {
+        opacity: 0.8;
+        transform: scale(1);
+        filter: blur(0);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.5);
+        filter: blur(4px);
+    }
+}
+
+/* 暗黑模式 - 增强亮度 */
+@media (prefers-color-scheme: dark) {
+    .route-loader-light {
+        background: var(--color-primary, #818cf8);
+        box-shadow: 0 0 16px 3px color-mix(in srgb, var(--color-primary, #818cf8) 50%, transparent),
+                    0 0 8px 2px color-mix(in srgb, var(--color-primary, #818cf8) 70%, transparent);
+    }
+}
+
+/* 尊重用户动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+    .route-loader-light {
+        animation: none;
+        opacity: 0.6;
+    }
+}

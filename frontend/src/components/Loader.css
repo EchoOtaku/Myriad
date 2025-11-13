@@ -1,0 +1,45 @@
+/**
+ * 纯光效加载器
+ * 克制理性的设计
+ */
+
+.loader-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 光效核心 - 使用全局主色 */
+.loader-light {
+    position: relative;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+        color-mix(in srgb, var(--color-primary, #6366f1) 15%, transparent) 0%,
+        color-mix(in srgb, var(--color-primary, #8b5cf6) 8%, transparent) 30%,
+        color-mix(in srgb, var(--color-primary, #a855f7) 4%, transparent) 50%,
+        transparent 70%
+    );
+    animation: light-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+               light-breathe 3s ease-in-out 0.5s infinite;
+}
+
+/* 暗黑模式 - 增强光效强度 */
+@media (prefers-color-scheme: dark) {
+    .loader-light {
+        background: radial-gradient(circle,
+            color-mix(in srgb, var(--color-primary, #818cf8) 20%, transparent) 0%,
+            color-mix(in srgb, var(--color-primary, #a78bfa) 12%, transparent) 30%,
+            color-mix(in srgb, var(--color-primary, #c4b5fd) 6%, transparent) 50%,
+            transparent 70%
+        );
+    }
+}
+
+/* 尊重用户动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+    .loader-light {
+        animation: none;
+        opacity: 0.8;
+    }
+}

@@ -1,12 +1,33 @@
 ---
-import PageLoader from '../components/PageLoader.astro';
+/**
+ * SPA 回退路由
+ * 捕获所有未匹配的路由，返回主应用页面
+ * 让 React Router 处理客户端路由
+ */
+import PageLoader from '@components/PageLoader.astro';
+import App from '../App';
 
-interface Props {
-  title: string;
-  description?: string;
+// 导出 getStaticPaths 以支持所有可能的路由
+export function getStaticPaths() {
+  // 定义所有客户端路由路径
+  const routes = [
+    'library',
+    'config',
+    'login',
+    'details',
+    'setup',
+    'account',
+  ];
+  
+  // 为每个路由生成静态路径
+  return routes.map(route => ({
+    params: { path: route }
+  }));
 }
 
-const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = Astro.props;
+const title = 'Myriad - 数字自我发现';
+const description = '一键聚合你的多平台数据，生成AI个人分析报告';
+const apiUrl = import.meta.env.PUBLIC_API_URL || '';
 ---
 
 <!doctype html>
@@ -18,13 +39,12 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     <meta name="theme-color" content="#fef3c7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" id="favicon-link" />
-    <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     
-    <!-- 安全策略 (只保留可以通过 meta 标签设置的) -->
+    <!-- 安全策略 -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <!-- CSP 已在 Nginx 中配置，不再通过 meta 标签设置 -->
     
+    <!-- 字体预加载 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -33,22 +53,23 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     />
     
     <!-- 动态加载网站元数据 -->
-    <script>
-      import { API_URL } from '../config';
-      
-      // 从后端获取网站元数据并应用
+    <script define:vars={{ apiUrl }}>
       async function loadSiteMetadata() {
+        // 如果没有配置 API URL，跳过加载
+        if (!apiUrl) {
+          console.info('API URL not configured, using default metadata');
+          return;
+        }
+        
         try {
-          const response = await fetch(`${API_URL}/api/config/metadata`);
+          const response = await fetch(`${apiUrl}/api/config/metadata`);
           if (response.ok) {
             const metadata = await response.json();
             
-            // 更新标题
             if (metadata.site_title && document.title === 'Myriad - 数字自我发现') {
               document.title = metadata.site_title;
             }
             
-            // 更新描述
             if (metadata.site_description) {
               const metaDesc = document.getElementById('meta-description');
               if (metaDesc) {
@@ -56,7 +77,6 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
               }
             }
             
-            // 更新图标
             if (metadata.site_favicon) {
               const favicon = document.getElementById('favicon-link');
               if (favicon) {
@@ -65,11 +85,10 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
             }
           }
         } catch (error) {
-          console.warn('Failed to load site metadata:', error);
+          console.info('Backend not available, using default metadata');
         }
       }
       
-      // 页面加载时执行
       loadSiteMetadata();
     </script>
   </head>
@@ -77,91 +96,62 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
     <!-- 页面加载器 -->
     <PageLoader />
 
-    <!-- 全局控制面板 -->
-    <div id="global-control-panel-root"></div>
+    <!-- React 应用 -->
+    <App client:only="react" />
 
-    <!-- Animated Background -->
-    <div id="bg-container" class="fixed inset-0 -z-10 overflow-hidden">
-      <!-- Dynamic Wallpaper -->
-      <div id="wallpaper" class="absolute inset-0 bg-cover bg-center bg-no-repeat"></div>
-      
-      <!-- Gradient from middle: Top transparent, Bottom white blur -->
-      <div id="bg-gradient" class="absolute inset-0 bg-gradient-to-b from-transparent from-[45%] via-white/60 via-[50%] to-white/95"></div>
-      
-      <!-- Subtle Mesh Gradient - Lower half only -->
-      <div class="absolute inset-0 opacity-20">
-        <div class="absolute top-[45%] left-10 w-96 h-96 bg-green-400/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-        <div class="absolute top-[45%] right-10 w-96 h-96 bg-pink-400/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-      </div>
-      
-      <!-- Subtle Grid Pattern -->
-      <div class="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
-    </div>
+    <!-- 初始化主题 -->
+    <script>
+      function initializeTheme() {
+        const html = document.documentElement;
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
 
-    <!-- Dynamic Island Navigation - Desktop: Left Vertical | Mobile: Bottom Horizontal -->
-    <nav class="nav-container" aria-label="主导航">
-      <div class="dynamic-island shadow-2xl" role="navigation">
-        <div class="flex flex-row md:flex-col items-center gap-1">
-          <!-- 主导航组 -->
-          <div class="nav-group" data-group="main">
-            <a href="/" class="nav-item" title="主页" aria-label="返回主页">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-              </svg>
-            </a>
-          </div>
+        if (theme === 'dark') {
+          html.classList.add('dark');
+          html.classList.remove('light');
+        } else {
+          html.classList.add('light');
+          html.classList.remove('dark');
+        }
 
-          <!-- 资料库组 -->
-          <div class="nav-group nav-group-spaced" data-group="library">
-            <a href="/library" class="nav-item" title="资料库" aria-label="资料库">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-              </svg>
-            </a>
-          </div>
-          
-          <!-- 配置按钮组（管理员） -->
-          <div class="nav-group nav-group-spaced" data-group="config" style="display: none;">
-            <a href="/config" id="config-nav-btn" class="nav-item" title="配置" aria-label="系统配置">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              </svg>
-            </a>
-          </div>
+        const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+        if (metaThemeColor) {
+          metaThemeColor.setAttribute('content', theme === 'dark' ? '#1a1a1a' : '#fef3c7');
+        }
 
-          <!-- 用户账户组 -->
-          <div class="nav-group nav-group-spaced" data-group="user" id="user-section">
-            <!-- 未登录状态 - 显示登录按钮 -->
-            <a href="/login" id="login-btn" class="nav-item" title="登录" aria-label="用户登录" style="display: none;">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-              </svg>
-            </a>
-            
-            <!-- 已登录状态 - 显示用户头像链接 -->
-            <a href="/account" id="user-avatar-link" class="nav-item avatar-item p-0 w-11 h-11 overflow-hidden" title="账户管理" aria-label="账户管理" style="display: none;">
-              <img id="user-avatar" src="" alt="用户头像" class="w-full h-full object-cover">
-            </a>
-          </div>
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+          if (!localStorage.getItem('theme')) {
+            const newTheme = e.matches ? 'dark' : 'light';
+            if (newTheme === 'dark') {
+              html.classList.add('dark');
+              html.classList.remove('light');
+            } else {
+              html.classList.add('light');
+              html.classList.remove('dark');
+            }
+            if (metaThemeColor) {
+              metaThemeColor.setAttribute('content', newTheme === 'dark' ? '#1a1a1a' : '#fef3c7');
+            }
+          }
+        });
+      }
 
-          <!-- 报告功能组（管理员） -->
-          <div class="nav-group nav-group-large-spaced" data-group="report" style="display: none;">
-            <div class="nav-separator"></div>
-            <button id="generate-report-btn" class="nav-item generate-btn" title="生成报告" aria-label="生成数据报告">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    </nav>
+      initializeTheme();
+    </script>
 
-    <main class="relative z-10">
-      <slot />
-    </main>
+    <!-- Service Worker 注册 -->
+    <script>
+      if ('serviceWorker' in navigator && import.meta.env.PROD) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {
+            // Service Worker registration failed
+          });
+        });
+      }
+    </script>
 
+    <!-- 全局样式 (从 Layout.astro 提取) -->
     <style is:global>
       :root {
         --color-primary: #94a3b8;
@@ -306,6 +296,7 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
 
       body {
         font-family: 'Inter', sans-serif;
+        overflow-x: hidden; /* 防止水平滚动 */
       }
 
       /* Glass effect - 浅色模式 */
@@ -956,36 +947,26 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
         outline-offset: 4px;
       }
 
-      /* Smooth scrolling */
+      /* Smooth scrolling + 彻底隐藏所有原生滚动条 */
+      html,
+      body,
+      * {
+        scrollbar-width: none !important; /* Firefox */
+        -ms-overflow-style: none !important; /* IE/Edge */
+      }
+
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar,
+      *::-webkit-scrollbar {
+        display: none !important; /* Chrome/Safari/Opera */
+        width: 0 !important;
+        height: 0 !important;
+      }
+
       html {
         scroll-behavior: smooth;
-      }
-
-      /* Custom scrollbar - Spring theme */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: rgba(254, 243, 199, 0.5);
-      }
-      ::-webkit-scrollbar-thumb {
-        background: color-mix(in srgb, var(--color-primary) 50%, transparent);
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
-      }
-
-      /* Dark mode scrollbar */
-      html.dark ::-webkit-scrollbar-track {
-        background: rgba(26, 26, 26, 0.5);
-      }
-      html.dark ::-webkit-scrollbar-thumb {
-        background: color-mix(in srgb, var(--color-primary) 40%, transparent);
-      }
-      html.dark ::-webkit-scrollbar-thumb:hover {
-        background: color-mix(in srgb, var(--color-primary) 60%, transparent);
+        overflow-y: auto;
+        overflow-x: hidden;
       }
 
       /* 动态颜色样式 - 替代内联样式 */
@@ -1729,481 +1710,5 @@ const { title, description = 'Myriad - Multi-Platform Profile Aggregator' } = As
       }
 
     </style>
-
-    <script>
-      import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
-      import { initTransitionSystem } from '../scripts/page-transition';
-
-      // 全局状态：存储当前显示的壁纸的实际 URL（重定向后的最终 URL）
-      // 使用 window 对象存储，避免页面切换时重置
-      declare global {
-        interface Window {
-          _activeWallpaperUrl?: string | null;
-          _wallpaperLoadComplete?: boolean;
-          _themeInitialized?: boolean;
-        }
-      }
-
-      let activeWallpaperUrl: string | null = window._activeWallpaperUrl || null;
-      let wallpaperLoadComplete: boolean = window._wallpaperLoadComplete || false;
-
-      // 缓存接口
-      interface WallpaperCache {
-        apiUrl: string;
-        actualUrl: string;
-        timestamp: number;
-      }
-
-      // 从 localStorage 获取上次的壁纸缓存
-      function getLastWallpaperCache(): WallpaperCache | null {
-        try {
-          const cached = localStorage.getItem('lastWallpaper');
-          if (!cached) return null;
-          const data = JSON.parse(cached) as WallpaperCache;
-          // 缓存 1 小时内有效
-          if (Date.now() - data.timestamp < 60 * 60 * 1000) {
-            return data;
-          }
-          return null;
-        } catch {
-          return null;
-        }
-      }
-
-      // 保存壁纸缓存
-      function saveWallpaperCache(apiUrl: string, actualUrl: string): void {
-        try {
-          const cache: WallpaperCache = { apiUrl, actualUrl, timestamp: Date.now() };
-          localStorage.setItem('lastWallpaper', JSON.stringify(cache));
-        } catch (e) {
-          // Failed to save wallpaper cache
-        }
-      }
-
-      // 获取图片的实际 URL（处理重定向）
-      async function getActualImageUrl(apiUrl: string): Promise<string> {
-        try {
-          // 先获取实际的图片 URL（通过 fetch 会自动跟随重定向）
-          const response = await fetch(apiUrl, { method: 'HEAD' });
-          const actualUrl = response.url; // 重定向后的最终 URL
-          return actualUrl;
-        } catch {
-          // 如果获取失败，回退到原始 URL
-          return apiUrl;
-        }
-      }
-
-      // 立即显示缓存的壁纸和颜色
-      function showCachedWallpaper(wallpaperEl: HTMLElement, cache: WallpaperCache, blur: number): void {
-        wallpaperEl.style.backgroundImage = `url(${cache.actualUrl})`;
-        wallpaperEl.style.filter = `blur(${blur}px)`;
-        activeWallpaperUrl = cache.actualUrl;
-        window._activeWallpaperUrl = cache.actualUrl;
-
-        // 立即提取并应用缓存的颜色（从 colorExtractor 的缓存）
-        extractColorsFromImage(cache.actualUrl).then(colors => {
-          if (activeWallpaperUrl === cache.actualUrl) {
-            applyColorPalette(colors);
-          }
-        });
-      }
-
-      // Load wallpaper and extract colors (with performance optimization)
-      async function loadWallpaperAndColors() {
-        // 防止重复加载
-        if (wallpaperLoadComplete) return;
-        
-        try {
-          // API URL: 生产环境为空(使用相对路径), 开发环境为 localhost:3000
-          const apiUrl = import.meta.env.PUBLIC_API_URL || '';
-          const response = await fetch(`${apiUrl}/api/config`);
-          const data = await response.json();
-          const wallpaperEl = document.getElementById('wallpaper');
-          
-          if (wallpaperEl && data.ui_config?.wallpaper_url) {
-            const apiUrl = data.ui_config.wallpaper_url;
-            const blur = data.ui_config.wallpaper_blur || 3;
-            
-            // 🚀 优化1: 先检查缓存，立即显示
-            const cachedWallpaper = getLastWallpaperCache();
-            if (cachedWallpaper && cachedWallpaper.apiUrl === apiUrl) {
-              showCachedWallpaper(wallpaperEl, cachedWallpaper, blur);
-            }
-            
-            // 🚀 优化2: 后台获取新的实际 URL
-            const actualImageUrl = await getActualImageUrl(apiUrl);
-            
-            // 如果实际 URL 和缓存的一样，不需要更新
-            if (cachedWallpaper && cachedWallpaper.actualUrl === actualImageUrl) {
-              return;
-            }
-            
-            // URL 不同，需要更新
-            activeWallpaperUrl = actualImageUrl;
-            window._activeWallpaperUrl = actualImageUrl;
-            
-            // 🚀 优化3：并行加载新图片和提取颜色
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            
-            const colorPromise = extractColorsFromImage(actualImageUrl);
-            
-            // 加载新图片
-            new Promise<void>((resolve, reject) => {
-              img.onload = () => {
-                if (activeWallpaperUrl === actualImageUrl) {
-                  wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;
-                  wallpaperEl.style.filter = `blur(${blur}px)`;
-                  resolve();
-                } else {
-                  reject(new Error('URL changed'));
-                }
-              };
-              img.onerror = () => {
-                reject(new Error('Failed to load wallpaper'));
-              };
-              img.src = actualImageUrl;
-            });
-            
-            // 等待颜色提取完成
-            const result = await colorPromise;
-            
-            if (activeWallpaperUrl === actualImageUrl) {
-              // 使用 requestAnimationFrame 优化颜色应用
-              requestAnimationFrame(() => {
-                applyColorPalette(result);
-              });
-              
-              // 保存新的缓存
-              saveWallpaperCache(apiUrl, actualImageUrl);
-              wallpaperLoadComplete = true;
-              window._wallpaperLoadComplete = true;
-            }
-            
-          } else {
-            // 没有配置壁纸，使用默认配色
-          }
-        } catch (error) {
-          // 出错时保持默认配色，不清除颜色
-        }
-      }
-      
-      // Set active nav state
-      function setActiveNav() {
-        const currentPath = window.location.pathname;
-        const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
-        
-        navItems.forEach(item => {
-          const href = item.getAttribute('href');
-          if (href === currentPath || (currentPath === '/' && href === '/')) {
-            item.setAttribute('aria-current', 'page');
-          } else {
-            item.removeAttribute('aria-current');
-          }
-        });
-      }
-
-      // Handle generate report button
-      function setupGenerateButton() {
-        const generateBtn = document.getElementById('generate-report-btn');
-        if (!generateBtn) return;
-
-        generateBtn.addEventListener('click', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // 检查是否在首页
-          if (window.location.pathname !== '/') {
-            window.location.href = '/';
-            return;
-          }
-
-          // 调用 ReportCards 组件的生成函数
-          if (typeof (window as any).generateReport === 'function') {
-            generateBtn.classList.add('loading');
-            try {
-              await (window as any).generateReport();
-            } catch (err) {
-              // Report generation failed
-            } finally {
-              generateBtn.classList.remove('loading');
-            }
-          }
-        });
-      }
-      
-      // 页面加载完成处理
-      function handlePageLoaded() {
-        // 隐藏加载器
-        const loader = (window as any).pageLoader;
-        if (loader) {
-          loader.hide(150);
-        }
-        
-        // 简单的淡入动画
-        requestAnimationFrame(() => {
-          const main = document.querySelector('main');
-          if (main) {
-            main.style.opacity = '0';
-            requestAnimationFrame(() => {
-              main.style.transition = 'opacity 0.3s ease';
-              main.style.opacity = '1';
-            });
-          }
-        });
-      }
-      
-      // 初始化主题（只在页面首次加载时执行）
-      function initializeTheme() {
-        // 避免重复初始化
-        if (window._themeInitialized) return;
-        window._themeInitialized = true;
-
-        const html = document.documentElement;
-        const stored = localStorage.getItem('theme');
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const theme = stored || (prefersDark ? 'dark' : 'light');
-
-        // 应用主题
-        if (theme === 'dark') {
-          html.classList.add('dark');
-          html.classList.remove('light');
-        } else {
-          html.classList.add('light');
-          html.classList.remove('dark');
-        }
-
-        // 更新 meta theme-color
-        const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-        if (metaThemeColor) {
-          metaThemeColor.setAttribute('content', theme === 'dark' ? '#1a1a1a' : '#fef3c7');
-        }
-
-        // 监听系统主题变化（仅当用户未手动设置时）
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-          if (!localStorage.getItem('theme')) {
-            const newTheme = e.matches ? 'dark' : 'light';
-            if (newTheme === 'dark') {
-              html.classList.add('dark');
-              html.classList.remove('light');
-            } else {
-              html.classList.add('light');
-              html.classList.remove('dark');
-            }
-            if (metaThemeColor) {
-              metaThemeColor.setAttribute('content', newTheme === 'dark' ? '#1a1a1a' : '#fef3c7');
-            }
-          }
-        });
-      }
-      
-      // 注册 Service Worker（离线支持和缓存优化）
-      if ('serviceWorker' in navigator && import.meta.env.PROD) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(
-            (registration) => {
-              console.log('[SW] Service Worker registered:', registration.scope);
-            },
-            (err) => {
-              console.log('[SW] Service Worker registration failed:', err);
-            }
-          );
-        });
-      }
-
-      // 优先加载关键功能
-      setActiveNav();
-      setupAuthUI();
-      initializeTheme();
-
-      // 等待页面加载完成
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', handlePageLoaded);
-      } else {
-        // 已经加载完成
-        handlePageLoaded();
-      }
-
-      // 初始化页面切换系统
-      if ('requestIdleCallback' in window) {
-        requestIdleCallback(() => {
-          initTransitionSystem();
-        }, { timeout: 1000 });
-      } else {
-        setTimeout(() => {
-          initTransitionSystem();
-        }, 50);
-      }
-      
-      // 延迟加载壁纸（使用 requestIdleCallback 或 setTimeout）
-      if ('requestIdleCallback' in window) {
-        requestIdleCallback(() => {
-          loadWallpaperAndColors();
-          setupGenerateButton();
-        }, { timeout: 2000 });
-      } else {
-        setTimeout(() => {
-          loadWallpaperAndColors();
-          setupGenerateButton();
-        }, 100);
-      }
-
-      // 检查URL中的token参数（OAuth回调）
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      if (token) {
-        localStorage.setItem('auth_token', token);
-        // 清除URL中的token参数
-        window.history.replaceState({}, document.title, window.location.pathname);
-        // 刷新用户信息
-        loadUserInfo();
-      }
-
-      // 用户认证UI设置
-      function setupAuthUI() {
-        loadUserInfo();
-
-        // 监听登录成功事件
-        window.addEventListener('auth-login-success', (() => {
-          loadUserInfo();
-        }) as EventListener);
-      }
-
-      // 加载用户信息
-      async function loadUserInfo() {
-        const token = localStorage.getItem('auth_token');
-        const loginBtn = document.getElementById('login-btn');
-        const userAvatarLink = document.getElementById('user-avatar-link');
-
-        // 获取导航组
-        const configGroup = document.querySelector('[data-group="config"]') as HTMLElement;
-        const reportGroup = document.querySelector('[data-group="report"]') as HTMLElement;
-        
-        if (!token) {
-          // 未登录状态 - 只显示登录按钮
-          hideWithAnimation(userAvatarLink);
-          hideWithAnimation(configGroup);
-          hideWithAnimation(reportGroup);
-          showWithAnimation(loginBtn);
-          
-          // 触发自定义事件通知其他组件
-          window.dispatchEvent(new CustomEvent('auth-state-changed', { 
-            detail: { isAuthenticated: false } 
-          }));
-          return;
-        }
-
-        try {
-          const apiUrl = import.meta.env.PUBLIC_API_URL || '';
-          const response = await fetch(`${apiUrl}/api/auth/me`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to get user info');
-          }
-
-          const user = await response.json();
-          
-          // 判断是否为管理员
-          const isAdmin = user.is_admin === true;
-          
-          if (isAdmin) {
-            // 管理员 - 隐藏用户区域，显示配置和报告
-            hideWithAnimation(loginBtn);
-            hideWithAnimation(userAvatarLink);
-            showWithAnimation(configGroup);
-            showWithAnimation(reportGroup);
-          } else {
-            // 普通用户 - 显示头像，隐藏配置和报告
-            hideWithAnimation(loginBtn);
-            hideWithAnimation(configGroup);
-            hideWithAnimation(reportGroup);
-            
-            // 设置头像
-            const userAvatar = document.getElementById('user-avatar') as HTMLImageElement;
-            if (userAvatar) {
-              userAvatar.src = user.avatar_url || 'https://github.com/ghost.png';
-              userAvatar.alt = user.username || '用户头像';
-            }
-            
-            showWithAnimation(userAvatarLink);
-          }
-
-          // 触发自定义事件通知其他组件
-          window.dispatchEvent(new CustomEvent('auth-state-changed', { 
-            detail: { isAuthenticated: true, user } 
-          }));
-          
-        } catch (error) {
-          // Token无效,清除并显示登录按钮
-          localStorage.removeItem('auth_token');
-          hideWithAnimation(userAvatarLink);
-          hideWithAnimation(configGroup);
-          hideWithAnimation(reportGroup);
-          showWithAnimation(loginBtn);
-          
-          window.dispatchEvent(new CustomEvent('auth-state-changed', { 
-            detail: { isAuthenticated: false } 
-          }));
-        }
-      }
-
-      // 显示动画辅助函数
-      function showWithAnimation(element: HTMLElement | null) {
-        if (!element) return;
-        
-        // 先设置为显示但透明
-        element.style.display = '';
-        element.style.opacity = '0';
-        element.style.transform = 'scale(0.8)';
-        
-        // 使用 requestAnimationFrame 确保动画生效
-        requestAnimationFrame(() => {
-          element.style.transition = 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
-          element.style.opacity = '1';
-          element.style.transform = 'scale(1)';
-        });
-      }
-
-      // 隐藏动画辅助函数
-      function hideWithAnimation(element: HTMLElement | null) {
-        if (!element) return;
-
-        element.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
-        element.style.opacity = '0';
-        element.style.transform = 'scale(0.8)';
-
-        // 动画结束后真正隐藏
-        setTimeout(() => {
-          element.style.display = 'none';
-        }, 200);
-      }
-    </script>
-
-    <!-- 全局控制面板脚本 -->
-    <script>
-      import { createRoot } from 'react-dom/client';
-      import { createElement } from 'react';
-      import GlobalControlPanel from '../components/GlobalControlPanel.tsx';
-
-      // 确保在 DOM 加载完成后渲染全局控制面板
-      function initGlobalControlPanel() {
-        const rootElement = document.getElementById('global-control-panel-root');
-        if (rootElement && !rootElement.hasChildNodes()) {
-          const root = createRoot(rootElement);
-          root.render(createElement(GlobalControlPanel));
-        }
-      }
-
-      // 立即尝试渲染（如果DOM已经准备好）
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initGlobalControlPanel);
-      } else {
-        initGlobalControlPanel();
-      }
-    </script>
-  </body>
+  </head>
 </html>

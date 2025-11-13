@@ -27,7 +27,12 @@
       "Bash(dir \"c:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\")",
       "Bash(dir:*)",
       "Bash(find:*)",
-      "Bash(npx astro check)"
+      "Bash(npx astro check)",
+      "Bash(npm run dev:*)",
+      "Bash(cat:*)",
+      "Bash(del LibraryGridSkeleton.tsx ReportCardsSkeleton.tsx)",
+      "Bash(psql:*)",
+      "Bash(del \"C:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\\src\\utils\\scrollbarLock.ts\")"
     ],
     "deny": [],
     "ask": []

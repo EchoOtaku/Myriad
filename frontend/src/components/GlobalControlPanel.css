@@ -1,136 +1,277 @@
 /* ==========================================
-   全局控制面板样式
+   全局控制面板样式 - Apple 风格智能岛
+   单一容器 + JS 控制状态
    ========================================== */
 
-/* 控制面板触发按钮 */
-.global-control-trigger {
+/* ==========================================
+   1. 容器与定位
+   ========================================== */
+
+.global-control-bar {
   position: fixed;
   top: 1rem;
   right: 1rem;
   z-index: 999;
+  pointer-events: none;
 }
 
-.control-trigger-btn {
+.control-bar-content {
+  pointer-events: auto;
+}
+
+/* ==========================================
+   2. 智能岛容器 - 单一元素
+   ========================================== */
+
+.control-bar-trigger {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  background: rgba(255, 255, 255, 0.75);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 2px solid color-mix(in srgb, var(--color-primary, #94a3b8) 40%, transparent);
-  border-radius: 50%;
-  color: var(--color-primary, #94a3b8);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
-}
-
-html.dark .control-trigger-btn {
-  background: rgba(26, 26, 26, 0.8);
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 50%, transparent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
-}
-
-.control-trigger-btn:hover {
   background: rgba(255, 255, 255, 0.9);
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 60%, transparent);
-  transform: scale(1.08) rotate(90deg);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
-}
-
-html.dark .control-trigger-btn:hover {
-  background: rgba(26, 26, 26, 0.95);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
-}
-
-.control-trigger-btn:active {
-  transform: scale(1.02) rotate(90deg);
-}
-
-/* 控制面板遮罩 */
-.control-panel-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  z-index: 998;
-  animation: fadeIn 0.2s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* 控制面板主体 */
-.control-panel {
-  position: fixed;
-  top: 4.5rem;
-  right: 1rem;
-  width: 20rem;
-  max-width: calc(100vw - 2rem);
-  background: rgba(255, 255, 255, 0.85);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  border: 2px solid color-mix(in srgb, var(--color-primary, #94a3b8) 40%, transparent);
-  border-radius: 1.25rem;
-  box-shadow: 0 12px 48px color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
-  z-index: 999;
-  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transform-origin: top right;
   overflow: hidden;
+  /* 默认收缩状态 */
+  flex-direction: row;
+  justify-content: flex-start;
+  width: 160px;
+  height: 3rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 2rem;
+  /* 形变动画 - Apple 标准曲线，流畅可见 */
+  transition:
+    width 0.7s cubic-bezier(0.32, 0.72, 0, 1),
+    height 0.7s cubic-bezier(0.32, 0.72, 0, 1),
+    padding 0.7s cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 0.7s cubic-bezier(0.32, 0.72, 0, 1),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.35s ease,
+    flex-direction 0s linear;
+  will-change: width, height, padding, border-radius;
 }
 
-html.dark .control-panel {
+html.dark .control-bar-trigger {
   background: rgba(26, 26, 26, 0.9);
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 50%, transparent);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-1rem);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* 悬停 - 仅收缩状态 */
+.control-bar-trigger:not(.expanded):hover {
+  background: rgba(255, 255, 255, 0.95);
+  transform: scale(1.03);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
-/* 控制面板头部 */
+html.dark .control-bar-trigger:not(.expanded):hover {
+  background: rgba(26, 26, 26, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.control-bar-trigger:not(.expanded):active {
+  transform: scale(0.96);
+  transition: transform 0.1s cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* 展开状态 - 通过 JS 添加类 */
+.control-bar-trigger.expanded {
+  flex-direction: column;
+  align-items: stretch;
+  width: 420px;
+  /* 高度通过 JS 动态设置 */
+  padding: 1.125rem 1.375rem;
+  border-radius: 1.5rem;
+  box-shadow: 0 16px 56px rgba(0, 0, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+
+html.dark .control-bar-trigger.expanded {
+  box-shadow: 0 16px 56px rgba(0, 0, 0, 0.75), 0 6px 16px rgba(0, 0, 0, 0.6);
+}
+
+/* ==========================================
+   3. 内容层 - 通过 JS 控制显示
+   ========================================== */
+
+/* 动态内容 - 收缩时显示 */
+.dynamic-content-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: absolute;
+  top: 50%;
+  left: 0.875rem;
+  right: 0.875rem;
+  transform: translateY(-50%);
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 1;
+  transition:
+    opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.dynamic-content-wrapper.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.dynamic-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.control-bar-trigger:not(.expanded):hover .dynamic-icon {
+  transform: scale(1.1);
+}
+
+.dynamic-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.dynamic-text-main {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+  /* 允许文本换行并滚动显示 */
+  white-space: normal;
+  overflow: hidden;
+  max-height: 2rem;
+  line-height: 1.3;
+  word-break: break-word;
+  transition: color 0.2s ease;
+}
+
+.dynamic-text-main::-webkit-scrollbar {
+  width: 3px;
+}
+
+.dynamic-text-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dynamic-text-main::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+html.dark .dynamic-text-main::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .dynamic-text-main {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.control-bar-trigger:not(.expanded):hover .dynamic-text-main {
+  color: var(--text-primary, #111827);
+}
+
+html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-main {
+  color: rgba(255, 255, 255, 1);
+}
+
+.dynamic-text-sub {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--text-tertiary, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.125rem;
+  transition: color 0.2s ease;
+}
+
+html.dark .dynamic-text-sub {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.control-bar-trigger:not(.expanded):hover .dynamic-text-sub {
+  color: var(--text-secondary, #4b5563);
+}
+
+html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-sub {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dynamic-arrow {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: currentColor;
+}
+
+.control-bar-trigger:not(.expanded):hover .dynamic-arrow {
+  opacity: 0.8;
+  transform: translateY(2px) scale(1.1);
+}
+
+.control-bar-trigger:not(.expanded):active .dynamic-arrow {
+  transform: translateY(3px) scale(1.05);
+}
+
+/* 控制面板内容 - 展开时显示 */
+.expanded-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  width: 100%;
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 0.25s ease-in,
+    transform 0.3s ease-in;
+  pointer-events: none;
+  /* 保持在文档流中以便计算高度 */
+  visibility: hidden;
+}
+
+.control-bar-trigger.expanded .expanded-panel-content {
+  /* 展开时立即可见，但保持透明 */
+  visibility: visible;
+}
+
+.expanded-panel-content.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+  transition:
+    opacity 0.35s ease-out,
+    transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* ==========================================
+   4. 面板头部
+   ========================================== */
+
 .control-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 html.dark .control-panel-header {
   border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
-.control-panel-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
 }
 
 .control-close-btn {
@@ -144,7 +285,7 @@ html.dark .control-panel-header {
   border-radius: 0.5rem;
   color: var(--text-tertiary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .control-close-btn:hover {
@@ -161,12 +302,285 @@ html.dark .control-close-btn:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* 控制面板内容 */
-.control-panel-content {
-  padding: 1rem;
+/* ==========================================
+   5. 信息卡片容器
+   ========================================== */
+
+.info-card-wrapper {
+  position: relative;
+  min-height: 120px;
 }
 
-/* 控制项 */
+/* 通用信息卡片样式 */
+.info-card {
+  padding: 0.875rem;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.875rem;
+  transition: all 0.2s ease;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-card.animated {
+  animation: cardFadeIn 0.4s ease-out;
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html.dark .info-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.info-card:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+html.dark .info-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.info-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.info-card-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.info-card-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+html.dark .info-card-title {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* 天气卡片详情 */
+.weather-card {
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.08), 
+    rgba(147, 197, 253, 0.04)
+  );
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+html.dark .weather-card {
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.12), 
+    rgba(147, 197, 253, 0.06)
+  );
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.weather-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.weather-primary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.weather-temp-large {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary, #1f2937);
+  line-height: 1;
+}
+
+html.dark .weather-temp-large {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.weather-location {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+}
+
+html.dark .weather-location {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+
+.weather-secondary {
+  /* 将状态与额外信息放在同一行显示（体感、湿度、风速） */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.weather-status {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary, #374151);
+  margin-bottom: 0; /* 取消底部间距，改为同行间距 */
+}
+
+html.dark .weather-status {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+
+.weather-extra-info {
+  display: flex;
+  flex-wrap: nowrap; /* 保持在同一行（超出时可滚动或换行由容器决定） */
+  gap: 0.625rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #9ca3af);
+  align-items: center;
+}
+
+html.dark .weather-extra-info {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+
+.weather-extra-info span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* 明确同步天气卡片高度为一言卡片高度（与 .info-card 的最小高度保持一致） */
+.weather-card {
+  min-height: 120px;
+}
+
+/* 移动端：若空间不足，恢复堆叠布局，使信息更易读 */
+@media (max-width: 640px) {
+  .weather-secondary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .weather-extra-info {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
+
+/* 名言卡片详情 */
+.quote-card {
+  background: rgba(139, 92, 246, 0.05);
+  border-color: rgba(139, 92, 246, 0.15);
+}
+
+html.dark .quote-card {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+.quote-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: center;
+}
+
+.quote-text-main {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+html.dark .quote-text-main {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.quote-author-main {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-tertiary, #9ca3af);
+  text-align: right;
+}
+
+html.dark .quote-author-main {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ==========================================
+   6. 卡片导航点
+   ========================================== */
+
+.card-nav-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.nav-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 0;
+}
+
+html.dark .nav-dot {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.nav-dot:hover {
+  background: rgba(0, 0, 0, 0.4);
+  transform: scale(1.2);
+}
+
+html.dark .nav-dot:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.nav-dot.active {
+  width: 1.5rem;
+  border-radius: 0.25rem;
+  background: var(--color-primary, #94a3b8);
+}
+
+html.dark .nav-dot.active {
+  background: var(--color-primary, #94a3b8);
+}
+
+/* ==========================================
+   6. 控制项
+   ========================================== */
+
 .control-item {
   display: flex;
   align-items: center;
@@ -175,17 +589,17 @@ html.dark .control-close-btn:hover {
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 0.875rem;
-  transition: all 0.2s;
-}
-
-.control-item:hover {
-  background: rgba(255, 255, 255, 0.7);
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+  transition: all 0.2s ease;
 }
 
 html.dark .control-item {
   background: rgba(55, 65, 81, 0.4);
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+.control-item:hover {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
 }
 
 html.dark .control-item:hover {
@@ -201,13 +615,13 @@ html.dark .control-item:hover {
 }
 
 .control-item-icon {
-  font-size: 1.5rem;
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 2.5rem;
   height: 2.5rem;
+  font-size: 1.5rem;
+  line-height: 1;
   background: linear-gradient(135deg,
     color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent),
     color-mix(in srgb, var(--color-secondary, #94a3b8) 15%, transparent)
@@ -228,7 +642,10 @@ html.dark .control-item:hover {
   margin: 0;
 }
 
-/* 切换开关 */
+/* ==========================================
+   7. 切换开关
+   ========================================== */
+
 .control-toggle {
   position: relative;
   width: 3rem;
@@ -237,8 +654,8 @@ html.dark .control-item:hover {
   border: none;
   border-radius: 9999px;
   cursor: pointer;
-  transition: all 0.3s;
   flex-shrink: 0;
+  transition: background 0.3s ease;
 }
 
 .control-toggle:hover {
@@ -261,29 +678,210 @@ html.dark .control-item:hover {
   height: 1.5rem;
   background: white;
   border-radius: 50%;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .control-toggle.active .control-toggle-slider {
   transform: translateX(1.25rem);
 }
 
-/* 移动端适配 */
+/* ==========================================
+   8. 账户信息
+   ========================================== */
+
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0.75rem;
+}
+
+html.dark .account-header {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.account-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.account-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.125rem 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-role {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.account-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.625rem 0.875rem;
+  border: none;
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.account-action-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+html.dark .account-action-danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.account-action-danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  transform: translateY(-1px);
+}
+
+html.dark .account-action-danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* ==========================================
+   9. 遮罩层
+   ========================================== */
+
+.control-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  z-index: 998;
+  animation: overlayFadeIn 0.3s ease forwards;
+}
+
+html.dark .control-panel-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==========================================
+   10. 移动端适配
+   ========================================== */
+
 @media (max-width: 640px) {
-  .global-control-trigger {
+  .global-control-bar {
     top: 0.75rem;
     right: 0.75rem;
   }
 
-  .control-trigger-btn {
-    width: 2.5rem;
-    height: 2.5rem;
+  .control-bar-trigger {
+    padding: 0.625rem 1rem;
   }
 
-  .control-panel {
-    top: 4rem;
-    right: 0.75rem;
+  .control-bar-trigger.expanded {
     width: calc(100vw - 1.5rem);
+  }
+
+  .dynamic-icon {
+    font-size: 1.125rem;
+  }
+
+  .dynamic-text-main {
+    font-size: 0.75rem;
+  }
+
+  .dynamic-text-sub {
+    font-size: 0.625rem;
+  }
+
+  .account-avatar {
+    width: 3rem;
+    height: 3rem;
+  }
+
+
+  /* 修复关闭按钮在移动端坍缩问题 */
+  .control-close-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    font-size: 1.25rem;
+    padding: 0;
+  }
+
+  /* 修复切换开关在移动端的尺寸和滑块 */
+  .control-toggle {
+    width: 2.2rem;
+    height: 1.25rem;
+    min-width: 2.2rem;
+    min-height: 1.25rem;
+    border-radius: 9999px;
+  }
+  .control-toggle-slider {
+    width: 1.25rem;
+    height: 1.25rem;
+    min-width: 1rem;
+    min-height: 1rem;
+    top: 0.125rem;
+    left: 0.125rem;
+  }
+  .control-toggle.active .control-toggle-slider {
+    transform: translateX(0.95rem);
+  }
+
+  /* 卡片导航点在移动端保持间距和居中 */
+  .card-nav-dots {
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+  }
+  .nav-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    min-width: 0.5rem;
+    min-height: 0.5rem;
+    padding: 0;
+  }
+  .nav-dot.active {
+    width: 1rem;
+    min-width: 1rem;
   }
 }

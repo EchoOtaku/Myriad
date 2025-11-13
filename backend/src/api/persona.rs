@@ -62,12 +62,20 @@ pub struct VirtualPersona {
 /// 从数据库获取所有虚拟人物
 async fn get_personas_from_db(db: &DatabaseConnection, user_id: &str) -> Vec<VirtualPersona> {
     let sql = r#"
-        SELECT slot, name, personality, appearance, hobbies, life_style, 
-               visual_style, image_prompt, image_url, generated_at,
-               CASE WHEN image_url IS NOT NULL THEN TRUE ELSE FALSE END as has_image
-        FROM virtual_persona
-        WHERE user_id = $1
-        ORDER BY slot ASC
+        SELECT persona_slot as slot,
+               persona_name as name,
+               persona_personality as personality,
+               persona_appearance as appearance,
+               persona_hobbies as hobbies,
+               persona_life_style as life_style,
+               persona_visual_style as visual_style,
+               persona_image_prompt as image_prompt,
+               persona_image_url as image_url,
+               change_date as generated_at,
+               CASE WHEN persona_image_url IS NOT NULL THEN TRUE ELSE FALSE END as has_image
+        FROM metadata_history
+        WHERE user_id = $1 AND persona_slot IS NOT NULL
+        ORDER BY persona_slot ASC, change_date DESC
     "#;
 
     match db
@@ -78,16 +86,25 @@ async fn get_personas_from_db(db: &DatabaseConnection, user_id: &str) -> Vec<Vir
         ))
         .await
     {
-        Ok(rows) => rows
-            .into_iter()
-            .filter_map(|row| match VirtualPersona::from_query_result(&row, "") {
-                Ok(persona) => Some(persona),
-                Err(e) => {
-                    tracing::error!("Failed to parse persona from DB: {}", e);
-                    None
+        Ok(rows) => {
+            // 只保留每个slot最新的一条记录
+            let mut latest_personas: std::collections::HashMap<i32, VirtualPersona> = std::collections::HashMap::new();
+
+            for row in rows {
+                match VirtualPersona::from_query_result(&row, "") {
+                    Ok(persona) => {
+                        latest_personas.entry(persona.slot).or_insert(persona);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to parse persona from DB: {}", e);
+                    }
                 }
-            })
-            .collect(),
+            }
+
+            let mut result: Vec<VirtualPersona> = latest_personas.into_values().collect();
+            result.sort_by_key(|p| p.slot);
+            result
+        }
         Err(e) => {
             tracing::error!("Failed to query personas from DB: {}", e);
             Vec::new()
@@ -96,27 +113,24 @@ async fn get_personas_from_db(db: &DatabaseConnection, user_id: &str) -> Vec<Vir
 }
 
 /// 保存虚拟人物到数据库（支持槽位）
+/// 保存为metadata_history表的新记录
 async fn save_persona_to_db(
     db: &DatabaseConnection,
     user_id: &str,
     slot: i32,
     persona: &VirtualPersona,
 ) -> Result<(), String> {
+    // 计算过期时间（30天后）
+    let expires_at = chrono::Utc::now() + chrono::Duration::days(30);
+
     let sql = r#"
-        INSERT INTO virtual_persona 
-        (user_id, slot, name, personality, appearance, hobbies, life_style, 
-         visual_style, image_prompt, image_url, generated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (user_id, slot) DO UPDATE SET
-            name = $3,
-            personality = $4,
-            appearance = $5,
-            hobbies = $6,
-            life_style = $7,
-            visual_style = $8,
-            image_prompt = $9,
-            image_url = $10,
-            generated_at = $11
+        INSERT INTO metadata_history
+        (user_id, platform_name, changed_fields, new_data, change_date,
+         persona_slot, persona_name, persona_personality, persona_appearance,
+         persona_hobbies, persona_life_style, persona_visual_style,
+         persona_image_prompt, persona_image_url, persona_expires_at,
+         metadata_id)
+        VALUES ($1, 'virtual_persona', '[]', '{}', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0)
     "#;
 
     db.execute(Statement::from_sql_and_values(
@@ -124,6 +138,7 @@ async fn save_persona_to_db(
         sql,
         vec![
             user_id.into(),
+            persona.generated_at.into(),
             slot.into(),
             persona.name.clone().into(),
             persona.personality.clone().into(),
@@ -133,7 +148,7 @@ async fn save_persona_to_db(
             persona.visual_style.clone().into(),
             persona.image_prompt.clone().into(),
             persona.image_url.clone().into(),
-            persona.generated_at.into(),
+            expires_at.into(),
         ],
     ))
     .await

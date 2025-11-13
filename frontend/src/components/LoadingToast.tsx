@@ -21,14 +21,12 @@ export default function LoadingToast({ message = '加载中...', show }: Loading
     if (!visible) return null;
 
     return (
-        <div
-            className={`fixed bottom-8 left-4 sm:left-8 z-50 transition-all duration-300 ${
-                show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
-            }`}
-        >
-            <div className="loading-toast-container glass rounded-2xl px-4 sm:px-6 py-3 sm:py-4 shadow-2xl border border-white/60 dark:border-white/20 flex items-center gap-3 backdrop-blur-xl dark:bg-gray-900/90 dark:shadow-black/50">
-                {/* 加载动画 */}
-                <div className="loading-toast-spinner animate-spin rounded-full w-5 h-5 border-2 border-white/30 dark:border-white/20"></div>
+        <div className={`pointer-events-auto transition-all duration-300 ${
+            show ? 'opacity-100 translate-y-0 animate-fade-in' : 'opacity-0 translate-y-2'
+        }`}>
+            <div className="loading-toast-container glass rounded-xl px-4 py-3 shadow-lg border flex items-center gap-3 backdrop-blur-md">
+                {/* 使用简约光效替代旋转动画 */}
+                <div className="w-4 h-4 rounded-full bg-gradient-radial from-indigo-400/30 to-transparent animate-pulse"></div>
 
                 {/* 加载文字 */}
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
