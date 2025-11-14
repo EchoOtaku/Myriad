@@ -393,7 +393,7 @@ export default function DataManagement() {
   }
 
   return (
-    <AnimatedView className="min-h-screen px-4 sm:px-6 py-8 md:py-12 pb-24 md:pb-12">
+    <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
       {message && <Toast message={message} />}
 
       <div className="max-w-6xl mx-auto">

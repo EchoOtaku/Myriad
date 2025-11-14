@@ -12,6 +12,32 @@ import {
   GreetingData
 } from '../utils/smartWidgets';
 
+// 判断URL是否为单一图片链接（而非API端点）
+const isSingleImageUrl = (url: string): boolean => {
+  if (!url) return false;
+  
+  // 检查是否以常见图片扩展名结尾
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+  const lowerUrl = url.toLowerCase();
+  if (imageExtensions.some(ext => lowerUrl.endsWith(ext))) {
+    return true;
+  }
+  
+  // 检查URL是否包含常见的随机图片API标识
+  const randomImageApis = [
+    'unsplash.com/photos/',
+    'picsum.photos',
+    'loremflickr.com',
+    'source.unsplash.com',
+    'api.unsplash.com',
+    'bing.com/HPImageArchive',
+    'random',
+    'daily'
+  ];
+  
+  return !randomImageApis.some(api => lowerUrl.includes(api.toLowerCase()));
+};
+
 interface User {
   username: string;
   is_admin: boolean;
@@ -32,6 +58,7 @@ const GlobalControlPanel: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDynamicContent, setShowDynamicContent] = useState(true);
   const [showPanelContent, setShowPanelContent] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -45,6 +72,10 @@ const GlobalControlPanel: React.FC = () => {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [expandedCardIndex, setExpandedCardIndex] = useState(0); // 0=天气, 1=名言
+  
+  // 壁纸相关状态
+  const [wallpaperUrl, setWallpaperUrl] = useState<string>('');
+  const [canRefreshWallpaper, setCanRefreshWallpaper] = useState(false);
 
   // DOM 引用
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -159,6 +190,60 @@ const GlobalControlPanel: React.FC = () => {
       loadDynamicContents();
     }
   }, [user, loadDynamicContents]);
+
+  // 加载壁纸配置
+  const loadWallpaperConfig = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/config`);
+      const data = await response.json();
+      
+      if (data.ui_config?.wallpaper_url) {
+        const url = data.ui_config.wallpaper_url;
+        setWallpaperUrl(url);
+        setCanRefreshWallpaper(!isSingleImageUrl(url));
+      }
+    } catch (error) {
+      console.warn('Failed to load wallpaper config', error);
+    }
+  }, []);
+
+  // 刷新壁纸
+  const refreshWallpaper = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/config`);
+      const data = await response.json();
+      const wallpaperEl = document.getElementById('wallpaper');
+      
+      if (wallpaperEl && data.ui_config?.wallpaper_url) {
+        const apiUrl = data.ui_config.wallpaper_url;
+        const blur = data.ui_config.wallpaper_blur || 3;
+        
+        // 添加随机参数避免缓存
+        const urlWithTimestamp = apiUrl.includes('?') 
+          ? `${apiUrl}&t=${Date.now()}` 
+          : `${apiUrl}?t=${Date.now()}`;
+        
+        // 获取实际图片 URL
+        const actualResponse = await fetch(urlWithTimestamp, { method: 'HEAD' });
+        const actualImageUrl = actualResponse.url;
+        
+        // 预加载图片以实现平滑过渡
+        const img = new Image();
+        img.onload = () => {
+          wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;
+          wallpaperEl.style.filter = `blur(${blur}px)`;
+        };
+        img.src = actualImageUrl;
+      }
+    } catch (error) {
+      console.warn('Failed to refresh wallpaper', error);
+    }
+  }, []);
+
+  // 初始化时加载壁纸配置
+  useEffect(() => {
+    loadWallpaperConfig();
+  }, [loadWallpaperConfig]);
 
   // 动态内容轮播（带淡入淡出效果）
   useEffect(() => {
@@ -295,6 +380,7 @@ const GlobalControlPanel: React.FC = () => {
     if (isExpanded) {
       // 收缩：面板内容立即淡出，容器开始收缩，动态内容在中途淡入
       setShowPanelContent(false);
+      setShowOverlay(false); // 遮罩层开始淡出
       setIsExpanded(false);
       setTimeout(() => {
         setShowDynamicContent(true);
@@ -303,6 +389,10 @@ const GlobalControlPanel: React.FC = () => {
       // 展开：动态内容立即淡出，容器开始展开，面板内容在中途淡入
       setShowDynamicContent(false);
       setIsExpanded(true);
+      // 遮罩层立即显示但透明，然后淡入
+      setTimeout(() => {
+        setShowOverlay(true);
+      }, 0);
       setTimeout(() => {
         setShowPanelContent(true);
       }, 400); // 容器展开到一半时显示（0.7s 动画的中点）
@@ -440,24 +530,51 @@ const GlobalControlPanel: React.FC = () => {
                   )}
                 </div>
 
-                {/* 主题切换 */}
-                <div className="control-item">
-                  <div className="control-item-info">
-                    <div className="control-item-icon">
-                      {isDark ? '🌙' : '☀️'}
+                {/* 控制项网格 - 一行两个 */}
+                <div className="control-items-grid">
+                  {/* 主题切换 */}
+                  <div className="control-item control-item-compact">
+                    <div className="control-item-info">
+                      <div className="control-item-icon">
+                        {isDark ? '🌙' : '☀️'}
+                      </div>
+                      <div>
+                        <h4 className="control-item-title">外观</h4>
+                        <p className="control-item-desc">{isDark ? '深色' : '浅色'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="control-item-title">外观模式</h4>
-                      <p className="control-item-desc">{isDark ? '深色模式' : '浅色模式'}</p>
-                    </div>
+                    <button
+                      onClick={toggleTheme}
+                      className={`control-toggle ${isDark ? 'active' : ''}`}
+                      aria-label="切换主题"
+                    >
+                      <span className="control-toggle-slider"></span>
+                    </button>
                   </div>
-                  <button
-                    onClick={toggleTheme}
-                    className={`control-toggle ${isDark ? 'active' : ''}`}
-                    aria-label="切换主题"
-                  >
-                    <span className="control-toggle-slider"></span>
-                  </button>
+
+                  {/* 壁纸切换 - 仅在非单一图片链接时显示 */}
+                  {canRefreshWallpaper && (
+                    <div className="control-item control-item-compact">
+                      <div className="control-item-info">
+                        <div className="control-item-icon">
+                          🖼️
+                        </div>
+                        <div>
+                          <h4 className="control-item-title">壁纸</h4>
+                          <p className="control-item-desc">随机</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={refreshWallpaper}
+                        className="control-action-btn"
+                        aria-label="刷新壁纸"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* 账户信息 */}
@@ -496,13 +613,11 @@ const GlobalControlPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* 遮罩层 - 仅展开时显示 */}
-      {isExpanded && (
-        <div
-          className="control-panel-overlay"
-          onClick={handleClosePanel}
-        />
-      )}
+      {/* 遮罩层 - 始终存在，通过 CSS 控制显示 */}
+      <div
+        className={`control-panel-overlay ${showOverlay ? 'visible' : ''}`}
+        onClick={handleClosePanel}
+      />
     </React.Fragment>
   );
 };

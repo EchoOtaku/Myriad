@@ -578,7 +578,17 @@ html.dark .nav-dot.active {
 }
 
 /* ==========================================
-   6. 控制项
+   6. 控制项网格
+   ========================================== */
+
+.control-items-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.625rem;
+}
+
+/* ==========================================
+   7. 控制项
    ========================================== */
 
 .control-item {
@@ -590,6 +600,10 @@ html.dark .nav-dot.active {
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 0.875rem;
   transition: all 0.2s ease;
+}
+
+.control-item-compact {
+  padding: 0.625rem 0.75rem;
 }
 
 html.dark .control-item {
@@ -627,6 +641,14 @@ html.dark .control-item:hover {
     color-mix(in srgb, var(--color-secondary, #94a3b8) 15%, transparent)
   );
   border-radius: 0.75rem;
+  flex-shrink: 0;
+}
+
+.control-item-compact .control-item-icon {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.125rem;
+  border-radius: 0.5rem;
 }
 
 .control-item-title {
@@ -636,14 +658,23 @@ html.dark .control-item:hover {
   margin: 0 0 0.125rem 0;
 }
 
+.control-item-compact .control-item-title {
+  font-size: 0.75rem;
+  margin: 0 0 0.0625rem 0;
+}
+
 .control-item-desc {
   font-size: 0.75rem;
   color: var(--text-tertiary);
   margin: 0;
 }
 
+.control-item-compact .control-item-desc {
+  font-size: 0.625rem;
+}
+
 /* ==========================================
-   7. 切换开关
+   8. 切换开关和操作按钮
    ========================================== */
 
 .control-toggle {
@@ -656,6 +687,60 @@ html.dark .control-item:hover {
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.3s ease;
+}
+
+.control-item-compact .control-toggle {
+  width: 2.5rem;
+  height: 1.5rem;
+}
+
+.control-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent),
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 10%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+}
+
+.control-item-compact .control-action-btn {
+  width: 2rem;
+  height: 2rem;
+}
+
+.control-item-compact .control-action-btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+html.dark .control-action-btn {
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+}
+
+.control-action-btn:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent),
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 35%, transparent);
+  transform: scale(1.05) rotate(90deg);
+}
+
+html.dark .control-action-btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 45%, transparent);
+}
+
+.control-action-btn:active {
+  transform: scale(0.95) rotate(180deg);
 }
 
 .control-toggle:hover {
@@ -686,8 +771,17 @@ html.dark .control-item:hover {
   transform: translateX(1.25rem);
 }
 
+.control-item-compact .control-toggle-slider {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.control-item-compact .control-toggle.active .control-toggle-slider {
+  transform: translateX(1rem);
+}
+
 /* ==========================================
-   8. 账户信息
+   9. 账户信息
    ========================================== */
 
 .account-info {
@@ -777,7 +871,7 @@ html.dark .account-action-danger:hover {
 }
 
 /* ==========================================
-   9. 遮罩层
+   10. 遮罩层
    ========================================== */
 
 .control-panel-overlay {
@@ -790,20 +884,22 @@ html.dark .account-action-danger:hover {
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   z-index: 998;
-  animation: overlayFadeIn 0.3s ease forwards;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.control-panel-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 html.dark .control-panel-overlay {
   background: rgba(0, 0, 0, 0.5);
 }
 
-@keyframes overlayFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 /* ==========================================
-   10. 移动端适配
+   11. 移动端适配
    ========================================== */
 
 @media (max-width: 640px) {
@@ -818,6 +914,11 @@ html.dark .control-panel-overlay {
 
   .control-bar-trigger.expanded {
     width: calc(100vw - 1.5rem);
+  }
+
+  /* 移动端控制项网格保持两列 */
+  .control-items-grid {
+    gap: 0.5rem;
   }
 
   .dynamic-icon {

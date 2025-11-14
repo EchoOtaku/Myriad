@@ -277,7 +277,9 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
 
       body {
         font-family: 'Inter', sans-serif;
-        overflow-x: hidden; /* 防止水平滚动 */
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
 
       /* Glass effect - 浅色模式 */
@@ -338,27 +340,180 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         border-radius: 26px;
-        padding: 10px 14px; /* 移动端横向padding */
+        padding: 10px 14px;
         border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
         box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
                     inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.3s ease;
         position: relative;
-        overflow: hidden;
-        max-width: 95vw; /* 移动端限制宽度 */
-        /* 硬件加速优化 */
-        will-change: transform, opacity;
-        transform: translateZ(0);
-        -webkit-transform: translateZ(0);
+        max-width: 95vw;
+      }
+
+      /* 导航岛内容容器 */
+      .nav-island-content {
+        display: flex;
+        flex-direction: inherit;
+        align-items: center;
+        gap: 0.25rem;
+        width: 100%;
+      }
+
+      /* 主岛折叠状态 - 只显示返回按钮 */
+      .dynamic-island.collapsed {
+        padding: 10px;
+      }
+
+      /* 主岛内容容器 - 用于淡入淡出动画 */
+      .dynamic-island > div:first-child {
+        transition: opacity 0.3s ease, transform 0.3s ease;
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      /* 主岛折叠状态下淡出内容 */
+      .dynamic-island.collapsed > div:first-child {
+        opacity: 0;
+        transform: scale(0.8);
+        pointer-events: none;
+        position: absolute;
+      }
+      
+      /* 关键帧动画定义 - 供 JS 使用 */
+      @keyframes expandContent {
+        from {
+          opacity: 0;
+          transform: scale(0.85) translateZ(0);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateZ(0);
+        }
+      }
+      
+      @keyframes fadeInScale {
+        from {
+          opacity: 0;
+          transform: scale(0.7) rotate(-10deg) translateZ(0);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) rotate(0deg) translateZ(0);
+        }
+      }
+      
+      @keyframes slideInSecondary {
+        from {
+          opacity: 0;
+          transform: translateY(30px) scale(0.9) translateZ(0);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1) translateZ(0);
+        }
       }
       
       /* 桌面端样式 */
       @media (min-width: 768px) {
         .dynamic-island {
-          padding: 14px 10px; /* 桌面端纵向padding */
+          padding: 14px 10px;
           max-height: 85vh;
           max-width: none;
         }
+        
+        .dynamic-island.collapsed {
+          padding: 10px;
+        }
+      }
+      
+      /* Secondary Island - 副岛样式（纵向排列） */
+      .secondary-island {
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 26px;
+        padding: 10px 14px; /* 移动端横向padding - 与主岛同步 */
+        border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+        box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+        overflow: hidden;
+        max-width: 95vw;
+        will-change: padding;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        margin-top: 8px; /* 在主岛下方，间隔8px */
+        position: relative;
+        transition: padding 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                    background 0.3s ease,
+                    box-shadow 0.3s ease;
+      }
+
+      /* 副岛内容容器 - 用于淡入淡出动画 */
+      .secondary-island > div:first-child {
+        transition: opacity 0.3s ease, transform 0.3s ease;
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      /* 副岛折叠状态 - 只显示一个图标 */
+      .secondary-island.collapsed {
+        padding: 10px;
+      }
+
+      /* 副岛折叠状态下淡出内容 */
+      .secondary-island.collapsed > div:first-child {
+        opacity: 0;
+        transform: scale(0.8);
+        pointer-events: none;
+        position: absolute;
+      }
+      
+      @media (min-width: 768px) {
+        .secondary-island {
+          padding: 14px 10px; /* 桌面端纵向padding - 与主岛同步 */
+          max-height: 85vh;
+        }
+        
+        .secondary-island.collapsed {
+          padding: 10px;
+        }
+        
+        /* 桌面端出现动画 - 从下方弹出 */
+        @keyframes slideInSecondary {
+          from {
+            opacity: 0;
+            transform: translateY(30px) scale(0.9) translateZ(0);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1) translateZ(0);
+          }
+        }
+      }
+      
+      /* 深色模式下的副岛 */
+      html.dark .secondary-island {
+        background: rgba(26, 26, 26, 0.8);
+        border: 2px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+      }
+      
+      /* 副岛导航项样式 */
+      .secondary-nav-item {
+        /* 继承主岛导航项的基础样式 */
+      }
+      
+      /* 副岛激活状态 */
+      .secondary-nav-item.active-secondary {
+        color: var(--color-primary);
+        background: color-mix(in srgb, var(--color-primary) 15%, white);
+        box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 25%, transparent);
+      }
+      
+      html.dark .secondary-nav-item.active-secondary {
+        background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+        box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 35%, transparent),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
       }
       
       /* 深色模式下的灵动岛 */
@@ -421,14 +576,13 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
       /* 导航组 - 移动端横向 / 桌面端纵向 */
       .nav-group {
         display: flex;
-        flex-direction: row; /* 移动端横向 */
+        flex-direction: row;
         align-items: center;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
       
       @media (min-width: 768px) {
         .nav-group {
-          flex-direction: column; /* 桌面端纵向 */
+          flex-direction: column;
         }
       }
 
@@ -492,23 +646,14 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
       /* Navigation items */
       .nav-item {
         position: relative;
-        padding: 12px; /* 移动端更大的触摸区域 */
+        padding: 12px;
         border-radius: 18px;
         z-index: 10;
         cursor: pointer;
-        transform-origin: center;
         color: var(--text-tertiary);
-        /* 添加触摸反馈 */
         -webkit-tap-highlight-color: transparent;
         user-select: none;
-        /* 性能优化 */
-        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-                    color 0.2s ease, 
-                    background-color 0.2s ease,
-                    box-shadow 0.2s ease;
-        will-change: transform;
-        transform: translateZ(0);
-        /* 移动端最小触摸区域 */
+        transition: all 0.2s ease;
         min-width: 44px;
         min-height: 44px;
         display: flex;
@@ -524,12 +669,16 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
         }
       }
 
-      .nav-item:hover,
-      .nav-item:active {
+      .nav-item:hover {
         color: var(--color-primary);
         background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-        transform: scale(1.12) translateZ(0);
-        box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 20%, transparent);
+        transform: scale(1.08) translateZ(0);
+        box-shadow: 0 3px 10px color-mix(in srgb, var(--color-primary) 18%, transparent);
+      }
+
+      .nav-item:active {
+        transform: scale(1.02) translateZ(0);
+        box-shadow: 0 2px 6px color-mix(in srgb, var(--color-primary) 15%, transparent);
       }
       
       /* 深色模式下的导航按钮 */
@@ -537,16 +686,14 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
         color: var(--text-secondary);
       }
       
-      html.dark .nav-item:hover,
-      html.dark .nav-item:active {
-        background: color-mix(in srgb, var(--color-primary) 20%, transparent);
-        box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary) 30%, transparent);
+      html.dark .nav-item:hover {
+        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+        box-shadow: 0 3px 12px color-mix(in srgb, var(--color-primary) 25%, transparent);
       }
-      
 
-      .nav-item:active {
-        transform: scale(1.02);
-        transition-duration: 0.1s;
+      html.dark .nav-item:active {
+        transform: scale(1.02) translateZ(0);
+        box-shadow: 0 2px 6px color-mix(in srgb, var(--color-primary) 20%, transparent);
       }
 
       /* Active nav item indicator */

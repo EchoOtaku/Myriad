@@ -11,78 +11,6 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
     const style = document.createElement('style');
     style.id = 'library-grid-styles';
     style.textContent = `
-        /* 标签栏容器样式 */
-        .tab-container-border {
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        html.dark .tab-container-border {
-            border-color: rgba(75, 85, 99, 0.4);
-        }
-
-        /* 标签按钮样式 - 与 config 页面统一 */
-        .tab-button {
-            position: relative;
-            color: rgba(0, 0, 0, 0.65);
-            background: transparent;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            overflow: hidden;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-                        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        html.dark .tab-button {
-            color: rgba(255, 255, 255, 0.65);
-        }
-
-        /* 非激活状态悬浮 */
-        .tab-button:not(.active):hover {
-            color: rgba(0, 0, 0, 0.85);
-            background: rgba(0, 0, 0, 0.05);
-        }
-
-        html.dark .tab-button:not(.active):hover {
-            color: rgba(255, 255, 255, 0.9);
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        /* 激活状态 */
-        .tab-button.active {
-            color: white;
-            background: var(--color-primary);
-            box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 35%, transparent),
-                        0 4px 16px color-mix(in srgb, var(--color-primary) 25%, transparent),
-                        inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-                        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* 深色模式激活状态增强 */
-        html.dark .tab-button.active {
-            box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 45%, transparent),
-                        0 4px 20px color-mix(in srgb, var(--color-primary) 35%, transparent),
-                        inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
-                        0 0 0 1px color-mix(in srgb, var(--color-primary) 60%, transparent);
-        }
-
-        /* 激活状态悬浮 */
-        .tab-button.active:hover {
-            background: color-mix(in srgb, var(--color-primary) 95%, white);
-            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 45%, transparent),
-                        0 6px 24px color-mix(in srgb, var(--color-primary) 30%, transparent),
-                        inset 0 1px 0 0 rgba(255, 255, 255, 0.25);
-        }
-
-        html.dark .tab-button.active:hover {
-            background: color-mix(in srgb, var(--color-primary) 90%, white);
-            box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 55%, transparent),
-                        0 6px 28px color-mix(in srgb, var(--color-primary) 40%, transparent),
-                        inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
-                        0 0 0 1px color-mix(in srgb, var(--color-primary) 70%, transparent);
-        }
-
         /* 逐行显示动画 */
         @keyframes fadeInUp {
             from {
@@ -97,22 +25,6 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
 
         .library-card-container {
             animation: fadeInUp 0.5s ease-out backwards;
-        }
-
-        /* 移动端触摸反馈 */
-        @media (max-width: 640px) {
-            .tab-button:not(.active):active {
-                background: rgba(0, 0, 0, 0.08);
-                transform: scale(0.98);
-            }
-
-            html.dark .tab-button:not(.active):active {
-                background: rgba(255, 255, 255, 0.12);
-            }
-
-            .tab-button.active:active {
-                transform: scale(0.98);
-            }
         }
         
         .animate-fade-in {
@@ -227,11 +139,14 @@ interface CardLayout {
     height: number;
 }
 
-export default function LibraryGrid() {
+interface LibraryGridProps {
+    filter: 'all' | 'game' | 'video' | 'music';
+}
+
+export default function LibraryGrid({ filter }: LibraryGridProps) {
     const [allItems, setAllItems] = useState<LibraryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [filter, setFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
     const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
     const [isTransitioning, setIsTransitioning] = useState(false); // 子分组切换动画状态
     const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map());
@@ -511,24 +426,22 @@ export default function LibraryGrid() {
         return from !== 'all' && to !== 'all' && from !== to;
     };
 
-    // 处理筛选器切换
-    const handleFilterChange = (newFilter: 'all' | 'game' | 'video' | 'music') => {
-        if (newFilter === filter) return;
-        
-        setPrevFilter(filter);
+    // 监听 filter 变化
+    useEffect(() => {
+        if (filter === prevFilter) return;
         
         // 如果是子分组之间的切换，添加过渡动画
-        if (needsTransition(filter, newFilter)) {
+        if (needsTransition(prevFilter, filter)) {
             setIsTransitioning(true);
             setTimeout(() => {
-                setFilter(newFilter);
+                setPrevFilter(filter);
                 setTimeout(() => setIsTransitioning(false), 150);
             }, 200);
         } else {
             // 全部 ↔ 子分组，直接切换
-            setFilter(newFilter);
+            setPrevFilter(filter);
         }
-    };
+    }, [filter, prevFilter]);
 
     // 🚀 性能优化：使用 useMemo 缓存容器高度计算
     const containerHeight = useMemo(() => {
@@ -556,64 +469,6 @@ export default function LibraryGrid() {
                 </div>
             ) : (
         <div className="space-y-8">
-            {/* 筛选器 - 紧凑设计 */}
-            <div className="flex justify-center mb-4 md:mb-6">
-                <div className="glass rounded-xl p-1.5 inline-flex gap-1.5 w-full sm:w-auto shadow-md border tab-container-border">
-                    <button
-                        onClick={() => handleFilterChange('all')}
-                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
-                            filter === 'all' ? 'active' : ''
-                        }`}
-                    >
-                        <span className="flex items-center justify-center gap-1.5">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                            </svg>
-                            <span>全部</span>
-                        </span>
-                    </button>
-                    <button
-                        onClick={() => handleFilterChange('game')}
-                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
-                            filter === 'game' ? 'active' : ''
-                        }`}
-                    >
-                        <span className="flex items-center justify-center gap-1.5">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
-                            </svg>
-                            <span>游戏</span>
-                        </span>
-                    </button>
-                    <button
-                        onClick={() => handleFilterChange('video')}
-                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
-                            filter === 'video' ? 'active' : ''
-                        }`}
-                    >
-                        <span className="flex items-center justify-center gap-1.5">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-                            </svg>
-                            <span>视频</span>
-                        </span>
-                    </button>
-                    <button
-                        onClick={() => handleFilterChange('music')}
-                        className={`tab-button flex-1 sm:flex-none px-4 sm:px-5 py-2 rounded-lg font-medium text-sm transition-all duration-300 min-h-[40px] ${
-                            filter === 'music' ? 'active' : ''
-                        }`}
-                    >
-                        <span className="flex items-center justify-center gap-1.5">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                            </svg>
-                            <span>音乐</span>
-                        </span>
-                    </button>
-                </div>
-            </div>
-
             {/* 瀑布流容器 - 使用快速过渡 */}
             <QuickTransition transitioning={isTransitioning}>
                 {/* Dynamic height required for waterfall layout */}

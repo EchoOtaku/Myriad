@@ -7,7 +7,7 @@ import LoginForm from '../components/LoginForm';
 
 export default function Login() {
   return (
-    <AnimatedView className="min-h-screen flex items-center justify-center px-4 py-12">
+    <AnimatedView className="min-h-screen flex items-center justify-center px-4 pt-20">
       <LoginForm />
     </AnimatedView>
   );

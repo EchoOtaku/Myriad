@@ -7,7 +7,7 @@ import SetupWizard from '../components/SetupWizard';
 
 export default function Setup() {
   return (
-    <AnimatedView className="min-h-screen flex items-center justify-center px-4 py-12">
+    <AnimatedView className="min-h-screen flex items-center justify-center px-4 pt-20">
       <SetupWizard />
     </AnimatedView>
   );

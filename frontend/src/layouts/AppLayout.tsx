@@ -3,7 +3,7 @@
  * 包含导航栏、背景、全局控制面板
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
@@ -29,6 +29,148 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const { notifications } = useNotification();
+
+  // 导航岛状态管理
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
+  const [showLibraryFilters, setShowLibraryFilters] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const navContentRef = useRef<HTMLDivElement>(null);
+  const lastModeRef = useRef<'library' | 'normal'>('normal');
+
+  // 处理资料库筛选变化
+  const handleLibraryFilterChange = useCallback((newFilter: 'all' | 'game' | 'video' | 'music') => {
+    setLibraryFilter(newFilter);
+    // 触发自定义事件通知 Library 组件
+    window.dispatchEvent(new CustomEvent('library-filter-change', {
+      detail: { filter: newFilter }
+    }));
+  }, []);
+
+  // JavaScript 动画控制 - 只在模式切换时触发
+  useEffect(() => {
+    const content = navContentRef.current;
+    if (!content || isAnimating) return;
+
+    const currentMode = (location.pathname === '/library' && showLibraryFilters) ? 'library' : 'normal';
+    
+    // 如果模式没有变化，不执行动画
+    if (lastModeRef.current === currentMode) return;
+    
+    lastModeRef.current = currentMode;
+
+    const children = Array.from(content.children) as HTMLElement[];
+    
+    // 重置所有动画
+    children.forEach(child => {
+      child.style.opacity = '0';
+      child.style.transform = 'translateY(10px)';
+      child.style.transition = 'none';
+    });
+
+    // 强制重排
+    void content.offsetHeight;
+
+    // 依次显示元素
+    children.forEach((child, index) => {
+      setTimeout(() => {
+        child.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        child.style.opacity = '1';
+        child.style.transform = 'translateY(0)';
+      }, index * 50);
+    });
+  }, [showLibraryFilters, location.pathname, isAnimating]);
+
+  // 处理从筛选模式退出到正常模式
+  const handleExitToNormal = useCallback(() => {
+    const content = navContentRef.current;
+    if (!content || isAnimating) return;
+
+    setIsAnimating(true);
+    const children = Array.from(content.children) as HTMLElement[];
+    
+    // 反向淡出动画
+    children.reverse().forEach((child, index) => {
+      setTimeout(() => {
+        child.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+        child.style.opacity = '0';
+        child.style.transform = 'translateY(-10px)';
+      }, index * 30);
+    });
+
+    // 等待动画完成后切换状态
+    setTimeout(() => {
+      setShowLibraryFilters(false);
+      setIsAnimating(false);
+    }, children.length * 30 + 200);
+  }, [isAnimating]);
+
+  // 处理从正常模式进入筛选模式（点击筛选指示器）
+  const handleEnterFilters = useCallback(() => {
+    if (isAnimating) return;
+
+    const content = navContentRef.current;
+    if (!content) {
+      setShowLibraryFilters(true);
+      return;
+    }
+
+    setIsAnimating(true);
+    
+    // 找到当前筛选指示器按钮（最后一个分组）
+    const children = Array.from(content.children) as HTMLElement[];
+    const filterIndicator = children[children.length - 1];
+    
+    if (filterIndicator) {
+      // 让筛选指示器淡出
+      filterIndicator.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+      filterIndicator.style.opacity = '0';
+      filterIndicator.style.transform = 'scale(0.8)';
+    }
+
+    // 等待淡出完成后切换到筛选模式
+    setTimeout(() => {
+      setShowLibraryFilters(true);
+      setIsAnimating(false);
+    }, 200);
+  }, [isAnimating]);
+
+  // 监听路径变化，处理筛选指示器的退出动画
+  const prevPathRef = useRef(location.pathname);
+  useEffect(() => {
+    const prevPath = prevPathRef.current;
+    const currentPath = location.pathname;
+    
+    // 只在从资料库页面离开时触发退出动画
+    if (prevPath === '/library' && currentPath !== '/library' && !showLibraryFilters) {
+      const content = navContentRef.current;
+      if (!content) return;
+
+      const children = Array.from(content.children) as HTMLElement[];
+      
+      // 查找带有 data-group="current-filter" 的元素
+      const filterIndicator = Array.from(children).find(
+        child => child.getAttribute('data-group') === 'current-filter'
+      ) as HTMLElement;
+      
+      // 查找分隔符
+      const divider = Array.from(children).find(
+        child => child.getAttribute('data-group') === 'divider'
+      ) as HTMLElement;
+      
+      // 让分隔符和筛选指示器淡出
+      [divider, filterIndicator].filter(Boolean).forEach((element, index) => {
+        if (element) {
+          setTimeout(() => {
+            element.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+            element.style.opacity = '0';
+            element.style.transform = 'translateY(-8px)';
+          }, index * 50);
+        }
+      });
+    }
+    
+    prevPathRef.current = currentPath;
+  }, [location.pathname, showLibraryFilters]);
 
   // 检查认证状态
   const checkAuth = useCallback(async () => {
@@ -173,7 +315,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 路由变化时更新导航状态
   useEffect(() => {
     setActiveNav();
-  }, [location, setActiveNav]);
+    // 进入资料库页面时显示筛选模式
+    if (location.pathname === '/library') {
+      setShowLibraryFilters(true);
+    }
+  }, [location.pathname, setActiveNav]);
 
   // 监听认证状态变化
   useEffect(() => {
@@ -373,80 +519,193 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* 导航栏 */}
       <nav className="nav-container" aria-label="主导航">
-
         <div className="dynamic-island shadow-2xl" role="navigation">
-          <div className="flex flex-row md:flex-col items-center gap-1">
-            {/* 主导航组 */}
-            <div className="nav-group" data-group="main">
-              <a href="/" className="nav-item" title="主页" aria-label="返回主页" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-                </svg>
-              </a>
-            </div>
+          <div className="flex flex-row md:flex-col items-center gap-1 relative">
+            {location.pathname === '/library' && showLibraryFilters ? (
+              /* 资料库模式 - 显示返回按钮 + 分隔符 + 资料库筛选标签 */
+              <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="library-mode">
+                {/* 返回按钮 */}
+                <div className="nav-group" data-group="back">
+                  <button 
+                    onClick={handleExitToNormal}
+                    className="nav-item"
+                    title="返回"
+                    aria-label="返回导航"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                </div>
 
-            {/* 资料库组 */}
-            <div className="nav-group nav-group-spaced" data-group="library">
-              <a href="/library" className="nav-item" title="资料库" aria-label="资料库" onClick={(e) => { e.preventDefault(); navigate('/library'); }}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                </svg>
-              </a>
-            </div>
-            
-            {/* 配置按钮组（管理员） */}
-            {isAdmin && (
-              <div className="nav-group nav-group-spaced" data-group="config">
-                <a href="/config" id="config-nav-btn" className="nav-item" title="配置" aria-label="系统配置" onClick={(e) => { e.preventDefault(); navigate('/config'); }}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                  </svg>
-                </a>
+                {/* 分隔符 */}
+                <div className="nav-group nav-group-spaced" data-group="divider">
+                  <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                </div>
+
+                {/* 资料库筛选标签 */}
+                <div className="nav-group nav-group-spaced" data-group="all">
+                  <button 
+                    onClick={() => handleLibraryFilterChange('all')}
+                    className={`nav-item ${libraryFilter === 'all' ? 'active-secondary' : ''}`}
+                    title="全部"
+                    aria-label="显示全部内容"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="nav-group nav-group-spaced" data-group="game">
+                  <button 
+                    onClick={() => handleLibraryFilterChange('game')}
+                    className={`nav-item ${libraryFilter === 'game' ? 'active-secondary' : ''}`}
+                    title="游戏"
+                    aria-label="显示游戏"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="nav-group nav-group-spaced" data-group="video">
+                  <button 
+                    onClick={() => handleLibraryFilterChange('video')}
+                    className={`nav-item ${libraryFilter === 'video' ? 'active-secondary' : ''}`}
+                    title="视频"
+                    aria-label="显示视频"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="nav-group nav-group-spaced" data-group="music">
+                  <button 
+                    onClick={() => handleLibraryFilterChange('music')}
+                    className={`nav-item ${libraryFilter === 'music' ? 'active-secondary' : ''}`}
+                    title="音乐"
+                    aria-label="显示音乐"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            )}
-
-            {/* 用户账户组 - 管理员登录时完全隐藏 */}
-            {!isAdmin && (
-              <div className="nav-group nav-group-spaced" data-group="user" id="user-section">
-                {isAuthenticated ? (
-                  /* 已登录非管理员：显示头像和登录图标 */
-                  <>
-                    <a href="/login" id="login-btn" className="nav-item" title="切换账户" aria-label="切换账户" onClick={(e) => { e.preventDefault(); navigate('/login'); }}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                      </svg>
-                    </a>
-                    <a 
-                      href="/account" 
-                      id="user-avatar-link" 
-                      className="nav-item avatar-item p-0 w-11 h-11 overflow-hidden"
-                      title="账户管理" 
-                      aria-label="账户管理" 
-                      onClick={(e) => { e.preventDefault(); navigate('/account'); }}
-                    >
-                      <img id="user-avatar" src={userAvatar} alt="用户头像" className="w-full h-full object-cover" />
-                    </a>
-                  </>
-                ) : (
-                  /* 未登录：只显示登录图标 */
-                  <a href="/login" id="login-btn" className="nav-item" title="登录" aria-label="用户登录" onClick={(e) => { e.preventDefault(); navigate('/login'); }}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            ) : (
+              /* 正常模式 - 显示所有主导航按钮 + 分隔符 + 当前选中的资料库标签 */
+              <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="normal-mode">
+                {/* 主页按钮 */}
+                <div className="nav-group" data-group="main">
+                  <a href="/" className="nav-item" title="主页" aria-label="返回主页" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                     </svg>
                   </a>
-                )}
-              </div>
-            )}
+                </div>
 
-            {/* 报告功能组（管理员） */}
-            {isAdmin && (
-              <div className="nav-group nav-group-spaced" data-group="report">
-                <button id="generate-report-btn" className="nav-item generate-btn" title="生成报告" aria-label="生成数据报告" onClick={handleGenerateReport}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                  </svg>
-                </button>
+                {/* 资料库按钮 */}
+                <div className="nav-group nav-group-spaced" data-group="library">
+                  <button 
+                    className="nav-item" 
+                    title="资料库" 
+                    aria-label="资料库" 
+                    onClick={() => {
+                      if (location.pathname === '/library') {
+                        setShowLibraryFilters(true);
+                      } else {
+                        navigate('/library');
+                        // 导航后显示筛选模式
+                        setTimeout(() => setShowLibraryFilters(true), 100);
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                    </svg>
+                  </button>
+                </div>
+
+                {/* 配置按钮（管理员） */}
+                {isAdmin && (
+                  <div className="nav-group nav-group-spaced" data-group="config">
+                    <a href="/config" id="config-nav-btn" className="nav-item" title="配置" aria-label="系统配置" onClick={(e) => { e.preventDefault(); navigate('/config'); }}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                      </svg>
+                    </a>
+                  </div>
+                )}
+
+                {/* 报告功能组（管理员） */}
+                {isAdmin && (
+                  <div className="nav-group nav-group-spaced" data-group="report">
+                    <button id="generate-report-btn" className="nav-item generate-btn" title="生成报告" aria-label="生成数据报告" onClick={handleGenerateReport}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                      </svg>
+                    </button>
+                  </div>
+                )}
+
+                {/* 分隔符 - 仅在资料库页面且未显示筛选时显示 */}
+                {location.pathname === '/library' && !showLibraryFilters && (
+                  <div className="nav-group nav-group-spaced" data-group="divider">
+                    <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                  </div>
+                )}
+
+                {/* 当前资料库选中标签显示 - 仅在资料库页面且未显示筛选时显示 */}
+                {location.pathname === '/library' && !showLibraryFilters && (
+                  <div className="nav-group" data-group="current-filter">
+                    {libraryFilter === 'all' && (
+                      <button 
+                        className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
+                        title="当前筛选：全部 - 点击展开筛选"
+                        onClick={handleEnterFilters}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                        </svg>
+                      </button>
+                    )}
+                    {libraryFilter === 'game' && (
+                      <button 
+                        className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
+                        title="当前筛选：游戏 - 点击展开筛选"
+                        onClick={handleEnterFilters}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                        </svg>
+                      </button>
+                    )}
+                    {libraryFilter === 'video' && (
+                      <button 
+                        className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
+                        title="当前筛选：视频 - 点击展开筛选"
+                        onClick={handleEnterFilters}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                        </svg>
+                      </button>
+                    )}
+                    {libraryFilter === 'music' && (
+                      <button 
+                        className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
+                        title="当前筛选：音乐 - 点击展开筛选"
+                        onClick={handleEnterFilters}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
