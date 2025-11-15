@@ -133,6 +133,9 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         // 添加模拟客户端的Cookie
         .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
             device_id, timestamp, rand::random::<u16>() % 10000))
+        // 伪装中国大陆 IP，避免地理位置限制
+        .header("X-Forwarded-For", get_random_china_ip())
+        .header("X-Real-IP", get_random_china_ip())
         .send()
         .await
     {
@@ -171,6 +174,59 @@ fn generate_device_id() -> String {
     let mut rng = rand::thread_rng();
     let bytes: Vec<u8> = (0..16).map(|_| rng.gen()).collect();
     bytes.iter().map(|b| format!("{:02X}", b)).collect()
+}
+
+/// 生成随机的中国大陆 IP 地址
+/// 使用真实的中国电信/联通/移动的 IP 段，增强真实性
+fn get_random_china_ip() -> String {
+    let mut rng = rand::thread_rng();
+
+    // 中国大陆主流运营商的真实 IP 段（部分示例）
+    let china_ip_ranges = [
+        // 中国电信
+        ("58.20", 0..255, 0..255),
+        ("58.21", 0..255, 0..255),
+        ("58.22", 0..255, 0..255),
+        ("59.41", 0..255, 0..255),
+        ("60.12", 0..255, 0..255),
+        ("60.13", 0..255, 0..255),
+        ("61.128", 0..255, 0..255),
+        ("61.129", 0..255, 0..255),
+        ("116.21", 0..255, 0..255),
+        ("116.22", 0..255, 0..255),
+        ("116.23", 0..255, 0..255),
+        ("218.4", 0..255, 0..255),
+        ("218.5", 0..255, 0..255),
+        ("218.6", 0..255, 0..255),
+        // 中国联通
+        ("112.24", 0..255, 0..255),
+        ("112.25", 0..255, 0..255),
+        ("112.26", 0..255, 0..255),
+        ("112.27", 0..255, 0..255),
+        ("113.12", 0..255, 0..255),
+        ("113.13", 0..255, 0..255),
+        ("124.160", 0..255, 0..255),
+        ("124.161", 0..255, 0..255),
+        ("221.192", 0..255, 0..255),
+        ("221.193", 0..255, 0..255),
+        // 中国移动
+        ("111.13", 0..255, 0..255),
+        ("111.19", 0..255, 0..255),
+        ("111.20", 0..255, 0..255),
+        ("111.40", 0..255, 0..255),
+        ("117.131", 0..255, 0..255),
+        ("117.132", 0..255, 0..255),
+        ("117.136", 0..255, 0..255),
+        ("223.64", 0..255, 0..255),
+        ("223.72", 0..255, 0..255),
+        ("223.73", 0..255, 0..255),
+    ];
+
+    let (prefix, range2, range3) = &china_ip_ranges[rng.gen_range(0..china_ip_ranges.len())];
+    let third = rng.gen_range(range2.clone());
+    let fourth = rng.gen_range(range3.clone());
+
+    format!("{}.{}.{}", prefix, third, fourth)
 }
 
 /// 代理QQ音乐歌单请求
@@ -245,6 +301,9 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
             device_id, request_id
         ),
         )
+        // 伪装中国大陆 IP，避免地理位置限制
+        .header("X-Forwarded-For", get_random_china_ip())
+        .header("X-Real-IP", get_random_china_ip())
         .send()
         .await
     {
@@ -334,6 +393,9 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
         .header("Connection", "keep-alive")
         .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
             device_id, timestamp, rand::random::<u16>() % 10000))
+        // 伪装中国大陆 IP，避免地理位置限制
+        .header("X-Forwarded-For", get_random_china_ip())
+        .header("X-Real-IP", get_random_china_ip())
         .send()
         .await
     {
@@ -359,6 +421,9 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
                             match client.get(audio_url)
                                 .header("Referer", "https://music.163.com/")
                                 .header("Range", "bytes=0-") // 支持断点续传
+                                // 伪装中国大陆 IP，避免地理位置限制
+                                .header("X-Forwarded-For", get_random_china_ip())
+                                .header("X-Real-IP", get_random_china_ip())
                                 .send()
                                 .await
                             {
