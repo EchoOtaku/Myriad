@@ -26,12 +26,6 @@ export const routes: RouteConfig[] = [
     description: '浏览你的多平台数据收藏',
   },
   {
-    path: '/account',
-    component: () => import('../views/Account.tsx'),
-    title: '账户管理 - Myriad',
-    requiresAuth: true,
-  },
-  {
     path: '/config',
     component: () => import('../views/Config.tsx'),
     title: '系统配置 - Myriad',

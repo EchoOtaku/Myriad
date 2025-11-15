@@ -666,6 +666,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/library", get(api::profile::get_library_data))
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))
+            // Music proxy routes
+            .route("/api/proxy/music/netease/playlist/:id", get(api::proxy::proxy_netease_playlist))
+            .route("/api/proxy/music/netease/lyrics/:id", get(api::proxy::proxy_netease_lyrics))
+            .route("/api/proxy/music/netease/audio/:id", get(api::proxy::proxy_netease_audio))
+            .route("/api/proxy/music/qq/playlist/:id", get(api::proxy::proxy_qq_playlist))
+            .route("/api/proxy/music/qq/lyrics/:id", get(api::proxy::proxy_qq_lyrics))
             // Bilibili API routes
             .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
             .route(

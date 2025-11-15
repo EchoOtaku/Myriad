@@ -47,7 +47,7 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
           if (response.ok) {
             const metadata = await response.json();
             
-            if (metadata.site_title && document.title === 'Myriad - 数字自我发现') {
+            if (metadata.site_title) {
               document.title = metadata.site_title;
             }
             
@@ -1703,11 +1703,6 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
         }
 
         /* 移动端按钮最小触摸区域 */
-        button, a.button {
-          min-height: 44px;
-          padding: 0.75rem 1rem;
-        }
-
         /* 移动端间距优化 */
         .px-4 {
           padding-left: 1rem !important;

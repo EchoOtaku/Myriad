@@ -11,12 +11,12 @@ import { recordNavigation } from './router/navigationHistory';
 import RouteLoader from './components/RouteLoader';
 import { NotificationProvider } from './contexts/NotificationContext';
 import CustomScrollbar from './components/CustomScrollbar';
+import './styles/animations.css';
 import './styles/page-transitions.css';
 
 // 懒加载视图组件
 const Home = lazy(() => import('./views/Home.tsx'));
 const Library = lazy(() => import('./views/Library.tsx'));
-const Account = lazy(() => import('./views/Account.tsx'));
 const Config = lazy(() => import('./views/Config.tsx'));
 const DataManagement = lazy(() => import('./views/DataManagement.tsx'));
 const Login = lazy(() => import('./views/Login.tsx'));
@@ -76,14 +76,6 @@ function AppRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Home />} />
         <Route path="/library" element={<Library />} />
-        <Route
-          path="/account"
-          element={
-            <RequireAuth>
-              <Account />
-            </RequireAuth>
-          }
-        />
         <Route
           path="/config"
           element={

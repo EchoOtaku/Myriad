@@ -32,7 +32,10 @@
       "Bash(cat:*)",
       "Bash(del LibraryGridSkeleton.tsx ReportCardsSkeleton.tsx)",
       "Bash(psql:*)",
-      "Bash(del \"C:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\\src\\utils\\scrollbarLock.ts\")"
+      "Bash(del \"C:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\\src\\utils\\scrollbarLock.ts\")",
+      "Bash(taskkill:*)",
+      "Bash(timeout /t 3)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []

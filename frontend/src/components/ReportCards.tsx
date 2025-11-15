@@ -1046,55 +1046,25 @@ export default function ReportCards() {
                     <div className="flex items-center gap-4">
                         {userInfo ? (
                             <>
-                                {/* 头像 - 仅管理员可点击 */}
-                                {isAdmin ? (
-                                    <a
-                                        href="/account"
-                                        className="relative cursor-pointer group/avatar"
-                                    >
-                                        {!avatarError ? (
-                                            <img
-                                                src={userInfo.avatar}
-                                                alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl"
-                                                crossOrigin="anonymous"
-                                                referrerPolicy="no-referrer"
-                                                onError={() => setAvatarError(true)}
-                                            />
-                                        ) : (
-                                            <img
-                                                src={getDefaultAvatar(userInfo.name)}
-                                                alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl"
-                                            />
-                                        )}
-                                        {/* 简约提示角标 */}
-                                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 group-hover/avatar:scale-110 group-hover/avatar:shadow-xl avatar-badge">
-                                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </span>
-                                    </a>
-                                ) : (
-                                    <div className="relative group/avatar">
-                                        {!avatarError ? (
-                                            <img
-                                                src={userInfo.avatar}
-                                                alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl cursor-default"
-                                                crossOrigin="anonymous"
-                                                referrerPolicy="no-referrer"
-                                                onError={() => setAvatarError(true)}
-                                            />
-                                        ) : (
-                                            <img
-                                                src={getDefaultAvatar(userInfo.name)}
-                                                alt={userInfo.name}
-                                                className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl cursor-default"
-                                            />
-                                        )}
-                                    </div>
-                                )}
+                                {/* 头像 */}
+                                <div className="relative group/avatar">
+                                    {!avatarError ? (
+                                        <img
+                                            src={userInfo.avatar}
+                                            alt={userInfo.name}
+                                            className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl cursor-default"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            onError={() => setAvatarError(true)}
+                                        />
+                                    ) : (
+                                        <img
+                                            src={getDefaultAvatar(userInfo.name)}
+                                            alt={userInfo.name}
+                                            className="w-14 h-14 rounded-2xl object-cover shadow-md ring-2 ring-white/50 transition-all duration-300 group-hover/avatar:scale-105 group-hover/avatar:shadow-2xl cursor-default"
+                                        />
+                                    )}
+                                </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">{userInfo.name}</h3>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">

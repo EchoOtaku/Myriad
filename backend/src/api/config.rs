@@ -425,6 +425,30 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     placeholder: "http://localhost:3000/api/auth/github/callback".to_string(),
                     required: false,
                 },
+                ConfigField {
+                    key: "music_enabled".to_string(),
+                    label: "Enable Music Player".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: std::env::var("MUSIC_ENABLED").unwrap_or_else(|_| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "music_source".to_string(),
+                    label: "Music Source".to_string(),
+                    field_type: "select".to_string(),
+                    value: std::env::var("MUSIC_SOURCE").unwrap_or_else(|_| "netease".to_string()),
+                    placeholder: "netease or qq".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "music_playlist_id".to_string(),
+                    label: "Playlist ID".to_string(),
+                    field_type: "text".to_string(),
+                    value: std::env::var("MUSIC_PLAYLIST_ID").unwrap_or_default(),
+                    placeholder: "Playlist ID from music platform".to_string(),
+                    required: false,
+                },
             ],
         },
     };
@@ -591,6 +615,9 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "github_client_id" => "GITHUB_CLIENT_ID",
             "github_client_secret" => "GITHUB_CLIENT_SECRET",
             "github_redirect_url" => "GITHUB_REDIRECT_URL",
+            "music_enabled" => "MUSIC_ENABLED",
+            "music_source" => "MUSIC_SOURCE",
+            "music_playlist_id" => "MUSIC_PLAYLIST_ID",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);

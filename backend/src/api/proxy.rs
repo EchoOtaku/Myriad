@@ -1,10 +1,13 @@
 // 图片代理服务 - 用于处理Bilibili等平台的防盗链图片
 use axum::{
-    extract::Query,
+    extract::{Path, Query},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
+    Json,
 };
+use rand::Rng;
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct ImageProxyQuery {
@@ -95,5 +98,318 @@ fn get_referer_for_url(url: &str) -> &'static str {
         "https://music.163.com/"
     } else {
         "https://www.google.com/"
+    }
+}
+
+/// 代理网易云音乐歌单请求 - 参考Meting API的v6实现
+pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response {
+    // 生成随机设备ID (模拟Android设备)
+    let device_id = generate_device_id();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let client = reqwest::Client::builder()
+        // 模拟网易云音乐Android客户端
+        .user_agent("Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01")
+        .cookie_store(true)
+        .build()
+        .unwrap();
+
+    // 使用 v6 API endpoint，更稳定且支持更多功能
+    // 参考Meting API: playlist(id) 方法
+    let url = format!(
+        "http://music.163.com/api/v6/playlist/detail?id={}&n=100000&s=0&t=0",
+        playlist_id
+    );
+
+    match client.get(&url)
+        .header("Referer", "https://music.163.com/")
+        .header("Origin", "https://music.163.com")
+        .header("Accept", "*/*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+        .header("Connection", "keep-alive")
+        // 添加模拟客户端的Cookie
+        .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
+            device_id, timestamp, rand::random::<u16>() % 10000))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status();
+            match resp.json::<Value>().await {
+                Ok(data) => {
+                    // 检查API返回的错误码
+                    if let Some(code) = data.get("code").and_then(|c| c.as_i64()) {
+                        if code != 200 {
+                            tracing::warn!("Netease API returned error code {}: {:?}", code, data);
+                        }
+                    }
+                    (
+                        StatusCode::OK,
+                        [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                        Json(data)
+                    ).into_response()
+                },
+                Err(e) => {
+                    tracing::error!("Failed to parse Netease playlist (HTTP {}): {}", status, e);
+                    (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
+                }
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to fetch Netease playlist: {}", e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch playlist").into_response()
+        }
+    }
+}
+
+/// 生成随机设备ID (模拟Android设备)
+fn generate_device_id() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let bytes: Vec<u8> = (0..16).map(|_| rng.gen()).collect();
+    bytes.iter().map(|b| format!("{:02X}", b)).collect()
+}
+
+/// 代理QQ音乐歌单请求
+pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+        .unwrap();
+
+    let url = format!(
+        "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&disstid={}&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0",
+        playlist_id
+    );
+
+    match client
+        .get(&url)
+        .header("Referer", "https://y.qq.com/")
+        .send()
+        .await
+    {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(data) => (
+                StatusCode::OK,
+                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                Json(data),
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!("Failed to parse QQ playlist: {}", e);
+                (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to fetch QQ playlist: {}", e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch playlist").into_response()
+        }
+    }
+}
+
+/// 代理网易云音乐歌词请求 - 参考Meting API的lyric实现
+pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
+    let device_id = generate_device_id();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let request_id = format!(
+        "{}_{:04}",
+        timestamp,
+        rand::thread_rng().gen_range(0..10000)
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01")
+        .build()
+        .unwrap();
+
+    // 参考Meting API: lyric(id) 方法,使用os=linux参数
+    let url = format!(
+        "http://music.163.com/api/song/lyric?id={}&os=linux&lv=-1&kv=-1&tv=-1",
+        song_id
+    );
+
+    match client
+        .get(&url)
+        .header("Referer", "https://music.163.com/")
+        .header("Accept", "*/*")
+        .header(
+            "Cookie",
+            format!(
+            "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}",
+            device_id, request_id
+        ),
+        )
+        .send()
+        .await
+    {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(data) => (
+                StatusCode::OK,
+                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                Json(data),
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!("Failed to parse Netease lyrics for song {}: {}", song_id, e);
+                (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to fetch Netease lyrics for song {}: {}", song_id, e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch lyrics").into_response()
+        }
+    }
+}
+
+/// 代理QQ音乐歌词请求
+pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+        .unwrap();
+
+    let url = format!(
+        "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={}&g_tk=5381&format=json&inCharset=utf8&outCharset=utf-8&nobase64=1",
+        song_mid
+    );
+
+    match client
+        .get(&url)
+        .header("Referer", "https://y.qq.com/")
+        .send()
+        .await
+    {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(data) => (
+                StatusCode::OK,
+                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                Json(data),
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!("Failed to parse QQ lyrics: {}", e);
+                (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to fetch QQ lyrics: {}", e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch lyrics").into_response()
+        }
+    }
+}
+
+/// 代理网易云音乐音频流 - 参考Meting API的enhance player url实现
+pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
+    let device_id = generate_device_id();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01")
+        .cookie_store(true)
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .unwrap();
+
+    // 参考Meting API: url(id, br) 方法使用的API
+    // 使用 enhance/player/url API 获取高质量音频链接 (320kbps)
+    let url = format!(
+        "http://music.163.com/api/song/enhance/player/url?ids=[{}]&br=320000",
+        song_id
+    );
+
+    match client.get(&url)
+        .header("Referer", "https://music.163.com/")
+        .header("Origin", "https://music.163.com")
+        .header("Accept", "*/*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+        .header("Connection", "keep-alive")
+        .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
+            device_id, timestamp, rand::random::<u16>() % 10000))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            match resp.json::<Value>().await {
+                Ok(data) => {
+                    // 解析返回的音频URL
+                    // 参考Meting API的urlDecode逻辑
+                    let audio_url = data["data"].get(0)
+                        .and_then(|item| {
+                            // 优先使用uf.url字段(新格式)
+                            if let Some(uf_url) = item.get("uf").and_then(|uf| uf["url"].as_str()) {
+                                Some(uf_url)
+                            } else {
+                                // 回退到url字段(旧格式)
+                                item["url"].as_str()
+                            }
+                        });
+
+                    if let Some(audio_url) = audio_url {
+                        if !audio_url.is_empty() && audio_url != "null" {
+                            // 获取实际音频流
+                            match client.get(audio_url)
+                                .header("Referer", "https://music.163.com/")
+                                .header("Range", "bytes=0-") // 支持断点续传
+                                .send()
+                                .await
+                            {
+                                Ok(audio_resp) => {
+                                    let content_type = audio_resp
+                                        .headers()
+                                        .get(reqwest::header::CONTENT_TYPE)
+                                        .and_then(|v| v.to_str().ok())
+                                        .unwrap_or("audio/mpeg")
+                                        .to_string();
+
+                                    match audio_resp.bytes().await {
+                                        Ok(audio_data) => (
+                                            StatusCode::OK,
+                                            [
+                                                (header::CONTENT_TYPE, content_type),
+                                                (header::CACHE_CONTROL, "public, max-age=3600".to_string()),
+                                                (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
+                                                (header::ACCEPT_RANGES, "bytes".to_string()),
+                                            ],
+                                            audio_data,
+                                        ).into_response(),
+                                        Err(e) => {
+                                            tracing::error!("Failed to read audio data for song {}: {}", song_id, e);
+                                            (StatusCode::BAD_GATEWAY, "Failed to read audio data").into_response()
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    tracing::error!("Failed to fetch audio stream for song {}: {}", song_id, e);
+                                    (StatusCode::BAD_GATEWAY, "Failed to fetch audio stream").into_response()
+                                }
+                            }
+                        } else {
+                            tracing::warn!("Empty or null audio URL for song {} (可能因版权或地理限制无法播放)", song_id);
+                            (StatusCode::NOT_FOUND, "Audio not available (copyright or geo-restriction)").into_response()
+                        }
+                    } else {
+                        tracing::warn!("No audio URL found for song {} (可能因版权或地理限制无法播放)", song_id);
+                        (StatusCode::NOT_FOUND, "Audio not available (copyright or geo-restriction)").into_response()
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("Failed to parse audio URL response for song {}: {}", song_id, e);
+                    (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
+                }
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to fetch audio URL for song {}: {}", song_id, e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch audio URL").into_response()
+        }
     }
 }

@@ -11,7 +11,7 @@
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 999;
+  z-index: 9999; /* 确保高于滚动条和大多数页面元素 */
   pointer-events: none;
 }
 
@@ -20,7 +20,7 @@
 }
 
 /* ==========================================
-   2. 智能岛容器 - 单一元素
+   2. 智能岛容器
    ========================================== */
 
 .control-bar-trigger {
@@ -42,7 +42,7 @@
   height: 3rem;
   padding: 0.5rem 0.875rem;
   border-radius: 2rem;
-  /* 形变动画 - Apple 标准曲线，流畅可见 */
+  /* 形变动画 - Apple 标准曲线 */
   transition:
     width 0.7s cubic-bezier(0.32, 0.72, 0, 1),
     height 0.7s cubic-bezier(0.32, 0.72, 0, 1),
@@ -51,8 +51,7 @@
     transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     background 0.25s ease,
     border-color 0.25s ease,
-    box-shadow 0.35s ease,
-    flex-direction 0s linear;
+    box-shadow 0.35s ease;
   will-change: width, height, padding, border-radius;
 }
 
@@ -81,7 +80,7 @@ html.dark .control-bar-trigger:not(.expanded):hover {
   transition: transform 0.1s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* 展开状态 - 通过 JS 添加类 */
+/* 展开状态 */
 .control-bar-trigger.expanded {
   flex-direction: column;
   align-items: stretch;
@@ -98,7 +97,7 @@ html.dark .control-bar-trigger.expanded {
 }
 
 /* ==========================================
-   3. 内容层 - 通过 JS 控制显示
+   3. 动态内容层
    ========================================== */
 
 /* 动态内容 - 收缩时显示 */
@@ -148,7 +147,6 @@ html.dark .control-bar-trigger.expanded {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-primary, #1f2937);
-  /* 允许文本换行并滚动显示 */
   white-space: normal;
   overflow: hidden;
   max-height: 2rem;
@@ -170,12 +168,12 @@ html.dark .control-bar-trigger.expanded {
   border-radius: 3px;
 }
 
-html.dark .dynamic-text-main::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-}
-
 html.dark .dynamic-text-main {
   color: rgba(255, 255, 255, 0.9);
+}
+
+html.dark .dynamic-text-main::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .control-bar-trigger:not(.expanded):hover .dynamic-text-main {
@@ -183,7 +181,7 @@ html.dark .dynamic-text-main {
 }
 
 html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-main {
-  color: rgba(255, 255, 255, 1);
+  color: #ffffff;
 }
 
 .dynamic-text-sub {
@@ -239,12 +237,10 @@ html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-sub {
     opacity 0.25s ease-in,
     transform 0.3s ease-in;
   pointer-events: none;
-  /* 保持在文档流中以便计算高度 */
   visibility: hidden;
 }
 
 .control-bar-trigger.expanded .expanded-panel-content {
-  /* 展开时立即可见，但保持透明 */
   visibility: visible;
 }
 
@@ -303,7 +299,7 @@ html.dark .control-close-btn:hover {
 }
 
 /* ==========================================
-   5. 信息卡片容器
+   5. 信息卡片
    ========================================== */
 
 .info-card-wrapper {
@@ -311,7 +307,6 @@ html.dark .control-close-btn:hover {
   min-height: 120px;
 }
 
-/* 通用信息卡片样式 */
 .info-card {
   padding: 0.875rem;
   background: rgba(0, 0, 0, 0.03);
@@ -378,18 +373,18 @@ html.dark .info-card-title {
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* 天气卡片详情 */
+/* 天气卡片 */
 .weather-card {
-  background: linear-gradient(135deg, 
-    rgba(59, 130, 246, 0.08), 
+  background: linear-gradient(135deg,
+    rgba(59, 130, 246, 0.08),
     rgba(147, 197, 253, 0.04)
   );
   border-color: rgba(59, 130, 246, 0.2);
 }
 
 html.dark .weather-card {
-  background: linear-gradient(135deg, 
-    rgba(59, 130, 246, 0.12), 
+  background: linear-gradient(135deg,
+    rgba(59, 130, 246, 0.12),
     rgba(147, 197, 253, 0.06)
   );
   border-color: rgba(59, 130, 246, 0.3);
@@ -429,11 +424,8 @@ html.dark .weather-location {
   color: rgba(255, 255, 255, 0.7);
 }
 
-
 .weather-secondary {
-  /* 将状态与额外信息放在同一行显示（体感、湿度、风速） */
   display: flex;
-  flex-direction: row;
   align-items: center;
   gap: 0.75rem;
 }
@@ -442,17 +434,15 @@ html.dark .weather-location {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-primary, #374151);
-  margin-bottom: 0; /* 取消底部间距，改为同行间距 */
 }
 
 html.dark .weather-status {
   color: rgba(255, 255, 255, 0.85);
 }
 
-
 .weather-extra-info {
   display: flex;
-  flex-wrap: nowrap; /* 保持在同一行（超出时可滚动或换行由容器决定） */
+  flex-wrap: nowrap;
   gap: 0.625rem;
   font-size: 0.75rem;
   color: var(--text-tertiary, #9ca3af);
@@ -463,7 +453,6 @@ html.dark .weather-extra-info {
   color: rgba(255, 255, 255, 0.55);
 }
 
-
 .weather-extra-info span {
   display: flex;
   align-items: center;
@@ -471,26 +460,7 @@ html.dark .weather-extra-info {
   white-space: nowrap;
 }
 
-/* 明确同步天气卡片高度为一言卡片高度（与 .info-card 的最小高度保持一致） */
-.weather-card {
-  min-height: 120px;
-}
-
-/* 移动端：若空间不足，恢复堆叠布局，使信息更易读 */
-@media (max-width: 640px) {
-  .weather-secondary {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-
-  .weather-extra-info {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-}
-
-/* 名言卡片详情 */
+/* 名言卡片 */
 .quote-card {
   background: rgba(139, 92, 246, 0.05);
   border-color: rgba(139, 92, 246, 0.15);
@@ -573,12 +543,8 @@ html.dark .nav-dot:hover {
   background: var(--color-primary, #94a3b8);
 }
 
-html.dark .nav-dot.active {
-  background: var(--color-primary, #94a3b8);
-}
-
 /* ==========================================
-   6. 控制项网格
+   7. 控制项网格
    ========================================== */
 
 .control-items-grid {
@@ -588,7 +554,7 @@ html.dark .nav-dot.active {
 }
 
 /* ==========================================
-   7. 控制项
+   8. 控制项
    ========================================== */
 
 .control-item {
@@ -600,10 +566,13 @@ html.dark .nav-dot.active {
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 0.875rem;
   transition: all 0.2s ease;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
 .control-item-compact {
   padding: 0.625rem 0.75rem;
+  gap: 0.625rem;
 }
 
 html.dark .control-item {
@@ -625,7 +594,15 @@ html.dark .control-item:hover {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.control-item-info > div {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .control-item-icon {
@@ -634,6 +611,8 @@ html.dark .control-item:hover {
   justify-content: center;
   width: 2.5rem;
   height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
   font-size: 1.5rem;
   line-height: 1;
   background: linear-gradient(135deg,
@@ -647,6 +626,8 @@ html.dark .control-item:hover {
 .control-item-compact .control-item-icon {
   width: 2rem;
   height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
   font-size: 1.125rem;
   border-radius: 0.5rem;
 }
@@ -656,6 +637,9 @@ html.dark .control-item:hover {
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 0.125rem 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .control-item-compact .control-item-title {
@@ -667,6 +651,9 @@ html.dark .control-item:hover {
   font-size: 0.75rem;
   color: var(--text-tertiary);
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .control-item-compact .control-item-desc {
@@ -674,13 +661,15 @@ html.dark .control-item:hover {
 }
 
 /* ==========================================
-   8. 切换开关和操作按钮
+   9. 切换开关和操作按钮
    ========================================== */
 
 .control-toggle {
   position: relative;
   width: 3rem;
   height: 1.75rem;
+  min-width: 3rem;
+  min-height: 1.75rem;
   background: #d1d5db;
   border: none;
   border-radius: 9999px;
@@ -692,55 +681,8 @@ html.dark .control-item:hover {
 .control-item-compact .control-toggle {
   width: 2.5rem;
   height: 1.5rem;
-}
-
-.control-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent),
-    color-mix(in srgb, var(--color-secondary, #94a3b8) 10%, transparent)
-  );
-  border: 1px solid color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
-  border-radius: 50%;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
-  color: var(--text-primary);
-}
-
-.control-item-compact .control-action-btn {
-  width: 2rem;
-  height: 2rem;
-}
-
-.control-item-compact .control-action-btn svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-html.dark .control-action-btn {
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
-}
-
-.control-action-btn:hover {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent),
-    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent)
-  );
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 35%, transparent);
-  transform: scale(1.05) rotate(90deg);
-}
-
-html.dark .control-action-btn:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 45%, transparent);
-}
-
-.control-action-btn:active {
-  transform: scale(0.95) rotate(180deg);
+  min-width: 2.5rem;
+  min-height: 1.5rem;
 }
 
 .control-toggle:hover {
@@ -780,8 +722,61 @@ html.dark .control-action-btn:hover {
   transform: translateX(1rem);
 }
 
+.control-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent),
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 10%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+}
+
+.control-item-compact .control-action-btn {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
+.control-item-compact .control-action-btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+html.dark .control-action-btn {
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+}
+
+.control-action-btn:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent),
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 35%, transparent);
+  transform: scale(1.05) rotate(90deg);
+}
+
+html.dark .control-action-btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 45%, transparent);
+}
+
+.control-action-btn:active {
+  transform: scale(0.95) rotate(180deg);
+}
+
 /* ==========================================
-   9. 账户信息
+   10. 账户信息
    ========================================== */
 
 .account-info {
@@ -871,7 +866,7 @@ html.dark .account-action-danger:hover {
 }
 
 /* ==========================================
-   10. 遮罩层
+   11. 遮罩层
    ========================================== */
 
 .control-panel-overlay {
@@ -899,7 +894,7 @@ html.dark .control-panel-overlay {
 }
 
 /* ==========================================
-   11. 移动端适配
+   12. 移动端适配
    ========================================== */
 
 @media (max-width: 640px) {
@@ -916,9 +911,76 @@ html.dark .control-panel-overlay {
     width: calc(100vw - 1.5rem);
   }
 
-  /* 移动端控制项网格保持两列 */
   .control-items-grid {
     gap: 0.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 控制项移动端适配 - 防止塌陷 */
+  .control-item {
+    padding: 0.625rem 0.75rem;
+    min-height: 3.5rem;
+    gap: 0.5rem;
+  }
+
+  .control-item-compact {
+    padding: 0.5rem 0.625rem;
+    min-height: 3rem;
+    gap: 0.5rem;
+  }
+
+  .control-item-info {
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .control-item-info > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .control-item > * {
+    flex-shrink: 0;
+  }
+
+  .control-item-info {
+    flex-shrink: 1 !important;
+  }
+
+  .control-item-icon {
+    width: 2rem;
+    height: 2rem;
+    min-width: 2rem;
+    min-height: 2rem;
+    font-size: 1.125rem;
+    flex-shrink: 0;
+  }
+
+  .control-item-compact .control-item-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    font-size: 1rem;
+  }
+
+  .control-item-title {
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+
+  .control-item-compact .control-item-title {
+    font-size: 0.75rem;
+  }
+
+  .control-item-desc {
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .control-item-compact .control-item-desc {
+    font-size: 0.625rem;
   }
 
   .dynamic-icon {
@@ -938,8 +1000,6 @@ html.dark .control-panel-overlay {
     height: 3rem;
   }
 
-
-  /* 修复关闭按钮在移动端坍缩问题 */
   .control-close-btn {
     width: 2.5rem;
     height: 2.5rem;
@@ -947,42 +1007,2255 @@ html.dark .control-panel-overlay {
     min-height: 2.5rem;
     font-size: 1.25rem;
     padding: 0;
+    flex-shrink: 0;
   }
 
-  /* 修复切换开关在移动端的尺寸和滑块 */
   .control-toggle {
-    width: 2.2rem;
-    height: 1.25rem;
-    min-width: 2.2rem;
-    min-height: 1.25rem;
-    border-radius: 9999px;
-  }
-  .control-toggle-slider {
-    width: 1.25rem;
-    height: 1.25rem;
-    min-width: 1rem;
-    min-height: 1rem;
-    top: 0.125rem;
-    left: 0.125rem;
-  }
-  .control-toggle.active .control-toggle-slider {
-    transform: translateX(0.95rem);
+    width: 2.75rem;
+    height: 1.625rem;
+    min-width: 2.75rem;
+    min-height: 1.625rem;
+    flex-shrink: 0;
   }
 
-  /* 卡片导航点在移动端保持间距和居中 */
+  .control-toggle-slider {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+
+  .control-toggle.active .control-toggle-slider {
+    transform: translateX(1.125rem);
+  }
+
+  .control-action-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    flex-shrink: 0;
+  }
+
+  .control-item-compact .control-action-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+
+  .control-action-btn svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
   .card-nav-dots {
     gap: 0.375rem;
     margin-top: 0.5rem;
   }
+
   .nav-dot {
     width: 0.5rem;
     height: 0.5rem;
     min-width: 0.5rem;
     min-height: 0.5rem;
-    padding: 0;
   }
+
   .nav-dot.active {
     width: 1rem;
     min-width: 1rem;
+  }
+
+  .weather-secondary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .weather-extra-info {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* 用户信息按钮移动端适配 */
+  .user-info-button {
+    padding: 0.5rem 0.625rem;
+    max-width: calc(100% - 2.5rem);
+  }
+
+  .user-info-button img {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .user-info-button h3 {
+    font-size: 0.8125rem;
+  }
+
+  .user-info-button p {
+    font-size: 0.6875rem;
+  }
+}
+
+/* ==========================================
+   13. 音乐播放器
+   ========================================== */
+
+.music-player-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  min-width: 0;
+  /* 使用动态颜色变量，未设置时回退到默认粉紫渐变 */
+  --music-base-primary: var(--music-primary, #ec4899);
+  --music-base-secondary: var(--music-secondary, #a855f7);
+  --music-base-accent: var(--music-accent, #fbbf24);
+  --music-base-light: var(--music-light, #f9a8d4);
+  --music-base-dark: var(--music-dark, #831843);
+  
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--music-base-primary) 3%, transparent),
+    color-mix(in srgb, var(--music-base-secondary) 3%, transparent)
+  );
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in srgb, var(--music-base-primary) 10%, transparent);
+  border-radius: 1rem;
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--music-base-primary) 4%, rgba(0, 0, 0, 0.04));
+  /* 只为必要的属性添加过渡，不使用 all 以避免影响 CSS 变量 */
+  transition: 
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 颜色过渡状态 - 淡出效果 */
+.music-player-container.color-transitioning {
+  opacity: 0.7;
+  transform: scale(0.98);
+}
+
+html.dark .music-player-container {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--music-base-primary) 6%, transparent),
+    color-mix(in srgb, var(--music-base-secondary) 6%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--music-base-primary) 20%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--music-base-primary) 8%, rgba(0, 0, 0, 0.1));
+}
+
+.music-player-container:hover {
+  border-color: color-mix(in srgb, var(--music-base-primary) 15%, transparent);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--music-base-primary) 8%, rgba(0, 0, 0, 0.08));
+}
+
+html.dark .music-player-container:hover {
+  border-color: color-mix(in srgb, var(--music-base-primary) 25%, transparent);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--music-base-primary) 12%, rgba(0, 0, 0, 0.12));
+}
+
+/* 视图容器 - 统一动画 */
+.music-view {
+  animation: musicViewFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+@keyframes musicViewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== 状态1: 音乐信息视图 ========== */
+.music-view-info {
+  gap: 0.75rem;
+  height: 100%;
+  justify-content: space-between;
+}
+
+.music-info-main {
+  display: flex;
+  align-items: stretch;
+  gap: 0.1rem 1rem;
+  flex: 1;
+  height: 64px;
+}
+
+.music-info-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.music-album-cover-large {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 0.625rem;
+  overflow: hidden;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--music-base-primary) 12%, rgba(0, 0, 0, 0.12));
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 8%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 8%, transparent)
+  );
+  transition: 
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark .music-album-cover-large {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.music-album-cover-large img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.music-album-cover-large:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+html.dark .music-album-cover-large:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.music-album-cover-large:hover img {
+  transform: scale(1.08);
+}
+
+.music-song-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  justify-content: center;
+}
+
+.music-song-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0rem;
+  flex-shrink: 0;
+}
+
+.music-song-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+html.dark .music-song-name {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.music-song-artist {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+html.dark .music-song-artist {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* 当前歌曲信息（旧样式保留用于兼容） */
+.music-current-song {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.music-album-cover {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.music-album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.music-playing-indicator {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--music-base-primary);
+  animation: music-pulse 1.5s ease-in-out infinite;
+  transition: color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.music-playing-indicator svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes music-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+.music-song-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.music-song-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.25rem;
+}
+
+html.dark .music-song-name {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-song-artist {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dark .music-song-artist {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 无歌曲状态 */
+.music-no-song {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  gap: 0.5rem;
+}
+
+.music-no-song-icon {
+  font-size: 2rem;
+  opacity: 0.3;
+}
+
+.music-no-song-text {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+html.dark .music-no-song-text {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.music-no-song-text.error {
+  color: #f59e0b;
+}
+
+/* 播放控制行 */
+.music-control-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.music-control-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  grid-column: 2;
+  flex-shrink: 0;
+}
+
+.music-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: 
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.25s ease,
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark .music-control-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.music-control-btn:hover {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 12%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 12%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--music-base-primary) 25%, transparent);
+  color: var(--music-base-primary);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--music-base-primary) 15%, transparent);
+}
+
+html.dark .music-control-btn:hover {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 18%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 18%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--music-base-primary) 35%, transparent);
+  color: var(--music-base-light);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--music-base-primary) 25%, transparent);
+}
+
+.music-control-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.music-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: 
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--music-base-primary) 35%, transparent), 
+    0 0 0 0 color-mix(in srgb, var(--music-base-primary) 40%, transparent);
+  position: relative;
+}
+
+.music-play-btn::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  opacity: 0;
+  transition: 
+    opacity 0.3s ease,
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: -1;
+  filter: blur(8px);
+}
+
+.music-play-btn:hover {
+  transform: translateY(-3px) scale(1.08);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--music-base-primary) 45%, transparent), 
+    0 0 0 8px color-mix(in srgb, var(--music-base-primary) 10%, transparent);
+}
+
+.music-play-btn:hover::before {
+  opacity: 0.6;
+}
+
+.music-play-btn:active {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--music-base-primary) 35%, transparent);
+}
+
+/* 通用按钮基础样式 */
+.music-btn-base {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.25s ease;
+}
+
+/* 音量控制（弹出式） */
+.music-volume-control {
+  position: relative;
+}
+
+.music-volume-btn {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html.dark .music-volume-btn {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.music-volume-btn:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--music-base-primary) 12%, transparent),
+    color-mix(in srgb, var(--music-base-secondary) 12%, transparent)
+  );
+  color: var(--music-base-primary);
+  transform: translateY(-2px);
+}
+
+html.dark .music-volume-btn:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--music-base-primary) 18%, transparent),
+    color-mix(in srgb, var(--music-base-secondary) 18%, transparent)
+  );
+  color: var(--music-base-light);
+}
+
+.music-volume-btn:active {
+  transform: translateY(0);
+}
+
+.music-volume-popup {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.625rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  z-index: 10;
+}
+
+html.dark .music-volume-popup {
+  background: rgba(30, 30, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.music-volume-popup.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.music-volume-popup::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid rgba(255, 255, 255, 0.95);
+}
+
+html.dark .music-volume-popup::after {
+  border-top-color: rgba(30, 30, 30, 0.95);
+}
+
+.music-volume-popup svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+html.dark .music-volume-popup svg {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.music-volume-slider {
+  width: 70px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+html.dark .music-volume-slider {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.music-volume-slider:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+html.dark .music-volume-slider:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.music-volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  cursor: pointer;
+  transition: 
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+.music-volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+  box-shadow: 0 3px 6px color-mix(in srgb, var(--music-base-primary) 45%, transparent);
+}
+
+.music-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  cursor: pointer;
+  border: none;
+  transition: 
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+.music-volume-slider::-moz-range-thumb:hover {
+  transform: scale(1.3);
+  box-shadow: 0 3px 6px color-mix(in srgb, var(--music-base-primary) 45%, transparent);
+}
+
+.music-volume-text {
+  display: none;
+}
+
+/* 视图切换按钮（紧凑图标模式） */
+.music-view-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.music-view-switcher-right {
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.music-view-switch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: 
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.25s ease;
+}
+
+html.dark .music-view-switch-btn {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.music-view-switch-btn:hover {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 12%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 12%, transparent)
+  );
+  color: var(--music-base-primary);
+  transform: translateY(-2px);
+}
+
+html.dark .music-view-switch-btn:hover {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 18%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 18%, transparent)
+  );
+  color: var(--music-base-light);
+}
+
+.music-view-switch-btn:active {
+  transform: translateY(0);
+}
+
+.music-view-switch-btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* 播放控制（旧样式保留） */
+.music-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.music-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.music-time {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  min-width: 2rem;
+  text-align: center;
+}
+
+html.dark .music-time {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.music-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+html.dark .music-progress-bar {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.music-progress-bar:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+html.dark .music-progress-bar:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.music-progress-bar::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  cursor: pointer;
+  transition: 
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+.music-progress-bar::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--music-base-primary) 45%, transparent);
+}
+
+.music-progress-bar::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  cursor: pointer;
+  border: none;
+  transition: 
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+.music-progress-bar::-moz-range-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--music-base-primary) 45%, transparent);
+}
+
+.music-control-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.music-control-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+html.dark .music-control-icon-btn {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.music-control-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+html.dark .music-control-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.music-control-icon-btn:active {
+  transform: scale(0.95);
+}
+
+/* 播放按钮样式已在行1332定义，此处删除重复 */
+
+.music-volume-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.music-volume-expanded {
+  padding: 0.5rem;
+}
+
+.music-volume-percentage {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.music-volume-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.1);
+  appearance: none;
+  cursor: pointer;
+}
+
+html.dark .music-volume-bar {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.music-volume-bar::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-secondary, #6b7280);
+  cursor: pointer;
+}
+
+.music-volume-bar::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  border: none;
+}
+
+/* ========== 状态2: 歌词滚动视图 ========== */
+.music-view-lyrics {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.music-lyrics-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.music-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.25rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: 
+    transform 0.2s ease,
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s ease;
+  flex-shrink: 0;
+}
+
+html.dark .music-back-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.music-back-btn:hover {
+  background: color-mix(in srgb, var(--music-base-primary) 10%, transparent);
+  color: var(--music-base-primary);
+  transform: translateX(-2px);
+}
+
+html.dark .music-back-btn:hover {
+  background: color-mix(in srgb, var(--music-base-primary) 15%, transparent);
+  color: var(--music-base-light);
+}
+
+.music-lyrics-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.music-lyrics-song-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+html.dark .music-lyrics-song-name {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-lyrics-artist {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 0;
+  line-height: 1.2;
+}
+
+html.dark .music-lyrics-artist {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.music-lyrics-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: 0 -0.875rem;
+  padding: 1rem 0.875rem;
+  min-height: 0;
+  position: relative;
+}
+
+/* 通用滚动条样式 */
+.music-lyrics-scroll::-webkit-scrollbar,
+.music-playlist-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.music-lyrics-scroll::-webkit-scrollbar-track,
+.music-playlist-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.music-lyrics-scroll::-webkit-scrollbar-thumb,
+.music-playlist-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+
+html.dark .music-lyrics-scroll::-webkit-scrollbar-thumb,
+html.dark .music-playlist-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.music-lyric-line {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  text-align: center;
+  line-height: 1.8;
+  padding: 0.5rem 0;
+  margin: 0.125rem 0;
+  transition: all 0.3s ease;
+  opacity: 0.4;
+  width: 100%;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+html.dark .music-lyric-line {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.music-lyric-line.active {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+html.dark .music-lyric-line.active {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.music-lyric-line.passed {
+  opacity: 0.25;
+}
+
+/* 无歌词状态 */
+.music-no-lyrics {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.5rem;
+  padding: 2rem;
+}
+
+.music-no-lyrics-icon {
+  font-size: 2rem;
+  opacity: 0.3;
+}
+
+.music-no-lyrics-text {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+}
+
+html.dark .music-no-lyrics-text {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.music-lyrics-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .music-lyrics-control {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.music-mini-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: 
+    transform 0.2s ease,
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s ease;
+}
+
+html.dark .music-mini-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.music-mini-btn:hover {
+  background: color-mix(in srgb, var(--music-base-primary) 10%, transparent);
+  color: var(--music-base-primary);
+  transform: scale(1.1);
+}
+
+html.dark .music-mini-btn:hover {
+  background: color-mix(in srgb, var(--music-base-primary) 15%, transparent);
+  color: var(--music-base-light);
+}
+
+.music-mini-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  transition: 
+    transform 0.2s ease,
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+.music-mini-play-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--music-base-primary) 40%, transparent);
+}
+
+.music-mini-play-btn:active {
+  transform: scale(0.95);
+}
+
+/* ========== 状态3: 播放列表视图 ========== */
+.music-view-playlist {
+  height: 100%;
+  justify-content: space-between;
+}
+
+.music-playlist-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.music-playlist-title {
+  flex: 1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+html.dark .music-playlist-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-playlist-scroll {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0 -0.875rem;
+  padding: 0.25rem 0.875rem;
+}
+
+/* 滚动条样式已在行1887合并定义 */
+
+/* 歌词显示（旧样式保留） */
+.music-lyrics-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0.625rem;
+  min-height: 3rem;
+}
+
+html.dark .music-lyrics-display {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.music-lyric-current {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  line-height: 1.4;
+}
+
+html.dark .music-lyric-current {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-lyric-next {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  text-align: center;
+  opacity: 0.6;
+}
+
+html.dark .music-lyric-next {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 可展开部分 */
+.music-expandable-section {
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.music-expandable-section.collapsed {
+  max-height: 0;
+}
+
+.music-expandable-section.expanded {
+  max-height: 300px;
+}
+
+.music-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.5rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 0.5rem;
+}
+
+html.dark .music-section-header {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.music-section-header:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html.dark .music-section-header:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.music-section-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+html.dark .music-section-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-section-icon {
+  transition: transform 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.music-section-icon.expanded {
+  transform: rotate(180deg);
+}
+
+/* 搜索按钮 */
+.music-search-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+html.dark .music-search-toggle-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.music-search-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text-primary);
+}
+
+html.dark .music-search-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 搜索界面 */
+.music-search-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 0.625rem;
+  margin-bottom: 0.625rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .music-search-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.music-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+html.dark .music-back-btn {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.music-back-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+  transform: translateX(-2px);
+}
+
+html.dark .music-back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 音乐源选择 */
+.music-source-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+
+.music-source-tab {
+  flex: 1;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: 
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s ease;
+}
+
+html.dark .music-source-tab {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.music-source-tab:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text-primary);
+}
+
+html.dark .music-source-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.music-source-tab.active {
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  border-color: transparent;
+  color: white;
+}
+
+.music-source-tab.active:hover {
+  opacity: 0.9;
+}
+
+/* 搜索输入 */
+.music-search-input-container {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.music-search-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+html.dark .music-search-input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-search-input:focus {
+  outline: none;
+  background: rgba(0, 0, 0, 0.06);
+  border-color: var(--color-primary, #ec4899);
+}
+
+html.dark .music-search-input:focus {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.music-search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+html.dark .music-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.music-search-btn {
+  padding: 0.5rem 0.875rem;
+  background: linear-gradient(135deg, var(--music-base-primary), var(--music-base-secondary));
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: 
+    transform 0.2s ease,
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--music-base-primary) 20%, transparent);
+}
+
+.music-search-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+.music-search-btn:active {
+  transform: translateY(0);
+}
+
+/* 搜索结果 */
+.music-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.music-search-results::-webkit-scrollbar {
+  width: 4px;
+}
+
+.music-search-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.music-search-results::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+html.dark .music-search-results::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.music-search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+html.dark .music-search-result-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.music-search-result-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+  transform: translateX(4px);
+}
+
+html.dark .music-search-result-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.music-result-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: 0.375rem;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.music-result-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.music-result-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.125rem;
+}
+
+html.dark .music-result-name {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-result-artist {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dark .music-result-artist {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 歌单列表 */
+.music-playlist {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .music-playlist {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.music-playlist-header {
+  margin-bottom: 0.5rem;
+}
+
+.music-playlist-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+html.dark .music-playlist-title {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.music-playlist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.music-playlist-items::-webkit-scrollbar {
+  width: 4px;
+}
+
+.music-playlist-items::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.music-playlist-items::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+html.dark .music-playlist-items::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.music-playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: 
+    transform 0.2s ease,
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark .music-playlist-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.music-playlist-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+  transform: translateX(4px);
+}
+
+html.dark .music-playlist-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.music-playlist-item.active {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 10%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 10%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--music-base-primary) 30%, transparent);
+}
+
+html.dark .music-playlist-item.active {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 15%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 15%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--music-base-primary) 40%, transparent);
+}
+
+.music-playlist-index {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  min-width: 1.25rem;
+  text-align: center;
+  transition: color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark .music-playlist-index {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.music-playlist-item.active .music-playlist-index {
+  color: var(--music-base-primary);
+}
+
+.music-playlist-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.music-playlist-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.125rem;
+}
+
+html.dark .music-playlist-name {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.music-playlist-artist {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dark .music-playlist-artist {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.music-playlist-playing {
+  font-size: 0.75rem;
+  color: var(--music-base-primary);
+  animation: music-pulse 1.5s ease-in-out infinite;
+  transition: color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .music-album-cover {
+    width: 50px;
+    height: 50px;
+  }
+
+  .music-song-name {
+    font-size: 0.8125rem;
+  }
+
+  .music-song-artist {
+    font-size: 0.6875rem;
+  }
+
+  .music-play-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+
+  .music-control-btn {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+  }
+
+  .music-control-icon-btn {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+  }
+
+  .music-volume-btn {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+  }
+
+  .music-view-switch-btn {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+  }
+
+  .music-view-switch-btn svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .music-control-row {
+    gap: 0.375rem;
+  }
+
+  .music-control-buttons {
+    gap: 0.375rem;
+  }
+
+  .music-playlist-items {
+    max-height: 150px;
+  }
+}
+
+/* ==========================================
+   用户信息按钮样式
+   ========================================== */
+.user-info-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+  text-align: left;
+  /* 根据内容自适应宽度，不设置固定宽度 */
+  width: auto;
+  min-width: 0;
+  max-width: 66%; /* 为关闭按钮留空间 */
+}
+
+.user-info-button:hover {
+  background: rgba(0, 0, 0, 0.04);
+  transform: translateX(2px);
+}
+
+html.dark .user-info-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.user-info-button:active {
+  transform: scale(0.98);
+}
+
+/* ==========================================
+   用户弹窗样式
+   ========================================== */
+.user-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+.user-modal-overlay.closing {
+  animation: fadeOut 0.3s ease forwards;
+}
+
+.user-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-radius: 1.5rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  z-index: 10001;
+  overflow: hidden;
+  animation: modalSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.user-modal.closing {
+  animation: modalSlideOut 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+html.dark .user-modal {
+  background: rgba(30, 30, 30, 0.95);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes modalSlideOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -52%) scale(0.95);
+  }
+}
+
+.user-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .user-modal-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.user-modal-content {
+  padding: 1.5rem;
+  max-height: calc(90vh - 80px);
+  overflow-y: auto;
+}
+
+/* 用户资料部分 */
+.user-profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.user-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 1rem;
+}
+
+html.dark .user-profile-header {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.user-profile-avatar {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .user-profile-avatar {
+  border-color: rgba(50, 50, 50, 0.9);
+}
+
+.user-profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-profile-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  word-break: break-word;
+}
+
+.user-profile-platform {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+}
+
+.user-profile-bio {
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0.75rem;
+}
+
+html.dark .user-profile-bio {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.user-profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0.75rem;
+}
+
+html.dark .user-profile-meta {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.user-meta-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.user-meta-item:not(:last-child) {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+html.dark .user-meta-item:not(:last-child) {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.user-meta-label {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+}
+
+.user-meta-value {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.user-logout-btn {
+  width: 100%;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.user-logout-btn:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+}
+
+.user-logout-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+/* 用户操作按钮 */
+.user-action-btn {
+  width: 100%;
+  padding: 0.875rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.user-action-github {
+  background: linear-gradient(135deg, #24292e 0%, #1a1e22 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(36, 41, 46, 0.3);
+}
+
+.user-action-github:hover {
+  background: linear-gradient(135deg, #1a1e22 0%, #0d1117 100%);
+  box-shadow: 0 6px 16px rgba(36, 41, 46, 0.4);
+  transform: translateY(-1px);
+}
+
+.user-action-secondary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.user-action-secondary:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.user-action-btn:active {
+  transform: translateY(0);
+}
+
+/* 修改密码表单 */
+.change-password-form {
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .change-password-form {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 登录表单部分 - 废弃，改用 user-modal-login-only */
+.login-form-section {
+  width: 100%;
+}
+
+/* 登录专用容器 - 无额外框架 */
+.user-modal-login-only {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10001;
+  animation: modalSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* 让 LoginForm 的背景和圆角生效 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-modal-login-only.closing {
+  animation: modalSlideOut 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+.login-close-btn {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+html.dark .login-close-btn {
+  background: rgba(30, 30, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.login-close-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
+  transform: rotate(90deg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+html.dark .login-close-btn:hover {
+  background: rgba(30, 30, 30, 1);
+}
+
+.login-close-btn:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .user-modal {
+    width: 95%;
+    max-width: none;
+    border-radius: 1.25rem;
+  }
+
+  .user-modal-header {
+    padding: 1.25rem;
+  }
+
+  .user-modal-content {
+    padding: 1.25rem;
+  }
+
+  .user-profile-avatar {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .user-profile-name {
+    font-size: 1rem;
+  }
+
+  .user-modal-login-only {
+    width: 95%;
+    padding: 0;
+  }
+
+  .login-close-btn {
+    top: 0.5rem;
+    right: 0.5rem;
   }
 }

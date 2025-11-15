@@ -9,14 +9,15 @@ import App from '../App';
 
 // 导出 getStaticPaths 以支持所有可能的路由
 export function getStaticPaths() {
-  // 定义所有客户端路由路径
+  // 定义所有客户端路由路径（与 src/router/Router.tsx 实际路由保持同步）
+  // 注意：/account 已重定向到首页，账户管理已整合到控制面板
   const routes = [
     'library',
     'config',
+    'data-management',
     'login',
     'details',
     'setup',
-    'account',
   ];
   
   // 为每个路由生成静态路径
@@ -66,7 +67,7 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
           if (response.ok) {
             const metadata = await response.json();
             
-            if (metadata.site_title && document.title === 'Myriad - 数字自我发现') {
+            if (metadata.site_title) {
               document.title = metadata.site_title;
             }
             
@@ -1740,11 +1741,6 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
         }
 
         /* 移动端按钮最小触摸区域 */
-        button, a.button {
-          min-height: 44px;
-          padding: 0.75rem 1rem;
-        }
-
         /* 移动端间距优化 */
         .px-4 {
           padding-left: 1rem !important;

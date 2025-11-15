@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import './GlobalControlPanel.css';
+import LoginForm from './LoginForm';
 import {
   getGreeting,
   getWeatherInfo,
@@ -11,32 +12,19 @@ import {
   QuoteData,
   GreetingData
 } from '../utils/smartWidgets';
-
-// 判断URL是否为单一图片链接（而非API端点）
-const isSingleImageUrl = (url: string): boolean => {
-  if (!url) return false;
-  
-  // 检查是否以常见图片扩展名结尾
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
-  const lowerUrl = url.toLowerCase();
-  if (imageExtensions.some(ext => lowerUrl.endsWith(ext))) {
-    return true;
-  }
-  
-  // 检查URL是否包含常见的随机图片API标识
-  const randomImageApis = [
-    'unsplash.com/photos/',
-    'picsum.photos',
-    'loremflickr.com',
-    'source.unsplash.com',
-    'api.unsplash.com',
-    'bing.com/HPImageArchive',
-    'random',
-    'daily'
-  ];
-  
-  return !randomImageApis.some(api => lowerUrl.includes(api.toLowerCase()));
-};
+import {
+  Song,
+  LyricLine,
+  MusicSource,
+  getNeteasePlaylist,
+  getQQPlaylist,
+  getNeteaseLyrics,
+  getQQLyrics,
+  getCurrentLyricIndex,
+  formatTime
+} from '../utils/musicPlayer';
+import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
+import { useWallpaper } from '../hooks/useWallpaper';
 
 interface User {
   username: string;
@@ -47,7 +35,7 @@ interface User {
 }
 
 interface DynamicContent {
-  type: 'greeting' | 'weather' | 'quote' | 'theme';
+  type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
   icon: string;
   text: string;
   subtext?: string;
@@ -63,6 +51,18 @@ const GlobalControlPanel: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userInfo, setUserInfo] = useState<{
+    name: string;
+    avatar: string;
+    bio: string;
+    platform: string;
+  } | null>(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [isUserModalClosing, setIsUserModalClosing] = useState(false);
+  const [githubEnabled, setGithubEnabled] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   // 动态内容状态
   const [dynamicContents, setDynamicContents] = useState<DynamicContent[]>([]);
@@ -72,14 +72,74 @@ const GlobalControlPanel: React.FC = () => {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [expandedCardIndex, setExpandedCardIndex] = useState(0); // 0=天气, 1=名言
+
+  // 壁纸管理 Hook（替代之前的独立状态和函数）
+  const { wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper();
   
-  // 壁纸相关状态
-  const [wallpaperUrl, setWallpaperUrl] = useState<string>('');
-  const [canRefreshWallpaper, setCanRefreshWallpaper] = useState(false);
+  // 音乐播放器状态
+  const [playlist, setPlaylist] = useState<Song[]>([]);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [currentSong, setCurrentSong] = useState<Song | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [volume, setVolume] = useState(0.7);
+  const [lyrics, setLyrics] = useState<LyricLine[]>([]);
+  const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
+  const [musicEnabled, setMusicEnabled] = useState(false);
+  const [musicSource, setMusicSource] = useState<MusicSource>('netease');
+  const [playlistId, setPlaylistId] = useState('');
+  const [musicError, setMusicError] = useState<string>('');
+  const [musicPlayerView, setMusicPlayerView] = useState<'info' | 'lyrics' | 'playlist'>('info');
+  const [showVolumePopup, setShowVolumePopup] = useState(false);
+  const [musicColors, setMusicColors] = useState<{
+    primary: string;
+    secondary: string;
+    accent: string;
+    light: string;
+    dark: string;
+  } | null>(null);
+  const lyricsScrollRef = useRef<HTMLDivElement>(null);
+  
+  // 预加载系统
+  const preloadAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [preloadedSongIndex, setPreloadedSongIndex] = useState<number>(-1);
+  const preloadCacheRef = useRef<Map<number, boolean>>(new Map());
+  const preloadErrorCountRef = useRef<number>(0);
+  const preloadDisabledRef = useRef<boolean>(false);
+
+  // 应用音乐颜色到全局作用域
+  useEffect(() => {
+    const root = document.documentElement;
+    if (musicColors) {
+      root.style.setProperty('--music-primary', musicColors.primary);
+      root.style.setProperty('--music-secondary', musicColors.secondary);
+      root.style.setProperty('--music-accent', musicColors.accent);
+      root.style.setProperty('--music-light', musicColors.light);
+      root.style.setProperty('--music-dark', musicColors.dark);
+    } else {
+      // 清除音乐颜色变量，使用默认值
+      root.style.removeProperty('--music-primary');
+      root.style.removeProperty('--music-secondary');
+      root.style.removeProperty('--music-accent');
+      root.style.removeProperty('--music-light');
+      root.style.removeProperty('--music-dark');
+    }
+
+    // 组件卸载时清除音乐颜色变量
+    return () => {
+      root.style.removeProperty('--music-primary');
+      root.style.removeProperty('--music-secondary');
+      root.style.removeProperty('--music-accent');
+      root.style.removeProperty('--music-light');
+      root.style.removeProperty('--music-dark');
+    };
+  }, [musicColors]);
 
   // DOM 引用
   const triggerRef = useRef<HTMLDivElement>(null);
   const expandedContentRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const volumeControlRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // 检查当前主题
@@ -90,7 +150,45 @@ const GlobalControlPanel: React.FC = () => {
 
     // 加载动态内容
     loadDynamicContents();
-  }, []);
+    
+    // 加载壁纸配置以初始化 canRefresh 状态
+    loadWallpaper();
+  }, [loadWallpaper]);
+
+  // 点击外部关闭音量弹窗
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (volumeControlRef.current && !volumeControlRef.current.contains(event.target as Node)) {
+        setShowVolumePopup(false);
+      }
+    };
+
+    if (showVolumePopup) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showVolumePopup]);
+
+  // 用户弹窗滚动锁定
+  useEffect(() => {
+    if (showUserModal) {
+      // 禁止背景滚动
+      document.body.style.overflow = 'hidden';
+    } else {
+      // 恢复背景滚动
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      // 清理：组件卸载时恢复滚动
+      document.body.style.overflow = '';
+    };
+  }, [showUserModal]);
+
+  // 注意：壁纸颜色提取完全由 AppLayout 负责
+  // GlobalControlPanel 不再处理壁纸颜色，只处理音乐封面颜色
 
   // 加载动态内容
   const loadDynamicContents = useCallback(async () => {
@@ -113,12 +211,12 @@ const GlobalControlPanel: React.FC = () => {
         contents.push({
           type: 'weather',
           icon: weather.icon,
-          text: `${weather.city} ${weather.weather}`,
-          subtext: weather.temperature
+          text: `${weather.temperature} ${weather.weather}`,
+          subtext: weather.city
         });
       }
     } catch (error) {
-      console.warn('Failed to load weather', error);
+      // 静默处理错误
     }
 
     // 3. 一言警句
@@ -134,20 +232,47 @@ const GlobalControlPanel: React.FC = () => {
         });
       }
     } catch (error) {
-      console.warn('Failed to load quote', error);
+      // 静默处理错误
     }
 
-    // 4. 主题状态
+    // 4. 主题状态 - 随机提示可配置选项
     const theme = getThemeInfo();
+    const themeTexts = [
+      '主题切换',
+      '壁纸切换',
+      '外观设置'
+    ];
+    const randomText = themeTexts[Math.floor(Math.random() * themeTexts.length)];
+    
     contents.push({
       type: 'theme',
-      icon: theme.icon,
-      text: theme.text,
-      subtext: '点击切换'
+      icon: '⚙️',
+      text: randomText,
+      subtext: '点击展开设置'
     });
 
     setDynamicContents(contents);
   }, [user?.username]);
+
+  // 获取平台用户信息
+  const fetchUserInfo = useCallback(async () => {
+    try {
+      const profileResponse = await fetch(`${API_URL}/api/profile/user-info`);
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json();
+        if (profileData.success && profileData.user_info) {
+          setUserInfo({
+            name: profileData.user_info.name || '未知用户',
+            avatar: profileData.user_info.avatar || '',
+            bio: profileData.user_info.bio || '这家伙很懒，没有介绍呢',
+            platform: profileData.user_info.platform || 'Unknown'
+          });
+        }
+      }
+    } catch (error) {
+      // 静默处理错误
+    }
+  }, []);
 
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('auth_token');
@@ -177,12 +302,100 @@ const GlobalControlPanel: React.FC = () => {
             // 使用默认头像
           }
           setAvatarUrl(avatar);
+          
+          // 同时获取平台用户信息
+          fetchUserInfo();
         }
       } catch {
         setIsAuthenticated(false);
       }
     }
+  }, [fetchUserInfo]);
+
+  // 检查GitHub OAuth是否启用
+  const checkGithubOAuth = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/setup/config`);
+      const data = await response.json();
+      setGithubEnabled(data.github_oauth?.client_id_set || false);
+    } catch (err) {
+      // 静默处理错误
+    }
   }, []);
+
+  // 处理用户信息区域点击
+  const handleUserInfoClick = () => {
+    setIsUserModalClosing(false);
+    setShowUserModal(true);
+    setShowChangePassword(false);
+    setPasswordError('');
+  };
+
+  // 处理用户弹窗关闭
+  const handleUserModalClose = () => {
+    setIsUserModalClosing(true);
+    setTimeout(() => {
+      setShowUserModal(false);
+      setIsUserModalClosing(false);
+    }, 300); // 等待动画完成
+  };
+
+  // 处理修改密码
+  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setPasswordError('');
+
+    const formData = new FormData(e.currentTarget);
+    const oldPassword = formData.get('old-password') as string;
+    const newPassword = formData.get('new-password') as string;
+    const confirmPassword = formData.get('confirm-password') as string;
+
+    if (newPassword.length < 8) {
+      setPasswordError('新密码至少需要 8 个字符');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('两次输入的新密码不一致');
+      return;
+    }
+
+    if (oldPassword === newPassword) {
+      setPasswordError('新密码不能与当前密码相同');
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    setPasswordSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          old_password: oldPassword,
+          new_password: newPassword
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        alert('✓ 密码修改成功！');
+        e.currentTarget.reset();
+        setShowChangePassword(false);
+      } else {
+        setPasswordError(result.message || result.error || '修改失败，请重试');
+      }
+    } catch (error) {
+      setPasswordError('网络错误，请稍后重试');
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
 
   // 当用户信息更新时，重新加载动态内容
   useEffect(() => {
@@ -191,59 +404,234 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, [user, loadDynamicContents]);
 
-  // 加载壁纸配置
-  const loadWallpaperConfig = useCallback(async () => {
+  // 壁纸加载和刷新功能已由 useWallpaper Hook 提供
+  // loadWallpaperConfig 和 refreshWallpaper 已废弃
+
+  // 加载音乐配置
+  const loadMusicConfig = useCallback(async () => {
     try {
+      // 页面加载时重置预加载错误计数和状态
+      preloadErrorCountRef.current = 0;
+      preloadDisabledRef.current = false;
+      
       const response = await fetch(`${API_URL}/api/config`);
       const data = await response.json();
-      
-      if (data.ui_config?.wallpaper_url) {
-        const url = data.ui_config.wallpaper_url;
-        setWallpaperUrl(url);
-        setCanRefreshWallpaper(!isSingleImageUrl(url));
+
+      if (data.ui_config) {
+        const enabled = data.ui_config.config_fields?.find((f: any) => f.key === 'music_enabled')?.value === 'true';
+        const source = data.ui_config.config_fields?.find((f: any) => f.key === 'music_source')?.value || 'netease';
+        const plistId = data.ui_config.config_fields?.find((f: any) => f.key === 'music_playlist_id')?.value || '';
+
+        setMusicEnabled(enabled);
+        setMusicSource(source as MusicSource);
+        setPlaylistId(plistId);
+
+        // 如果启用音乐且有歌单ID，加载歌单
+        if (enabled && plistId) {
+          loadPlaylist(source as MusicSource, plistId);
+        }
       }
     } catch (error) {
-      console.warn('Failed to load wallpaper config', error);
+      // 静默处理错误
     }
   }, []);
 
-  // 刷新壁纸
-  const refreshWallpaper = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/config`);
-      const data = await response.json();
-      const wallpaperEl = document.getElementById('wallpaper');
+  // 预加载下一首歌曲
+  const preloadNextSong = useCallback((nextIndex: number) => {
+    // 如果预加载已被禁用（连续失败3次），跳过
+    if (preloadDisabledRef.current) {
+      return;
+    }
+    
+    if (!preloadAudioRef.current || nextIndex < 0 || nextIndex >= playlist.length) {
+      return;
+    }
+    
+    // 如果已经预加载过这首歌，跳过
+    if (preloadCacheRef.current.has(nextIndex)) {
+      return;
+    }
+    
+    const nextSong = playlist[nextIndex];
+    if (nextSong) {
+      const preloadAudio = preloadAudioRef.current;
       
-      if (wallpaperEl && data.ui_config?.wallpaper_url) {
-        const apiUrl = data.ui_config.wallpaper_url;
-        const blur = data.ui_config.wallpaper_blur || 3;
+      // 监听加载错误
+      const handleError = () => {
+        preloadErrorCountRef.current += 1;
         
-        // 添加随机参数避免缓存
-        const urlWithTimestamp = apiUrl.includes('?') 
-          ? `${apiUrl}&t=${Date.now()}` 
-          : `${apiUrl}?t=${Date.now()}`;
+        // 连续3次失败，禁用预加载
+        if (preloadErrorCountRef.current >= 3) {
+          preloadDisabledRef.current = true;
+          console.warn('音乐预加载已禁用：连续3次失败（可能因版权或地理限制）');
+        }
         
-        // 获取实际图片 URL
-        const actualResponse = await fetch(urlWithTimestamp, { method: 'HEAD' });
-        const actualImageUrl = actualResponse.url;
+        // 清理事件监听
+        preloadAudio.removeEventListener('error', handleError);
+        preloadAudio.removeEventListener('canplay', handleCanPlay);
+      };
+      
+      // 监听加载成功
+      const handleCanPlay = () => {
+        // 重置错误计数
+        preloadErrorCountRef.current = 0;
         
-        // 预加载图片以实现平滑过渡
-        const img = new Image();
-        img.onload = () => {
-          wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;
-          wallpaperEl.style.filter = `blur(${blur}px)`;
-        };
-        img.src = actualImageUrl;
+        // 清理事件监听
+        preloadAudio.removeEventListener('error', handleError);
+        preloadAudio.removeEventListener('canplay', handleCanPlay);
+      };
+      
+      preloadAudio.addEventListener('error', handleError);
+      preloadAudio.addEventListener('canplay', handleCanPlay);
+      
+      preloadAudio.src = nextSong.url;
+      preloadAudio.load();
+      setPreloadedSongIndex(nextIndex);
+      preloadCacheRef.current.set(nextIndex, true);
+      
+      // 保持缓存大小：只保留最近的3首
+      if (preloadCacheRef.current.size > 3) {
+        const oldestKey = Array.from(preloadCacheRef.current.keys())[0];
+        preloadCacheRef.current.delete(oldestKey);
+      }
+    }
+  }, [playlist]);
+
+  // 选择歌曲
+  const selectSong = useCallback(async (song: Song, index: number) => {
+    setCurrentSong(song);
+    setCurrentSongIndex(index);
+
+    // 提取封面颜色 - 添加淡出淡入效果
+    if (song.cover) {
+      try {
+        // 先淡出当前颜色
+        const musicContainer = document.querySelector('.music-player-container');
+        if (musicContainer) {
+          musicContainer.classList.add('color-transitioning');
+        }
+
+        // 提取新颜色 - 标记为音乐上下文，不会取消壁纸颜色提取
+        const colors = await extractColorsFromImage(song.cover, { context: 'music' });
+        
+        // 短暂延迟后应用新颜色并淡入
+        setTimeout(() => {
+          setMusicColors(colors);
+          if (musicContainer) {
+            setTimeout(() => {
+              musicContainer.classList.remove('color-transitioning');
+            }, 50);
+          }
+        }, 300);
+      } catch (error) {
+        // 静默处理错误
+        setMusicColors(null);
+        const musicContainer = document.querySelector('.music-player-container');
+        if (musicContainer) {
+          musicContainer.classList.remove('color-transitioning');
+        }
+      }
+    } else {
+      setMusicColors(null);
+    }
+
+    // 加载歌词
+    setLyrics([]); // 先清空旧歌词
+    setCurrentLyricIndex(-1);
+    
+    try {
+      const fetchedLyrics = song.source === 'netease'
+        ? await getNeteaseLyrics(song.id)
+        : await getQQLyrics(song.id);
+      
+      if (fetchedLyrics && fetchedLyrics.length > 0) {
+        setLyrics(fetchedLyrics);
+        setCurrentLyricIndex(-1); // 初始化为-1，等待时间更新
+      } else {
+        setLyrics([]);
       }
     } catch (error) {
-      console.warn('Failed to refresh wallpaper', error);
+      // 静默处理错误
+      setLyrics([]);
+      setCurrentLyricIndex(-1);
     }
-  }, []);
 
-  // 初始化时加载壁纸配置
+    // 加载歌曲但不自动播放，等待用户点击播放按钮
+    if (audioRef.current) {
+      audioRef.current.src = song.url;
+      audioRef.current.load();
+      setIsPlaying(false);
+      setCurrentTime(0);
+    }
+
+    // 预加载下一首歌曲
+    const nextIndex = (index + 1) % playlist.length;
+    if (nextIndex !== index && playlist.length > 1) {
+      // 延迟500ms预加载，避免影响当前歌曲加载
+      setTimeout(() => {
+        preloadNextSong(nextIndex);
+      }, 500);
+    }
+
+    // 更新动态内容
+    loadDynamicContents();
+  }, [loadDynamicContents, playlist.length, preloadNextSong]);
+
+  // 加载歌单
+  const loadPlaylist = useCallback(async (source: MusicSource, plistId: string) => {
+    try {
+      setMusicError(''); // 清除之前的错误
+      const songs = source === 'netease'
+        ? await getNeteasePlaylist(plistId)
+        : await getQQPlaylist(plistId);
+
+      setPlaylist(songs);
+
+      // 加载第一首歌但不自动播放
+      if (songs.length > 0) {
+        selectSong(songs[0], 0);
+      }
+    } catch (error) {
+      // 静默处理错误
+      const errorMessage = error instanceof Error ? error.message : '加载歌单失败';
+      setMusicError(errorMessage);
+      setPlaylist([]);
+    }
+  }, [selectSong]);
+
+  // 监听登录成功事件
   useEffect(() => {
-    loadWallpaperConfig();
-  }, [loadWallpaperConfig]);
+    const handleLoginSuccess = () => {
+      handleUserModalClose();
+      checkAuth();
+    };
+
+    window.addEventListener('auth-login-success', handleLoginSuccess);
+    return () => {
+      window.removeEventListener('auth-login-success', handleLoginSuccess);
+    };
+  }, [checkAuth]);
+
+  // 监听打开用户弹窗事件（从其他组件触发）
+  useEffect(() => {
+    const handleOpenUserModal = () => {
+      setIsUserModalClosing(false);
+      setShowUserModal(true);
+      setShowChangePassword(false);
+      setPasswordError('');
+    };
+
+    window.addEventListener('open-user-modal', handleOpenUserModal);
+    return () => {
+      window.removeEventListener('open-user-modal', handleOpenUserModal);
+    };
+  }, []);
+
+  // 初始化时加载音乐配置和GitHub OAuth检查
+  useEffect(() => {
+    loadMusicConfig();
+    checkGithubOAuth();
+  }, [loadMusicConfig, checkGithubOAuth]);
 
   // 动态内容轮播（带淡入淡出效果）
   useEffect(() => {
@@ -411,6 +799,202 @@ const GlobalControlPanel: React.FC = () => {
     navigate('/login');
   }, [navigate, handleClosePanel]);
 
+  // 音乐播放器逻辑
+  useEffect(() => {
+    // 创建 audio 元素
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+      audioRef.current.volume = volume;
+    }
+    
+    // 创建预加载 audio 元素
+    if (!preloadAudioRef.current) {
+      preloadAudioRef.current = new Audio();
+      preloadAudioRef.current.preload = 'auto';
+    }
+
+    const audio = audioRef.current;
+
+    // 监听播放时间更新
+    const handleTimeUpdate = () => {
+      const currentTime = audio.currentTime;
+      setCurrentTime(currentTime);
+
+      // 更新当前歌词索引
+      if (lyrics.length > 0) {
+        const index = getCurrentLyricIndex(lyrics, currentTime);
+        if (index !== currentLyricIndex) {
+          setCurrentLyricIndex(index);
+        }
+      }
+    };
+
+    // 监听播放结束 - 自动播放下一首
+    const handleEnded = () => {
+      if (playlist.length > 0) {
+        const newIndex = (currentSongIndex + 1) % playlist.length;
+        
+        // 如果下一首已经预加载，优先使用预加载的数据
+        if (preloadedSongIndex === newIndex && preloadAudioRef.current && preloadAudioRef.current.readyState >= 2) {
+          // 交换 audioRef 和 preloadAudioRef
+          const temp = audioRef.current;
+          audioRef.current = preloadAudioRef.current;
+          preloadAudioRef.current = temp;
+          
+          if (audioRef.current) {
+            audioRef.current.volume = volume;
+            audioRef.current.play().catch(() => setIsPlaying(false));
+            setIsPlaying(true);
+          }
+          
+          setCurrentSong(playlist[newIndex]);
+          setCurrentSongIndex(newIndex);
+          setCurrentTime(0);
+          
+          // 预加载再下一首
+          const nextNextIndex = (newIndex + 1) % playlist.length;
+          if (nextNextIndex !== newIndex) {
+            setTimeout(() => preloadNextSong(nextNextIndex), 500);
+          }
+        } else {
+          // 没有预加载或预加载未完成，正常加载
+          selectSong(playlist[newIndex], newIndex);
+        }
+      } else {
+        setIsPlaying(false);
+      }
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [lyrics, currentLyricIndex, volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong]);
+
+  // 播放/暂停
+  const togglePlay = useCallback(() => {
+    if (!audioRef.current || !currentSong) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  }, [isPlaying, currentSong]);
+
+  // 上一首
+  const playPrevious = useCallback(() => {
+    if (playlist.length === 0) return;
+
+    const newIndex = currentSongIndex === 0 ? playlist.length - 1 : currentSongIndex - 1;
+    selectSong(playlist[newIndex], newIndex);
+  }, [playlist, currentSongIndex, selectSong]);
+
+  // 下一首
+  const playNext = useCallback(() => {
+    if (playlist.length === 0) return;
+
+    const newIndex = (currentSongIndex + 1) % playlist.length;
+    selectSong(playlist[newIndex], newIndex);
+  }, [playlist, currentSongIndex, selectSong]);
+
+  // 调整音量
+  const handleVolumeChange = useCallback((newVolume: number) => {
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+  }, []);
+
+  // 调整播放进度
+  const handleSeek = useCallback((time: number) => {
+    if (audioRef.current && currentSong) {
+      audioRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  }, [currentSong]);
+
+  // 歌词自动滚动 - 重构版
+  useEffect(() => {
+    if (!lyricsScrollRef.current || musicPlayerView !== 'lyrics' || lyrics.length === 0) {
+      return;
+    }
+
+    const container = lyricsScrollRef.current;
+    
+    // 如果没有当前歌词索引（-1），滚动到顶部
+    if (currentLyricIndex < 0) {
+      container.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+      return;
+    }
+
+    const activeElement = container.children[currentLyricIndex] as HTMLElement;
+    
+    if (!activeElement) return;
+
+    // 计算滚动位置：将当前歌词居中
+    const containerHeight = container.clientHeight;
+    const elementTop = activeElement.offsetTop;
+    const elementHeight = activeElement.clientHeight;
+    const scrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2);
+
+    // 平滑滚动
+    container.scrollTo({
+      top: Math.max(0, scrollTop),
+      behavior: 'smooth'
+    });
+  }, [currentLyricIndex, musicPlayerView, lyrics.length]);
+
+  // 当有歌词时，更新动态内容以显示歌词（仅播放时）
+  useEffect(() => {
+    if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0 && !isExpanded) {
+      const currentLyric = lyrics[currentLyricIndex];
+
+      // 播放时显示歌词
+      setDynamicContents(prev => {
+        // 移除之前的音乐内容
+        const filtered = prev.filter(c => c.type !== 'music');
+
+        // 添加新的歌词内容
+        return [
+          {
+            type: 'music' as const,
+            icon: '🎵',
+            text: currentLyric.text,
+            subtext: `${currentSong.name} - ${currentSong.artist}`
+          },
+          ...filtered
+        ];
+      });
+    } else if (currentSong && !isExpanded) {
+      // 暂停时或没有歌词时只显示歌曲名
+      setDynamicContents(prev => {
+        const filtered = prev.filter(c => c.type !== 'music');
+
+        return [
+          {
+            type: 'music' as const,
+            icon: isPlaying ? '🎵' : '⏸️',
+            text: currentSong.name,
+            subtext: currentSong.artist
+          },
+          ...filtered
+        ];
+      });
+    } else {
+      // 没有歌曲时移除音乐内容
+      setDynamicContents(prev => prev.filter(c => c.type !== 'music'));
+    }
+  }, [currentSong, lyrics, currentLyricIndex, isPlaying, isExpanded]);
+
   // 获取当前显示的动态内容
   const currentContent = dynamicContents[currentContentIndex];
 
@@ -449,9 +1033,40 @@ const GlobalControlPanel: React.FC = () => {
 
             {/* 展开的控制面板内容 - 通过 JS 控制显示/隐藏 */}
             <div ref={expandedContentRef} className={`expanded-panel-content ${showPanelContent ? 'visible' : ''}`}>
-                {/* 头部 */}
+                {/* 头部 - 用户信息按钮 */}
                 <div className="control-panel-header">
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">控制中心</h3>
+                  <button
+                    onClick={handleUserInfoClick}
+                    className="user-info-button flex items-center gap-3"
+                  >
+                    {isAuthenticated && userInfo ? (
+                      <>
+                        <img
+                          src={userInfo.avatar}
+                          alt={userInfo.name}
+                          className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                          onError={(e) => {
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`;
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                            {userInfo.name}
+                          </h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {userInfo.bio.length > 30 ? `${userInfo.bio.substring(0, 30)}...` : userInfo.bio}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">请先登录</span>
+                      </>
+                    )}
+                  </button>
                   <button
                     onClick={handleClosePanel}
                     className="control-close-btn"
@@ -530,7 +1145,268 @@ const GlobalControlPanel: React.FC = () => {
                   )}
                 </div>
 
-                {/* 控制项网格 - 一行两个 */}
+                {/* 音乐播放器 */}
+                {musicEnabled && (
+                  <div className="music-player-container">
+                    {/* 状态：音乐信息（主状态） */}
+                    {musicPlayerView === 'info' && (
+                      <div className="music-view music-view-info">
+                        {currentSong ? (
+                          <>
+                            {/* 封面和歌曲信息 + 进度条 */}
+                            <div className="music-info-main">
+                              <div className="music-album-cover-large">
+                                <img
+                                  src={currentSong.cover || 'https://via.placeholder.com/70'}
+                                  alt={currentSong.name}
+                                  onError={(e) => {
+                                    e.currentTarget.src = 'https://via.placeholder.com/70?text=♪';
+                                  }}
+                                />
+                                {isPlaying && (
+                                  <div className="music-playing-indicator">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                                    </svg>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="music-info-right">
+                                <div className="music-song-info">
+                                  <div className="music-song-name">{currentSong.name}</div>
+                                  <div className="music-song-artist">{currentSong.artist}</div>
+                                </div>
+                                
+                                <div className="music-progress-container">
+                                  <span className="music-time">{formatTime(currentTime)}</span>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max={currentSong.duration || 0}
+                                    value={currentTime}
+                                    onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                                    className="music-progress-bar"
+                                    aria-label="音乐进度"
+                                  />
+                                  <span className="music-time">{formatTime(currentSong.duration || 0)}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 播放控制按钮 + 音量 + 视图切换 */}
+                            <div className="music-control-row">
+                              {/* 左侧：歌词按钮 */}
+                              <div className="music-view-switcher">
+                                {lyrics.length > 0 && (
+                                  <button
+                                    onClick={() => setMusicPlayerView('lyrics')}
+                                    className="music-view-switch-btn"
+                                    aria-label="查看歌词"
+                                    title="歌词"
+                                  >
+                                    <svg fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* 中间：核心控制按钮 */}
+                              <div className="music-control-buttons">
+                                <button
+                                  onClick={playPrevious}
+                                  className="music-control-btn"
+                                  aria-label="上一首"
+                                >
+                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                                  </svg>
+                                </button>
+
+                                <button
+                                  onClick={togglePlay}
+                                  className="music-play-btn"
+                                  aria-label={isPlaying ? '暂停' : '播放'}
+                                >
+                                  {isPlaying ? (
+                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  )}
+                                </button>
+
+                                <button
+                                  onClick={playNext}
+                                  className="music-control-btn"
+                                  aria-label="下一首"
+                                >
+                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                                  </svg>
+                                </button>
+                              </div>
+
+                              {/* 右侧：音量和播放列表 */}
+                              <div className="music-view-switcher music-view-switcher-right">
+                                {/* 音量控制（弹出式） */}
+                                <div className="music-volume-control" ref={volumeControlRef}>
+                                  <button
+                                    onClick={() => setShowVolumePopup(!showVolumePopup)}
+                                    className="music-volume-btn"
+                                    aria-label="音量调节"
+                                  >
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                                    </svg>
+                                  </button>
+                                  <div className={`music-volume-popup ${showVolumePopup ? 'visible' : ''}`}>
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                                    </svg>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="1"
+                                      step="0.01"
+                                      value={volume}
+                                      onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                                      className="music-volume-slider"
+                                      aria-label="音量调节"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* 播放列表按钮 */}
+                                {playlist.length > 0 && (
+                                  <button
+                                    onClick={() => setMusicPlayerView('playlist')}
+                                    className="music-view-switch-btn"
+                                    aria-label="查看播放列表"
+                                    title="列表"
+                                  >
+                                    <svg fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                                      <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="music-no-song">
+                            <div className="music-no-song-icon">{musicError ? '⚠️' : '🎵'}</div>
+                            <div className={`music-no-song-text ${musicError ? 'error' : ''}`}>
+                              {musicError || (playlist.length === 0 ? '请在配置中设置歌单' : '暂无播放')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 状态：歌词滚动 */}
+                    {musicPlayerView === 'lyrics' && currentSong && lyrics.length > 0 && (
+                      <div className="music-view music-view-lyrics">
+                        <div className="music-lyrics-header">
+                          <button
+                            onClick={() => setMusicPlayerView('info')}
+                            className="music-back-btn"
+                            aria-label="返回"
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                          <div className="music-lyrics-title">
+                            <div className="music-lyrics-song-name">{currentSong.name}</div>
+                            <div className="music-lyrics-artist">{currentSong.artist}</div>
+                          </div>
+                        </div>
+
+                        <div 
+                          className="music-lyrics-scroll" 
+                          ref={lyricsScrollRef}
+                          data-total-lyrics={lyrics.length}
+                          data-current-index={currentLyricIndex}
+                        >
+                          {lyrics.length > 0 ? (
+                            lyrics.map((line, index) => (
+                              <div
+                                key={`lyric-${index}-${line.time}`}
+                                className={`music-lyric-line ${
+                                  index === currentLyricIndex ? 'active' : ''
+                                } ${
+                                  currentLyricIndex >= 0 && index < currentLyricIndex ? 'passed' : ''
+                                }`}
+                                data-time={line.time.toFixed(2)}
+                                data-index={index}
+                                data-active={index === currentLyricIndex}
+                              >
+                                {line.text}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="music-no-lyrics">
+                              <div className="music-no-lyrics-icon">🎵</div>
+                              <div className="music-no-lyrics-text">暂无歌词</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 状态：播放列表 */}
+                    {musicPlayerView === 'playlist' && playlist.length > 0 && (
+                      <div className="music-view music-view-playlist">
+                        <div className="music-playlist-header">
+                          <button
+                            onClick={() => setMusicPlayerView('info')}
+                            className="music-back-btn"
+                            aria-label="返回"
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                          <div className="music-playlist-title">
+                            播放列表 ({playlist.length}首)
+                          </div>
+                        </div>
+
+                        <div className="music-playlist-scroll">
+                          {playlist.map((song, index) => (
+                            <div
+                              key={song.id}
+                              onClick={() => {
+                                selectSong(song, index);
+                                setMusicPlayerView('info');
+                              }}
+                              className={`music-playlist-item ${currentSongIndex === index ? 'active' : ''}`}
+                            >
+                              <span className="music-playlist-index">{index + 1}</span>
+                              <div className="music-playlist-info">
+                                <div className="music-playlist-name">{song.name}</div>
+                                <div className="music-playlist-artist">{song.artist}</div>
+                              </div>
+                              {currentSongIndex === index && (
+                                <span className="music-playlist-playing">
+                                  {isPlaying ? '▶' : '⏸'}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              {/* 控制项网格 - 一行两个 */}
                 <div className="control-items-grid">
                   {/* 主题切换 */}
                   <div className="control-item control-item-compact">
@@ -553,6 +1429,7 @@ const GlobalControlPanel: React.FC = () => {
                   </div>
 
                   {/* 壁纸切换 - 仅在非单一图片链接时显示 */}
+                  {/* Debug: canRefreshWallpaper = {String(canRefreshWallpaper)} */}
                   {canRefreshWallpaper && (
                     <div className="control-item control-item-compact">
                       <div className="control-item-info">
@@ -576,42 +1453,206 @@ const GlobalControlPanel: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-                {/* 账户信息 */}
-                {isAuthenticated && user && (
-                  <div className="account-info">
-                    <div className="account-header">
-                      <img
-                        src={avatarUrl}
-                        className="account-avatar"
-                        alt={user.username}
-                        onError={(e) => {
-                          e.currentTarget.src = `https://ui-avatars.com/api/?name=${user.username}`;
-                        }}
-                      />
-                      <div className="account-details">
-                        <h4 className="account-name">{user.username}</h4>
-                        <p className="account-role">
-                          {user.is_admin ? '👑 管理员' : '👤 普通用户'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleLogout}
-                      className="account-action-btn account-action-danger"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      退出登录
-                    </button>
-                  </div>
-                )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* 用户信息/登录弹窗 */}
+      {showUserModal && (
+        <>
+          <div className={`user-modal-overlay ${isUserModalClosing ? 'closing' : ''}`} onClick={handleUserModalClose} />
+          {isAuthenticated && user && userInfo ? (
+            /* 已登录 - 显示用户详细信息（带框架） */
+            <div className={`user-modal ${isUserModalClosing ? 'closing' : ''}`}>
+              <div className="user-modal-header">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">用户信息</h3>
+                <button
+                  onClick={handleUserModalClose}
+                  className="control-close-btn"
+                  aria-label="关闭"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="user-modal-content">
+                <div className="user-profile-section max-w-md mx-auto">
+                  <div className="user-profile-header">
+                    <img
+                      src={userInfo.avatar}
+                      alt={userInfo.name}
+                      className="user-profile-avatar"
+                      onError={(e) => {
+                        e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`;
+                      }}
+                    />
+                    <div className="user-profile-info">
+                      <h4 className="user-profile-name">{userInfo.name}</h4>
+                      <p className="user-profile-platform">来自 {userInfo.platform}</p>
+                    </div>
+                  </div>
+
+                  <div className="user-profile-bio">
+                    <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">个人简介</h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{userInfo.bio}</p>
+                  </div>
+
+                  <div className="user-profile-meta">
+                    <div className="user-meta-item">
+                      <span className="user-meta-label">账户</span>
+                      <span className="user-meta-value">{user.username}</span>
+                    </div>
+                    <div className="user-meta-item">
+                      <span className="user-meta-label">角色</span>
+                      <span className="user-meta-value">
+                        {user.is_admin ? '👑 管理员' : '👤 普通用户'}
+                      </span>
+                    </div>
+                    <div className="user-meta-item">
+                      <span className="user-meta-label">认证方式</span>
+                      <span className="user-meta-value">{user.auth_provider}</span>
+                    </div>
+                    {user.linked_github_id && (
+                      <div className="user-meta-item">
+                        <span className="user-meta-label">GitHub</span>
+                        <span className="user-meta-value text-green-600 dark:text-green-400">✓ 已绑定</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 绑定 GitHub 按钮 */}
+                  {user.auth_provider === 'local' && !user.linked_github_id && (
+                    <a
+                      href={`${API_URL}/api/auth/github/link`}
+                      className="user-action-btn user-action-github"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
+                      </svg>
+                      绑定 GitHub 账户
+                    </a>
+                  )}
+
+                  {/* 修改密码按钮（仅本地账户且未绑定GitHub） */}
+                  {user.auth_provider === 'local' && !user.linked_github_id && (
+                    <>
+                      {!showChangePassword ? (
+                        <button
+                          onClick={() => setShowChangePassword(true)}
+                          className="user-action-btn user-action-secondary"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          修改密码
+                        </button>
+                      ) : (
+                        <div className="change-password-form">
+                          <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">修改密码</h5>
+                          <form onSubmit={handleChangePassword} className="space-y-3">
+                            <div>
+                              <label htmlFor="old-password" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                当前密码
+                              </label>
+                              <input
+                                type="password"
+                                id="old-password"
+                                name="old-password"
+                                required
+                                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder="请输入当前密码"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="new-password" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                新密码
+                              </label>
+                              <input
+                                type="password"
+                                id="new-password"
+                                name="new-password"
+                                required
+                                minLength={8}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder="至少 8 个字符"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="confirm-password" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                确认新密码
+                              </label>
+                              <input
+                                type="password"
+                                id="confirm-password"
+                                name="confirm-password"
+                                required
+                                minLength={8}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder="再次输入新密码"
+                              />
+                            </div>
+                            {passwordError && (
+                              <div className="text-red-500 dark:text-red-400 text-xs">
+                                {passwordError}
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                disabled={passwordSubmitting}
+                                className="flex-1 px-3 py-2 text-sm bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-lg transition-all disabled:opacity-50"
+                              >
+                                {passwordSubmitting ? '修改中...' : '确认修改'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowChangePassword(false);
+                                  setPasswordError('');
+                                }}
+                                className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-all"
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <button
+                    onClick={handleLogout}
+                    className="user-logout-btn"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    退出登录
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* 未登录 - 直接使用 LoginForm，无额外框架 */
+            <div className={`user-modal-login-only ${isUserModalClosing ? 'closing' : ''}`}>
+              <button
+                onClick={handleUserModalClose}
+                className="login-close-btn"
+                aria-label="关闭"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <LoginForm />
+            </div>
+          )}
+        </>
+      )}
 
       {/* 遮罩层 - 始终存在，通过 CSS 控制显示 */}
       <div

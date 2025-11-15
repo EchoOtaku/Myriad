@@ -147,6 +147,7 @@ const ModernConfigForm: React.FC = () => {
     { id: 'report', label: '报告生成', icon: '📊', section: 'report' },
     { id: 'persona', label: '虚拟人设', icon: '🎭', section: 'persona' },
     { id: 'ui', label: 'UI界面', icon: '🎨', section: 'ui' },
+    { id: 'music', label: '音乐播放器', icon: '🎵', section: 'music' },
     { id: 'oauth', label: 'OAuth登录', icon: '🔐', section: 'oauth' },
     { id: 'pet', label: '宠物吉祥物', icon: '🐱', section: 'pet' },
   ], []);
@@ -213,6 +214,15 @@ const ModernConfigForm: React.FC = () => {
       keywords: ['oauth', 'github', '登录', 'auth', '认证']
     });
     
+    // 音乐播放器
+    items.push({
+      type: 'section',
+      section: 'music',
+      title: '音乐播放器',
+      description: '配置歌单播放',
+      keywords: ['音乐', 'music', '歌单', '播放器', '网易云', 'qq音乐']
+    });
+
     // 宠物配置
     items.push({
       type: 'section',
@@ -221,7 +231,7 @@ const ModernConfigForm: React.FC = () => {
       description: '可爱的行走角色',
       keywords: ['宠物', 'pet', '吉祥物', '角色']
     });
-    
+
     return items;
   }, [config]);
 
@@ -1261,6 +1271,102 @@ const ModernConfigForm: React.FC = () => {
                     placeholder={`${API_URL}/api/auth/github/callback`}
                     className="field-input"
                   />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 音乐播放器配置 */}
+          {activeSection === 'music' && (
+            <div className="config-section">
+              <div className="section-header">
+                <div className="section-header-left">
+                  <span className="section-icon icon-music">🎵</span>
+                  <div>
+                    <h2 className="section-title">音乐播放器</h2>
+                    <p className="section-description">配置歌单播放</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="config-form">
+                <div className="info-card">
+                  <p className="info-title">音乐播放器说明</p>
+                  <p className="info-text">
+                    在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐<br/>
+                    播放有歌词的歌曲时，收缩状态下会自动显示实时歌词
+                  </p>
+                  <p className="info-text" style={{ marginTop: '0.5rem', color: '#f59e0b' }}>
+                    ⚠️ 注意：网易云音乐API有地理位置限制，海外IP可能无法播放部分歌曲。<br/>
+                    建议海外用户使用QQ音乐，或确保使用国内可访问的歌单。
+                  </p>
+                </div>
+
+                <div className="ai-status-card">
+                  <div className="status-info">
+                    <p className="status-label">启用音乐播放器</p>
+                    <p className="status-sublabel">在控制岛中显示音乐播放器</p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={config.ui_config.config_fields.find(f => f.key === 'music_enabled')?.value === 'true'}
+                      onChange={(e) => updateUiFieldValue('music_enabled', e.target.checked.toString())}
+                      aria-label="Enable Music Player"
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div className="config-field">
+                  <label className="field-label">音乐平台</label>
+                  <div className="provider-selector">
+                    <button
+                      type="button"
+                      onClick={() => updateUiFieldValue('music_source', 'netease')}
+                      className={`provider-option ${
+                        config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
+                          ? 'active'
+                          : ''
+                      }`}
+                    >
+                      <span className="provider-icon">🎵</span>
+                      <span className="provider-name">网易云音乐</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateUiFieldValue('music_source', 'qq')}
+                      className={`provider-option ${
+                        config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'qq'
+                          ? 'active'
+                          : ''
+                      }`}
+                    >
+                      <span className="provider-icon">🎧</span>
+                      <span className="provider-name">QQ音乐</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="config-field">
+                  <label htmlFor="music-playlist-id" className="field-label">
+                    歌单ID <span className="required">*</span>
+                  </label>
+                  <input
+                    id="music-playlist-id"
+                    type="text"
+                    value={config.ui_config.config_fields.find(f => f.key === 'music_playlist_id')?.value || ''}
+                    onChange={(e) => updateUiFieldValue('music_playlist_id', e.target.value)}
+                    placeholder={config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
+                      ? '例如: 2884035'
+                      : '例如: 8039305244'}
+                    className="field-input"
+                  />
+                  <p className="field-hint">
+                    {config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
+                      ? '网易云音乐歌单链接中的数字ID，如 https://music.163.com/#/playlist?id=2884035'
+                      : 'QQ音乐歌单链接中的数字ID，如 https://y.qq.com/n/ryqq/playlist/8039305244'}
+                  </p>
                 </div>
               </div>
             </div>

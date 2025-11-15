@@ -3,12 +3,19 @@
  * 包含导航栏、背景、全局控制面板
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
+import { useWallpaper } from '../hooks/useWallpaper';
 import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
+import {
+  shouldApplyColorExtraction,
+  getColorFromCache,
+  saveColorToCache,
+} from '../utils/wallpaperColorCache';
+import './AppLayout.css';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -17,6 +24,13 @@ interface AppLayoutProps {
 interface ProgressData {
   progress: string;
   progressPercent: number;
+}
+
+type NavMode = 'library' | 'normal';
+type RouteContext = 'library' | 'global';
+interface ModeMetrics {
+  height?: number;
+  width?: number;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -30,12 +44,142 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const { notifications } = useNotification();
 
+  // 壁纸管理 Hook
+  const { loadWallpaper: loadWallpaperFromHook } = useWallpaper();
+
   // 导航岛状态管理
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
   const [showLibraryFilters, setShowLibraryFilters] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const navContentRef = useRef<HTMLDivElement>(null);
-  const lastModeRef = useRef<'library' | 'normal'>('normal');
+  const lastModeRef = useRef<NavMode>('normal');
+  // 渲染锁定：在动画期间保持当前渲染模式不变
+  const renderModeRef = useRef<NavMode>('normal');
+  const islandMetricsRef = useRef<Record<string, ModeMetrics>>({});
+
+  const getVariant = () => (window.innerWidth >= 768 ? 'desktop' : 'mobile');
+  const resolveRouteContext = (mode: NavMode, explicit?: RouteContext): RouteContext => {
+    if (explicit) return explicit;
+    if (mode === 'library') return 'library';
+    return location.pathname === '/library' ? 'library' : 'global';
+  };
+  const buildMetricsKey = (mode: NavMode, variant: 'desktop' | 'mobile', routeContext: RouteContext) => `${mode}-${variant}-${routeContext}`;
+
+  const updateModeMetrics = (mode: NavMode, metrics: ModeMetrics, explicitContext?: RouteContext) => {
+    const variant = getVariant();
+    const routeContext = resolveRouteContext(mode, explicitContext);
+    const key = buildMetricsKey(mode, variant, routeContext);
+    islandMetricsRef.current[key] = {
+      ...islandMetricsRef.current[key],
+      ...metrics,
+    };
+  };
+
+  const createIconButtonPlaceholder = (extraClass?: string) => {
+    const button = document.createElement('button');
+    button.className = extraClass ? `nav-item ${extraClass}` : 'nav-item';
+    button.type = 'button';
+    button.tabIndex = -1;
+    button.setAttribute('aria-hidden', 'true');
+    const icon = document.createElement('div');
+    icon.style.width = '20px';
+    icon.style.height = '20px';
+    button.appendChild(icon);
+    return button;
+  };
+
+  const appendIconGroup = (parent: HTMLDivElement, extraGroupClass?: string, extraButtonClass?: string) => {
+    const group = document.createElement('div');
+    group.className = extraGroupClass ? `nav-group ${extraGroupClass}` : 'nav-group';
+    group.appendChild(createIconButtonPlaceholder(extraButtonClass));
+    parent.appendChild(group);
+  };
+
+  const appendDividerGroup = (parent: HTMLDivElement) => {
+    const group = document.createElement('div');
+    group.className = 'nav-group nav-group-spaced';
+    const divider = document.createElement('div');
+    divider.style.width = '1px';
+    divider.style.height = '24px';
+    group.appendChild(divider);
+    parent.appendChild(group);
+  };
+
+  const populateTempContent = (parent: HTMLDivElement, mode: NavMode, routeContext: RouteContext) => {
+    if (mode === 'library') {
+      appendIconGroup(parent);
+      appendDividerGroup(parent);
+      ['all', 'game', 'video', 'music'].forEach(() => appendIconGroup(parent, 'nav-group-spaced'));
+      return;
+    }
+
+    appendIconGroup(parent);
+    appendIconGroup(parent, 'nav-group-spaced');
+    if (isAdmin) {
+      appendIconGroup(parent, 'nav-group-spaced');
+      appendIconGroup(parent, 'nav-group-spaced', 'generate-btn');
+    }
+    if (routeContext === 'library') {
+      appendDividerGroup(parent);
+      appendIconGroup(parent);
+    }
+  };
+
+  const measureModeMetrics = (mode: NavMode, island: HTMLElement, explicitContext?: RouteContext): ModeMetrics | null => {
+    const content = navContentRef.current;
+    if (!content) return null;
+
+    const tempContent = document.createElement('div');
+    tempContent.className = content.className;
+    tempContent.style.cssText = 'position: absolute; visibility: hidden; pointer-events: none;';
+    tempContent.setAttribute('aria-hidden', 'true');
+    const routeContext = resolveRouteContext(mode, explicitContext);
+    populateTempContent(tempContent, mode, routeContext);
+    const host = content.parentElement;
+    if (!host) {
+      tempContent.remove();
+      return null;
+    }
+    host.appendChild(tempContent);
+
+    const islandStyles = getComputedStyle(island);
+    const paddingVertical = (parseFloat(islandStyles.paddingTop) || 0) + (parseFloat(islandStyles.paddingBottom) || 0);
+    const paddingHorizontal = (parseFloat(islandStyles.paddingLeft) || 0) + (parseFloat(islandStyles.paddingRight) || 0);
+    const metrics: ModeMetrics = {
+      height: tempContent.scrollHeight + paddingVertical,
+      width: tempContent.scrollWidth + paddingHorizontal,
+    };
+    tempContent.remove();
+    updateModeMetrics(mode, metrics, routeContext);
+    return metrics;
+  };
+
+  const ensureModeMetrics = (mode: NavMode, island: HTMLElement, explicitContext?: RouteContext): ModeMetrics | null => {
+    const variant = getVariant();
+    const routeContext = resolveRouteContext(mode, explicitContext);
+    const key = buildMetricsKey(mode, variant, routeContext);
+    const cached = islandMetricsRef.current[key];
+    if (cached?.height && cached?.width) {
+      return cached;
+    }
+    return measureModeMetrics(mode, island, routeContext);
+  };
+
+  const applyModeMetrics = (mode: NavMode, island: HTMLElement, explicitContext?: RouteContext) => {
+    const metrics = ensureModeMetrics(mode, island, explicitContext);
+    if (!metrics) return;
+    if (window.innerWidth >= 768) {
+      if (metrics.height) {
+        island.style.height = `${metrics.height}px`;
+      }
+      island.style.removeProperty('width');
+    } else {
+      if (metrics.width) {
+        island.style.width = `${metrics.width}px`;
+      }
+      island.style.removeProperty('height');
+    }
+  };
 
   // 处理资料库筛选变化
   const handleLibraryFilterChange = useCallback((newFilter: 'all' | 'game' | 'video' | 'music') => {
@@ -46,67 +190,169 @@ export function AppLayout({ children }: AppLayoutProps) {
     }));
   }, []);
 
-  // JavaScript 动画控制 - 只在模式切换时触发
-  useEffect(() => {
+  // Apple 风格动画控制 - 精致的进入动画
+  useLayoutEffect(() => {
+    // 布局阶段先写入进入状态，避免初次绘制闪烁
     const content = navContentRef.current;
-    if (!content || isAnimating) return;
-
-    const currentMode = (location.pathname === '/library' && showLibraryFilters) ? 'library' : 'normal';
+    if (!content) return;
     
-    // 如果模式没有变化，不执行动画
-    if (lastModeRef.current === currentMode) return;
+    // 如果正在动画中，等待下一次
+    if (isAnimating) return;
+
+    const currentMode: NavMode = (location.pathname === '/library' && showLibraryFilters) ? 'library' : 'normal';
+    const routeContext = resolveRouteContext(currentMode);
+    
+    // 如果模式没有变化或渲染模式未同步，不执行动画
+    if (lastModeRef.current === currentMode || renderModeRef.current !== currentMode) return;
     
     lastModeRef.current = currentMode;
 
-    const children = Array.from(content.children) as HTMLElement[];
+    const groups = content.querySelectorAll('.nav-group');
+    const island = content.closest('.dynamic-island') as HTMLElement;
     
-    // 重置所有动画
-    children.forEach(child => {
-      child.style.opacity = '0';
-      child.style.transform = 'translateY(10px)';
-      child.style.transition = 'none';
+    // 步骤 1: 清理所有旧的动画标记（不重置样式，避免闪烁）
+    groups.forEach(group => {
+      const el = group as HTMLElement;
+      el.removeAttribute('data-animation');
+    });
+    
+    // 步骤 2: 标记过渡状态
+    if (island) {
+      island.setAttribute('data-transitioning', 'true');
+    }
+    
+    // 步骤 3: 设置进入初始状态
+    groups.forEach(group => {
+      (group as HTMLElement).setAttribute('data-animation', 'enter-initial');
     });
 
-    // 强制重排
+    if (island) {
+      const islandStyles = getComputedStyle(island);
+      const paddingVertical = (parseFloat(islandStyles.paddingTop) || 0) + (parseFloat(islandStyles.paddingBottom) || 0);
+      const paddingHorizontal = (parseFloat(islandStyles.paddingLeft) || 0) + (parseFloat(islandStyles.paddingRight) || 0);
+      const metrics: ModeMetrics = {
+        height: content.scrollHeight + paddingVertical,
+        width: content.scrollWidth + paddingHorizontal,
+      };
+
+      if (window.innerWidth >= 768) {
+        if (metrics.height) {
+          island.style.height = `${metrics.height}px`;
+        }
+        island.style.removeProperty('width');
+      } else {
+        if (metrics.width) {
+          island.style.width = `${metrics.width}px`;
+        }
+        island.style.removeProperty('height');
+      }
+
+      updateModeMetrics(currentMode, metrics, routeContext);
+    }
+
+    // 强制重排，确保初始状态在绘制前稳定
     void content.offsetHeight;
 
-    // 依次显示元素
-    children.forEach((child, index) => {
-      setTimeout(() => {
-        child.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-        child.style.opacity = '1';
-        child.style.transform = 'translateY(0)';
-      }, index * 50);
+    // 步骤 4: 进入动画 - 级联淡入
+    const enterTimers: number[] = [];
+    groups.forEach((group, index) => {
+      const timer = window.setTimeout(() => {
+        (group as HTMLElement).removeAttribute('data-animation');
+      }, index * 40 + 50); // 40ms 间隔，50ms 初始延迟
+      enterTimers.push(timer);
     });
+
+    // 步骤 5: 清除过渡标记和最终清理
+    const cleanupTimer = window.setTimeout(() => {
+      if (island) {
+        island.removeAttribute('data-transitioning');
+      }
+      // 最终确认所有元素都已显示
+      groups.forEach(group => {
+        const el = group as HTMLElement;
+        el.removeAttribute('data-animation');
+      });
+    }, groups.length * 40 + 100);
+
+    // 清理函数
+    return () => {
+      enterTimers.forEach(timer => clearTimeout(timer));
+      clearTimeout(cleanupTimer);
+    };
   }, [showLibraryFilters, location.pathname, isAnimating]);
 
-  // 处理从筛选模式退出到正常模式
+  useEffect(() => {
+    const handleResize = () => {
+      const content = navContentRef.current;
+      const island = content?.closest('.dynamic-island') as HTMLElement | null;
+      if (!island) return;
+      applyModeMetrics(lastModeRef.current, island);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isAdmin, location.pathname]);
+
+  // 处理从筛选模式退出到正常模式 - Apple 风格优雅退出
   const handleExitToNormal = useCallback(() => {
     const content = navContentRef.current;
-    if (!content || isAnimating) return;
+    // 防抗：如果正在动画或已经不是筛选模式，不重复执行
+    if (!content || isAnimating || !showLibraryFilters || renderModeRef.current === 'normal') return;
 
     setIsAnimating(true);
-    const children = Array.from(content.children) as HTMLElement[];
+    // 锁定当前渲染模式，防止动画过程中切换
+    renderModeRef.current = 'library';
+    const groups = Array.from(content.querySelectorAll('.nav-group')); // 不再反向
+    const island = content.closest('.dynamic-island') as HTMLElement;
     
-    // 反向淡出动画
-    children.reverse().forEach((child, index) => {
-      setTimeout(() => {
-        child.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-        child.style.opacity = '0';
-        child.style.transform = 'translateY(-10px)';
-      }, index * 30);
+    if (island) {
+      applyModeMetrics('normal', island, 'library');
+    }
+    
+    // 步骤 1: 退出动画 - 级联淡出（使用类名控制）
+    const exitTimers: number[] = [];
+    
+    // 立即开始退出动画
+    groups.forEach((group, index) => {
+      const el = group as HTMLElement;
+      // 先移除可能存在的进入状态
+      el.removeAttribute('data-animation');
+      // 延迟添加退出状态
+      const timer = window.setTimeout(() => {
+        el.setAttribute('data-animation', 'exit');
+      }, index * 20); // 加快节奏
+      exitTimers.push(timer);
     });
 
-    // 等待动画完成后切换状态
-    setTimeout(() => {
+    // 步骤 2: 等待退出动画完成，清理并切换状态
+    const exitDuration = groups.length * 20 + 280; // 匹配动画时序
+    const switchTimer = window.setTimeout(() => {
+      // 3.1: 清除所有退出标记
+      groups.forEach(group => {
+        (group as HTMLElement).removeAttribute('data-animation');
+      });
+      
+      // 3.2: 解锁渲染模式并切换状态
+      renderModeRef.current = 'normal';
       setShowLibraryFilters(false);
+      
+      // 3.3: 重置动画状态，触发进入动画
       setIsAnimating(false);
-    }, children.length * 30 + 200);
-  }, [isAnimating]);
+    }, exitDuration);
 
-  // 处理从正常模式进入筛选模式（点击筛选指示器）
+    // 清理函数
+    return () => {
+      exitTimers.forEach(timer => clearTimeout(timer));
+      clearTimeout(switchTimer);
+    };
+  }, [isAnimating, isAdmin, showLibraryFilters, location.pathname]);
+
+  // 处理从正常模式进入筛选模式 - 与 handleExitToNormal 完全对称
   const handleEnterFilters = useCallback(() => {
-    if (isAnimating) return;
+    // 防抗：如果正在动画或已经是筛选模式，不重复执行
+    if (isAnimating || showLibraryFilters || renderModeRef.current === 'library') return;
 
     const content = navContentRef.current;
     if (!content) {
@@ -115,24 +361,52 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
 
     setIsAnimating(true);
+    // 锁定当前渲染模式，防止动画过程中切换
+    renderModeRef.current = 'normal';
+    const groups = Array.from(content.querySelectorAll('.nav-group')); // 不反向，与退出一致
+    const island = content.closest('.dynamic-island') as HTMLElement;
     
-    // 找到当前筛选指示器按钮（最后一个分组）
-    const children = Array.from(content.children) as HTMLElement[];
-    const filterIndicator = children[children.length - 1];
-    
-    if (filterIndicator) {
-      // 让筛选指示器淡出
-      filterIndicator.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-      filterIndicator.style.opacity = '0';
-      filterIndicator.style.transform = 'scale(0.8)';
+    if (island) {
+      applyModeMetrics('library', island, 'library');
     }
+    
+    // 步骤 1: 退出动画 - 级联淡出（与 handleExitToNormal 完全一致）
+    const exitTimers: number[] = [];
+    
+    // 立即开始退出动画
+    groups.forEach((group, index) => {
+      const el = group as HTMLElement;
+      // 先移除可能存在的进入状态
+      el.removeAttribute('data-animation');
+      // 延迟添加退出状态
+      const timer = window.setTimeout(() => {
+        el.setAttribute('data-animation', 'exit');
+      }, index * 20); // 与 handleExitToNormal 保持一致
+      exitTimers.push(timer);
+    });
 
-    // 等待淡出完成后切换到筛选模式
-    setTimeout(() => {
+    // 步骤 2: 等待退出动画完成，清理并切换状态
+    const exitDuration = groups.length * 20 + 280; // 与 handleExitToNormal 保持一致
+    const switchTimer = window.setTimeout(() => {
+      // 3.1: 清除所有退出标记
+      groups.forEach(group => {
+        (group as HTMLElement).removeAttribute('data-animation');
+      });
+      
+      // 3.2: 解锁渲染模式并切换状态
+      renderModeRef.current = 'library';
       setShowLibraryFilters(true);
+      
+      // 3.3: 重置动画状态，触发进入动画
       setIsAnimating(false);
-    }, 200);
-  }, [isAnimating]);
+    }, exitDuration);
+
+    // 清理函数
+    return () => {
+      exitTimers.forEach(timer => clearTimeout(timer));
+      clearTimeout(switchTimer);
+    };
+  }, [isAnimating, showLibraryFilters, location.pathname, isAdmin]);
 
   // 监听路径变化，处理筛选指示器的退出动画
   const prevPathRef = useRef(location.pathname);
@@ -140,33 +414,25 @@ export function AppLayout({ children }: AppLayoutProps) {
     const prevPath = prevPathRef.current;
     const currentPath = location.pathname;
     
-    // 只在从资料库页面离开时触发退出动画
+    // 只在从资料库页面离开时触发优雅的退出动画
     if (prevPath === '/library' && currentPath !== '/library' && !showLibraryFilters) {
       const content = navContentRef.current;
-      if (!content) return;
+      const island = content?.closest('.dynamic-island') as HTMLElement;
+      if (!content || !island) return;
 
-      const children = Array.from(content.children) as HTMLElement[];
+      const groups = content.querySelectorAll('[data-group="current-filter"], [data-group="divider"]');
       
-      // 查找带有 data-group="current-filter" 的元素
-      const filterIndicator = Array.from(children).find(
-        child => child.getAttribute('data-group') === 'current-filter'
-      ) as HTMLElement;
-      
-      // 查找分隔符
-      const divider = Array.from(children).find(
-        child => child.getAttribute('data-group') === 'divider'
-      ) as HTMLElement;
-      
-      // 让分隔符和筛选指示器淡出
-      [divider, filterIndicator].filter(Boolean).forEach((element, index) => {
-        if (element) {
-          setTimeout(() => {
-            element.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-            element.style.opacity = '0';
-            element.style.transform = 'translateY(-8px)';
-          }, index * 50);
-        }
+      // 级联淡出 - 与其他退出动画保持一致
+      Array.from(groups).forEach((group, index) => {
+        setTimeout(() => {
+          (group as HTMLElement).setAttribute('data-animation', 'exit');
+        }, index * 35);
       });
+
+      // 同步调整导航岛尺寸，区分桌面/移动端
+      setTimeout(() => {
+        applyModeMetrics('normal', island, 'global');
+      }, 30);
     }
     
     prevPathRef.current = currentPath;
@@ -208,32 +474,35 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, []);
 
-  // 加载壁纸和颜色
+  // 加载壁纸和颜色（使用 Hook）
   const loadWallpaper = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/config`);
-      const data = await response.json();
-      const wallpaperEl = document.getElementById('wallpaper');
-      
-      if (wallpaperEl && data.ui_config?.wallpaper_url) {
-        const apiUrl = data.ui_config.wallpaper_url;
-        const blur = data.ui_config.wallpaper_blur || 3;
-        
-        // 获取实际图片 URL
-        const actualResponse = await fetch(apiUrl, { method: 'HEAD' });
-        const actualImageUrl = actualResponse.url;
-        
-        wallpaperEl.style.backgroundImage = `url(${actualImageUrl})`;
-        wallpaperEl.style.filter = `blur(${blur}px)`;
-        
-        // 提取并应用颜色
-        const colors = await extractColorsFromImage(actualImageUrl);
-        applyColorPalette(colors);
+    const wallpaperResult = await loadWallpaperFromHook();
+    if (wallpaperResult) {
+      const { actualUrl } = wallpaperResult;
+
+      // 先检查缓存
+      const cachedColors = getColorFromCache(actualUrl);
+      if (cachedColors) {
+        applyColorPalette(cachedColors);
+        return;
       }
-    } catch {
-      // 使用默认配色
+
+      // 检查是否为有效壁纸
+      const checkResult = await shouldApplyColorExtraction(actualUrl);
+      if (!checkResult.shouldApply) {
+        return;
+      }
+
+      // 提取颜色
+      try {
+        const colors = await extractColorsFromImage(actualUrl, { context: 'wallpaper' });
+        applyColorPalette(colors);
+        saveColorToCache(actualUrl, colors);
+      } catch {
+        // 提取失败，静默处理
+      }
     }
-  }, []);
+  }, [loadWallpaperFromHook]);
 
   // 设置当前导航项
   const setActiveNav = useCallback(() => {
@@ -312,13 +581,69 @@ export function AppLayout({ children }: AppLayoutProps) {
     loadWallpaper();
   }, [checkAuth, loadWallpaper]);
 
+  // 初始化导航岛高度 - 仅在组件首次挂载时执行
+  useEffect(() => {
+    const content = navContentRef.current;
+    if (!content) return;
+
+    const island = content.closest('.dynamic-island') as HTMLElement;
+    if (!island) return;
+
+    // 等待 DOM 渲染完成后计算初始高度（仅桌面端）
+    const initTimer = setTimeout(() => {
+      if (window.innerWidth >= 768) {
+        const currentHeight = content.scrollHeight + parseFloat(getComputedStyle(island).paddingTop) * 2;
+        island.style.height = `${currentHeight}px`;
+      }
+    }, 50);
+
+    return () => clearTimeout(initTimer);
+    // 只在首次挂载和 isAdmin 变化时执行，不依赖 showLibraryFilters 和 location.pathname
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+
+  // 监听壁纸变化事件（由 GlobalControlPanel 触发）
+  useEffect(() => {
+    const handleWallpaperChanged = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const newUrl = customEvent.detail?.url;
+
+      if (!newUrl) return;
+
+      // 先检查缓存
+      const cachedColors = getColorFromCache(newUrl);
+      if (cachedColors) {
+        applyColorPalette(cachedColors);
+        return;
+      }
+
+      // 检查是否为有效壁纸
+      const checkResult = await shouldApplyColorExtraction(newUrl);
+      if (!checkResult.shouldApply) {
+        return;
+      }
+
+      // 提取颜色
+      try {
+        const colors = await extractColorsFromImage(newUrl, { context: 'wallpaper' });
+        applyColorPalette(colors);
+        saveColorToCache(newUrl, colors);
+      } catch {
+        // 提取失败，静默处理
+      }
+    };
+
+    window.addEventListener('wallpaperChanged', handleWallpaperChanged);
+    return () => {
+      window.removeEventListener('wallpaperChanged', handleWallpaperChanged);
+    };
+  }, []);
+
   // 路由变化时更新导航状态
   useEffect(() => {
     setActiveNav();
-    // 进入资料库页面时显示筛选模式
-    if (location.pathname === '/library') {
-      setShowLibraryFilters(true);
-    }
+    // 注意：不在这里自动设置 showLibraryFilters，由按钮点击触发
+    // 防止与 handleEnterFilters 冲突导致重复加载
   }, [location.pathname, setActiveNav]);
 
   // 监听认证状态变化
@@ -521,7 +846,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <nav className="nav-container" aria-label="主导航">
         <div className="dynamic-island shadow-2xl" role="navigation">
           <div className="flex flex-row md:flex-col items-center gap-1 relative">
-            {location.pathname === '/library' && showLibraryFilters ? (
+            {(isAnimating ? renderModeRef.current === 'library' : (location.pathname === '/library' && showLibraryFilters)) ? (
               /* 资料库模式 - 显示返回按钮 + 分隔符 + 资料库筛选标签 */
               <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="library-mode">
                 {/* 返回按钮 */}
@@ -613,11 +938,21 @@ export function AppLayout({ children }: AppLayoutProps) {
                     aria-label="资料库" 
                     onClick={() => {
                       if (location.pathname === '/library') {
-                        setShowLibraryFilters(true);
+                        // 已在资料库页面，直接触发展开动画
+                        handleEnterFilters();
                       } else {
+                        // 导航到资料库页面，延长等待时间确保路径已更新
                         navigate('/library');
-                        // 导航后显示筛选模式
-                        setTimeout(() => setShowLibraryFilters(true), 100);
+                        // 等待路径更新后再触发动画
+                        setTimeout(() => {
+                          // 再次检查路径，确保已经导航完成
+                          if (window.location.pathname === '/library') {
+                            handleEnterFilters();
+                          } else {
+                            // 如果路径还没更新，再等待一次
+                            setTimeout(() => handleEnterFilters(), 100);
+                          }
+                        }, 150);
                       }
                     }}
                   >

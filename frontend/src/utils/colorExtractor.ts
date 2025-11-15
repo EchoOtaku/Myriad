@@ -1,5 +1,5 @@
 ﻿// ColorExtractor v3.0
-interface ColorPalette {
+export interface ColorPalette {
     primary: string;
     secondary: string;
     accent: string;
@@ -30,15 +30,20 @@ let currentExtractionUrl: string | null = null;
 
 export async function extractColorsFromImage(
     imageUrl: string,
-    options: { forceRefresh?: boolean } = {}
+    options: { forceRefresh?: boolean; context?: string } = {}
 ): Promise<ColorPalette> {
-    if (currentExtractionController) {
+    // 如果是音乐封面提取，不取消其他正在进行的提取（如壁纸）
+    const isMusic = options.context === 'music';
+    
+    if (!isMusic && currentExtractionController) {
         currentExtractionController.abort();
     }
 
-    currentExtractionController = new AbortController();
-    currentExtractionUrl = imageUrl;
-    const myController = currentExtractionController;
+    // 音乐封面提取使用独立的 controller，不影响全局状态
+    const myController = isMusic ? new AbortController() : (currentExtractionController = new AbortController());
+    if (!isMusic) {
+        currentExtractionUrl = imageUrl;
+    }
 
     try {
         if (!options.forceRefresh && memoryCache.has(imageUrl)) {
@@ -59,7 +64,8 @@ export async function extractColorsFromImage(
             throw new Error('Extraction cancelled');
         }
 
-        if (currentExtractionUrl !== imageUrl) {
+        // 音乐封面提取不检查 URL 变化
+        if (!isMusic && currentExtractionUrl !== imageUrl) {
             throw new Error('URL changed during extraction');
         }
 
@@ -74,7 +80,8 @@ export async function extractColorsFromImage(
         }
         return getDefaultPalette();
     } finally {
-        if (currentExtractionController === myController) {
+        // 只有非音乐提取才清理全局状态
+        if (!isMusic && currentExtractionController === myController) {
             currentExtractionController = null;
             currentExtractionUrl = null;
         }
