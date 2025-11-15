@@ -2,6 +2,8 @@
  * 音乐播放器 - 支持网易云音乐和QQ音乐歌单播放
  */
 
+import { API_URL } from '../config';
+
 export type MusicSource = 'netease' | 'qq';
 
 export interface Song {
@@ -58,7 +60,6 @@ export function parseLyrics(lrcText: string): LyricLine[] {
 export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
   try {
     // 通过后端代理访问网易云音乐API
-    const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
     const response = await fetch(`${API_URL}/api/proxy/music/netease/playlist/${playlistId}`);
 
     if (!response.ok) {
@@ -118,7 +119,6 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
 export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
   try {
     // 通过后端代理访问QQ音乐API
-    const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
     const response = await fetch(`${API_URL}/api/proxy/music/qq/playlist/${playlistId}`);
 
     if (!response.ok) {
@@ -167,7 +167,6 @@ export async function getNeteaseLyrics(songId: string): Promise<LyricLine[]> {
   }
 
   try {
-    const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
     const response = await fetch(`${API_URL}/api/proxy/music/netease/lyrics/${songId}`);
 
     if (!response.ok) {
@@ -201,7 +200,6 @@ export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
   }
 
   try {
-    const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
     const response = await fetch(`${API_URL}/api/proxy/music/qq/lyrics/${songId}`);
 
     if (!response.ok) {

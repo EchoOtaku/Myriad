@@ -7,12 +7,10 @@ const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 
 // 需要预缓存的静态资源
+// 注意：只包含构建后确实存在的文件，避免 addAll 失败
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/config',
-  '/library',
-  '/manifest.json',
 ];
 
 // 最大缓存数量
