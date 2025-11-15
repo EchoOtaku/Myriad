@@ -8,6 +8,59 @@ use axum::{
 use rand::Rng;
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+
+// 缓存结构
+struct CacheEntry {
+    data: Value,
+    expires_at: Instant,
+}
+
+// 限流结构
+struct RateLimiter {
+    requests: HashMap<String, Vec<Instant>>,
+}
+
+impl RateLimiter {
+    fn new() -> Self {
+        Self {
+            requests: HashMap::new(),
+        }
+    }
+
+    // 检查是否允许请求（宽松策略：每分钟60次，每小时1000次）
+    fn check_rate_limit(&mut self, key: &str) -> bool {
+        let now = Instant::now();
+        let one_minute_ago = now - Duration::from_secs(60);
+        let one_hour_ago = now - Duration::from_secs(3600);
+
+        // 清理过期的请求记录
+        let times = self.requests.entry(key.to_string()).or_default();
+        times.retain(|&t| t > one_hour_ago);
+
+        // 检查限制
+        let recent_count = times.iter().filter(|&&t| t > one_minute_ago).count();
+        let hourly_count = times.len();
+
+        if recent_count >= 60 || hourly_count >= 1000 {
+            return false;
+        }
+
+        // 记录本次请求
+        times.push(now);
+        true
+    }
+}
+
+// 全局缓存和限流器（使用 lazy_static 或 once_cell）
+use once_cell::sync::Lazy;
+static MUSIC_CACHE: Lazy<Arc<RwLock<HashMap<String, CacheEntry>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static RATE_LIMITER: Lazy<Arc<RwLock<RateLimiter>>> =
+    Lazy::new(|| Arc::new(RwLock::new(RateLimiter::new())));
 
 #[derive(Debug, Deserialize)]
 pub struct ImageProxyQuery {
@@ -103,6 +156,40 @@ fn get_referer_for_url(url: &str) -> &'static str {
 
 /// 代理网易云音乐歌单请求 - 参考Meting API的v6实现
 pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response {
+    let cache_key = format!("playlist:{}", playlist_id);
+
+    // 检查限流
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            tracing::warn!("Rate limit exceeded for playlist: {}", playlist_id);
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({
+                    "error": "Too many requests",
+                    "message": "请求过于频繁，请稍后再试"
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    // 检查缓存（歌单缓存1小时）
+    {
+        let cache = MUSIC_CACHE.read().await;
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.expires_at > Instant::now() {
+                tracing::debug!("Cache hit for playlist: {}", playlist_id);
+                return (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(entry.data.clone()),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     // 生成随机设备ID (模拟Android设备)
     let device_id = generate_device_id();
     let timestamp = std::time::SystemTime::now()
@@ -111,18 +198,20 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         .as_millis();
 
     let client = reqwest::Client::builder()
-        // 模拟网易云音乐Android客户端
-        .user_agent("Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01")
+        .user_agent(get_random_user_agent())
         .cookie_store(true)
         .build()
         .unwrap();
 
-    // 使用 v6 API endpoint，更稳定且支持更多功能
-    // 参考Meting API: playlist(id) 方法
     let url = format!(
         "http://music.163.com/api/v6/playlist/detail?id={}&n=100000&s=0&t=0",
         playlist_id
     );
+
+    // 优化的 IP 伪装：使用代理链格式
+    let client_ip = get_random_china_ip();
+    let proxy_ip = get_random_china_ip();
+    let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
 
     match client.get(&url)
         .header("Referer", "https://music.163.com/")
@@ -130,12 +219,11 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         .header("Accept", "*/*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
         .header("Connection", "keep-alive")
-        // 添加模拟客户端的Cookie
         .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
             device_id, timestamp, rand::random::<u16>() % 10000))
-        // 伪装中国大陆 IP，避免地理位置限制
-        .header("X-Forwarded-For", get_random_china_ip())
-        .header("X-Real-IP", get_random_china_ip())
+        // 优化的代理链伪装
+        .header("X-Forwarded-For", forwarded_for)
+        .header("X-Real-IP", client_ip)
         .send()
         .await
     {
@@ -143,12 +231,21 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
             let status = resp.status();
             match resp.json::<Value>().await {
                 Ok(data) => {
-                    // 检查API返回的错误码
                     if let Some(code) = data.get("code").and_then(|c| c.as_i64()) {
                         if code != 200 {
                             tracing::warn!("Netease API returned error code {}: {:?}", code, data);
                         }
                     }
+
+                    // 存入缓存
+                    {
+                        let mut cache = MUSIC_CACHE.write().await;
+                        cache.insert(cache_key, CacheEntry {
+                            data: data.clone(),
+                            expires_at: Instant::now() + Duration::from_secs(3600), // 1小时
+                        });
+                    }
+
                     (
                         StatusCode::OK,
                         [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
@@ -229,6 +326,25 @@ fn get_random_china_ip() -> String {
     format!("{}.{}.{}", prefix, third, fourth)
 }
 
+/// 获取随机 User-Agent（模拟不同设备和浏览器）
+/// 降低被识别为爬虫的风险
+fn get_random_user_agent() -> &'static str {
+    let mut rng = rand::thread_rng();
+    let user_agents = [
+        // Android + Chrome
+        "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 11; M2007J3SC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36",
+        // iOS + Safari
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        // 网易云音乐官方客户端
+        "Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01",
+        "Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SD1A.210817.036; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.120 Mobile Safari/537.36 NeteaseMusic/8.8.50",
+    ];
+
+    user_agents[rng.gen_range(0..user_agents.len())]
+}
 /// 代理QQ音乐歌单请求
 pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
     let client = reqwest::Client::builder()
@@ -268,6 +384,36 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
 
 /// 代理网易云音乐歌词请求 - 参考Meting API的lyric实现
 pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
+    let cache_key = format!("lyrics:{}", song_id);
+
+    // 检查限流
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({"error": "Too many requests"})),
+            )
+                .into_response();
+        }
+    }
+
+    // 检查缓存（歌词缓存24小时）
+    {
+        let cache = MUSIC_CACHE.read().await;
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.expires_at > Instant::now() {
+                tracing::debug!("Cache hit for lyrics: {}", song_id);
+                return (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(entry.data.clone()),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     let device_id = generate_device_id();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -280,15 +426,19 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
     );
 
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01")
+        .user_agent(get_random_user_agent())
         .build()
         .unwrap();
 
-    // 参考Meting API: lyric(id) 方法,使用os=linux参数
     let url = format!(
         "http://music.163.com/api/song/lyric?id={}&os=linux&lv=-1&kv=-1&tv=-1",
         song_id
     );
+
+    // 优化的代理链伪装
+    let client_ip = get_random_china_ip();
+    let proxy_ip = get_random_china_ip();
+    let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
 
     match client
         .get(&url)
@@ -301,19 +451,32 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
             device_id, request_id
         ),
         )
-        // 伪装中国大陆 IP，避免地理位置限制
-        .header("X-Forwarded-For", get_random_china_ip())
-        .header("X-Real-IP", get_random_china_ip())
+        .header("X-Forwarded-For", forwarded_for)
+        .header("X-Real-IP", client_ip)
         .send()
         .await
     {
         Ok(resp) => match resp.json::<Value>().await {
-            Ok(data) => (
-                StatusCode::OK,
-                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-                Json(data),
-            )
-                .into_response(),
+            Ok(data) => {
+                // 存入缓存
+                {
+                    let mut cache = MUSIC_CACHE.write().await;
+                    cache.insert(
+                        cache_key,
+                        CacheEntry {
+                            data: data.clone(),
+                            expires_at: Instant::now() + Duration::from_secs(86400), // 24小时
+                        },
+                    );
+                }
+
+                (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(data),
+                )
+                    .into_response()
+            }
             Err(e) => {
                 tracing::error!("Failed to parse Netease lyrics for song {}: {}", song_id, e);
                 (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
@@ -365,6 +528,16 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
 
 /// 代理网易云音乐音频流 - 参考Meting API的enhance player url实现
 pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
+    let cache_key = format!("audio:{}", song_id);
+
+    // 检查限流（音频流限制更宽松）
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            return (StatusCode::TOO_MANY_REQUESTS, "Too many requests").into_response();
+        }
+    }
+
     let device_id = generate_device_id();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -372,18 +545,21 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
         .as_millis();
 
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Linux; Android 11; M2007J3SC Build/RKQ1.200826.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045714 Mobile Safari/537.36 NeteaseMusic/8.7.01")
+        .user_agent(get_random_user_agent())
         .cookie_store(true)
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .unwrap();
 
-    // 参考Meting API: url(id, br) 方法使用的API
-    // 使用 enhance/player/url API 获取高质量音频链接 (320kbps)
     let url = format!(
         "http://music.163.com/api/song/enhance/player/url?ids=[{}]&br=320000",
         song_id
     );
+
+    // 优化的代理链伪装
+    let client_ip = get_random_china_ip();
+    let proxy_ip = get_random_china_ip();
+    let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
 
     match client.get(&url)
         .header("Referer", "https://music.163.com/")
@@ -393,9 +569,8 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
         .header("Connection", "keep-alive")
         .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
             device_id, timestamp, rand::random::<u16>() % 10000))
-        // 伪装中国大陆 IP，避免地理位置限制
-        .header("X-Forwarded-For", get_random_china_ip())
-        .header("X-Real-IP", get_random_china_ip())
+        .header("X-Forwarded-For", forwarded_for.clone())
+        .header("X-Real-IP", client_ip.clone())
         .send()
         .await
     {
@@ -417,13 +592,12 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
 
                     if let Some(audio_url) = audio_url {
                         if !audio_url.is_empty() && audio_url != "null" {
-                            // 获取实际音频流
+                            // 获取实际音频流（复用前面的IP伪装）
                             match client.get(audio_url)
                                 .header("Referer", "https://music.163.com/")
                                 .header("Range", "bytes=0-") // 支持断点续传
-                                // 伪装中国大陆 IP，避免地理位置限制
-                                .header("X-Forwarded-For", get_random_china_ip())
-                                .header("X-Real-IP", get_random_china_ip())
+                                .header("X-Forwarded-For", forwarded_for)
+                                .header("X-Real-IP", client_ip)
                                 .send()
                                 .await
                             {

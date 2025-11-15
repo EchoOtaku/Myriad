@@ -830,9 +830,10 @@ const GlobalControlPanel: React.FC = () => {
     };
 
     // 监听播放结束 - 自动播放下一首
-    const handleEnded = () => {
+    const handleEnded = async () => {
       if (playlist.length > 0) {
         const newIndex = (currentSongIndex + 1) % playlist.length;
+        const nextSong = playlist[newIndex];
         
         // 如果下一首已经预加载，优先使用预加载的数据
         if (preloadedSongIndex === newIndex && preloadAudioRef.current && preloadAudioRef.current.readyState >= 2) {
@@ -847,18 +848,69 @@ const GlobalControlPanel: React.FC = () => {
             setIsPlaying(true);
           }
           
-          setCurrentSong(playlist[newIndex]);
+          setCurrentSong(nextSong);
           setCurrentSongIndex(newIndex);
           setCurrentTime(0);
+          
+          // 更新卡片状态：提取颜色
+          if (nextSong.cover) {
+            try {
+              const musicContainer = document.querySelector('.music-player-container');
+              if (musicContainer) {
+                musicContainer.classList.add('color-transitioning');
+              }
+              
+              const colors = await extractColorsFromImage(nextSong.cover, { context: 'music' });
+              
+              setTimeout(() => {
+                setMusicColors(colors);
+                if (musicContainer) {
+                  setTimeout(() => {
+                    musicContainer.classList.remove('color-transitioning');
+                  }, 50);
+                }
+              }, 300);
+            } catch (error) {
+              setMusicColors(null);
+            }
+          } else {
+            setMusicColors(null);
+          }
+          
+          // 加载歌词
+          setLyrics([]);
+          setCurrentLyricIndex(-1);
+          try {
+            const fetchedLyrics = nextSong.source === 'netease'
+              ? await getNeteaseLyrics(nextSong.id)
+              : await getQQLyrics(nextSong.id);
+            
+            if (fetchedLyrics && fetchedLyrics.length > 0) {
+              setLyrics(fetchedLyrics);
+              setCurrentLyricIndex(-1);
+            }
+          } catch (error) {
+            setLyrics([]);
+          }
           
           // 预加载再下一首
           const nextNextIndex = (newIndex + 1) % playlist.length;
           if (nextNextIndex !== newIndex) {
             setTimeout(() => preloadNextSong(nextNextIndex), 500);
           }
+          
+          // 更新动态内容
+          loadDynamicContents();
         } else {
-          // 没有预加载或预加载未完成，正常加载
+          // 没有预加载或预加载未完成，正常加载（这个会自动更新所有状态）
           selectSong(playlist[newIndex], newIndex);
+          // 自动播放下一首
+          if (audioRef.current) {
+            setTimeout(() => {
+              audioRef.current?.play().catch(() => setIsPlaying(false));
+              setIsPlaying(true);
+            }, 100);
+          }
         }
       } else {
         setIsPlaying(false);
