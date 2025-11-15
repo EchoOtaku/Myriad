@@ -666,12 +666,29 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/library", get(api::profile::get_library_data))
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))
+            // Client geo location route
+            .route("/api/proxy/client-geo", get(api::proxy::get_client_geo))
             // Music proxy routes
-            .route("/api/proxy/music/netease/playlist/:id", get(api::proxy::proxy_netease_playlist))
-            .route("/api/proxy/music/netease/lyrics/:id", get(api::proxy::proxy_netease_lyrics))
-            .route("/api/proxy/music/netease/audio/:id", get(api::proxy::proxy_netease_audio))
-            .route("/api/proxy/music/qq/playlist/:id", get(api::proxy::proxy_qq_playlist))
-            .route("/api/proxy/music/qq/lyrics/:id", get(api::proxy::proxy_qq_lyrics))
+            .route(
+                "/api/proxy/music/netease/playlist/:id",
+                get(api::proxy::proxy_netease_playlist),
+            )
+            .route(
+                "/api/proxy/music/netease/lyrics/:id",
+                get(api::proxy::proxy_netease_lyrics),
+            )
+            .route(
+                "/api/proxy/music/netease/audio/:id",
+                get(api::proxy::proxy_netease_audio),
+            )
+            .route(
+                "/api/proxy/music/qq/playlist/:id",
+                get(api::proxy::proxy_qq_playlist),
+            )
+            .route(
+                "/api/proxy/music/qq/lyrics/:id",
+                get(api::proxy::proxy_qq_lyrics),
+            )
             // Bilibili API routes
             .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
             .route(
@@ -804,10 +821,13 @@ async fn start_server(config: AppConfig, app: Router) -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    // Use graceful shutdown
-    axum::serve(listener, app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // Use graceful shutdown with ConnectInfo support
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }

@@ -107,15 +107,28 @@ const GlobalControlPanel: React.FC = () => {
   const preloadErrorCountRef = useRef<number>(0);
   const preloadDisabledRef = useRef<boolean>(false);
 
+  // 验证并规范化颜色值（确保是有效的十六进制格式）
+  const normalizeColor = (color: string): string => {
+    // 移除所有空格和非法字符
+    const cleaned = color.trim().replace(/\s+/g, '');
+    // 验证是否为有效的十六进制颜色（#RRGGBB 或 #RGB）
+    if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(cleaned)) {
+      return cleaned.toLowerCase();
+    }
+    // 如果无效，返回灰色作为后备
+    console.warn(`Invalid color format: "${color}", using fallback`);
+    return '#999999';
+  };
+
   // 应用音乐颜色到全局作用域
   useEffect(() => {
     const root = document.documentElement;
     if (musicColors) {
-      root.style.setProperty('--music-primary', musicColors.primary);
-      root.style.setProperty('--music-secondary', musicColors.secondary);
-      root.style.setProperty('--music-accent', musicColors.accent);
-      root.style.setProperty('--music-light', musicColors.light);
-      root.style.setProperty('--music-dark', musicColors.dark);
+      root.style.setProperty('--music-primary', normalizeColor(musicColors.primary));
+      root.style.setProperty('--music-secondary', normalizeColor(musicColors.secondary));
+      root.style.setProperty('--music-accent', normalizeColor(musicColors.accent));
+      root.style.setProperty('--music-light', normalizeColor(musicColors.light));
+      root.style.setProperty('--music-dark', normalizeColor(musicColors.dark));
     } else {
       // 清除音乐颜色变量，使用默认值
       root.style.removeProperty('--music-primary');

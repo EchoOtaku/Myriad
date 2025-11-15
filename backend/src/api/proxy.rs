@@ -154,6 +154,32 @@ fn get_referer_for_url(url: &str) -> &'static str {
     }
 }
 
+/// 将音乐数据中的 HTTP 图片 URL 转换为 HTTPS
+/// 递归处理 JSON 对象和数组，避免 Mixed Content 警告
+fn convert_http_to_https(value: &mut Value) {
+    match value {
+        Value::String(s) => {
+            // 将网易云音乐 CDN 的 HTTP 链接替换为 HTTPS
+            if s.starts_with("http://")
+                && (s.contains("music.126.net") || s.contains("music.163.com"))
+            {
+                *s = s.replace("http://", "https://");
+            }
+        }
+        Value::Array(arr) => {
+            for item in arr {
+                convert_http_to_https(item);
+            }
+        }
+        Value::Object(obj) => {
+            for (_, v) in obj.iter_mut() {
+                convert_http_to_https(v);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// 代理网易云音乐歌单请求 - 参考Meting API的v6实现
 pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response {
     let cache_key = format!("playlist:{}", playlist_id);
@@ -204,7 +230,7 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         .unwrap();
 
     let url = format!(
-        "http://music.163.com/api/v6/playlist/detail?id={}&n=100000&s=0&t=0",
+        "https://music.163.com/api/v6/playlist/detail?id={}&n=100000&s=0&t=0",
         playlist_id
     );
 
@@ -230,12 +256,15 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         Ok(resp) => {
             let status = resp.status();
             match resp.json::<Value>().await {
-                Ok(data) => {
+                Ok(mut data) => {
                     if let Some(code) = data.get("code").and_then(|c| c.as_i64()) {
                         if code != 200 {
                             tracing::warn!("Netease API returned error code {}: {:?}", code, data);
                         }
                     }
+
+                    // 将所有 HTTP 图片链接转换为 HTTPS，避免 Mixed Content 警告
+                    convert_http_to_https(&mut data);
 
                     // 存入缓存
                     {
@@ -431,7 +460,7 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
         .unwrap();
 
     let url = format!(
-        "http://music.163.com/api/song/lyric?id={}&os=linux&lv=-1&kv=-1&tv=-1",
+        "https://music.163.com/api/song/lyric?id={}&os=linux&lv=-1&kv=-1&tv=-1",
         song_id
     );
 
@@ -457,7 +486,10 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
         .await
     {
         Ok(resp) => match resp.json::<Value>().await {
-            Ok(data) => {
+            Ok(mut data) => {
+                // 将所有 HTTP 图片链接转换为 HTTPS
+                convert_http_to_https(&mut data);
+
                 // 存入缓存
                 {
                     let mut cache = MUSIC_CACHE.write().await;
@@ -485,6 +517,51 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
         Err(e) => {
             tracing::error!("Failed to fetch Netease lyrics for song {}: {}", song_id, e);
             (StatusCode::BAD_GATEWAY, "Failed to fetch lyrics").into_response()
+        }
+    }
+}
+
+/// 获取客户端真实 IP 地理位置信息
+/// GET /api/proxy/client-geo
+pub async fn get_client_geo(
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+) -> Response {
+    let client_ip = addr.ip().to_string();
+
+    // 使用 ip-api.com 获取地理位置
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap();
+
+    let url = format!(
+        "http://ip-api.com/json/{}?fields=status,lat,lon,city,country",
+        client_ip
+    );
+
+    match client.get(&url).send().await {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(data) => {
+                if data.get("status").and_then(|s| s.as_str()) == Some("success") {
+                    (
+                        StatusCode::OK,
+                        [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                        Json(data),
+                    )
+                        .into_response()
+                } else {
+                    tracing::warn!("IP geolocation failed for {}: {:?}", client_ip, data);
+                    (StatusCode::NOT_FOUND, "Geolocation service failed").into_response()
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to parse geo response for {}: {}", client_ip, e);
+                (StatusCode::BAD_GATEWAY, "Failed to parse geo response").into_response()
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to fetch geo info for {}: {}", client_ip, e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch geo info").into_response()
         }
     }
 }
@@ -552,7 +629,7 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
         .unwrap();
 
     let url = format!(
-        "http://music.163.com/api/song/enhance/player/url?ids=[{}]&br=320000",
+        "https://music.163.com/api/song/enhance/player/url?ids=[{}]&br=320000",
         song_id
     );
 

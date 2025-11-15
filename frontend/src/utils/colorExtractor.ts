@@ -268,7 +268,10 @@ function isVividColor(r: number, g: number, b: number): boolean {
 }
 
 function rgbToHex(r: number, g: number, b: number): string {
-    return `#${[r, g, b].map(x => Math.round(x).toString(16).padStart(2, '0')).join('')}`;
+    // 确保值在 0-255 范围内，并转换为整数
+    const clamp = (val: number) => Math.max(0, Math.min(255, Math.round(val)));
+    const toHex = (val: number) => clamp(val).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
@@ -326,12 +329,13 @@ function darkenColor(r: number, g: number, b: number): string {
 }
 
 function getDefaultPalette(): ColorPalette {
+    // 当无法提取有效颜色时，使用中性灰色系
     return {
-        primary: '#22c55e',
-        secondary: '#ec4899',
-        accent: '#fbbf24',
-        light: '#4ade80',
-        dark: '#16a34a',
+        primary: '#6b7280',    // gray-500
+        secondary: '#9ca3af',  // gray-400
+        accent: '#4b5563',     // gray-600
+        light: '#d1d5db',      // gray-300
+        dark: '#374151',       // gray-700
     };
 }
 

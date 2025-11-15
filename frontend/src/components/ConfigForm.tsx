@@ -304,7 +304,7 @@ const ModernConfigForm: React.FC = () => {
 
       try {
         await fetchJson(
-          `${API_URL}/api/system/restart`,
+          `${API_URL}/api/system/reload-config`,
           { method: 'POST' },
           '重启后端失败'
         );

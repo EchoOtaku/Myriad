@@ -3,6 +3,8 @@
  * 提供天气、问候语、一言等动态内容
  */
 
+import { API_URL } from '../config';
+
 export interface WeatherData {
   city: string;
   weather: string;
@@ -85,9 +87,9 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
     let longitude: number | null = null;
     let city = '本地';
 
-    // 方案1: 尝试使用 ip-api.com (无需密钥，不被追踪保护拦截)
+    // 方案1: 通过后端获取客户端真实 IP 的地理位置
     try {
-      const geoResponse = await fetch('http://ip-api.com/json/?fields=lat,lon,city,country');
+      const geoResponse = await fetch(`${API_URL}/api/proxy/client-geo`);
       if (geoResponse.ok) {
         const geoData = await geoResponse.json();
         latitude = geoData.lat;
@@ -95,10 +97,25 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
         city = geoData.city || geoData.country || '本地';
       }
     } catch (e) {
-      console.warn('ip-api.com failed, trying alternative');
+      console.warn('Backend geolocation failed, trying fallback');
     }
 
-    // 方案2: 如果方案1失败，使用默认位置（北京）
+    // 方案2: 如果后端失败，尝试直接调用 ip-api.com
+    if (!latitude || !longitude) {
+      try {
+        const geoResponse = await fetch('https://ip-api.com/json/?fields=lat,lon,city,country');
+        if (geoResponse.ok) {
+          const geoData = await geoResponse.json();
+          latitude = geoData.lat;
+          longitude = geoData.lon;
+          city = geoData.city || geoData.country || '本地';
+        }
+      } catch (e) {
+        console.warn('ip-api.com fallback also failed');
+      }
+    }
+
+    // 方案3: 如果所有方式都失败，使用默认位置（北京）
     if (!latitude || !longitude) {
       latitude = 39.9042;
       longitude = 116.4074;
