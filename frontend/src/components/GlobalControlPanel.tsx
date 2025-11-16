@@ -92,6 +92,7 @@ const GlobalControlPanel: React.FC = () => {
   const [musicError, setMusicError] = useState<string>('');
   const [musicPlayerView, setMusicPlayerView] = useState<'info' | 'lyrics' | 'playlist'>('info');
   const [showVolumePopup, setShowVolumePopup] = useState(false);
+  const [playMode, setPlayMode] = useState<'loop' | 'single' | 'shuffle'>('loop'); // 列表循环、单曲循环、随机播放
   const [musicColors, setMusicColors] = useState<{
     primary: string;
     secondary: string;
@@ -101,6 +102,7 @@ const GlobalControlPanel: React.FC = () => {
   } | null>(null);
   const lyricsScrollRef = useRef<HTMLDivElement>(null);
   const playlistScrollRef = useRef<HTMLDivElement>(null);
+  const seekingRef = useRef<boolean>(false);
   
   // 播放列表搜索状态
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
@@ -521,7 +523,7 @@ const GlobalControlPanel: React.FC = () => {
   }, [playlist]);
 
   // 选择歌曲
-  const selectSong = useCallback(async (song: Song, index: number) => {
+  const selectSong = useCallback(async (song: Song, index: number, autoPlay: boolean = false) => {
     setCurrentSong(song);
     setCurrentSongIndex(index);
 
@@ -579,26 +581,38 @@ const GlobalControlPanel: React.FC = () => {
       setCurrentLyricIndex(-1);
     }
 
-    // 加载歌曲但不自动播放，等待用户点击播放按钮
+    // 加载歌曲
     if (audioRef.current) {
       audioRef.current.src = song.url;
       audioRef.current.load();
-      setIsPlaying(false);
+      
+      if (autoPlay) {
+        // 自动播放
+        setTimeout(() => {
+          audioRef.current?.play().catch(() => setIsPlaying(false));
+          setIsPlaying(true);
+        }, 100);
+      } else {
+        // 等待用户点击播放按钮
+        setIsPlaying(false);
+      }
       setCurrentTime(0);
     }
 
-    // 预加载下一首歌曲
-    const nextIndex = (index + 1) % playlist.length;
-    if (nextIndex !== index && playlist.length > 1) {
-      // 延迟500ms预加载，避免影响当前歌曲加载
-      setTimeout(() => {
-        preloadNextSong(nextIndex);
-      }, 500);
+    // 预加载下一首歌曲（仅在列表循环模式下）
+    if (playMode === 'loop') {
+      const nextIndex = (index + 1) % playlist.length;
+      if (nextIndex !== index && playlist.length > 1) {
+        // 延迟500ms预加载，避免影响当前歌曲加载
+        setTimeout(() => {
+          preloadNextSong(nextIndex);
+        }, 500);
+      }
     }
 
     // 更新动态内容
     loadDynamicContents();
-  }, [loadDynamicContents, playlist.length, preloadNextSong]);
+  }, [loadDynamicContents, playlist.length, preloadNextSong, playMode]);
 
   // 加载歌单
   const loadPlaylist = useCallback(async (source: MusicSource, plistId: string) => {
@@ -886,10 +900,34 @@ const GlobalControlPanel: React.FC = () => {
       }
     };
 
-    // 监听播放结束 - 自动播放下一首
+    // 监听播放结束 - 自动播放下一首（支持播放模式）
     const handleEnded = async () => {
+      // 如果正在拖动进度条，忽略 ended 事件
+      if (seekingRef.current) {
+        return;
+      }
+      
       if (playlist.length > 0) {
-        const newIndex = (currentSongIndex + 1) % playlist.length;
+        let newIndex: number;
+        
+        // 根据播放模式决定下一首
+        if (playMode === 'single') {
+          // 单曲循环：重复当前歌曲
+          newIndex = currentSongIndex;
+        } else if (playMode === 'shuffle') {
+          // 随机播放：随机选择一首（避免重复当前歌曲）
+          if (playlist.length > 1) {
+            do {
+              newIndex = Math.floor(Math.random() * playlist.length);
+            } while (newIndex === currentSongIndex);
+          } else {
+            newIndex = 0;
+          }
+        } else {
+          // 列表循环：顺序播放下一首
+          newIndex = (currentSongIndex + 1) % playlist.length;
+        }
+        
         const nextSong = playlist[newIndex];
         
         // 如果下一首已经预加载，优先使用预加载的数据
@@ -950,24 +988,19 @@ const GlobalControlPanel: React.FC = () => {
             setLyrics([]);
           }
           
-          // 预加载再下一首
-          const nextNextIndex = (newIndex + 1) % playlist.length;
-          if (nextNextIndex !== newIndex) {
-            setTimeout(() => preloadNextSong(nextNextIndex), 500);
+          // 预加载再下一首（仅在列表循环模式下）
+          if (playMode === 'loop' && playlist.length > 1) {
+            const nextNextIndex = (newIndex + 1) % playlist.length;
+            if (nextNextIndex !== newIndex) {
+              setTimeout(() => preloadNextSong(nextNextIndex), 500);
+            }
           }
           
           // 更新动态内容
           loadDynamicContents();
         } else {
-          // 没有预加载或预加载未完成，正常加载（这个会自动更新所有状态）
-          selectSong(playlist[newIndex], newIndex);
-          // 自动播放下一首
-          if (audioRef.current) {
-            setTimeout(() => {
-              audioRef.current?.play().catch(() => setIsPlaying(false));
-              setIsPlaying(true);
-            }, 100);
-          }
+          // 没有预加载或预加载未完成，正常加载并自动播放
+          selectSong(playlist[newIndex], newIndex, true);
         }
       } else {
         setIsPlaying(false);
@@ -981,7 +1014,7 @@ const GlobalControlPanel: React.FC = () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [lyrics, currentLyricIndex, volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong]);
+  }, [lyrics, currentLyricIndex, volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong, playMode, loadDynamicContents]);
 
   // 播放/暂停
   const togglePlay = useCallback(() => {
@@ -1023,10 +1056,70 @@ const GlobalControlPanel: React.FC = () => {
   // 调整播放进度
   const handleSeek = useCallback((time: number) => {
     if (audioRef.current && currentSong) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
+      // 防止拖到最后触发 ended 事件，保留1秒缓冲
+      const maxSeekTime = currentSong.duration > 1 ? currentSong.duration - 1 : currentSong.duration * 0.95;
+      const safeTime = Math.min(time, maxSeekTime);
+      
+      audioRef.current.currentTime = safeTime;
+      setCurrentTime(safeTime);
     }
   }, [currentSong]);
+
+  // 切换播放模式
+  const togglePlayMode = useCallback(() => {
+    setPlayMode(prev => {
+      if (prev === 'loop') return 'single';
+      if (prev === 'single') return 'shuffle';
+      return 'loop';
+    });
+  }, []);
+
+  // 获取播放模式图标和文字
+  const getPlayModeIcon = useCallback(() => {
+    switch (playMode) {
+      case 'single':
+        return { 
+          icon: (
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/>
+            </svg>
+          ),
+          text: '单曲循环' 
+        };
+      case 'shuffle':
+        return { 
+          icon: (
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+            </svg>
+          ),
+          text: '随机播放' 
+        };
+      case 'loop':
+      default:
+        return { 
+          icon: (
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
+            </svg>
+          ),
+          text: '列表循环' 
+        };
+    }
+  }, [playMode]);
+
+  // 进度条拖动开始
+  const handleSeekStart = useCallback(() => {
+    seekingRef.current = true;
+  }, []);
+
+  // 进度条拖动结束
+  const handleSeekEnd = useCallback(() => {
+    // 延迟重置 seeking 状态，确保 ended 事件不会被触发
+    setTimeout(() => {
+      seekingRef.current = false;
+    }, 100);
+  }, []);
 
   // 歌词自动滚动 - 重构版
   useEffect(() => {
@@ -1094,6 +1187,26 @@ const GlobalControlPanel: React.FC = () => {
       });
     }, 100);
   }, [musicPlayerView, currentSongIndex, playlist.length, playlistSearchQuery]);
+
+  // 歌词视图自动返回：当歌词不存在时延迟检测后返回默认界面
+  useEffect(() => {
+    // 只在歌词视图下监听
+    if (musicPlayerView !== 'lyrics') {
+      return;
+    }
+
+    // 如果没有歌曲或歌词为空，延迟后自动返回
+    if (!currentSong || lyrics.length === 0) {
+      const timer = setTimeout(() => {
+        // 再次检查状态，确保不是切歌中的临时状态
+        if (musicPlayerView === 'lyrics' && (!currentSong || lyrics.length === 0)) {
+          setMusicPlayerView('info');
+        }
+      }, 800); // 800ms 延迟，避免切歌时频繁切换
+
+      return () => clearTimeout(timer);
+    }
+  }, [musicPlayerView, currentSong, lyrics.length]);
 
   // 当有歌词时，更新动态内容以显示歌词（仅播放时）
   useEffect(() => {
@@ -1327,7 +1440,11 @@ const GlobalControlPanel: React.FC = () => {
                                     min="0"
                                     max={currentSong.duration || 0}
                                     value={currentTime}
-                                    onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                                    onMouseDown={handleSeekStart}
+                                    onMouseUp={handleSeekEnd}
+                                    onTouchStart={handleSeekStart}
+                                    onTouchEnd={handleSeekEnd}
+                                    onInput={(e) => handleSeek(parseFloat(e.currentTarget.value))}
                                     className="music-progress-bar"
                                     aria-label="音乐进度"
                                   />
@@ -1338,7 +1455,7 @@ const GlobalControlPanel: React.FC = () => {
 
                             {/* 播放控制按钮 + 音量 + 视图切换 */}
                             <div className="music-control-row">
-                              {/* 左侧：歌词按钮 */}
+                              {/* 左侧：歌词按钮和播放顺序按钮 */}
                               <div className="music-view-switcher">
                                 {lyrics.length > 0 && (
                                   <button
@@ -1352,6 +1469,15 @@ const GlobalControlPanel: React.FC = () => {
                                     </svg>
                                   </button>
                                 )}
+                                {/* 播放顺序按钮 */}
+                                <button
+                                  onClick={togglePlayMode}
+                                  className="music-view-switch-btn"
+                                  aria-label={getPlayModeIcon().text}
+                                  title={getPlayModeIcon().text}
+                                >
+                                  {getPlayModeIcon().icon}
+                                </button>
                               </div>
 
                               {/* 中间：核心控制按钮 */}
