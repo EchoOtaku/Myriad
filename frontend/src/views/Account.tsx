@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 账户管理视图组件
  */
 
@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import AnimatedView from '../components/AnimatedView';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
+import TokenManager from '../utils/tokenManager';
 
 interface User {
   username: string;
@@ -27,7 +28,12 @@ export default function Account() {
   // 加载账户信息
   useEffect(() => {
     async function loadAccountInfo() {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
+      
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
       if (!token) {
         navigate('/login', { replace: true });
         return;
@@ -97,7 +103,12 @@ export default function Account() {
       return;
     }
 
-    const token = localStorage.getItem('auth_token');
+    const token = TokenManager.getToken();
+      
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
     setSubmitting(true);
 
     try {
@@ -116,7 +127,8 @@ export default function Account() {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        alert('✓ 密码修改成功！');
+        alert('✅ 密码修改成功!');
+        setPasswordError('');
         e.currentTarget.reset();
       } else {
         setPasswordError(result.message || result.error || '修改失败，请重试');
@@ -149,7 +161,7 @@ export default function Account() {
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3 md:mb-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/50 flex items-center justify-center text-xl sm:text-2xl">
-                    👤
+                    馃懁
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">账户信息</h2>
@@ -171,7 +183,7 @@ export default function Account() {
                       <div className="flex-1">
                         <p className="font-bold text-gray-800 text-lg">{user.username}</p>
                         <p className="text-sm text-gray-600 mt-0.5">
-                          {user.is_admin ? '👑 管理员' : '👤 普通用户'} · {user.auth_provider === 'local' ? '本地账户' : 'GitHub 账户'}
+                          {user.is_admin ? '🤵 管理员' : '🙂 普通用户'} · {user.auth_provider === 'local' ? '本地账户' : 'GitHub 账户'}
                         </p>
                         {user.display_name && (
                           <p className="text-xs text-gray-500 mt-1">显示名称: {user.display_name}</p>
@@ -197,7 +209,7 @@ export default function Account() {
                           </svg>
                           <div className="text-sm">
                             <p className="text-green-700 font-semibold">已绑定 GitHub</p>
-                            <p className="text-green-600 text-xs">本地登录已禁用</p>
+                            <p className="text-green-600 text-xs">本地登录已启用</p>
                           </div>
                         </div>
                       )}
@@ -215,7 +227,7 @@ export default function Account() {
             <div className="glass rounded-xl p-4 md:p-5">
               <div className="flex items-center gap-3 mb-3 md:mb-4">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/50 dark:to-pink-900/50 flex items-center justify-center text-xl sm:text-2xl">
-                  🔐
+                  馃攼
                 </div>
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">修改密码</h2>
@@ -291,3 +303,4 @@ export default function Account() {
     </AnimatedView>
   );
 }
+

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 数据管理视图组件
  * 管理 API 元数据和 AI 生成的报告
  */
@@ -8,6 +8,7 @@ import AnimatedView from '../components/AnimatedView';
 import Toast from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
+import TokenManager from '../utils/tokenManager';
 import '../components/ConfigForm.css';
 
 interface PlatformMetadata {
@@ -59,7 +60,7 @@ export default function DataManagement() {
   // 检查管理员权限
   useEffect(() => {
     async function checkAdmin() {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       if (!token) {
         navigate('/login', { replace: true });
         return;
@@ -96,7 +97,7 @@ export default function DataManagement() {
   const loadMetadata = async () => {
     setMetadataLoading(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/metadata`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -131,7 +132,7 @@ export default function DataManagement() {
   const loadReports = async () => {
     setReportsLoading(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/reports`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -177,7 +178,7 @@ export default function DataManagement() {
     
     setRefreshingPlatform(platformName);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       
       // 第一步：删除缓存
       await fetch(`${API_URL}/api/profile/cache`, {
@@ -211,7 +212,7 @@ export default function DataManagement() {
     if (!confirm(`确定要删除 ${platformName} 的缓存数据吗？删除后需要重新获取。`)) return;
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/cache`, {
         method: 'DELETE',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -237,7 +238,7 @@ export default function DataManagement() {
     
     setMetadataLoading(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       
       // 第一步：删除缓存
       await fetch(`${API_URL}/api/profile/cache`, {
@@ -271,7 +272,7 @@ export default function DataManagement() {
     if (!confirm('确定要删除这个报告吗？')) return;
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/reports/${reportId}`, {
         method: 'DELETE',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -295,7 +296,7 @@ export default function DataManagement() {
     if (!confirm(`确定要删除卡片 "${cardTitle}" 吗？`)) return;
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/reports/${reportId}/cards`, {
         method: 'DELETE',
         headers: token ? {
@@ -324,7 +325,7 @@ export default function DataManagement() {
     if (!confirm('再次确认：真的要删除所有报告吗？')) return;
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/reports/all`, {
         method: 'DELETE',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -651,3 +652,4 @@ export default function DataManagement() {
     </AnimatedView>
   );
 }
+

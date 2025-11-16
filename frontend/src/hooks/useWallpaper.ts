@@ -165,12 +165,6 @@ export function useWallpaper() {
       setBlur(config.wallpaper_blur);
       const isSingle = isSingleImageUrl(config.wallpaper_url);
       const canRefreshValue = !isSingle;
-      console.log('[useWallpaper] loadWallpaper:', {
-        configUrl: config.wallpaper_url,
-        actualUrl,
-        isSingleImage: isSingle,
-        canRefresh: canRefreshValue
-      });
       setCanRefresh(canRefreshValue);
 
       // 应用到DOM

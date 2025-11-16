@@ -78,17 +78,13 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
     };
     
     // Helper to mask sensitive values (passwords, API keys, tokens)
+    // SECURITY: Do not expose any real characters to prevent key type detection
     let mask_sensitive = |value: String| -> String {
         if value.is_empty() {
             value
         } else {
-            // 保留前4个字符，其余用 * 替换
-            let len = value.len();
-            if len <= 4 {
-                "*".repeat(len)
-            } else {
-                format!("{}{}",  &value[..4.min(len)], "*".repeat(8))
-            }
+            // Show only fixed-length mask without exposing real characters
+            "••••••••".to_string()
         }
     };
     

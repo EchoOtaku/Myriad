@@ -7,6 +7,7 @@ import AnimatedView from '../components/AnimatedView';
 import { useNavigate } from 'react-router-dom';
 import ConfigForm from '../components/ConfigForm';
 import { API_URL } from '../config';
+import TokenManager from '../utils/tokenManager';
 
 export default function Config() {
   const navigate = useNavigate();
@@ -16,7 +17,8 @@ export default function Config() {
   // 检查管理员权限
   useEffect(() => {
     async function checkAdmin() {
-      const token = localStorage.getItem('auth_token');
+      const token = TokenManager.getToken();
+      
       if (!token) {
         navigate('/login', { replace: true });
         return;

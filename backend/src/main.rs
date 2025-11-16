@@ -157,7 +157,10 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/setup/status",
         "/api/setup/init-env",
         "/api/setup/update-env",
-        "/api/setup/database-config",
+        // ✅ P0 安全修复：移除 database-config 从白名单
+        // 原因：这个端点太危险，必须由函数内部的 CONFIG_MODE 检查保护
+        // 如果在白名单中，任何人都可以在 CONFIG_MODE 时修改数据库配置
+        // "/api/setup/database-config",  // ❌ 已移除 - 使用内部检查
         "/api/setup/init-database",
         "/api/setup/create-admin",
         "/api/system/status",
@@ -606,8 +609,22 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .collect();
 
     let cors = if allowed_origins.is_empty() {
-        tracing::warn!("⚠️ No CORS origins configured, using localhost-only for security");
-        // 即使在开发模式也限制为 localhost - 安全第一
+        // Check if in production mode
+        let is_production = std::env::var("ENVIRONMENT")
+            .unwrap_or_else(|_| "development".to_string())
+            == "production";
+
+        if is_production {
+            tracing::error!("🚨 SECURITY ERROR: CORS_ORIGINS must be configured in production!");
+            tracing::error!("Set CORS_ORIGINS environment variable to your frontend domain(s)");
+            tracing::error!(
+                "Example: CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com"
+            );
+            panic!("CORS_ORIGINS is required in production mode for security");
+        }
+
+        tracing::warn!("⚠️ No CORS origins configured, using localhost-only for development");
+        // Development mode: restrict to localhost
         let dev_origins = vec![
             "http://localhost:4321"
                 .parse::<axum::http::HeaderValue>()
@@ -662,7 +679,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Build unified API router with all routes
     // All routes are registered, but DB-dependent routes use wrappers
     // that dynamically fetch DB connection from global state
-    let mut api_router = Router::new()
+    let api_router = Router::new()
         .route("/health", get(api::health))
         // Setup routes (always available)
         .route("/api/setup/config", get(api::setup::get_setup_config))
@@ -681,13 +698,20 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/system/status", get(api::system::system_status))
         .route(
             "/api/system/reload-config",
-            post(api::system::reload_config),
+            post(api::system::reload_config)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // Authentication routes (use wrapper for dynamic DB access)
         .route("/api/auth/login", post(local_login_wrapper))
         .route("/api/auth/me", get(get_current_user_wrapper))
-        .route("/api/auth/logout", post(logout_wrapper))
-        .route("/api/auth/change-password", post(change_password_wrapper))
+        .route(
+            "/api/auth/logout",
+            post(logout_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/auth/change-password",
+            post(change_password_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         // Configuration routes (use wrapper for dynamic DB access) - 🔒 REQUIRE AUTHENTICATION
         .route(
             "/api/config",
@@ -704,11 +728,19 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/config/ui", get(get_public_ui_config_wrapper)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
-        .route("/api/profile/batch", get(get_batch_user_info_wrapper)) // 🚀 性能优化：批量API
-        .route(
-            "/api/profile/cache-debug",
-            get(get_cache_debug_info_wrapper),
-        )
+        .route("/api/profile/batch", get(get_batch_user_info_wrapper)); // 🚀 性能优化：批量API
+
+    // 🔧 DEBUG: Cache debug endpoint (only in debug mode)
+    #[cfg(debug_assertions)]
+    let api_router = api_router.route(
+        "/api/profile/cache-debug",
+        get(get_cache_debug_info_wrapper),
+    );
+
+    #[cfg(not(debug_assertions))]
+    let api_router = api_router;
+
+    let mut api_router = api_router
         .route("/api/profile/report", get(get_report_wrapper))
         .route("/api/profile/reports", get(list_reports_wrapper))
         .route("/api/profile/metadata", get(get_raw_metadata_wrapper));
@@ -719,56 +751,90 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         let db_router = Router::new()
             .route("/api/auth/github/login", get(api::auth::github_login))
             .route("/api/auth/github/callback", get(api::auth::github_callback))
-            .route("/api/auth/github/link", get(api::auth::github_link))
+            .route(
+                "/api/auth/github/link",
+                get(api::auth::github_link).route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
             .route(
                 "/api/auth/link-github",
-                post(api::auth::link_github_account),
+                post(api::auth::link_github_account)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Note: /api/auth/me and /api/auth/logout are now registered above with wrappers
             // Note: /api/config routes are now registered above with wrappers, not here
             // Note: /api/profile/user-info, cache-debug, report, reports, metadata now registered above with wrappers
             .route("/api/platforms", get(api::platforms::list_platforms))
             .route("/api/profiles", get(api::platforms::get_profiles))
-            .route("/api/fetch", post(api::platforms::trigger_fetch))
+            .route(
+                "/api/fetch",
+                post(api::platforms::trigger_fetch)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
             .route(
                 "/api/analysis",
-                get(api::analysis::get_analysis).post(api::analysis::trigger_analysis),
+                get(api::analysis::get_analysis)
+                    .post(api::analysis::trigger_analysis)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
-            // Prompt generation
-            .route("/api/prompt/generate", post(api::prompt::generate_prompt))
-            // Virtual persona routes
+            // Prompt generation - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/prompt/generate",
+                post(api::prompt::generate_prompt)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Virtual persona routes - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/persona/generate",
-                post(api::persona::generate_persona),
+                post(api::persona::generate_persona)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/persona/generate-image",
-                post(api::persona::generate_image),
+                post(api::persona::generate_image)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route("/api/persona/list", get(api::persona::get_persona_list))
-            .route("/api/persona/delete", post(api::persona::delete_persona))
-            // Profile report routes (complex ones still conditional)
-            .route("/api/profile/fetch-all", post(api::profile::fetch_all_data))
+            .route(
+                "/api/persona/delete",
+                post(api::persona::delete_persona)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Profile report routes (complex ones still conditional) - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/profile/fetch-all",
+                post(api::profile::fetch_all_data)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
             .route(
                 "/api/profile/refresh",
-                post(api::profile::refresh_platform_data),
+                post(api::profile::refresh_platform_data)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
-            .route("/api/profile/report", post(api::profile::generate_report))
+            .route(
+                "/api/profile/report",
+                post(api::profile::generate_report)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
             .route(
                 "/api/profile/reports/:id",
-                get(api::profile::get_report_by_id).delete(api::profile::delete_report_by_id),
+                get(api::profile::get_report_by_id)
+                    .delete(api::profile::delete_report_by_id)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/profile/reports/:id/cards",
-                delete(api::profile::delete_card_from_report),
+                delete(api::profile::delete_card_from_report)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/profile/reports/all",
-                delete(api::profile::delete_all_reports),
+                delete(api::profile::delete_all_reports)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             .route(
                 "/api/profile/cache",
-                delete(api::profile::delete_platform_cache),
+                delete(api::profile::delete_platform_cache)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Library data route
             .route("/api/library", get(api::profile::get_library_data))
@@ -833,6 +899,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Apply middleware and layers
     let api_router = api_router
         .layer(from_fn(config_mode_middleware))
+        .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 

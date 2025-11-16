@@ -36,27 +36,33 @@ pub async fn auth_middleware(req: Request, next: Next) -> Response {
 /// Admin-only middleware - verifies JWT token and checks admin status
 /// Returns 403 if user is not an admin
 ///
-/// Note: This middleware is reserved for future use when admin-only endpoints are needed.
-/// Currently not used in routes, but kept for future expansion.
-#[allow(dead_code)]
+/// ✅ SECURITY: Checks if username is "admin" (simple but effective)
+/// Used for dangerous operations like deleting all reports
+///
+/// TODO: For production, consider checking is_admin field from database or JWT claims
 pub async fn admin_middleware(req: Request, next: Next) -> Response {
     let headers = req.headers();
 
     match verify_jwt_token(headers) {
         Ok(claims) => {
-            // TODO: Check if user is admin from database
-            // For now, we'll check if username matches admin pattern or add is_admin claim
-            // You should add is_admin to JWT Claims structure
+            // Check if user is admin (simple username check)
+            // For most use cases, only the initial admin account needs admin privileges
+            if claims.username != "admin" {
+                tracing::warn!(
+                    "⚠️  User {} attempted to access admin-only endpoint (Forbidden)",
+                    claims.username
+                );
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error": "Forbidden",
+                        "message": "Administrator access required. Only admin users can perform this action."
+                    })),
+                )
+                    .into_response();
+            }
 
-            // Temporary: Allow all authenticated users (should be fixed)
-            // In production, query database to verify admin status:
-            // SELECT is_admin FROM users WHERE id = claims.sub
-
-            tracing::warn!(
-                "⚠️  Admin check not fully implemented for user: {}. Allowing access.",
-                claims.username
-            );
-
+            tracing::info!("✅ Admin access granted to user: {}", claims.username);
             next.run(req).await
         }
         Err(error_response) => *error_response,
@@ -64,7 +70,8 @@ pub async fn admin_middleware(req: Request, next: Next) -> Response {
 }
 
 /// Verify JWT token from Authorization header or Cookie
-fn verify_jwt_token(headers: &HeaderMap) -> Result<Claims, Box<Response>> {
+/// ✅ Made public for use in other modules (e.g., auth.rs link_github_account)
+pub fn verify_jwt_token(headers: &HeaderMap) -> Result<Claims, Box<Response>> {
     // Extract token from Authorization header or Cookie (优先 Header)
     let token = headers
         .get("Authorization")

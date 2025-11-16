@@ -203,9 +203,38 @@ fn check_gemini_api_config() -> bool {
 
 /// POST /api/setup/init-database
 /// Run database migrations (will drop and recreate if tables exist)
+///
+/// ⚠️ SECURITY WARNING: This endpoint can DROP all database tables!
+/// ✅ PROTECTION: Only accessible during CONFIG_MODE OR if setup is not completed
 pub async fn init_database(
     State(db): State<DatabaseConnection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // ✅ SECURITY CHECK: Prevent re-initialization if setup is already completed
+    // Check if admin user exists (indicates setup is complete)
+    let admin_exists = check_admin_user_exists(&db).await;
+
+    if admin_exists {
+        tracing::error!(
+            "🚨 Database initialization REJECTED: Admin user already exists (setup completed)"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Setup already completed",
+                "message": "Database has been initialized and admin user exists. This endpoint is disabled for security. If you need to reinitialize, please delete the admin user from the database first."
+            })),
+        ));
+    }
+
+    // 安全检查：如果不在配置模式，记录警告
+    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
+
+    if !config_mode {
+        tracing::warn!(
+            "⚠️ Database initialization requested in FULL MODE - proceeding as no admin exists yet"
+        );
+    }
+
     tracing::info!("Running database migrations");
 
     // Check if tables already exist
@@ -439,7 +468,24 @@ pub async fn init_database(
 
 /// POST /api/setup/init-env
 /// Initialize .env file from .env.example
+/// ✅ PROTECTION: Only accessible during CONFIG_MODE (checked by middleware)
 pub async fn initialize_env_file() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
+    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
+
+    if !config_mode {
+        tracing::error!(
+            "🚨 Environment file initialization REJECTED: Not in CONFIG_MODE (security protection)"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Operation not allowed",
+                "message": "Environment file initialization is only allowed in CONFIG_MODE. Please restart the application with CONFIG_MODE=true."
+            })),
+        ));
+    }
+
     tracing::info!("Initializing .env file from .env.example");
 
     let env_example_path = get_env_example_path();
@@ -527,9 +573,26 @@ pub struct EnvUpdateRequest {
 
 /// POST /api/setup/update-env
 /// Update .env file with new configuration
+/// ✅ PROTECTION: Only accessible during CONFIG_MODE (checked by middleware)
 pub async fn update_env_file(
     Json(config): Json<EnvUpdateRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
+    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
+
+    if !config_mode {
+        tracing::error!(
+            "🚨 Environment file update REJECTED: Not in CONFIG_MODE (security protection)"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Operation not allowed",
+                "message": "Environment file updates are only allowed in CONFIG_MODE. Please restart the application with CONFIG_MODE=true to modify configuration."
+            })),
+        ));
+    }
+
     tracing::info!("Updating .env file configuration");
 
     let env_path = get_env_path();
@@ -697,10 +760,33 @@ pub struct DatabaseConfigRequest {
 
 /// POST /api/setup/database-config
 /// Save database configuration to .env file (专门用于配置数据库)
+/// 🔒 安全保护：只能在 CONFIG_MODE 下修改数据库配置
 pub async fn save_database_config(
     Json(config): Json<DatabaseConfigRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::info!("Saving database configuration");
+    // ✅ P0 安全修复：强制要求 CONFIG_MODE
+    // 这是最危险的端点之一，它可以修改数据库连接
+    // 如果不在 CONFIG_MODE，攻击者可以劫持整个数据库连接
+    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
+
+    if !config_mode {
+        tracing::error!(
+            "🚨 SECURITY: Database config change REJECTED - not in CONFIG_MODE. \n\
+             This is a critical security protection. Database configuration can only be \n\
+             modified during initial setup with CONFIG_MODE=true."
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Operation not allowed",
+                "message": "数据库配置只能在配置模式下修改。请使用 CONFIG_MODE=true 重启服务。",
+                "reason": "Security protection: Database configuration is locked after initial setup",
+                "hint": "Restart with CONFIG_MODE=true environment variable if you need to reconfigure the database"
+            })),
+        ));
+    }
+
+    tracing::info!("Saving database configuration (CONFIG_MODE verified)");
 
     // Construct DATABASE_URL
     let database_url = format!(

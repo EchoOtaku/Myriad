@@ -665,17 +665,51 @@ pub async fn github_link(
 
 /// POST /api/auth/link-github
 /// Link GitHub account to local admin (called after OAuth callback)
+/// 🔒 SECURITY FIX: user_id is extracted from JWT token, not from request body
 #[derive(Debug, Deserialize)]
 pub struct LinkGitHubRequest {
     pub code: String,
-    pub user_id: i32, // Local admin user ID from JWT
+    // ✅ P1 安全修复：移除 user_id 字段
+    // 原因：客户端提供的 user_id 不可信，攻击者可以伪造
+    // 现在从 JWT token 中提取 user_id，确保身份真实性
 }
 
 pub async fn link_github_account(
     State(db): State<DatabaseConnection>,
+    headers: HeaderMap, // ✅ 添加 HeaderMap 参数用于提取 JWT
     Json(request): Json<LinkGitHubRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::info!("Linking GitHub account for user ID: {}", request.user_id);
+    // ✅ P1 安全修复：从 JWT token 提取 user_id，而不是信任客户端
+    use crate::middleware::auth::verify_jwt_token;
+    
+    let claims = verify_jwt_token(&headers).map_err(|_err_response| {
+        tracing::error!("Failed to verify JWT token for link-github operation");
+        // verify_jwt_token 返回 Box<Response>，我们需要解包
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Unauthorized",
+                "message": "Invalid or missing authentication token. Please login first."
+            })),
+        )
+    })?;
+    
+    // 从 JWT 的 sub (subject) 字段提取 user_id
+    let user_id: i32 = claims.sub.parse().map_err(|e| {
+        tracing::error!("Invalid user ID in JWT token: {:?}", e);
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Invalid token",
+                "message": "User ID in token is invalid"
+            })),
+        )
+    })?;
+    
+    tracing::info!(
+        "🔗 Linking GitHub account for authenticated user: {} (from JWT token, not client)",
+        user_id
+    );
 
     // Verify user is local admin
     use sea_orm::Value as SeaValue;
@@ -688,7 +722,7 @@ pub async fn link_github_account(
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             user_query,
-            vec![SeaValue::Int(Some(request.user_id))],
+            vec![SeaValue::Int(Some(user_id))], // ✅ 使用从 JWT 提取的 user_id
         ))
         .await
         .map_err(|e| {
@@ -700,7 +734,10 @@ pub async fn link_github_account(
         })?;
 
     let _user_row = user_result.ok_or_else(|| {
-        tracing::warn!("User not found or not local admin: {}", request.user_id);
+        tracing::warn!(
+            "User not found or not local admin: {} (JWT verified but admin check failed)",
+            user_id
+        );
         (
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -806,7 +843,7 @@ pub async fn link_github_account(
         update_query,
         vec![
             SeaValue::BigInt(Some(github_user.id)),
-            SeaValue::Int(Some(request.user_id)),
+            SeaValue::Int(Some(user_id)), // ✅ 使用从 JWT 提取的 user_id
         ],
     ))
     .await
@@ -819,8 +856,8 @@ pub async fn link_github_account(
     })?;
 
     tracing::info!(
-        "✅ GitHub account linked successfully: {} -> {} (github_id: {})",
-        request.user_id,
+        "✅ GitHub account linked successfully: {} -> {} (github_id: {}) [JWT-verified user_id]",
+        user_id, // ✅ 使用从 JWT 提取的 user_id
         github_user.login,
         github_user.id
     );

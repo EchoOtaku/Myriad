@@ -2,7 +2,12 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use axum::{extract::State, http::{header, StatusCode}, response::IntoResponse, Json};
+use axum::{
+    extract::State,
+    http::{header, StatusCode},
+    response::IntoResponse,
+    Json,
+};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use regex::Regex;
@@ -52,6 +57,7 @@ pub struct UserInfo {
 
 /// POST /api/setup/create-admin
 /// Create the local administrator account (only during setup)
+/// ✅ PROTECTION: Checks if admin already exists and prevents duplicate creation
 pub async fn create_admin(
     State(db): State<DatabaseConnection>,
     Json(request): Json<CreateAdminRequest>,
@@ -64,7 +70,7 @@ pub async fn create_admin(
     // Validate password
     validate_password(&request.password)?;
 
-    // Check if a local admin already exists
+    // ✅ SECURITY CHECK: Check if a local admin already exists
     let admin_exists_result = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -85,11 +91,14 @@ pub async fn create_admin(
         .unwrap_or(false);
 
     if admin_exists {
+        tracing::error!(
+            "🚨 Admin account creation REJECTED: Admin already exists (security protection)"
+        );
         return Err((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Admin account already exists",
-                "message": "Only one local administrator account is allowed"
+                "message": "Only one local administrator account is allowed. Setup has been completed."
             })),
         ));
     }
@@ -283,7 +292,8 @@ pub async fn local_login(
     tracing::info!("✅ Local login successful: {}", username);
 
     // 设置 HttpOnly Cookie
-    let is_production = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
+    let is_production =
+        env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
     let cookie_value = format!(
         "auth_token={}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
         token,
@@ -302,10 +312,9 @@ pub async fn local_login(
 
     // 构建包含 Set-Cookie 的响应
     let mut response = response.into_response();
-    response.headers_mut().insert(
-        header::SET_COOKIE,
-        cookie_value.parse().unwrap(),
-    );
+    response
+        .headers_mut()
+        .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
 
     Ok(response)
 }
@@ -512,6 +521,20 @@ fn validate_password(password: &str) -> Result<(), (StatusCode, Json<Value>)> {
             Json(json!({
                 "error": "Invalid password",
                 "message": "Password must be at least 8 characters long"
+            })),
+        ));
+    }
+
+    // Check password complexity: must contain both letters and numbers
+    let has_letter = password.chars().any(|c| c.is_alphabetic());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+
+    if !has_letter || !has_digit {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Invalid password",
+                "message": "Password must contain both letters and numbers for security"
             })),
         ));
     }

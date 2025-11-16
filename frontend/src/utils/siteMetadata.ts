@@ -170,8 +170,6 @@ function updateFavicon(faviconUrl: string): void {
   
   // 更新 href
   favicon.href = fullUrl;
-  
-  console.log(`[元数据] 更新图标: ${faviconUrl}`, { isExternalUrl, type: favicon.type });
 }
 
 /**

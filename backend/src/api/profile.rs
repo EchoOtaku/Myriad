@@ -1662,10 +1662,11 @@ pub async fn delete_report_by_id(
 }
 
 /// 删除所有报告
+/// ⚠️ DANGEROUS: This operation deletes all reports and requires admin privileges
 pub async fn delete_all_reports(
     State(_db): State<DatabaseConnection>,
 ) -> (StatusCode, Json<Value>) {
-    tracing::info!("🗑️ Deleting all reports...");
+    tracing::warn!("⚠️ ADMIN OPERATION: Deleting all reports...");
 
     let mut cache = REPORT_CACHE.lock().unwrap();
     let count = cache.len();

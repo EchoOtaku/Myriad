@@ -41,6 +41,14 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: myriad-postgres
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     environment:
       POSTGRES_DB: myriad
       POSTGRES_USER: myriad
@@ -70,6 +78,14 @@ services:
   backend:
     image: somekawahitomi/myriad-backend:latest
     container_name: myriad-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     environment:
       # Database connection
       DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
@@ -148,6 +164,14 @@ services:
   frontend:
     image: somekawahitomi/myriad-frontend:latest
     container_name: myriad-frontend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     environment:
       # OPTIONAL: Leave empty to auto-detect domain
       PUBLIC_API_URL: ${PUBLIC_API_URL:-}

@@ -7,22 +7,56 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     let headers = response.headers_mut();
 
     // Content Security Policy (CSP)
-    // 宽松模式：只限制脚本来源，防止XSS注入
-    let csp = concat!(
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; ", // 只允许同源脚本和内联脚本
-        "object-src 'none'; ",                               // 禁止 <object>, <embed>, <applet>
-        "base-uri 'self'; ",                                 // 限制 <base> 标签
-    );
-
-    // 开发环境使用宽松的CSP
     let is_production =
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
 
-    if is_production {
-        headers.insert(header::CONTENT_SECURITY_POLICY, csp.parse().unwrap());
+    let csp = if is_production {
+        // PRODUCTION: Strict CSP for executable content, relaxed for assets
+        concat!(
+            "default-src 'self'; ",
+            "script-src 'self'; ", // STRICT: No unsafe-inline/unsafe-eval
+            "style-src 'self' 'unsafe-inline' https:; ", // Allow external stylesheets and inline
+            "img-src * data: blob:; ", // RELAXED: Allow all image sources
+            "font-src 'self' data: https: blob:; ", // RELAXED: Allow external fonts
+            "media-src 'self' https: blob:; ", // RELAXED: Allow external media
+            "connect-src 'self' https:; ", // Allow external API calls
+            "object-src 'none'; ", // STRICT: No plugins
+            "base-uri 'self'; ",   // STRICT: Prevent base tag injection
+            "form-action 'self'; ", // STRICT: Forms to same origin only
+            "frame-ancestors 'none'; ", // STRICT: Prevent clickjacking
+            "frame-src 'none'; ",  // STRICT: No iframes
+            "worker-src 'self' blob:; ", // Allow service workers
+            "manifest-src 'self'; ", // PWA manifest
+            "upgrade-insecure-requests; "  // Force HTTPS
+        )
     } else {
-        // 开发环境不启用CSP，避免热重载问题
-        tracing::debug!("CSP disabled in development mode");
+        // DEVELOPMENT: Relaxed CSP for hot reload and dev tools
+        concat!(
+            "default-src 'self'; ",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; ", // Dev tools need eval
+            "style-src 'self' 'unsafe-inline' https:; ",
+            "img-src * data: blob:; ",
+            "font-src 'self' data: https: blob:; ",
+            "media-src 'self' https: blob:; ",
+            "connect-src 'self' ws: wss: https:; ", // WebSocket for HMR
+            "object-src 'none'; ",
+            "base-uri 'self'; ",
+            "worker-src 'self' blob:; "
+        )
+    };
+
+    if is_production || env::var("ENABLE_CSP_DEV").unwrap_or_default() == "true" {
+        headers.insert(header::CONTENT_SECURITY_POLICY, csp.parse().unwrap());
+        tracing::debug!(
+            "CSP enabled: {}",
+            if is_production {
+                "production"
+            } else {
+                "development"
+            }
+        );
+    } else {
+        tracing::debug!("CSP disabled in development mode (set ENABLE_CSP_DEV=true to enable)");
     }
 
     // X-Content-Type-Options: 防止MIME类型嗅探
