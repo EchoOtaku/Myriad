@@ -430,7 +430,7 @@ pub async fn init_database(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Database migration failed",
-                    "message": format!("迁移失败: {}", e)
+                    "message": "数据库迁移失败，请检查数据库连接和权限设置"
                 })),
             ))
         }
@@ -473,8 +473,7 @@ pub async fn initialize_env_file() -> Result<Json<Value>, (StatusCode, Json<Valu
             tracing::info!(".env file created successfully");
             Ok(Json(json!({
                 "success": true,
-                "message": ".env file initialized from template",
-                "path": env_path.display().to_string()
+                "message": ".env file initialized from template"
             })))
         }
         Err(e) => {
@@ -483,7 +482,7 @@ pub async fn initialize_env_file() -> Result<Json<Value>, (StatusCode, Json<Valu
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to create .env file",
-                    "message": e.to_string()
+                    "message": "无法创建配置文件，请检查文件系统权限"
                 })),
             ))
         }
@@ -555,7 +554,7 @@ pub async fn update_env_file(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to read .env file",
-                    "message": e.to_string()
+                    "message": "无法读取配置文件，请检查文件是否存在及权限设置"
                 })),
             ));
         }
@@ -679,7 +678,7 @@ pub async fn update_env_file(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to write .env file",
-                    "message": e.to_string()
+                    "message": "无法保存配置文件，请检查文件系统权限"
                 })),
             ))
         }
@@ -724,7 +723,7 @@ pub async fn save_database_config(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
                         "error": "Failed to create configuration file",
-                        "message": e.to_string()
+                        "message": "无法创建配置文件，请检查文件系统权限"
                     })),
                 ));
             }
@@ -737,15 +736,14 @@ pub async fn save_database_config(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
                         "error": "Failed to create configuration file",
-                        "message": e.to_string()
+                        "message": "无法创建配置文件，请检查文件系统权限"
                     })),
                 ));
             }
 
             return Ok(Json(json!({
                 "success": true,
-                "message": "Database configuration saved successfully.",
-                "path": env_path.display().to_string()
+                "message": "Database configuration saved successfully."
             })));
         }
     }
@@ -759,7 +757,7 @@ pub async fn save_database_config(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to read configuration file",
-                    "message": e.to_string()
+                    "message": "无法读取配置文件，请检查文件系统权限"
                 })),
             ));
         }
@@ -801,7 +799,7 @@ pub async fn save_database_config(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to save configuration",
-                    "message": e.to_string()
+                    "message": "无法保存配置文件，请检查文件系统权限"
                 })),
             ))
         }

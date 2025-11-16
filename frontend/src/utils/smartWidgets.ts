@@ -81,35 +81,27 @@ export function getGreeting(username?: string): GreetingData {
  */
 export async function getWeatherInfo(): Promise<WeatherData | null> {
   try {
-    console.log('[天气] 开始获取天气信息...');
-
     // 步骤1: 获取客户端IP
     const clientIP = await getClientIP();
     if (!clientIP) {
-      console.error('[天气] 无法获取客户端IP');
       return null;
     }
-    console.log('[天气] 客户端IP:', clientIP);
 
     // 步骤2: 获取地理位置（带缓存）
     const location = await getGeolocationWithCache(clientIP);
     if (!location) {
-      console.error('[天气] 无法获取地理位置');
       return null;
     }
-    console.log('[天气] 位置信息:', location);
 
     // 步骤3: 获取天气数据（带缓存）
     const weatherData = await getWeatherDataWithCache(location);
     if (!weatherData) {
-      console.error('[天气] 无法获取天气数据');
       return null;
     }
 
-    console.log('[天气] 获取成功:', weatherData);
     return weatherData;
   } catch (error) {
-    console.error('[天气] 获取失败:', error);
+    console.warn('[天气] 获取失败:', error);
     return null;
   }
 }
@@ -190,20 +182,17 @@ async function getGeolocationWithCache(clientIP: string): Promise<{ latitude: nu
     const cacheAge = Date.now() - parseInt(cacheTime);
     // IP→位置缓存24小时（位置很少变）
     if (cacheAge < 24 * 60 * 60 * 1000) {
-      console.log('[地理位置] 使用缓存:', cached);
       return JSON.parse(cached);
     }
   }
 
   // 缓存失效或不存在，重新获取
-  console.log('[地理位置] 缓存失效，重新获取...');
   const location = await getGeolocation();
 
   if (location) {
     // 缓存结果
     localStorage.setItem(cacheKey, JSON.stringify(location));
     localStorage.setItem(cacheTimeKey, Date.now().toString());
-    console.log('[地理位置] 已缓存:', location);
   }
 
   return location;
@@ -227,13 +216,11 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
     const cacheAge = Date.now() - parseInt(cacheTime);
     // 天气数据缓存30分钟（天气会变化）
     if (cacheAge < 30 * 60 * 1000) {
-      console.log('[天气数据] 使用缓存:', cached);
       return JSON.parse(cached);
     }
   }
 
   // 缓存失效或不存在，重新获取
-  console.log('[天气数据] 缓存失效，从 Open-Meteo 获取...');
 
   try {
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature,wind_speed_10m&timezone=auto`;
@@ -243,7 +230,6 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
     });
 
     if (!weatherResponse.ok) {
-      console.error('[天气数据] Open-Meteo API 响应失败:', weatherResponse.status);
       return null;
     }
 
@@ -251,7 +237,6 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
     const current = weatherData.current;
 
     if (!current) {
-      console.error('[天气数据] 天气数据为空');
       return null;
     }
 
@@ -268,11 +253,10 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
     // 缓存结果
     localStorage.setItem(cacheKey, JSON.stringify(result));
     localStorage.setItem(cacheTimeKey, Date.now().toString());
-    console.log('[天气数据] 已缓存:', result);
 
     return result;
   } catch (error) {
-    console.error('[天气数据] 获取失败:', error);
+    console.warn('[天气数据] 获取失败:', error);
     return null;
   }
 }
@@ -284,7 +268,6 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
 async function getGeolocation(): Promise<{ latitude: number; longitude: number; city: string } | null> {
   // 方案1: 通过后端代理获取（最准确，能获取真实客户端IP）
   try {
-    console.log('[地理位置] 尝试通过后端代理获取...');
     const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
       signal: AbortSignal.timeout(10000) // 10秒超时
     });
@@ -294,7 +277,6 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       
       if (data.status === 'success' && data.lat && data.lon) {
         const city = data.city || data.regionName || data.country || '未知';
-        console.log('[地理位置] 后端代理成功:', { lat: data.lat, lon: data.lon, city });
         return {
           latitude: data.lat,
           longitude: data.lon,
@@ -303,12 +285,11 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       }
     }
   } catch (error) {
-    console.warn('[地理位置] 后端代理失败:', error);
+    // 静默失败，尝试下一个服务
   }
 
   // 方案2: 使用 ipapi.co（免费，稳定）
   try {
-    console.log('[地理位置] 尝试使用 ipapi.co...');
     const response = await fetch('https://ipapi.co/json/', {
       signal: AbortSignal.timeout(10000)
     });
@@ -318,7 +299,6 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       
       if (data.latitude && data.longitude) {
         const city = data.city || data.region || data.country_name || '未知';
-        console.log('[地理位置] ipapi.co 成功:', { lat: data.latitude, lon: data.longitude, city });
         return {
           latitude: data.latitude,
           longitude: data.longitude,
@@ -327,12 +307,11 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       }
     }
   } catch (error) {
-    console.warn('[地理位置] ipapi.co 失败:', error);
+    // 静默失败，尝试下一个服务
   }
 
   // 方案3: 使用 ip-api.com（备用）
   try {
-    console.log('[地理位置] 尝试使用 ip-api.com...');
     const response = await fetch('http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country', {
       signal: AbortSignal.timeout(10000)
     });
@@ -342,7 +321,6 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       
       if (data.status === 'success' && data.lat && data.lon) {
         const city = data.city || data.regionName || data.country || '未知';
-        console.log('[地理位置] ip-api.com 成功:', { lat: data.lat, lon: data.lon, city });
         return {
           latitude: data.lat,
           longitude: data.lon,
@@ -351,12 +329,11 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       }
     }
   } catch (error) {
-    console.warn('[地理位置] ip-api.com 失败:', error);
+    // 静默失败，尝试下一个服务
   }
 
   // 方案4: 使用 geojs.io（第三备用）
   try {
-    console.log('[地理位置] 尝试使用 geojs.io...');
     const response = await fetch('https://get.geojs.io/v1/ip/geo.json', {
       signal: AbortSignal.timeout(10000)
     });
@@ -369,7 +346,6 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
         const lat = typeof data.latitude === 'string' ? parseFloat(data.latitude) : data.latitude;
         const lon = typeof data.longitude === 'string' ? parseFloat(data.longitude) : data.longitude;
         
-        console.log('[地理位置] geojs.io 成功:', { lat, lon, city });
         return {
           latitude: lat,
           longitude: lon,
@@ -378,21 +354,18 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
       }
     }
   } catch (error) {
-    console.warn('[地理位置] geojs.io 失败:', error);
+    // 静默失败，尝试下一个服务
   }
 
   // 方案5: 所有服务都失败，使用浏览器地理位置 API（需要用户授权）
   if ('geolocation' in navigator) {
     try {
-      console.log('[地理位置] 尝试使用浏览器地理位置 API...');
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           timeout: 10000,
           maximumAge: 600000 // 10分钟缓存
         });
       });
-
-      console.log('[地理位置] 浏览器 API 成功');
       // 使用 Nominatim 反向地理编码获取城市名
       const reverseGeoUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=10&addressdetails=1`;
       
@@ -415,7 +388,7 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
                  '当前位置';
         }
       } catch (e) {
-        console.warn('[地理位置] 反向地理编码失败');
+        // 反向地理编码失败，使用默认城市名
       }
 
       return {
@@ -424,12 +397,11 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
         city: city
       };
     } catch (error) {
-      console.warn('[地理位置] 浏览器 API 失败（可能用户拒绝授权）:', error);
+      // 浏览器 API 失败（可能用户拒绝授权）
     }
   }
 
   // 所有方案都失败，返回 null
-  console.error('[地理位置] 所有服务都失败');
   return null;
 }
 

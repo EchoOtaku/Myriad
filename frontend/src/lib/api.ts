@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { getCSRFToken, getCSRFHeaderName, clearCSRFToken } from '../utils/csrf';
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter';
+import TokenManager from '../utils/tokenManager';
 
 // 智能 API URL 检测（与 config.ts 保持一致）
 // 生产环境使用相对路径（空字符串），开发环境使用 localhost
@@ -50,9 +51,9 @@ api.interceptors.request.use(
       config.headers[getCSRFHeaderName()] = csrfToken;
     }
 
-    // 添加认证 Token
-    const token = localStorage.getItem('auth_token');
-    if (token && isValidToken(token)) {
+    // 添加认证 Token（使用 TokenManager）
+    const token = TokenManager.getToken();
+    if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
@@ -98,7 +99,7 @@ api.interceptors.response.use(
     // 处理 Axios 错误
     if (error.response?.status === 401) {
       // Token expired or invalid, clear it and redirect to login
-      localStorage.removeItem('auth_token');
+      TokenManager.removeToken();
       clearCSRFToken();
       window.dispatchEvent(new CustomEvent('auth-state-changed', { 
         detail: { isAuthenticated: false } 

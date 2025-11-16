@@ -162,26 +162,28 @@ export async function generateCardIllustration(
         return cachedIll.url;
     }
     
-    // 从配置读取参数
+    // 从公开配置读取参数 - 注意：图片生成配置目前不在公开API中
+    // 这里暂时使用默认值，如果需要从配置读取，需要将相关配置添加到 /api/config/ui
     let config: any = {};
     try {
-        const response = await fetch(`${API_URL}/api/config`);
+        const response = await fetch(`${API_URL}/api/config/ui`);
         const data = await response.json();
-        config = data.ui_config || {};
+        // 注意：目前 /api/config/ui 不包含 image_gen 配置，使用默认值
+        config = data || {};
     } catch (e) {
         // 使用默认配置
     }
     
-    // 检查是否启用
-    const enabled = config.config_fields?.find((f: any) => f.key === 'image_gen_enabled')?.value !== 'false';
+    // 默认启用图片生成（因为公开配置中没有此字段）
+    const enabled = true;
     if (!enabled) {
         return ''; // 返回空字符串表示不生成
     }
     
-    // 读取配置参数
-    const model = config.config_fields?.find((f: any) => f.key === 'image_gen_model')?.value || 'flux';
-    const width = parseInt(config.config_fields?.find((f: any) => f.key === 'image_gen_width')?.value || '512');
-    const height = parseInt(config.config_fields?.find((f: any) => f.key === 'image_gen_height')?.value || '512');
+    // 使用默认配置参数（公开API不包含这些配置）
+    const model = 'flux';
+    const width = 512;
+    const height = 512;
     
     // 验证尺寸参数
     const validWidth = Math.max(256, Math.min(width, 2048));

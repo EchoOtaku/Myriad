@@ -1,6 +1,6 @@
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -99,7 +99,10 @@ pub async fn github_login(
 
     // 使用智能URL构建器，支持环境变量和请求头检测
     let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
-    tracing::info!("🔐 GitHub OAuth login initiated with redirect URL: {}", redirect_url);
+    tracing::info!(
+        "🔐 GitHub OAuth login initiated with redirect URL: {}",
+        redirect_url
+    );
 
     let client = BasicClient::new(
         ClientId::new(client_id),
@@ -148,7 +151,11 @@ pub async fn github_callback(
     let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
     let frontend_url = OAuthUrlBuilder::get_frontend_url(Some(&headers));
 
-    tracing::info!("🔐 OAuth callback - redirect_url: {}, frontend_url: {}", redirect_url, frontend_url);
+    tracing::info!(
+        "🔐 OAuth callback - redirect_url: {}, frontend_url: {}",
+        redirect_url,
+        frontend_url
+    );
 
     let client = BasicClient::new(
         ClientId::new(client_id),
@@ -254,7 +261,9 @@ pub async fn github_callback(
                 Json(json!({"error": "Failed to read admin data"})),
             )
         })?;
-        let admin_username: String = admin_row.try_get("", "username").unwrap_or_else(|_| "admin".to_string());
+        let admin_username: String = admin_row
+            .try_get("", "username")
+            .unwrap_or_else(|_| "admin".to_string());
 
         tracing::info!(
             "✅ GitHub account {} is linked to admin account (id: {}, username: {})",
@@ -316,20 +325,29 @@ pub async fn github_callback(
                 user_info.name.as_ref().map_or(SeaValue::String(None), |s| {
                     SeaValue::String(Some(Box::new(s.clone())))
                 }),
-                user_info.email.as_ref().map_or(SeaValue::String(None), |s| {
-                    SeaValue::String(Some(Box::new(s.clone())))
-                }),
+                user_info
+                    .email
+                    .as_ref()
+                    .map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
                 SeaValue::String(Some(Box::new(user_info.avatar_url.clone()))),
                 SeaValue::String(Some(Box::new(user_info.html_url.clone()))),
                 user_info.bio.as_ref().map_or(SeaValue::String(None), |s| {
                     SeaValue::String(Some(Box::new(s.clone())))
                 }),
-                user_info.location.as_ref().map_or(SeaValue::String(None), |s| {
-                    SeaValue::String(Some(Box::new(s.clone())))
-                }),
-                user_info.company.as_ref().map_or(SeaValue::String(None), |s| {
-                    SeaValue::String(Some(Box::new(s.clone())))
-                }),
+                user_info
+                    .location
+                    .as_ref()
+                    .map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
+                user_info
+                    .company
+                    .as_ref()
+                    .map_or(SeaValue::String(None), |s| {
+                        SeaValue::String(Some(Box::new(s.clone())))
+                    }),
                 SeaValue::Int(Some(existing_user_id)),
             ],
         ))
@@ -429,9 +447,25 @@ pub async fn github_callback(
 
     tracing::info!("✅ JWT token created for user: {}", user_info.login);
 
-    // Redirect to frontend with token
+    // 设置 HttpOnly Cookie（安全）
+    let is_production =
+        env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
+    let cookie_value = format!(
+        "auth_token={}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
+        token,
+        if is_production { "; Secure" } else { "" } // 生产环境启用 Secure 标志
+    );
+
+    // Redirect to frontend with token (向后兼容：URL参数)
     let redirect_url = format!("{}/?token={}", frontend_url, token);
-    Ok(Redirect::to(&redirect_url))
+
+    // 构建包含 Set-Cookie 的响应
+    let mut response = Redirect::to(&redirect_url).into_response();
+    response
+        .headers_mut()
+        .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
+
+    Ok(response)
 }
 
 /// GET /api/auth/me
@@ -440,13 +474,29 @@ pub async fn get_current_user(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    // Extract JWT token from Authorization header
+    // Extract JWT token from Authorization header or Cookie
     let token = headers
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
+        .or_else(|| {
+            // 回退到 Cookie
+            headers
+                .get(header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|cookies| {
+                    cookies.split(';').find_map(|cookie| {
+                        let (name, value) = cookie.trim().split_once('=')?;
+                        if name == "auth_token" {
+                            Some(value)
+                        } else {
+                            None
+                        }
+                    })
+                })
+        })
         .ok_or_else(|| {
-            tracing::warn!("Missing or invalid Authorization header");
+            tracing::warn!("Missing or invalid Authorization header/cookie");
             (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
@@ -726,12 +776,13 @@ pub async fn link_github_account(
         })?;
 
     // 先删除可能存在的独立 GitHub 用户记录（避免冲突）
-    let delete_result = db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "DELETE FROM users WHERE github_id = $1 AND auth_provider = 'github'",
-        vec![SeaValue::BigInt(Some(github_user.id))],
-    ))
-    .await;
+    let delete_result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM users WHERE github_id = $1 AND auth_provider = 'github'",
+            vec![SeaValue::BigInt(Some(github_user.id))],
+        ))
+        .await;
 
     if let Ok(result) = delete_result {
         if result.rows_affected() > 0 {

@@ -204,8 +204,9 @@ export default function ReportCards() {
                 });
             }
 
-            // 2. 处理配置信息
-            const config = batchData.config || {};
+            // 2. 获取公开的平台配置（用于社交链接显示）
+            const configResponse = await fetch(`${API_URL}/api/config/public`);
+            const config = configResponse.ok ? await configResponse.json() : {};
             const links: PlatformLink[] = [];
 
             // 3. 获取缓存数据
@@ -329,8 +330,8 @@ export default function ReportCards() {
                 }
             }
 
-            // 获取配置以构建平台链接
-            const configResponse = await fetch(`${API_URL}/api/config`);
+            // 获取公开的平台配置以构建平台链接
+            const configResponse = await fetch(`${API_URL}/api/config/public`);
             const config = await configResponse.json();
 
             const links: PlatformLink[] = [];
@@ -756,33 +757,28 @@ export default function ReportCards() {
             // 获取用户信息
             fetchUserInfo();
 
-            // 获取萌宠配置
+            // 获取公开的 UI 配置（萌宠、虚拟人设等）
             try {
-                const configResponse = await fetch(`${API_URL}/api/config`);
-                if (configResponse.ok) {
-                    const configData = await configResponse.json();
-                    const petEnabledValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'pet_enabled')?.value;
-                    const petImageValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'pet_image_url')?.value;
-                    const personaEnabledValue = configData.ui_config?.config_fields?.find((f: any) => f.key === 'persona_image_enabled')?.value;
+                const uiConfigResponse = await fetch(`${API_URL}/api/config/ui`);
+                if (uiConfigResponse.ok) {
+                    const uiConfig = await uiConfigResponse.json();
                     
-                    if (petEnabledValue !== undefined) {
-                        const enabled = petEnabledValue === 'true' || petEnabledValue === true;
-                        setPetEnabled(enabled);
+                    if (uiConfig.pet_enabled !== undefined) {
+                        setPetEnabled(uiConfig.pet_enabled);
                     }
-                    if (petImageValue) {
-                        setPetImageUrl(petImageValue);
+                    if (uiConfig.pet_image_url) {
+                        setPetImageUrl(uiConfig.pet_image_url);
                         // 设置 CSS 变量
                         if (typeof document !== 'undefined') {
-                            document.documentElement.style.setProperty('--pet-image-url', `url('${petImageValue}')`);
+                            document.documentElement.style.setProperty('--pet-image-url', `url('${uiConfig.pet_image_url}')`);
                         }
                     }
-                    if (personaEnabledValue !== undefined) {
-                        const enabled = personaEnabledValue === 'true' || personaEnabledValue === true;
-                        setPersonaEnabled(enabled);
+                    if (uiConfig.persona_image_enabled !== undefined) {
+                        setPersonaEnabled(uiConfig.persona_image_enabled);
                     }
                 }
             } catch (err) {
-                // Failed to load config
+                // Failed to load UI config
             }
 
             try {
@@ -1105,6 +1101,7 @@ export default function ReportCards() {
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="platform-link inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold no-underline transition-all duration-250 backdrop-blur-sm cursor-pointer whitespace-nowrap"
+                                            // 必须使用内联样式来动态设置 CSS 变量
                                             style={{
                                                 '--brand-color-light': lightModeColor,
                                                 '--brand-color-dark': darkModeColor,
@@ -1237,6 +1234,7 @@ export default function ReportCards() {
                     <article
                         key={`card-${index}-${card.topic_id}`}
                         className={`glass rounded-3xl p-6 hover:shadow-2xl transition-all duration-300 border report-card cursor-pointer hover:scale-[1.02] active:scale-[0.98] group ${animationClass}`}
+                        // 必须使用内联样式来动态设置错峰动画索引
                         style={{
                             '--card-index': index
                         } as React.CSSProperties}
@@ -1305,7 +1303,7 @@ export default function ReportCards() {
                     }}
                 >
                     <div
-                        className={`modal-content glass rounded-3xl shadow-2xl border max-w-4xl w-full ${isCardModalClosing ? 'closing' : ''}`}
+                        className={`modal-content glass rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl border ${isCardModalClosing ? 'closing' : ''}`}
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* 滚动内容区 */}

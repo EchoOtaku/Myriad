@@ -1,7 +1,7 @@
 use axum::{
     extract::Request,
     http::StatusCode,
-    middleware::{self, Next},
+    middleware::{from_fn, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
@@ -10,7 +10,7 @@ use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -18,6 +18,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod api;
 mod config;
 mod db;
+mod middleware;
 mod models;
 mod oauth_url_builder;
 mod services;
@@ -324,6 +325,56 @@ async fn get_site_metadata_wrapper() -> Response {
     }
 }
 
+/// Wrapper for get_public_config that gets DB from global state
+/// 🔓 公开端点 - 返回脱敏的平台配置（仅用于社交链接显示）
+async fn get_public_config_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_public_config(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => {
+            // 没有数据库连接时返回空配置
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "platforms": []
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Wrapper for get_public_ui_config that gets DB from global state
+/// 🔓 公开端点 - 返回公开的UI配置（萌宠、壁纸等）
+async fn get_public_ui_config_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_public_ui_config(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => {
+            // 没有数据库连接时返回默认配置
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "pet_enabled": true,
+                    "pet_image_url": "",
+                    "persona_image_enabled": true,
+                    "wallpaper_url": "",
+                    "wallpaper_blur": 3
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// Wrapper for get_config that gets DB from global state
 async fn get_config_wrapper() -> Response {
     let db_opt = DB_CONNECTION.read().await;
@@ -555,11 +606,37 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .collect();
 
     let cors = if allowed_origins.is_empty() {
-        tracing::warn!("⚠️ No CORS origins configured, using permissive settings for development");
+        tracing::warn!("⚠️ No CORS origins configured, using localhost-only for security");
+        // 即使在开发模式也限制为 localhost - 安全第一
+        let dev_origins = vec![
+            "http://localhost:4321"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+            "http://localhost:3000"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+            "http://127.0.0.1:4321"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+            "http://127.0.0.1:3000"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+        ];
         CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_origin(AllowOrigin::list(dev_origins))
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+                axum::http::Method::PUT,
+                axum::http::Method::DELETE,
+                axum::http::Method::OPTIONS,
+            ])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::ACCEPT,
+            ])
+            .allow_credentials(true)
     } else {
         tracing::info!("✅ CORS configured for origins: {:?}", config.cors_origins);
         CorsLayer::new()
@@ -591,6 +668,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/setup/config", get(api::setup::get_setup_config))
         .route("/api/setup/status", get(check_setup_status_wrapper))
         .route("/api/setup/init-env", post(api::setup::initialize_env_file))
+        // 添加安全头中间件到所有路由
+        .layer(from_fn(middleware::security::security_headers_middleware))
         .route("/api/setup/update-env", post(api::setup::update_env_file))
         .route(
             "/api/setup/database-config",
@@ -609,13 +688,20 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/auth/me", get(get_current_user_wrapper))
         .route("/api/auth/logout", post(logout_wrapper))
         .route("/api/auth/change-password", post(change_password_wrapper))
-        // Configuration routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
+        // Configuration routes (use wrapper for dynamic DB access) - 🔒 REQUIRE AUTHENTICATION
         .route(
             "/api/config",
-            get(get_config_wrapper).post(update_config_wrapper),
+            get(get_config_wrapper)
+                .post(update_config_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
-        .route("/api/config/test", post(test_platform_wrapper))
-        .route("/api/config/metadata", get(get_site_metadata_wrapper))
+        .route(
+            "/api/config/test",
+            post(test_platform_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route("/api/config/metadata", get(get_site_metadata_wrapper)) // 🔓 公开端点：网站元数据
+        .route("/api/config/public", get(get_public_config_wrapper)) // 🔓 公开端点：平台公开信息（用于社交链接）
+        .route("/api/config/ui", get(get_public_ui_config_wrapper)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)) // 🚀 性能优化：批量API
@@ -746,7 +832,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
 
     // Apply middleware and layers
     let api_router = api_router
-        .layer(middleware::from_fn(config_mode_middleware))
+        .layer(from_fn(config_mode_middleware))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 

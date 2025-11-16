@@ -363,18 +363,21 @@ html.dark .persona-avatar-btn-style:focus-visible {
 /* 深色模式下的标签样式增强 */
 html.dark .hobby-tag-style {
     background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+    border: 1px solid rgba(107, 114, 128, 0.3); /* fallback */
     border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
 /* 深色模式下的图片容器 */
 html.dark .persona-image-container-bg {
     background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    border: 1px solid rgba(107, 114, 128, 0.2); /* fallback */
     border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 /* 深色模式下的编辑区域 */
 html.dark .persona-prompt-edit-bg {
     background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border: 1px solid rgba(107, 114, 128, 0.18); /* fallback */
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
@@ -412,6 +415,7 @@ html.dark .generating-image-spinner {
     --active-brand-color: var(--brand-color-light, #6b7280);
     
     background: color-mix(in srgb, var(--active-brand-color) 12%, transparent);
+    border: 1px solid rgba(107, 114, 128, 0.25); /* fallback */
     border: 1px solid color-mix(in srgb, var(--active-brand-color) 25%, transparent);
     color: var(--active-brand-color);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -421,6 +425,7 @@ html.dark .generating-image-spinner {
 
 .platform-link:hover {
     background: color-mix(in srgb, var(--active-brand-color) 20%, transparent);
+    border-color: rgba(107, 114, 128, 0.4); /* fallback */
     border-color: color-mix(in srgb, var(--active-brand-color) 40%, transparent);
     transform: translateY(-1px);
     box-shadow: 0 4px 8px color-mix(in srgb, var(--active-brand-color) 15%, transparent);
@@ -437,12 +442,14 @@ html.dark .platform-link {
     --active-brand-color: var(--brand-color-dark, #9ca3af);
     
     background: color-mix(in srgb, var(--active-brand-color) 18%, transparent);
+    border: 1px solid rgba(156, 163, 175, 0.3); /* fallback */
     border: 1px solid color-mix(in srgb, var(--active-brand-color) 30%, transparent);
     color: var(--active-brand-color);
 }
 
 html.dark .platform-link:hover {
     background: color-mix(in srgb, var(--active-brand-color) 25%, transparent);
+    border-color: rgba(156, 163, 175, 0.45); /* fallback */
     border-color: color-mix(in srgb, var(--active-brand-color) 45%, transparent);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--active-brand-color) 20%, transparent);
 }

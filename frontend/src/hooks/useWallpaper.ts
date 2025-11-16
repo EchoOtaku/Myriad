@@ -112,7 +112,7 @@ function applyWallpaperToDOM(imageUrl: string, blur: number): void {
  */
 async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
   try {
-    const data = await fetchJsonWithRetry<any>(`${API_URL}/api/config`, {
+    const data = await fetchJsonWithRetry<any>(`${API_URL}/api/config/ui`, {
       maxRetries: 3,
       timeout: 10000,
       onRetry: (error, attempt, delay) => {
@@ -122,10 +122,10 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
       },
     });
 
-    if (data.ui_config?.wallpaper_url) {
+    if (data.wallpaper_url) {
       return {
-        wallpaper_url: data.ui_config.wallpaper_url,
-        wallpaper_blur: data.ui_config.wallpaper_blur || 3,
+        wallpaper_url: data.wallpaper_url,
+        wallpaper_blur: data.wallpaper_blur || 3,
       };
     }
     return null;

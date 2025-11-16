@@ -431,22 +431,20 @@ const GlobalControlPanel: React.FC = () => {
       preloadErrorCountRef.current = 0;
       preloadDisabledRef.current = false;
       
-      const response = await fetch(`${API_URL}/api/config`);
+      const response = await fetch(`${API_URL}/api/config/ui`);
       const data = await response.json();
 
-      if (data.ui_config) {
-        const enabled = data.ui_config.config_fields?.find((f: any) => f.key === 'music_enabled')?.value === 'true';
-        const source = data.ui_config.config_fields?.find((f: any) => f.key === 'music_source')?.value || 'netease';
-        const plistId = data.ui_config.config_fields?.find((f: any) => f.key === 'music_playlist_id')?.value || '';
+      const enabled = data.music_enabled === 'true';
+      const source = data.music_source || 'netease';
+      const plistId = data.music_playlist_id || '';
 
-        setMusicEnabled(enabled);
-        setMusicSource(source as MusicSource);
-        setPlaylistId(plistId);
+      setMusicEnabled(enabled);
+      setMusicSource(source as MusicSource);
+      setPlaylistId(plistId);
 
-        // 如果启用音乐且有歌单ID，加载歌单
-        if (enabled && plistId) {
-          loadPlaylist(source as MusicSource, plistId);
-        }
+      // 如果启用音乐且有歌单ID，加载歌单
+      if (enabled && plistId) {
+        loadPlaylist(source as MusicSource, plistId);
       }
     } catch (error) {
       // 静默处理错误
@@ -671,12 +669,13 @@ const GlobalControlPanel: React.FC = () => {
     return () => clearInterval(interval);
   }, [dynamicContents.length, isExpanded, isHovering]);
 
-  // 监听主题变化，更新动态内容
+  // 监听主题变化，仅更新主题状态（不重新请求数据）
   useEffect(() => {
     const handleThemeChange = () => {
       const newIsDark = document.documentElement.classList.contains('dark');
       setIsDark(newIsDark);
-      loadDynamicContents();
+      // 移除 loadDynamicContents() 调用，避免主题切换时重复请求天气等数据
+      // 天气等数据已有缓存机制，不需要在主题切换时重新加载
     };
 
     // 使用 MutationObserver 监听主题变化
@@ -687,7 +686,7 @@ const GlobalControlPanel: React.FC = () => {
     });
 
     return () => observer.disconnect();
-  }, [loadDynamicContents]);
+  }, []); // 移除 loadDynamicContents 依赖
 
   // 展开后的卡片轮播
   useEffect(() => {

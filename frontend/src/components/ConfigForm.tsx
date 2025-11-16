@@ -5,7 +5,9 @@ import PlatformIcon from './PlatformIcon';
 import Toast from './Toast';
 import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
+import { fetchConfig } from '../lib/api';
 import { useDebounce } from '../hooks/useDebounce';
+import TokenManager from '../utils/tokenManager';
 import './ConfigForm.css';
 
 // 注意：懒加载配置组件已创建但暂未使用，以保持稳定性
@@ -284,11 +286,15 @@ const ModernConfigForm: React.FC = () => {
     setMessage('保存中...');
 
     try {
+      const token = TokenManager.getToken();
       const result = await fetchJson(
         `${API_URL}/api/config`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
           body: JSON.stringify(config),
         },
         '保存配置失败'
@@ -303,9 +309,15 @@ const ModernConfigForm: React.FC = () => {
       );
 
       try {
+        const token = TokenManager.getToken();
         await fetchJson(
           `${API_URL}/api/system/reload-config`,
-          { method: 'POST' },
+          { 
+            method: 'POST',
+            headers: {
+              'Authorization': token ? `Bearer ${token}` : ''
+            }
+          },
           '重启后端失败'
         );
 
@@ -345,7 +357,7 @@ const ModernConfigForm: React.FC = () => {
     setMessage('正在重置配置...');
     
     try {
-      const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
+      const data = await fetchConfig();
       
       const clearedData = {
         ...data,
@@ -406,11 +418,15 @@ const ModernConfigForm: React.FC = () => {
       
       setMessage('正在保存默认配置...');
       
+      const token = TokenManager.getToken();
       const saveResult = await fetchJson(
         `${API_URL}/api/config`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
           body: JSON.stringify(clearedData),
         },
         '保存配置失败'
@@ -446,7 +462,7 @@ const ModernConfigForm: React.FC = () => {
   const loadConfig = React.useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchJson(`${API_URL}/api/config`, {}, '加载配置失败');
+      const data = await fetchConfig();
       setConfig(data);
       notifyDirtyState(false);
 
@@ -489,11 +505,15 @@ const ModernConfigForm: React.FC = () => {
         configObj[field.key] = field.value;
       });
 
+      const token = TokenManager.getToken();
       const result = await fetchJson(
         `${API_URL}/api/config/test`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
           body: JSON.stringify({
             platform: platformName,
             config: configObj,
@@ -1308,7 +1328,7 @@ const ModernConfigForm: React.FC = () => {
                     在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐<br/>
                     播放有歌词的歌曲时，收缩状态下会自动显示实时歌词
                   </p>
-                  <p className="info-text" style={{ marginTop: '0.5rem', color: '#f59e0b' }}>
+                  <p className="info-text warning-text">
                     ⚠️ 注意：网易云音乐API有地理位置限制，海外IP可能无法播放部分歌曲。<br/>
                     建议海外用户使用QQ音乐，或确保使用国内可访问的歌单。
                   </p>

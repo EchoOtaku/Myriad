@@ -2,7 +2,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, http::{header, StatusCode}, response::IntoResponse, Json};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use regex::Regex;
@@ -164,7 +164,7 @@ pub async fn create_admin(
 pub async fn local_login(
     State(db): State<DatabaseConnection>,
     Json(request): Json<LocalLoginRequest>,
-) -> Result<Json<AuthResponse>, (StatusCode, Json<Value>)> {
+) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     tracing::info!("Local login attempt: {}", request.username);
 
     // Query user by username
@@ -282,15 +282,32 @@ pub async fn local_login(
 
     tracing::info!("✅ Local login successful: {}", username);
 
-    Ok(Json(AuthResponse {
+    // 设置 HttpOnly Cookie
+    let is_production = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
+    let cookie_value = format!(
+        "auth_token={}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
         token,
+        if is_production { "; Secure" } else { "" }
+    );
+
+    let response = Json(AuthResponse {
+        token: token.clone(),
         user: UserInfo {
             id: user_id,
             username,
             is_admin,
             auth_provider: "local".to_string(),
         },
-    }))
+    });
+
+    // 构建包含 Set-Cookie 的响应
+    let mut response = response.into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        cookie_value.parse().unwrap(),
+    );
+
+    Ok(response)
 }
 
 /// POST /api/auth/change-password

@@ -50,6 +50,16 @@ html.dark .modern-spinner {
   font-size: 0.875rem;
 }
 
+/* 警告文本样式 */
+.warning-text {
+  margin-top: 0.5rem;
+  color: #f59e0b;
+}
+
+html.dark .warning-text {
+  color: #fbbf24;
+}
+
 html.dark .modern-config-loading p {
   color: #9ca3af;
 }
