@@ -190,6 +190,33 @@ impl ConfigService {
             }
         }
 
+        // 网站元数据配置
+        if let Some(v) = map.get("site_title") {
+            config.site_title = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_description") {
+            config.site_description = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_favicon") {
+            config.site_favicon = v.as_str().map(|s| s.to_string());
+        }
+
+        // 音乐配置
+        if let Some(v) = map.get("music_enabled") {
+            // music_enabled 在数据库中是布尔值，需要转换为字符串
+            config.music_enabled = if let Some(b) = v.as_bool() {
+                Some(b.to_string())
+            } else {
+                v.as_str().map(|s| s.to_string())
+            };
+        }
+        if let Some(v) = map.get("music_source") {
+            config.music_source = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("music_playlist_id") {
+            config.music_playlist_id = v.as_str().map(|s| s.to_string());
+        }
+
         config
     }
 

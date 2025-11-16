@@ -300,7 +300,7 @@ const ModernConfigForm: React.FC = () => {
         '保存配置失败'
       );
       
-      setMessage('✓ 配置已保存！正在重启后端...');
+      setMessage('✓ 配置已保存！正在刷新...');
       notifyDirtyState(false);
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
@@ -318,29 +318,21 @@ const ModernConfigForm: React.FC = () => {
               'Authorization': token ? `Bearer ${token}` : ''
             }
           },
-          '重启后端失败'
+          '刷新配置失败'
         );
 
-        setMessage('✓ 配置已保存！后端正在重启...');
+        setMessage('✓ 配置已保存成功！');
         
-        // 刷新网站元数据（如果配置了站点标题、描述或图标）
-        setTimeout(async () => {
-          try {
-            const { refreshSiteMetadata } = await import('../utils/siteMetadata');
-            await refreshSiteMetadata();
-            console.log('[配置] 网站元数据已刷新');
-          } catch (error) {
-            console.warn('[配置] 刷新元数据失败:', error);
-          }
-        }, 3000); // 等待后端重启完成
-        
+        // 等待后端完成配置保存和环境变量重新加载，然后刷新页面
         setTimeout(() => {
-          setMessage('✓ 后端重启完成，配置已生效');
-          setTimeout(() => setMessage(''), 3000);
-        }, 5000);
+          window.location.reload();
+        }, 2000);
       } catch (restartError) {
-        setMessage('✓ 配置已保存！请手动重启后端生效。');
-        setTimeout(() => setMessage(''), 5000);
+        setMessage('✓ 配置已保存成功！');
+        // 即使刷新配置失败，仍然刷新页面以应用数据库中的新配置
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
       }
     } catch (error) {
       const errorMsg = '✗ 保存配置失败：' + (error instanceof Error ? error.message : '网络错误');
@@ -939,6 +931,7 @@ const ModernConfigForm: React.FC = () => {
                   <div>
                     <h2 className="section-title">报告生成配置</h2>
                     <p className="section-description">设置报告话题风格和生成选项</p>
+                    <p className="section-description" style={{ color: '#10b981', marginTop: '0.25rem' }}>✓ 修改后立即生效，无需重启</p>
                   </div>
                 </div>
               </div>

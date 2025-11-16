@@ -1093,9 +1093,21 @@ pub async fn get_site_metadata(State(db): State<DatabaseConnection>) -> (StatusC
     let db_config = config_service.load_config().await.ok();
     
     let get_value = |db_val: Option<String>, env_key: &str, default: &str| -> String {
-        db_val.filter(|v| !v.is_empty())
-            .or_else(|| std::env::var(env_key).ok())
-            .unwrap_or_else(|| default.to_string())
+        let from_db = db_val.filter(|v| !v.is_empty());
+        let from_env = std::env::var(env_key).ok();
+        let has_db = from_db.is_some();
+        let has_env = from_env.is_some();
+        let result = from_db.or(from_env).unwrap_or_else(|| default.to_string());
+        
+        tracing::debug!(
+            "[元数据] {}: db={}, env={}, result={}",
+            env_key,
+            has_db,
+            has_env,
+            result
+        );
+        
+        result
     };
     
     let metadata = json!({

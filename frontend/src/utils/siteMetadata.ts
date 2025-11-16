@@ -59,15 +59,15 @@ function cacheMetadata(metadata: SiteMetadata): void {
  * 从后端获取元数据
  */
 async function fetchMetadata(): Promise<SiteMetadata | null> {
-  if (!API_URL) {
-    return null;
-  }
-  
   try {
+    // 如果 API_URL 为空，使用相对路径（生产环境）
+    const apiUrl = API_URL || '';
+    const url = apiUrl ? `${apiUrl}/api/config/metadata` : '/api/config/metadata';
+    
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3秒超时
     
-    const response = await fetch(`${API_URL}/api/config/metadata`, {
+    const response = await fetch(url, {
       signal: controller.signal
     });
     
@@ -211,14 +211,12 @@ export async function initSiteMetadata(): Promise<void> {
     // 1. 先尝试使用缓存（立即应用，避免闪烁）
     const cached = getCachedMetadata();
     if (cached) {
-      console.log('[元数据] 使用缓存');
       applyMetadata(cached);
     }
     
     // 2. 异步获取后端数据库的最新数据（数据库优先）
     const fetched = await fetchMetadata();
     if (fetched) {
-      console.log('[元数据] 从数据库获取成功');
       cacheMetadata(fetched);
       // 只有当数据真的变化时才更新（减少 DOM 操作）
       if (!cached || JSON.stringify(cached) !== JSON.stringify(fetched)) {
@@ -226,7 +224,6 @@ export async function initSiteMetadata(): Promise<void> {
       }
     } else if (!cached) {
       // 3. 如果缓存和数据库都失败，使用默认值
-      console.log('[元数据] 使用默认值');
       applyMetadata(DEFAULT_METADATA);
     }
     
