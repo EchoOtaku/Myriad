@@ -694,12 +694,14 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route("/api/setup/init-database", post(init_database_wrapper))
         .route("/api/setup/create-admin", post(create_admin_wrapper))
-        // System management routes (always available)
+        // System management routes
+        // ⚠️ P2: system/status 暴露了一些系统信息，但为了监控保持公开（考虑移除敏感字段）
         .route("/api/system/status", get(api::system::system_status))
         .route(
             "/api/system/reload-config",
             post(api::system::reload_config)
-                .route_layer(from_fn(middleware::auth::auth_middleware)),
+                // ✅ P1 修复：配置重载应该只有 admin 可以触发
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // Authentication routes (use wrapper for dynamic DB access)
         .route("/api/auth/login", post(local_login_wrapper))

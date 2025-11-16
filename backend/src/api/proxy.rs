@@ -68,11 +68,23 @@ pub struct ImageProxyQuery {
 }
 
 /// 代理图片请求，添加必要的Referer头
+/// ⚠️ P2: This endpoint is public but has domain whitelist protection
+/// Consider adding authentication if abuse is detected
 pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
     let url = params.url;
 
-    // 检查URL是否来自支持的域名
+    // ✅ P2 安全增强：检查 URL 长度，防止恶意超长 URL
+    if url.len() > 2048 {
+        tracing::warn!("🚨 Rejected proxy request: URL too long ({})", url.len());
+        return (StatusCode::BAD_REQUEST, "URL too long").into_response();
+    }
+
+    // ✅ 检查URL是否来自支持的域名（白名单保护）
     if !is_allowed_domain(&url) {
+        tracing::warn!(
+            "🚨 Rejected proxy request: Domain not whitelisted - {}",
+            url
+        );
         return (
             StatusCode::FORBIDDEN,
             "Only images from supported platforms are allowed",
@@ -83,6 +95,7 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
     // 创建HTTP客户端
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(10)) // ✅ 添加超时保护
         .build()
         .unwrap();
 
@@ -106,9 +119,29 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
         .unwrap_or("image/jpeg")
         .to_string();
 
-    // 获取图片数据
+    // ✅ P2 安全增强：验证是否为图片类型
+    if !content_type.starts_with("image/") {
+        tracing::warn!("🚨 Rejected proxy request: Not an image ({})", content_type);
+        return (StatusCode::BAD_REQUEST, "Only image content is allowed").into_response();
+    }
+
+    // 获取图片数据，限制大小为 10MB
     let image_data = match response.bytes().await {
-        Ok(data) => data,
+        Ok(data) => {
+            // ✅ P2 安全增强：限制图片大小，防止内存耗尽
+            if data.len() > 10 * 1024 * 1024 {
+                tracing::warn!(
+                    "🚨 Rejected proxy request: Image too large ({} bytes)",
+                    data.len()
+                );
+                return (
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "Image size exceeds 10MB limit",
+                )
+                    .into_response();
+            }
+            data
+        }
         Err(e) => {
             tracing::error!("Failed to read image data: {}", e);
             return (StatusCode::BAD_GATEWAY, "Failed to read image data").into_response();
