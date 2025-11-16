@@ -87,35 +87,62 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
     let longitude: number | null = null;
     let city = '本地';
 
-    // 方案1: 通过后端获取客户端真实 IP 的地理位置
+    // 方案1: 通过后端代理获取（优先，可以获取客户端真实IP）
     try {
       const geoResponse = await fetch(`${API_URL}/api/proxy/client-geo`);
+      
       if (geoResponse.ok) {
         const geoData = await geoResponse.json();
-        latitude = geoData.lat;
-        longitude = geoData.lon;
-        city = geoData.city || geoData.country || '本地';
-      }
-    } catch (e) {
-      console.warn('Backend geolocation failed, trying fallback');
-    }
-
-    // 方案2: 如果后端失败，尝试直接调用 ip-api.com
-    if (!latitude || !longitude) {
-      try {
-        const geoResponse = await fetch('https://ip-api.com/json/?fields=lat,lon,city,country');
-        if (geoResponse.ok) {
-          const geoData = await geoResponse.json();
+        
+        if (geoData.status === 'success' && geoData.lat && geoData.lon) {
           latitude = geoData.lat;
           longitude = geoData.lon;
           city = geoData.city || geoData.country || '本地';
         }
+      }
+    } catch (e) {
+      // 静默失败，尝试下一个方案
+    }
+
+    // 方案2: 使用 ipapi.co（备用，免费且稳定）
+    if (!latitude || !longitude) {
+      try {
+        const geoResponse = await fetch('https://ipapi.co/json/');
+        
+        if (geoResponse.ok) {
+          const geoData = await geoResponse.json();
+          
+          if (geoData.latitude && geoData.longitude) {
+            latitude = geoData.latitude;
+            longitude = geoData.longitude;
+            city = geoData.city || geoData.country_name || '本地';
+          }
+        }
       } catch (e) {
-        console.warn('ip-api.com fallback also failed');
+        // 静默失败，尝试下一个方案
       }
     }
 
-    // 方案3: 如果所有方式都失败，使用默认位置（北京）
+    // 方案3: 使用 ip-api.com（第二备用）
+    if (!latitude || !longitude) {
+      try {
+        const geoResponse = await fetch('http://ip-api.com/json/?fields=status,lat,lon,city,country');
+        
+        if (geoResponse.ok) {
+          const geoData = await geoResponse.json();
+          
+          if (geoData.status === 'success' && geoData.lat && geoData.lon) {
+            latitude = geoData.lat;
+            longitude = geoData.lon;
+            city = geoData.city || geoData.country || '本地';
+          }
+        }
+      } catch (e) {
+        // 静默失败
+      }
+    }
+
+    // 方案4: 如果所有方式都失败，使用默认位置（北京）
     if (!latitude || !longitude) {
       latitude = 39.9042;
       longitude = 116.4074;

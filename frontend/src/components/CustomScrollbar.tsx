@@ -112,8 +112,12 @@ export default function CustomScrollbar() {
       });
     };
 
-    // 初始更新
-    updateThumb();
+    // 立即执行初始更新，确保 thumb 可见
+    requestAnimationFrame(() => {
+      updateThumb();
+      // 再次更新以确保准确（处理初次渲染后的 DOM 变化）
+      setTimeout(() => updateThumb(), 100);
+    });
 
     // 监听滚动和窗口大小变化
     window.addEventListener('scroll', handleUpdate, { passive: true });
@@ -388,12 +392,14 @@ export default function CustomScrollbar() {
           }}
         />
 
-        {/* Thumb滑块 - 完全由 DOM 控制位置和高度 */}
+        {/* Thumb滑块 - 由 DOM 控制位置和高度，但提供初始值避免闪烁 */}
         <div
           ref={thumbRef}
           className="absolute left-0 right-0 rounded-full cursor-grab active:cursor-grabbing pointer-events-auto"
           style={{
-            // top 和 height 都不设置，完全由 updateThumb 函数通过 DOM 控制
+            // 设置初始值，防止 thumb 在 updateThumb 执行前不可见
+            top: '0px',
+            height: `${MIN_THUMB_HEIGHT}px`,
             backgroundColor: 'color-mix(in srgb, var(--color-primary) 70%, transparent)',
             opacity: 0.95,
             boxShadow: `0 0 14px color-mix(in srgb, var(--color-primary) 65%, transparent),

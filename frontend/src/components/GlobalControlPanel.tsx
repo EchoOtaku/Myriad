@@ -99,6 +99,10 @@ const GlobalControlPanel: React.FC = () => {
     dark: string;
   } | null>(null);
   const lyricsScrollRef = useRef<HTMLDivElement>(null);
+  const playlistScrollRef = useRef<HTMLDivElement>(null);
+  
+  // 播放列表搜索状态
+  const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
   
   // 预加载系统
   const preloadAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1018,6 +1022,39 @@ const GlobalControlPanel: React.FC = () => {
     });
   }, [currentLyricIndex, musicPlayerView, lyrics.length]);
 
+  // 播放列表自动滚动到当前歌曲
+  useEffect(() => {
+    if (musicPlayerView !== 'playlist' || !playlistScrollRef.current || playlist.length === 0) {
+      return;
+    }
+
+    const container = playlistScrollRef.current;
+    
+    // 如果有搜索查询，不自动滚动
+    if (playlistSearchQuery.trim()) {
+      return;
+    }
+
+    // 延迟执行，确保 DOM 已渲染
+    setTimeout(() => {
+      const activeElement = container.querySelector('.music-playlist-item.active') as HTMLElement;
+      
+      if (!activeElement) return;
+
+      // 计算滚动位置：将当前歌曲居中
+      const containerHeight = container.clientHeight;
+      const elementTop = activeElement.offsetTop;
+      const elementHeight = activeElement.clientHeight;
+      const scrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2);
+
+      // 平滑滚动
+      container.scrollTo({
+        top: Math.max(0, scrollTop),
+        behavior: 'smooth'
+      });
+    }, 100);
+  }, [musicPlayerView, currentSongIndex, playlist.length, playlistSearchQuery]);
+
   // 当有歌词时，更新动态内容以显示歌词（仅播放时）
   useEffect(() => {
     if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0 && !isExpanded) {
@@ -1254,7 +1291,7 @@ const GlobalControlPanel: React.FC = () => {
                                     className="music-progress-bar"
                                     aria-label="音乐进度"
                                   />
-                                  <span className="music-time">{formatTime(currentSong.duration || 0)}</span>
+                                  <span className="music-time">-{formatTime((currentSong.duration || 0) - currentTime)}</span>
                                 </div>
                               </div>
                             </div>
@@ -1426,48 +1463,99 @@ const GlobalControlPanel: React.FC = () => {
                     )}
 
                     {/* 状态：播放列表 */}
-                    {musicPlayerView === 'playlist' && playlist.length > 0 && (
-                      <div className="music-view music-view-playlist">
-                        <div className="music-playlist-header">
-                          <button
-                            onClick={() => setMusicPlayerView('info')}
-                            className="music-back-btn"
-                            aria-label="返回"
-                          >
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </button>
-                          <div className="music-playlist-title">
-                            播放列表 ({playlist.length}首)
-                          </div>
-                        </div>
-
-                        <div className="music-playlist-scroll">
-                          {playlist.map((song, index) => (
-                            <div
-                              key={song.id}
+                    {musicPlayerView === 'playlist' && playlist.length > 0 && (() => {
+                      // 过滤播放列表
+                      const filteredPlaylist = playlistSearchQuery.trim()
+                        ? playlist.filter((song) => {
+                            const query = playlistSearchQuery.toLowerCase();
+                            return song.name.toLowerCase().includes(query) || 
+                                   song.artist.toLowerCase().includes(query);
+                          })
+                        : playlist;
+                      
+                      return (
+                        <div className="music-view music-view-playlist">
+                          <div className="music-playlist-header">
+                            <button
                               onClick={() => {
-                                selectSong(song, index);
                                 setMusicPlayerView('info');
+                                setPlaylistSearchQuery('');
                               }}
-                              className={`music-playlist-item ${currentSongIndex === index ? 'active' : ''}`}
+                              className="music-back-btn"
+                              aria-label="返回"
                             >
-                              <span className="music-playlist-index">{index + 1}</span>
-                              <div className="music-playlist-info">
-                                <div className="music-playlist-name">{song.name}</div>
-                                <div className="music-playlist-artist">{song.artist}</div>
-                              </div>
-                              {currentSongIndex === index && (
-                                <span className="music-playlist-playing">
-                                  {isPlaying ? '▶' : '⏸'}
-                                </span>
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                            <div className="music-playlist-title">
+                              播放列表 ({filteredPlaylist.length}/{playlist.length}首)
+                            </div>
+                            
+                            {/* 搜索框 - 紧凑版 */}
+                            <div className="music-playlist-search-compact">
+                              <svg className="music-search-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                              </svg>
+                              <input
+                                type="text"
+                                placeholder="搜索..."
+                                value={playlistSearchQuery}
+                                onChange={(e) => setPlaylistSearchQuery(e.target.value)}
+                                className="music-search-input"
+                              />
+                              {playlistSearchQuery && (
+                                <button
+                                  onClick={() => setPlaylistSearchQuery('')}
+                                  className="music-search-clear"
+                                  aria-label="清除搜索"
+                                >
+                                  <svg fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                  </svg>
+                                </button>
                               )}
                             </div>
-                          ))}
+                          </div>
+
+                          <div className="music-playlist-scroll" ref={playlistScrollRef}>
+                            {filteredPlaylist.length > 0 ? (
+                              filteredPlaylist.map((song, filteredIndex) => {
+                                // 获取原始索引
+                                const originalIndex = playlist.findIndex(s => s.id === song.id);
+                                return (
+                                  <div
+                                    key={song.id}
+                                    onClick={() => {
+                                      selectSong(song, originalIndex);
+                                      setMusicPlayerView('info');
+                                      setPlaylistSearchQuery('');
+                                    }}
+                                    className={`music-playlist-item ${currentSongIndex === originalIndex ? 'active' : ''}`}
+                                  >
+                                    <span className="music-playlist-index">{originalIndex + 1}</span>
+                                    <div className="music-playlist-info">
+                                      <div className="music-playlist-name">{song.name}</div>
+                                      <div className="music-playlist-artist">{song.artist}</div>
+                                    </div>
+                                    {currentSongIndex === originalIndex && (
+                                      <span className="music-playlist-playing">
+                                        {isPlaying ? '▶' : '⏸'}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="music-no-results">
+                                <div className="music-no-results-icon">🔍</div>
+                                <div className="music-no-results-text">未找到匹配的歌曲</div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
 

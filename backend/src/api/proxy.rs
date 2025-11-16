@@ -7,7 +7,7 @@ use axum::{
 };
 use rand::Rng;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -524,13 +524,72 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
 /// 获取客户端真实 IP 地理位置信息
 /// GET /api/proxy/client-geo
 pub async fn get_client_geo(
+    headers: axum::http::HeaderMap,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
-    let client_ip = addr.ip().to_string();
+    // 优先从请求头获取真实IP（处理反向代理的情况）
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| addr.ip().to_string());
 
-    // 使用 ip-api.com 获取地理位置
+    tracing::debug!("Client IP for geolocation: {}", client_ip);
+
+    // 检查是否为本地IP/内网IP
+    let is_local_ip = client_ip == "127.0.0.1"
+        || client_ip == "::1"
+        || client_ip.starts_with("192.168.")
+        || client_ip.starts_with("10.")
+        || client_ip.starts_with("172.16.")
+        || client_ip.starts_with("172.17.")
+        || client_ip.starts_with("172.18.")
+        || client_ip.starts_with("172.19.")
+        || client_ip.starts_with("172.20.")
+        || client_ip.starts_with("172.21.")
+        || client_ip.starts_with("172.22.")
+        || client_ip.starts_with("172.23.")
+        || client_ip.starts_with("172.24.")
+        || client_ip.starts_with("172.25.")
+        || client_ip.starts_with("172.26.")
+        || client_ip.starts_with("172.27.")
+        || client_ip.starts_with("172.28.")
+        || client_ip.starts_with("172.29.")
+        || client_ip.starts_with("172.30.")
+        || client_ip.starts_with("172.31.");
+
+    // 如果是本地IP，直接返回默认位置（北京），避免获取到服务器位置
+    if is_local_ip {
+        tracing::info!(
+            "Detected local/private IP: {}, returning default location (Beijing)",
+            client_ip
+        );
+        let default_data = json!({
+            "status": "success",
+            "lat": 39.9042,
+            "lon": 116.4074,
+            "city": "Beijing",
+            "country": "China"
+        });
+        return (
+            StatusCode::OK,
+            [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+            Json(default_data),
+        )
+            .into_response();
+    }
+
+    // 使用真实客户端IP查询地理位置
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
         .unwrap();
 
@@ -543,6 +602,16 @@ pub async fn get_client_geo(
         Ok(resp) => match resp.json::<Value>().await {
             Ok(data) => {
                 if data.get("status").and_then(|s| s.as_str()) == Some("success") {
+                    tracing::info!(
+                        "Geolocation success for IP {}: city={}, country={}",
+                        client_ip,
+                        data.get("city")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown"),
+                        data.get("country")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                    );
                     (
                         StatusCode::OK,
                         [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
