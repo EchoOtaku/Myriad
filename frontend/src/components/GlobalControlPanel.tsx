@@ -774,10 +774,11 @@ const GlobalControlPanel: React.FC = () => {
 
     setIsDark(newIsDark);
 
-    // 更新 meta theme-color
+    // 更新 meta theme-color - 使用壁纸颜色
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (metaThemeColor) {
-      metaThemeColor.setAttribute('content', newIsDark ? '#1a1a1a' : '#fef3c7');
+      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#94a3b8';
+      metaThemeColor.setAttribute('content', primaryColor);
     }
   }, [isDark]);
 

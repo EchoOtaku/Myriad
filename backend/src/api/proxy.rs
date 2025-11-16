@@ -523,6 +523,11 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
 
 /// 获取客户端真实 IP 地理位置信息
 /// GET /api/proxy/client-geo
+///
+/// 这个端点会自动处理以下情况：
+/// 1. 从请求头中提取客户端真实IP（支持反向代理）
+/// 2. 如果是本地/内网IP，则查询服务器的公网IP位置
+/// 3. 使用可靠的地理位置API获取坐标信息
 pub async fn get_client_geo(
     headers: axum::http::HeaderMap,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
@@ -541,7 +546,11 @@ pub async fn get_client_geo(
         })
         .unwrap_or_else(|| addr.ip().to_string());
 
-    tracing::debug!("Client IP for geolocation: {}", client_ip);
+    tracing::info!(
+        "Client IP detection: original={}, socket={}",
+        client_ip,
+        addr.ip()
+    );
 
     // 检查是否为本地IP/内网IP
     let is_local_ip = client_ip == "127.0.0.1"
@@ -565,46 +574,148 @@ pub async fn get_client_geo(
         || client_ip.starts_with("172.30.")
         || client_ip.starts_with("172.31.");
 
-    // 如果是本地IP，直接返回默认位置（北京），避免获取到服务器位置
-    if is_local_ip {
-        tracing::info!(
-            "Detected local/private IP: {}, returning default location (Beijing)",
-            client_ip
-        );
-        let default_data = json!({
-            "status": "success",
-            "lat": 39.9042,
-            "lon": 116.4074,
-            "city": "Beijing",
-            "country": "China"
-        });
-        return (
-            StatusCode::OK,
-            [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-            Json(default_data),
-        )
-            .into_response();
-    }
-
-    // 使用真实客户端IP查询地理位置
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
         .unwrap();
 
-    let url = format!(
-        "http://ip-api.com/json/{}?fields=status,lat,lon,city,country",
-        client_ip
+    // 如果是本地IP，需要获取服务器的公网IP，然后查询位置
+    let target_ip = if is_local_ip {
+        tracing::info!(
+            "Detected local/private IP: {}, fetching server public IP",
+            client_ip
+        );
+
+        // 方案1: 使用 ipify.org 获取服务器公网IP
+        if let Ok(resp) = client.get("https://api.ipify.org?format=json").send().await {
+            if let Ok(data) = resp.json::<Value>().await {
+                if let Some(ip) = data.get("ip").and_then(|v| v.as_str()) {
+                    tracing::info!("Server public IP from ipify: {}", ip);
+                    ip.to_string()
+                } else {
+                    client_ip.clone()
+                }
+            } else {
+                client_ip.clone()
+            }
+        } else {
+            // 方案2: 使用 icanhazip.com
+            if let Ok(resp) = client.get("https://icanhazip.com").send().await {
+                if let Ok(text) = resp.text().await {
+                    let ip = text.trim().to_string();
+                    tracing::info!("Server public IP from icanhazip: {}", ip);
+                    ip
+                } else {
+                    client_ip.clone()
+                }
+            } else {
+                client_ip.clone()
+            }
+        }
+    } else {
+        client_ip.clone()
+    };
+
+    tracing::info!("Querying geolocation for IP: {}", target_ip);
+
+    // 尝试多个地理位置服务，提高成功率
+
+    // 方案1: ip-api.com (免费，稳定，无需key)
+    let url1 = format!(
+        "http://ip-api.com/json/{}?fields=status,lat,lon,city,country,regionName",
+        target_ip
     );
 
-    match client.get(&url).send().await {
-        Ok(resp) => match resp.json::<Value>().await {
-            Ok(data) => {
-                if data.get("status").and_then(|s| s.as_str()) == Some("success") {
+    if let Ok(resp) = client.get(&url1).send().await {
+        if let Ok(data) = resp.json::<Value>().await {
+            if data.get("status").and_then(|s| s.as_str()) == Some("success") {
+                tracing::info!(
+                    "Geolocation success via ip-api.com for IP {}: city={}, region={}, country={}",
+                    target_ip,
+                    data.get("city")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown"),
+                    data.get("regionName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown"),
+                    data.get("country")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                );
+                return (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(data),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // 方案2: ipapi.co (备用)
+    let url2 = format!("https://ipapi.co/{}/json/", target_ip);
+
+    if let Ok(resp) = client.get(&url2).send().await {
+        if let Ok(data) = resp.json::<Value>().await {
+            if let (Some(lat), Some(lon)) = (
+                data.get("latitude").and_then(|v| v.as_f64()),
+                data.get("longitude").and_then(|v| v.as_f64()),
+            ) {
+                // 转换为统一格式
+                let unified_data = json!({
+                    "status": "success",
+                    "lat": lat,
+                    "lon": lon,
+                    "city": data.get("city").and_then(|v| v.as_str()).unwrap_or(""),
+                    "country": data.get("country_name").and_then(|v| v.as_str()).unwrap_or(""),
+                    "regionName": data.get("region").and_then(|v| v.as_str()).unwrap_or("")
+                });
+
+                tracing::info!(
+                    "Geolocation success via ipapi.co for IP {}: city={}, country={}",
+                    target_ip,
+                    data.get("city")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown"),
+                    data.get("country_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                );
+
+                return (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(unified_data),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // 方案3: geojs.io (第三备用)
+    let url3 = format!("https://get.geojs.io/v1/ip/geo/{}.json", target_ip);
+
+    if let Ok(resp) = client.get(&url3).send().await {
+        if let Ok(data) = resp.json::<Value>().await {
+            if let (Some(lat_str), Some(lon_str)) = (
+                data.get("latitude").and_then(|v| v.as_str()),
+                data.get("longitude").and_then(|v| v.as_str()),
+            ) {
+                if let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>()) {
+                    // 转换为统一格式
+                    let unified_data = json!({
+                        "status": "success",
+                        "lat": lat,
+                        "lon": lon,
+                        "city": data.get("city").and_then(|v| v.as_str()).unwrap_or(""),
+                        "country": data.get("country").and_then(|v| v.as_str()).unwrap_or(""),
+                        "regionName": data.get("region").and_then(|v| v.as_str()).unwrap_or("")
+                    });
+
                     tracing::info!(
-                        "Geolocation success for IP {}: city={}, country={}",
-                        client_ip,
+                        "Geolocation success via geojs.io for IP {}: city={}, country={}",
+                        target_ip,
                         data.get("city")
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown"),
@@ -612,27 +723,25 @@ pub async fn get_client_geo(
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown")
                     );
-                    (
+
+                    return (
                         StatusCode::OK,
                         [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-                        Json(data),
+                        Json(unified_data),
                     )
-                        .into_response()
-                } else {
-                    tracing::warn!("IP geolocation failed for {}: {:?}", client_ip, data);
-                    (StatusCode::NOT_FOUND, "Geolocation service failed").into_response()
+                        .into_response();
                 }
             }
-            Err(e) => {
-                tracing::error!("Failed to parse geo response for {}: {}", client_ip, e);
-                (StatusCode::BAD_GATEWAY, "Failed to parse geo response").into_response()
-            }
-        },
-        Err(e) => {
-            tracing::error!("Failed to fetch geo info for {}: {}", client_ip, e);
-            (StatusCode::BAD_GATEWAY, "Failed to fetch geo info").into_response()
         }
     }
+
+    // 所有方案都失败，返回错误
+    tracing::error!("All geolocation services failed for IP: {}", target_ip);
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        "All geolocation services failed",
+    )
+        .into_response()
 }
 
 /// 代理QQ音乐歌词请求

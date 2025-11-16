@@ -116,10 +116,23 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
           html.classList.remove('dark');
         }
 
-        const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-        if (metaThemeColor) {
-          metaThemeColor.setAttribute('content', theme === 'dark' ? '#1a1a1a' : '#fef3c7');
-        }
+        // 使用壁纸颜色（--color-primary）作为浏览器主题色
+        const updateThemeColor = () => {
+          const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#94a3b8';
+          const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+          if (metaThemeColor) {
+            metaThemeColor.setAttribute('content', primaryColor);
+          }
+        };
+
+        updateThemeColor();
+
+        // 监听 CSS 变量变化，实时更新浏览器主题色
+        const observer = new MutationObserver(updateThemeColor);
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['style']
+        });
 
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
           if (!localStorage.getItem('theme')) {
@@ -131,9 +144,8 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
               html.classList.add('light');
               html.classList.remove('dark');
             }
-            if (metaThemeColor) {
-              metaThemeColor.setAttribute('content', newTheme === 'dark' ? '#1a1a1a' : '#fef3c7');
-            }
+            // 更新主题色
+            updateThemeColor();
           }
         });
       }
