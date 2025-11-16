@@ -310,6 +310,18 @@ const ModernConfigForm: React.FC = () => {
         );
 
         setMessage('✓ 配置已保存！后端正在重启...');
+        
+        // 刷新网站元数据（如果配置了站点标题、描述或图标）
+        setTimeout(async () => {
+          try {
+            const { refreshSiteMetadata } = await import('../utils/siteMetadata');
+            await refreshSiteMetadata();
+            console.log('[配置] 网站元数据已刷新');
+          } catch (error) {
+            console.warn('[配置] 刷新元数据失败:', error);
+          }
+        }, 3000); // 等待后端重启完成
+        
         setTimeout(() => {
           setMessage('✓ 后端重启完成，配置已生效');
           setTimeout(() => setMessage(''), 3000);

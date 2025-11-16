@@ -65,13 +65,41 @@ pub struct UiConfig {
     pub config_fields: Vec<ConfigField>,
 }
 
-pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+    // 优先从数据库读取配置
+    let config_service = crate::services::config_service::ConfigService::new(db.clone());
+    let db_config = config_service.load_config().await.ok();
+    
+    // 辅助函数：优先使用数据库值，否则使用环境变量
+    // Helper to get string value from database or environment
+    let get_value = |db_val: Option<String>, env_key: &str| -> String {
+        db_val.filter(|v| !v.is_empty())
+            .unwrap_or_else(|| std::env::var(env_key).unwrap_or_default())
+    };
+    
+    // Helper to mask sensitive values (passwords, API keys, tokens)
+    let mask_sensitive = |value: String| -> String {
+        if value.is_empty() {
+            value
+        } else {
+            // 保留前4个字符，其余用 * 替换
+            let len = value.len();
+            if len <= 4 {
+                "*".repeat(len)
+            } else {
+                format!("{}{}",  &value[..4.min(len)], "*".repeat(8))
+            }
+        }
+    };
+    
     let config = ConfigResponse {
         platforms: vec![
             PlatformConfig {
                 name: "GitHub".to_string(),
-                enabled: std::env::var("GITHUB_USERNAME").is_ok(),
-                has_token: std::env::var("GITHUB_TOKEN").is_ok(),
+                enabled: db_config.as_ref().and_then(|c| c.github_username.as_ref()).is_some() 
+                    || std::env::var("GITHUB_USERNAME").is_ok(),
+                has_token: db_config.as_ref().and_then(|c| c.github_token.as_ref()).is_some() 
+                    || std::env::var("GITHUB_TOKEN").is_ok(),
                 icon: "".to_string(),
                 description: "Track repositories, stars, and contributions".to_string(),
                 config_fields: vec![
@@ -79,7 +107,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         key: "username".to_string(),
                         label: "GitHub Username".to_string(),
                         field_type: "text".to_string(),
-                        value: std::env::var("GITHUB_USERNAME").unwrap_or_default(),
+                        value: get_value(db_config.as_ref().and_then(|c| c.github_username.clone()), "GITHUB_USERNAME"),
                         placeholder: "octocat".to_string(),
                         required: true,
                     },
@@ -87,7 +115,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         key: "token".to_string(),
                         label: "Personal Access Token (Optional)".to_string(),
                         field_type: "password".to_string(),
-                        value: std::env::var("GITHUB_TOKEN").unwrap_or_default(),
+                        value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.github_token.clone()), "GITHUB_TOKEN")),
                         placeholder: "ghp_xxxxxxxxxxxx (Increases API rate limit)".to_string(),
                         required: false,
                     },
@@ -95,8 +123,10 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
             },
             PlatformConfig {
                 name: "Bilibili".to_string(),
-                enabled: std::env::var("BILIBILI_UID").is_ok(),
-                has_token: std::env::var("BILIBILI_UID").is_ok(),
+                enabled: db_config.as_ref().and_then(|c| c.bilibili_uid.as_ref()).is_some() 
+                    || std::env::var("BILIBILI_UID").is_ok(),
+                has_token: db_config.as_ref().and_then(|c| c.bilibili_uid.as_ref()).is_some() 
+                    || std::env::var("BILIBILI_UID").is_ok(),
                 icon: "".to_string(),
                 description: "Track your Bilibili favorites, anime, and viewing history"
                     .to_string(),
@@ -104,15 +134,17 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "uid".to_string(),
                     label: "User ID (UID)".to_string(),
                     field_type: "number".to_string(),
-                    value: std::env::var("BILIBILI_UID").unwrap_or_default(),
+                    value: get_value(db_config.as_ref().and_then(|c| c.bilibili_uid.clone()), "BILIBILI_UID"),
                     placeholder: "123456789".to_string(),
                     required: true,
                 }],
             },
             PlatformConfig {
                 name: "Steam".to_string(),
-                enabled: std::env::var("STEAM_API_KEY").is_ok(),
-                has_token: std::env::var("STEAM_API_KEY").is_ok(),
+                enabled: db_config.as_ref().and_then(|c| c.steam_api_key.as_ref()).is_some() 
+                    || std::env::var("STEAM_API_KEY").is_ok(),
+                has_token: db_config.as_ref().and_then(|c| c.steam_api_key.as_ref()).is_some() 
+                    || std::env::var("STEAM_API_KEY").is_ok(),
                 icon: "".to_string(),
                 description: "Sync your Steam library, wishlist, and gaming stats".to_string(),
                 config_fields: vec![
@@ -120,7 +152,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         key: "api_key".to_string(),
                         label: "Steam API Key".to_string(),
                         field_type: "password".to_string(),
-                        value: std::env::var("STEAM_API_KEY").unwrap_or_default(),
+                        value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.steam_api_key.clone()), "STEAM_API_KEY")),
                         placeholder: "Get from steamcommunity.com/dev/apikey".to_string(),
                         required: true,
                     },
@@ -128,7 +160,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         key: "steam_id".to_string(),
                         label: "Steam ID".to_string(),
                         field_type: "text".to_string(),
-                        value: std::env::var("STEAM_ID").unwrap_or_default(),
+                        value: get_value(db_config.as_ref().and_then(|c| c.steam_id.clone()), "STEAM_ID"),
                         placeholder: "76561198XXXXXXXXX".to_string(),
                         required: true,
                     },
@@ -136,8 +168,10 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
             },
             PlatformConfig {
                 name: "X".to_string(),
-                enabled: std::env::var("TWITTER_USERNAME").is_ok(),
-                has_token: std::env::var("TWITTER_BEARER_TOKEN").is_ok(),
+                enabled: db_config.as_ref().and_then(|c| c.twitter_username.as_ref()).is_some()
+                    || std::env::var("TWITTER_USERNAME").is_ok(),
+                has_token: db_config.as_ref().and_then(|c| c.twitter_bearer_token.as_ref()).is_some() 
+                    || std::env::var("TWITTER_BEARER_TOKEN").is_ok(),
                 icon: "".to_string(),
                 description: "Analyze tweets and engagement from the past year".to_string(),
                 config_fields: vec![
@@ -145,7 +179,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         key: "username".to_string(),
                         label: "X Username".to_string(),
                         field_type: "text".to_string(),
-                        value: std::env::var("TWITTER_USERNAME").unwrap_or_default(),
+                        value: get_value(db_config.as_ref().and_then(|c| c.twitter_username.clone()), "TWITTER_USERNAME"),
                         placeholder: "elonmusk".to_string(),
                         required: true,
                     },
@@ -153,7 +187,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                         key: "bearer_token".to_string(),
                         label: "Bearer Token".to_string(),
                         field_type: "password".to_string(),
-                        value: std::env::var("TWITTER_BEARER_TOKEN").unwrap_or_default(),
+                        value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.twitter_bearer_token.clone()), "TWITTER_BEARER_TOKEN")),
                         placeholder: "Get from developer.twitter.com".to_string(),
                         required: true,
                     },
@@ -161,8 +195,10 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
             },
             PlatformConfig {
                 name: "Netease Music".to_string(),
-                enabled: std::env::var("NETEASE_USER_ID").is_ok(),
-                has_token: std::env::var("NETEASE_USER_ID").is_ok(),
+                enabled: db_config.as_ref().and_then(|c| c.netease_user_id.as_ref()).is_some() 
+                    || std::env::var("NETEASE_USER_ID").is_ok(),
+                has_token: db_config.as_ref().and_then(|c| c.netease_user_id.as_ref()).is_some() 
+                    || std::env::var("NETEASE_USER_ID").is_ok(),
                 icon: "".to_string(),
                 description: "Sync your liked songs and music taste from Netease Cloud Music"
                     .to_string(),
@@ -170,24 +206,26 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "user_id".to_string(),
                     label: "User ID".to_string(),
                     field_type: "number".to_string(),
-                    value: std::env::var("NETEASE_USER_ID").unwrap_or_default(),
+                    value: get_value(db_config.as_ref().and_then(|c| c.netease_user_id.clone()), "NETEASE_USER_ID"),
                     placeholder: "Your Netease Cloud Music user ID".to_string(),
                     required: true,
                 }],
             },
         ],
         ai_config: AiConfig {
-            provider: std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string()),
-            model: std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string()),
-            api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
-            enabled: std::env::var("GEMINI_API_KEY").is_ok()
+            provider: db_config.as_ref().map(|c| c.ai_provider.clone()).unwrap_or_else(|| std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string())),
+            model: db_config.as_ref().map(|c| c.gemini_model.clone()).unwrap_or_else(|| std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string())),
+            api_key: get_value(db_config.as_ref().and_then(|c| c.gemini_api_key.clone()), "GEMINI_API_KEY"),
+            enabled: db_config.as_ref().and_then(|c| c.gemini_api_key.as_ref()).is_some()
+                || db_config.as_ref().and_then(|c| c.openai_api_key.as_ref()).is_some()
+                || std::env::var("GEMINI_API_KEY").is_ok()
                 || std::env::var("OPENAI_API_KEY").is_ok(),
             config_fields: vec![
                 ConfigField {
                     key: "provider".to_string(),
                     label: "AI Provider".to_string(),
                     field_type: "select".to_string(),
-                    value: std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string()),
+                    value: db_config.as_ref().map(|c| c.ai_provider.clone()).unwrap_or_else(|| std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string())),
                     placeholder: "gemini".to_string(),
                     required: true,
                 },
@@ -195,7 +233,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "gemini_api_key".to_string(),
                     label: "Gemini API Key".to_string(),
                     field_type: "password".to_string(),
-                    value: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
+                    value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.gemini_api_key.clone()), "GEMINI_API_KEY")),
                     placeholder: "Get from https://makersuite.google.com/app/apikey".to_string(),
                     required: false,
                 },
@@ -203,8 +241,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "gemini_model".to_string(),
                     label: "Gemini Model Name".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("GEMINI_MODEL")
-                        .unwrap_or_else(|_| "gemini-pro".to_string()),
+                    value: db_config.as_ref().map(|c| c.gemini_model.clone()).unwrap_or_else(|| std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string())),
                     placeholder: "gemini-pro, gemini-1.5-flash, gemini-1.5-pro, etc.".to_string(),
                     required: false,
                 },
@@ -212,7 +249,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "openai_api_key".to_string(),
                     label: "OpenAI API Key".to_string(),
                     field_type: "password".to_string(),
-                    value: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
+                    value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.openai_api_key.clone()), "OPENAI_API_KEY")),
                     placeholder: "OpenAI API Key or compatible service key".to_string(),
                     required: false,
                 },
@@ -220,8 +257,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "openai_model".to_string(),
                     label: "OpenAI Model Name".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("OPENAI_MODEL")
-                        .unwrap_or_else(|_| "gpt-3.5-turbo".to_string()),
+                    value: db_config.as_ref().map(|c| c.openai_model.clone()).unwrap_or_else(|| std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-3.5-turbo".to_string())),
                     placeholder: "gpt-3.5-turbo, gpt-4, gpt-4-turbo, etc.".to_string(),
                     required: false,
                 },
@@ -229,38 +265,32 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "openai_base_url".to_string(),
                     label: "OpenAI Base URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("OPENAI_BASE_URL")
-                        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
+                    value: db_config.as_ref().map(|c| c.openai_base_url.clone()).unwrap_or_else(|| std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string())),
                     placeholder: "https://api.openai.com/v1 or https://api.deepseek.com (base URL only, no /chat/completions)".to_string(),
                     required: false,
                 },
             ],
         },
         report_config: ReportConfig {
-            topic_style: std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
+            topic_style: db_config.as_ref().map(|c| c.topic_style.clone()).unwrap_or_else(|| std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string())),
             config_fields: vec![ConfigField {
                 key: "topic_style".to_string(),
                 label: "Report Topic Style".to_string(),
                 field_type: "select".to_string(),
-                value: std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string()),
+                value: db_config.as_ref().map(|c| c.topic_style.clone()).unwrap_or_else(|| std::env::var("TOPIC_STYLE").unwrap_or_else(|_| "balanced".to_string())),
                 placeholder: "balanced".to_string(),
                 required: true,
             }],
         },
         persona_config: PersonaConfig {
-            enabled: std::env::var("PERSONA_IMAGE_ENABLED")
-                .unwrap_or_else(|_| "true".to_string())
-                .parse()
-                .unwrap_or(true),
-            provider: std::env::var("PERSONA_IMAGE_PROVIDER")
-                .unwrap_or_else(|_| "pollinations".to_string()),
+            enabled: db_config.as_ref().map(|c| c.persona_image_enabled).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)),
+            provider: db_config.as_ref().map(|c| c.persona_image_provider.clone()).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_PROVIDER").unwrap_or_else(|_| "pollinations".to_string())),
             config_fields: vec![
                 ConfigField {
                     key: "persona_image_enabled".to_string(),
                     label: "Enable Virtual Persona".to_string(),
                     field_type: "checkbox".to_string(),
-                    value: std::env::var("PERSONA_IMAGE_ENABLED")
-                        .unwrap_or_else(|_| "true".to_string()),
+                    value: db_config.as_ref().map(|c| c.persona_image_enabled.to_string()).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_ENABLED").unwrap_or_else(|_| "true".to_string())),
                     placeholder: "true".to_string(),
                     required: false,
                 },
@@ -268,8 +298,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "persona_image_provider".to_string(),
                     label: "Image Provider".to_string(),
                     field_type: "select".to_string(),
-                    value: std::env::var("PERSONA_IMAGE_PROVIDER")
-                        .unwrap_or_else(|_| "pollinations".to_string()),
+                    value: db_config.as_ref().map(|c| c.persona_image_provider.clone()).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_PROVIDER").unwrap_or_else(|_| "pollinations".to_string())),
                     placeholder: "pollinations or imaginepro".to_string(),
                     required: false,
                 },
@@ -277,8 +306,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "persona_image_model".to_string(),
                     label: "Image Model (Pollinations)".to_string(),
                     field_type: "select".to_string(),
-                    value: std::env::var("PERSONA_IMAGE_MODEL")
-                        .unwrap_or_else(|_| "flux-anime".to_string()),
+                    value: db_config.as_ref().map(|c| c.persona_image_model.clone()).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_MODEL").unwrap_or_else(|_| "flux-anime".to_string())),
                     placeholder: "flux-anime".to_string(),
                     required: false,
                 },
@@ -286,8 +314,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "persona_image_width".to_string(),
                     label: "Image Width".to_string(),
                     field_type: "number".to_string(),
-                    value: std::env::var("PERSONA_IMAGE_WIDTH")
-                        .unwrap_or_else(|_| "512".to_string()),
+                    value: db_config.as_ref().map(|c| c.persona_image_width.to_string()).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_WIDTH").unwrap_or_else(|_| "512".to_string())),
                     placeholder: "512".to_string(),
                     required: false,
                 },
@@ -295,8 +322,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "persona_image_height".to_string(),
                     label: "Image Height".to_string(),
                     field_type: "number".to_string(),
-                    value: std::env::var("PERSONA_IMAGE_HEIGHT")
-                        .unwrap_or_else(|_| "768".to_string()),
+                    value: db_config.as_ref().map(|c| c.persona_image_height.to_string()).unwrap_or_else(|| std::env::var("PERSONA_IMAGE_HEIGHT").unwrap_or_else(|_| "768".to_string())),
                     placeholder: "768".to_string(),
                     required: false,
                 },
@@ -304,7 +330,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "imaginepro_api_key".to_string(),
                     label: "ImaginePro API Key".to_string(),
                     field_type: "password".to_string(),
-                    value: std::env::var("IMAGINEPRO_API_KEY").unwrap_or_default(),
+                    value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.imaginepro_api_key.clone()), "IMAGINEPRO_API_KEY")),
                     placeholder: "Required for Midjourney generation".to_string(),
                     required: false,
                 },
@@ -312,40 +338,26 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "imaginepro_callback_url".to_string(),
                     label: "ImaginePro Callback URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("IMAGINEPRO_CALLBACK_URL").unwrap_or_default(),
+                    value: get_value(db_config.as_ref().and_then(|c| c.imaginepro_callback_url.clone()), "IMAGINEPRO_CALLBACK_URL"),
                     placeholder: "Optional webhook endpoint".to_string(),
                     required: false,
                 },
             ],
         },
         ui_config: UiConfig {
-            wallpaper_url: std::env::var("UI_WALLPAPER_URL").unwrap_or_else(|_| {
-                "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()
-            }),
-            wallpaper_blur: std::env::var("UI_WALLPAPER_BLUR")
-                .unwrap_or_else(|_| "3".to_string())
-                .parse()
-                .unwrap_or(3),
-            theme: std::env::var("UI_THEME").unwrap_or_else(|_| "dark".to_string()),
-            primary_color: std::env::var("UI_PRIMARY_COLOR")
-                .unwrap_or_else(|_| "#6366f1".to_string()),
-            secondary_color: std::env::var("UI_SECONDARY_COLOR")
-                .unwrap_or_else(|_| "#8b5cf6".to_string()),
-            pet_enabled: std::env::var("PET_ENABLED")
-                .unwrap_or_else(|_| "true".to_string())
-                .parse()
-                .unwrap_or(true),
-            pet_image_url: std::env::var("PET_IMAGE_URL").unwrap_or_else(|_| {
-                "https://api.fuukei.org/myriad/frontend/public/furina.png".to_string()
-            }),
+            wallpaper_url: get_value(db_config.as_ref().and_then(|c| c.ui_wallpaper_url.clone()), "UI_WALLPAPER_URL"),
+            wallpaper_blur: db_config.as_ref().map(|c| c.ui_wallpaper_blur as u32).unwrap_or_else(|| std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()).parse::<u32>().unwrap_or(3)),
+            theme: db_config.as_ref().and_then(|c| c.ui_theme.clone()).unwrap_or_else(|| std::env::var("UI_THEME").unwrap_or_else(|_| "dark".to_string())),
+            primary_color: db_config.as_ref().and_then(|c| c.ui_primary_color.clone()).unwrap_or_else(|| std::env::var("UI_PRIMARY_COLOR").unwrap_or_else(|_| "#6366f1".to_string())),
+            secondary_color: db_config.as_ref().and_then(|c| c.ui_secondary_color.clone()).unwrap_or_else(|| std::env::var("UI_SECONDARY_COLOR").unwrap_or_else(|_| "#8b5cf6".to_string())),
+            pet_enabled: db_config.as_ref().map(|c| c.pet_enabled).unwrap_or_else(|| std::env::var("PET_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)),
+            pet_image_url: get_value(db_config.as_ref().and_then(|c| c.pet_image_url.clone()), "PET_IMAGE_URL"),
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
                     label: "Wallpaper URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("UI_WALLPAPER_URL").unwrap_or_else(|_| {
-                        "https://images.unsplash.com/photo-1579546929518-9e396f3cc809".to_string()
-                    }),
+                    value: get_value(db_config.as_ref().and_then(|c| c.ui_wallpaper_url.clone()), "UI_WALLPAPER_URL"),
                     placeholder: "URL to wallpaper image or API endpoint".to_string(),
                     required: false,
                 },
@@ -353,7 +365,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "wallpaper_blur".to_string(),
                     label: "Wallpaper Blur (0-10)".to_string(),
                     field_type: "number".to_string(),
-                    value: std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()),
+                    value: db_config.as_ref().map(|c| c.ui_wallpaper_blur.to_string()).unwrap_or_else(|| std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string())),
                     placeholder: "3".to_string(),
                     required: false,
                 },
@@ -361,7 +373,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "pet_enabled".to_string(),
                     label: "Enable Pet Mascot".to_string(),
                     field_type: "checkbox".to_string(),
-                    value: std::env::var("PET_ENABLED").unwrap_or_else(|_| "true".to_string()),
+                    value: db_config.as_ref().map(|c| c.pet_enabled.to_string()).unwrap_or_else(|| std::env::var("PET_ENABLED").unwrap_or_else(|_| "true".to_string())),
                     placeholder: "true".to_string(),
                     required: false,
                 },
@@ -369,9 +381,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "pet_image_url".to_string(),
                     label: "Pet Image URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("PET_IMAGE_URL").unwrap_or_else(|_| {
-                        "https://api.fuukei.org/myriad/frontend/public/furina.png".to_string()
-                    }),
+                    value: get_value(db_config.as_ref().and_then(|c| c.pet_image_url.clone()), "PET_IMAGE_URL"),
                     placeholder: "URL to pet character image".to_string(),
                     required: false,
                 },
@@ -379,7 +389,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "site_title".to_string(),
                     label: "网站标题".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("SITE_TITLE").unwrap_or_else(|_| "Myriad - 数字自我发现".to_string()),
+                    value: get_value(db_config.as_ref().and_then(|c| c.site_title.clone()), "SITE_TITLE"),
                     placeholder: "Myriad - 数字自我发现".to_string(),
                     required: false,
                 },
@@ -387,7 +397,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "site_description".to_string(),
                     label: "网站描述".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("SITE_DESCRIPTION").unwrap_or_else(|_| "一键聚合你的多平台数据，生成AI个人分析报告".to_string()),
+                    value: get_value(db_config.as_ref().and_then(|c| c.site_description.clone()), "SITE_DESCRIPTION"),
                     placeholder: "一键聚合你的多平台数据，生成AI个人分析报告".to_string(),
                     required: false,
                 },
@@ -395,15 +405,15 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "site_favicon".to_string(),
                     label: "网站图标 URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("SITE_FAVICON").unwrap_or_else(|_| "/favicon.svg".to_string()),
-                    placeholder: "/favicon.svg".to_string(),
+                    value: get_value(db_config.as_ref().and_then(|c| c.site_favicon.clone()), "SITE_FAVICON"),
+                    placeholder: "/favicon.svg 或 https://example.com/icon.png（支持站外链接）".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "github_client_id".to_string(),
                     label: "GitHub OAuth Client ID".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("GITHUB_CLIENT_ID").unwrap_or_default(),
+                    value: get_value(db_config.as_ref().and_then(|c| c.github_client_id.clone()), "GITHUB_CLIENT_ID"),
                     placeholder: "GitHub OAuth Application Client ID".to_string(),
                     required: false,
                 },
@@ -411,7 +421,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "github_client_secret".to_string(),
                     label: "GitHub OAuth Client Secret".to_string(),
                     field_type: "password".to_string(),
-                    value: std::env::var("GITHUB_CLIENT_SECRET").unwrap_or_default(),
+                    value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.github_client_secret.clone()), "GITHUB_CLIENT_SECRET")),
                     placeholder: "GitHub OAuth Application Client Secret".to_string(),
                     required: false,
                 },
@@ -429,7 +439,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "music_enabled".to_string(),
                     label: "Enable Music Player".to_string(),
                     field_type: "checkbox".to_string(),
-                    value: std::env::var("MUSIC_ENABLED").unwrap_or_else(|_| "false".to_string()),
+                    value: get_value(db_config.as_ref().and_then(|c| c.music_enabled.clone()), "MUSIC_ENABLED"),
                     placeholder: "false".to_string(),
                     required: false,
                 },
@@ -437,7 +447,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "music_source".to_string(),
                     label: "Music Source".to_string(),
                     field_type: "select".to_string(),
-                    value: std::env::var("MUSIC_SOURCE").unwrap_or_else(|_| "netease".to_string()),
+                    value: get_value(db_config.as_ref().and_then(|c| c.music_source.clone()), "MUSIC_SOURCE"),
                     placeholder: "netease or qq".to_string(),
                     required: false,
                 },
@@ -445,7 +455,7 @@ pub async fn get_config(State(_db): State<DatabaseConnection>) -> (StatusCode, J
                     key: "music_playlist_id".to_string(),
                     label: "Playlist ID".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("MUSIC_PLAYLIST_ID").unwrap_or_default(),
+                    value: get_value(db_config.as_ref().and_then(|c| c.music_playlist_id.clone()), "MUSIC_PLAYLIST_ID"),
                     placeholder: "Playlist ID from music platform".to_string(),
                     required: false,
                 },
@@ -899,11 +909,35 @@ pub async fn test_platform(
 }
 
 /// 获取公开的网站元数据（不需要认证）
-pub async fn get_site_metadata() -> (StatusCode, Json<Value>) {
+/// 直接从环境变量读取（配置保存时已经写入 .env 并重新加载）
+/// 优先级：.env 文件（通过 save_all_configs 保存） > 默认值
+pub async fn get_site_metadata(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+    // 优先从数据库读取站点元数据配置
+    let config_service = crate::services::config_service::ConfigService::new(db.clone());
+    let db_config = config_service.load_config().await.ok();
+    
+    let get_value = |db_val: Option<String>, env_key: &str, default: &str| -> String {
+        db_val.filter(|v| !v.is_empty())
+            .or_else(|| std::env::var(env_key).ok())
+            .unwrap_or_else(|| default.to_string())
+    };
+    
     let metadata = json!({
-        "site_title": std::env::var("SITE_TITLE").unwrap_or_else(|_| "Myriad - 数字自我发现".to_string()),
-        "site_description": std::env::var("SITE_DESCRIPTION").unwrap_or_else(|_| "一键聚合你的多平台数据，生成AI个人分析报告".to_string()),
-        "site_favicon": std::env::var("SITE_FAVICON").unwrap_or_else(|_| "/favicon.svg".to_string()),
+        "site_title": get_value(
+            db_config.as_ref().and_then(|c| c.site_title.clone()),
+            "SITE_TITLE",
+            "Myriad - 数字自我发现"
+        ),
+        "site_description": get_value(
+            db_config.as_ref().and_then(|c| c.site_description.clone()),
+            "SITE_DESCRIPTION",
+            "一键聚合你的多平台数据，生成AI个人分析报告"
+        ),
+        "site_favicon": get_value(
+            db_config.as_ref().and_then(|c| c.site_favicon.clone()),
+            "SITE_FAVICON",
+            "/favicon.svg"
+        ),
     });
 
     (StatusCode::OK, Json(metadata))

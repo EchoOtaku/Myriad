@@ -68,12 +68,8 @@ impl AppConfig {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            base_url: env::var("BASE_URL")
-                .ok()
-                .filter(|s| !s.is_empty()),
-            frontend_url: env::var("FRONTEND_URL")
-                .ok()
-                .filter(|s| !s.is_empty()),
+            base_url: env::var("BASE_URL").ok().filter(|s| !s.is_empty()),
+            frontend_url: env::var("FRONTEND_URL").ok().filter(|s| !s.is_empty()),
         })
     }
 
@@ -152,8 +148,24 @@ pub struct DynamicConfig {
     // UI 配置
     pub ui_wallpaper_url: Option<String>,
     pub ui_wallpaper_blur: i32,
+    pub ui_theme: Option<String>,
+    pub ui_primary_color: Option<String>,
+    pub ui_secondary_color: Option<String>,
     pub pet_enabled: bool,
     pub pet_image_url: Option<String>,
+
+    // 站点元数据
+    pub site_title: Option<String>,
+    pub site_description: Option<String>,
+    pub site_favicon: Option<String>,
+
+    // 音乐配置
+    pub music_enabled: Option<String>,
+    pub music_source: Option<String>,
+    pub music_playlist_id: Option<String>,
+
+    // Twitter 额外字段
+    pub twitter_username: Option<String>,
 
     // 功能配置
     pub persona_image_enabled: bool,
@@ -197,8 +209,21 @@ impl Default for DynamicConfig {
 
             ui_wallpaper_url: None,
             ui_wallpaper_blur: 3,
+            ui_theme: None,
+            ui_primary_color: None,
+            ui_secondary_color: None,
             pet_enabled: true,
             pet_image_url: None,
+
+            site_title: None,
+            site_description: None,
+            site_favicon: None,
+
+            music_enabled: None,
+            music_source: None,
+            music_playlist_id: None,
+
+            twitter_username: None,
 
             persona_image_enabled: true,
             persona_image_provider: "pollinations".to_string(),

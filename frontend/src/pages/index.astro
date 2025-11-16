@@ -33,44 +33,13 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
       rel="stylesheet"
     />
     
-    <!-- 动态加载网站元数据 -->
-    <script define:vars={{ apiUrl }}>
-      async function loadSiteMetadata() {
-        // 如果没有配置 API URL，跳过加载
-        if (!apiUrl) {
-          console.info('API URL not configured, using default metadata');
-          return;
-        }
-        
-        try {
-          const response = await fetch(`${apiUrl}/api/config/metadata`);
-          if (response.ok) {
-            const metadata = await response.json();
-            
-            if (metadata.site_title) {
-              document.title = metadata.site_title;
-            }
-            
-            if (metadata.site_description) {
-              const metaDesc = document.getElementById('meta-description');
-              if (metaDesc) {
-                metaDesc.setAttribute('content', metadata.site_description);
-              }
-            }
-            
-            if (metadata.site_favicon) {
-              const favicon = document.getElementById('favicon-link');
-              if (favicon) {
-                favicon.setAttribute('href', metadata.site_favicon);
-              }
-            }
-          }
-        } catch (error) {
-          console.info('Backend not available, using default metadata');
-        }
-      }
+    <!-- 动态加载网站元数据 - 使用新的元数据管理工具 -->
+    <script>
+      // 导入元数据管理工具（需要在构建时处理）
+      import { initSiteMetadata } from '../utils/siteMetadata';
       
-      loadSiteMetadata();
+      // 立即初始化元数据（优先使用缓存，避免闪烁）
+      initSiteMetadata();
     </script>
   </head>
   <body class="antialiased">

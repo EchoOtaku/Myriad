@@ -2141,10 +2141,36 @@ pub async fn get_batch_user_info(
         }));
     }
 
-    // 2. 获取配置信息
+    // 2. 获取配置信息 - 仅返回平台启用状态，不返回敏感数据
     let (config_status, config_json) = crate::api::config::get_config(State(db.clone())).await;
     if config_status == StatusCode::OK {
-        response.config = Some(config_json.0);
+        let full_config = config_json.0;
+        // 只提取平台启用状态和图标，移除所有配置字段
+        if let Some(platforms) = full_config.get("platforms").and_then(|p| p.as_array()) {
+            let safe_platforms: Vec<_> = platforms
+                .iter()
+                .map(|platform| {
+                    json!({
+                        "name": platform.get("name"),
+                        "enabled": platform.get("enabled"),
+                        "has_token": platform.get("has_token"),
+                        "icon": platform.get("icon"),
+                        "description": platform.get("description"),
+                        // 移除 config_fields - 不返回任何配置值
+                    })
+                })
+                .collect();
+
+            response.config = Some(json!({
+                "platforms": safe_platforms,
+                // 不返回其他配置部分（ai_config, ui_config 等）
+            }));
+        } else {
+            response.config = Some(json!({
+                "success": false,
+                "message": "Failed to parse config"
+            }));
+        }
     } else {
         response.config = Some(json!({
             "success": false,
@@ -2163,13 +2189,15 @@ pub async fn get_batch_user_info(
         }));
     }
 
-    tracing::info!("✓ Batch user info fetched successfully");
+    tracing::info!("✓ Batch user info fetched successfully (sanitized)");
 
     (
         StatusCode::OK,
-        Json(serde_json::to_value(&response).unwrap_or_else(|_| json!({
-            "success": false,
-            "message": "Failed to serialize response"
-        }))),
+        Json(serde_json::to_value(&response).unwrap_or_else(|_| {
+            json!({
+                "success": false,
+                "message": "Failed to serialize response"
+            })
+        })),
     )
 }

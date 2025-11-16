@@ -161,12 +161,10 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/setup/create-admin",
         "/api/system/status",
         "/api/system/reload-config",
-        "/api/config",      // Allow config endpoints (will handle DB check in wrapper)
-        "/api/auth/login",  // Allow login endpoint
-        "/api/auth/me",     // Allow user info endpoint (for login state check)
-        "/api/auth/logout", // Allow logout endpoint
+        "/api/auth/login",           // Allow login endpoint
+        "/api/auth/me",              // Allow user info endpoint (for login state check)
+        "/api/auth/logout",          // Allow logout endpoint
         "/api/auth/change-password", // Allow change password endpoint
-        "/api/profile",     // Allow all profile endpoints (for UI display)
     ];
 
     // If in config mode and path is not whitelisted, return 503
@@ -299,6 +297,30 @@ async fn change_password_wrapper(
             })),
         )
             .into_response(),
+    }
+}
+
+/// Wrapper for get_site_metadata that gets DB from global state
+async fn get_site_metadata_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_site_metadata(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => {
+            // 返回默认元数据，不需要数据库连接
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "site_title": "Myriad - 数字自我发现",
+                    "site_description": "一键聚合你的多平台数据，生成AI个人分析报告",
+                    "site_favicon": "/favicon.svg"
+                })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -593,7 +615,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             get(get_config_wrapper).post(update_config_wrapper),
         )
         .route("/api/config/test", post(test_platform_wrapper))
-        .route("/api/config/metadata", get(api::config::get_site_metadata))
+        .route("/api/config/metadata", get(get_site_metadata_wrapper))
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)) // 🚀 性能优化：批量API
