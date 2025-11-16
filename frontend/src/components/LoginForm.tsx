@@ -85,13 +85,27 @@ const LoginForm: React.FC = () => {
         throw new Error('无效的token格式');
       }
 
-      // Save JWT token
-      localStorage.setItem('auth_token', data.token);
+      // ✅ 安全修复 P0: 不再将 token 存入 localStorage（防止 XSS 窃取）
+      // Token 已由后端通过 Set-Cookie 头设置为 HttpOnly Cookie
+      // localStorage.setItem('auth_token', data.token);
+      
+      // 仅存储用户信息（不包含敏感 token）
       localStorage.setItem('user_info', JSON.stringify(data.user));
 
-      // 触发自定义事件通知Layout更新用户信息
+      // 触发自定义事件通知Layout更新用户信息（携带管理员状态）
       window.dispatchEvent(new CustomEvent('auth-login-success', { 
-        detail: { user: data.user, token: data.token } 
+        detail: { 
+          user: data.user,
+          isAdmin: data.user?.is_admin || false
+        }
+      }));
+      
+      // 同时触发认证状态变化事件
+      window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+        detail: { 
+          isAuthenticated: true,
+          isAdmin: data.user?.is_admin || false
+        }
       }));
 
       // 延迟一下再跳转，让事件处理器先执行

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
+import { getCSRFToken } from '../utils/csrf';
 import './GlobalControlPanel.css';
 import LoginForm from './LoginForm';
 import {
@@ -292,18 +293,16 @@ const GlobalControlPanel: React.FC = () => {
   }, []);
 
   const checkAuth = useCallback(async () => {
-    const token = localStorage.getItem('auth_token');
-    setIsAuthenticated(!!token);
+    // ✅ 静默检查认证状态（不在控制台显示 401 错误）
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+      });
 
-    if (token) {
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        setIsAuthenticated(true); // ✅ API 调用成功，设置为已认证
 
           // 获取头像
           let avatar = `https://ui-avatars.com/api/?name=${userData.username}`;
@@ -322,10 +321,11 @@ const GlobalControlPanel: React.FC = () => {
           
           // 同时获取平台用户信息
           fetchUserInfo();
-        }
-      } catch {
+      } else {
         setIsAuthenticated(false);
       }
+    } catch {
+      setIsAuthenticated(false);
     }
   }, [fetchUserInfo]);
 
@@ -382,16 +382,24 @@ const GlobalControlPanel: React.FC = () => {
       return;
     }
 
-    const token = localStorage.getItem('auth_token');
     setPasswordSubmitting(true);
 
     try {
+      // 获取 CSRF Token
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setPasswordError('无法获取 CSRF Token，请刷新页面后重试');
+        setPasswordSubmitting(false);
+        return;
+      }
+
       const response = await fetch(`${API_URL}/api/auth/change-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'X-CSRF-Token': csrfToken,
         },
+        credentials: 'include',
         body: JSON.stringify({
           old_password: oldPassword,
           new_password: newPassword
@@ -808,13 +816,45 @@ const GlobalControlPanel: React.FC = () => {
     handleTogglePanel();
   }, [handleTogglePanel]);
 
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem('auth_token');
-    setIsAuthenticated(false);
-    setUser(null);
+  const handleLogout = useCallback(async () => {
+    // 先关闭面板
     handleClosePanel();
-    navigate('/login');
-  }, [navigate, handleClosePanel]);
+    
+    // 触发认证状态变化事件
+    window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+      detail: { 
+        isAuthenticated: false,
+        isAdmin: false
+      }
+    }));
+    
+    try {
+      // 调用后端退出API清除HttpOnly Cookie
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include', // 发送cookie
+      });
+    } catch (error) {
+      // 静默处理退出错误
+    }
+    
+    // 彻底清理所有本地状态和存储
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // 手动删除所有Cookie（双保险）
+    document.cookie.split(';').forEach(cookie => {
+      const name = cookie.split('=')[0].trim();
+      // 删除当前路径的cookie
+      document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`;
+      // 删除根路径的cookie
+      document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    });
+    
+    // 🔥 直接使用 window.location 强制重定向到登录页并刷新
+    // 这会清除所有 React 状态、内存中的数据，是最彻底的清理方式
+    window.location.href = '/login';
+  }, [handleClosePanel]);
 
   // 音乐播放器逻辑
   useEffect(() => {

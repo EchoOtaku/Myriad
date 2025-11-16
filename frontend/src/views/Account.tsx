@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import AnimatedView from '../components/AnimatedView';
+import { getCSRFToken } from '../utils/csrf';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import TokenManager from '../utils/tokenManager';
@@ -27,21 +28,11 @@ export default function Account() {
 
   // 加载账户信息
   useEffect(() => {
-    async function loadAccountInfo() {
-      const token = TokenManager.getToken();
-      
-      if (!token) {
-        window.location.href = '/login';
-        return;
-      }
-      if (!token) {
-        navigate('/login', { replace: true });
-        return;
-      }
-
+    async function checkAuth() {
+      // ✅ 直接调用 API 验证（不再手动检查 token，因为 HttpOnly Cookie 无法被 JS 读取）
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
         });
 
         if (!response.ok) {
@@ -75,7 +66,7 @@ export default function Account() {
       }
     }
 
-    loadAccountInfo();
+    checkAuth();
   }, [navigate]);
 
   // 处理修改密码
@@ -103,21 +94,24 @@ export default function Account() {
       return;
     }
 
-    const token = TokenManager.getToken();
-      
-      if (!token) {
-        window.location.href = '/login';
-        return;
-      }
     setSubmitting(true);
 
     try {
+      // 获取 CSRF Token
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setPasswordError('无法获取 CSRF Token，请刷新页面后重试');
+        setSubmitting(false);
+        return;
+      }
+
       const response = await fetch(`${API_URL}/api/auth/change-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'X-CSRF-Token': csrfToken,
         },
+        credentials: 'include',
         body: JSON.stringify({
           old_password: oldPassword,
           new_password: newPassword

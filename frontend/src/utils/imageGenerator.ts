@@ -2,6 +2,7 @@
 // API Docs: https://github.com/pollinations/pollinations/blob/master/APIDOCS.md
 
 import { API_URL } from '../config';
+import { getCSRFToken } from './csrf';
 
 interface ImageGenOptions {
     model?: 'flux' | 'flux-realism' | 'flux-anime' | 'flux-3d' | 'turbo';
@@ -31,6 +32,12 @@ async function generatePromptFromAPI(title: string, summary: string, category: s
             throw new Error('Invalid title');
         }
         
+        // 获取 CSRF Token
+        const csrfToken = await getCSRFToken(true);
+        if (!csrfToken) {
+            throw new Error('无法获取 CSRF Token');
+        }
+        
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         
@@ -38,7 +45,9 @@ async function generatePromptFromAPI(title: string, summary: string, category: s
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken,
             },
+            credentials: 'include',
             body: JSON.stringify({
                 title: title.substring(0, 500),
                 summary: summary.substring(0, 1000),

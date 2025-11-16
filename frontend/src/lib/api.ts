@@ -33,6 +33,7 @@ const api = axios.create({
   },
   timeout: 30000, // 30秒超时
   validateStatus: (status) => status < 500, // 只有5xx才算网络错误
+  withCredentials: true, // ✅ 自动发送 HttpOnly Cookie
 });
 
 // 验证 JWT token 格式
@@ -44,18 +45,16 @@ const isValidToken = (token: string): boolean => {
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(
-  (config) => {
-    // 添加 CSRF Token
-    const csrfToken = getCSRFToken();
+  async (config) => {
+    // ✅ 安全修复 P0: 异步获取 CSRF Token（从服务器）
+    const csrfToken = await getCSRFToken();
     if (csrfToken) {
       config.headers[getCSRFHeaderName()] = csrfToken;
     }
 
-    // 添加认证 Token（使用 TokenManager）
-    const token = TokenManager.getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    // ⚠️ HttpOnly Cookie 用于身份验证（自动发送，无需手动添加）
+    // TokenManager.getToken() 返回 null（HttpOnly Cookie 无法被 JS 读取）
+    // Axios 通过 withCredentials: true 自动发送 Cookie
 
     // Rate Limiting 检查（仅针对修改操作）
     if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {

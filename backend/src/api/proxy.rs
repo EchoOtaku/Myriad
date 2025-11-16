@@ -106,8 +106,18 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
     let response = match client.get(&url).header("Referer", referer).send().await {
         Ok(resp) => resp,
         Err(e) => {
-            tracing::error!("Failed to fetch image: {}", e);
-            return (StatusCode::BAD_GATEWAY, "Failed to fetch image").into_response();
+            tracing::error!("🚨 Image proxy failed - URL: {}, Error: {:?}", url, e);
+            // 区分不同类型的错误
+            if e.is_timeout() {
+                tracing::error!("   ⏱️  Timeout: Image request exceeded 10s limit");
+                return (StatusCode::GATEWAY_TIMEOUT, "Image request timeout").into_response();
+            } else if e.is_connect() {
+                tracing::error!("   🔌 Connection failed: Cannot reach image server");
+                return (StatusCode::BAD_GATEWAY, "Cannot connect to image server").into_response();
+            } else {
+                tracing::error!("   ❌ Unknown error: {:?}", e);
+                return (StatusCode::BAD_GATEWAY, "Failed to fetch image").into_response();
+            }
         }
     };
 

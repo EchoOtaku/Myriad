@@ -15,6 +15,7 @@ use std::env;
 pub struct Claims {
     pub sub: String,      // User ID
     pub username: String, // Username
+    pub is_admin: bool,   // ✅ 安全修复 P0: Admin status
     pub exp: i64,         // Expiration time
     pub iat: i64,         // Issued at
 }
@@ -45,12 +46,13 @@ pub async fn admin_middleware(req: Request, next: Next) -> Response {
 
     match verify_jwt_token(headers) {
         Ok(claims) => {
-            // Check if user is admin (simple username check)
-            // For most use cases, only the initial admin account needs admin privileges
-            if claims.username != "admin" {
+            // ✅ 安全修复 P0: 检查 is_admin 字段而不是用户名
+            // 这防止 GitHub 用户名为 "admin" 的用户获得管理员权限
+            if !claims.is_admin {
                 tracing::warn!(
-                    "⚠️  User {} attempted to access admin-only endpoint (Forbidden)",
-                    claims.username
+                    "⚠️  User {} (is_admin={}) attempted to access admin-only endpoint (Forbidden)",
+                    claims.username,
+                    claims.is_admin
                 );
                 return (
                     StatusCode::FORBIDDEN,
@@ -62,7 +64,10 @@ pub async fn admin_middleware(req: Request, next: Next) -> Response {
                     .into_response();
             }
 
-            tracing::info!("✅ Admin access granted to user: {}", claims.username);
+            tracing::info!(
+                "✅ Admin access granted to user: {} (is_admin=true)",
+                claims.username
+            );
             next.run(req).await
         }
         Err(error_response) => *error_response,
@@ -94,7 +99,7 @@ pub fn verify_jwt_token(headers: &HeaderMap) -> Result<Claims, Box<Response>> {
                 })
         })
         .ok_or_else(|| {
-            tracing::warn!("Missing or invalid Authorization header/cookie");
+            tracing::debug!("Missing or invalid Authorization header/cookie");
             Box::new(
                 (
                     StatusCode::UNAUTHORIZED,
@@ -129,7 +134,7 @@ pub fn verify_jwt_token(headers: &HeaderMap) -> Result<Claims, Box<Response>> {
         &Validation::default(),
     )
     .map_err(|e| {
-        tracing::warn!("Invalid JWT token: {:?}", e);
+        tracing::debug!("Invalid JWT token: {:?}", e);
         Box::new(
             (
                 StatusCode::UNAUTHORIZED,

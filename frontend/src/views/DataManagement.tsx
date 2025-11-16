@@ -8,7 +8,7 @@ import AnimatedView from '../components/AnimatedView';
 import Toast from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
-import TokenManager from '../utils/tokenManager';
+import { getCSRFToken } from '../utils/csrf';
 import '../components/ConfigForm.css';
 
 interface PlatformMetadata {
@@ -57,18 +57,13 @@ export default function DataManagement() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [expandedReports, setExpandedReports] = useState<Set<string>>(new Set());
 
-  // 检查管理员权限
+  // 检查管理员权限并预加载 CSRF Token
   useEffect(() => {
     async function checkAdmin() {
-      const token = TokenManager.getToken();
-      if (!token) {
-        navigate('/login', { replace: true });
-        return;
-      }
-
+      // ✅ 直接调用 API 验证（不再手动检查 token，因为 HttpOnly Cookie 无法被 JS 读取）
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
         });
 
         if (!response.ok) {
@@ -77,10 +72,15 @@ export default function DataManagement() {
         }
 
         const user = await response.json();
+        
         if (!user.is_admin) {
           navigate('/', { replace: true });
           return;
         }
+
+        // 预加载 CSRF Token（确保在执行任何操作前 Token 已准备好）
+        // 强制从服务器获取新 Token
+        await getCSRFToken(true);
 
         setIsAdmin(true);
       } catch (error) {
@@ -97,9 +97,8 @@ export default function DataManagement() {
   const loadMetadata = async () => {
     setMetadataLoading(true);
     try {
-      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/metadata`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
       });
       const data = await response.json();
       
@@ -132,10 +131,14 @@ export default function DataManagement() {
   const loadReports = async () => {
     setReportsLoading(true);
     try {
-      const token = TokenManager.getToken();
       const response = await fetch(`${API_URL}/api/profile/reports`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
       
       if (data.success && data.reports && Array.isArray(data.reports)) {
@@ -143,7 +146,7 @@ export default function DataManagement() {
         const reportPromises = data.reports.map(async (reportSummary: any) => {
           try {
             const detailResponse = await fetch(`${API_URL}/api/profile/reports/${reportSummary.id}`, {
-              headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+              credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
             });
             const detailData = await detailResponse.json();
             
@@ -172,25 +175,49 @@ export default function DataManagement() {
     }
   };
 
-  // 强制刷新单个平台数据
+  // 刷新单个平台数据
   const refreshSinglePlatform = async (platformName: string) => {
-    if (!confirm(`确定要强制刷新 ${platformName} 的数据吗？`)) return;
+    if (!confirm(`确定要刷新 ${platformName} 的数据吗？将清理缓存并重新获取。`)) return;
     
     setRefreshingPlatform(platformName);
     try {
-      const token = TokenManager.getToken();
+      // 获取新的 CSRF Token（强制刷新）
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setMessage('✗ 无法获取 CSRF Token，请刷新页面后重试');
+        setTimeout(() => setMessage(''), 5000);
+        setRefreshingPlatform(null);
+        return;
+      }
       
       // 第一步：删除缓存
-      await fetch(`${API_URL}/api/profile/cache`, {
+      const cacheResponse = await fetch(`${API_URL}/api/profile/cache`, {
         method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
+      
+      if (!cacheResponse.ok) {
+        const errorData = await cacheResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || `删除缓存失败 (${cacheResponse.status})`);
+      }
       
       // 第二步：重新获取所有平台数据
       const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
         method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `获取数据失败 (${response.status})`);
+      }
+      
       const data = await response.json();
       
       if (data.success) {
@@ -199,8 +226,9 @@ export default function DataManagement() {
       } else {
         setMessage('✗ ' + (data.message || '刷新失败'));
       }
-    } catch (error) {
-      setMessage('✗ 刷新失败');
+    } catch (error: any) {
+      setMessage('✗ ' + (error.message || '刷新失败'));
+      console.error('Refresh failed:', error);
     } finally {
       setRefreshingPlatform(null);
       setTimeout(() => setMessage(''), 5000);
@@ -212,10 +240,20 @@ export default function DataManagement() {
     if (!confirm(`确定要删除 ${platformName} 的缓存数据吗？删除后需要重新获取。`)) return;
     
     try {
-      const token = TokenManager.getToken();
+      // 获取新的 CSRF Token（强制刷新）
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setMessage('✗ 无法获取 CSRF Token，请刷新页面后重试');
+        setTimeout(() => setMessage(''), 3000);
+        return;
+      }
+      
       const response = await fetch(`${API_URL}/api/profile/cache`, {
         method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
       const data = await response.json();
       
@@ -238,18 +276,29 @@ export default function DataManagement() {
     
     setMetadataLoading(true);
     try {
-      const token = TokenManager.getToken();
+      // 获取新的 CSRF Token（强制刷新）
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setMessage('✗ 无法获取 CSRF Token，请刷新页面后重试');
+        return;
+      }
       
       // 第一步：删除缓存
       await fetch(`${API_URL}/api/profile/cache`, {
         method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
       
       // 第二步：重新获取所有平台数据
       const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
         method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
       const data = await response.json();
       
@@ -259,8 +308,8 @@ export default function DataManagement() {
       } else {
         setMessage('✗ ' + (data.message || '操作失败'));
       }
-    } catch (error) {
-      setMessage('✗ 操作失败');
+    } catch (error: any) {
+      setMessage('✗ ' + (error.message || '操作失败'));
     } finally {
       setMetadataLoading(false);
       setTimeout(() => setMessage(''), 5000);
@@ -272,10 +321,20 @@ export default function DataManagement() {
     if (!confirm('确定要删除这个报告吗？')) return;
     
     try {
-      const token = TokenManager.getToken();
+      // 获取新的 CSRF Token（强制刷新）
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setMessage('✗ 无法获取 CSRF Token');
+        setTimeout(() => setMessage(''), 3000);
+        return;
+      }
+      
       const response = await fetch(`${API_URL}/api/profile/reports/${reportId}`, {
         method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
       const data = await response.json();
       
@@ -296,13 +355,21 @@ export default function DataManagement() {
     if (!confirm(`确定要删除卡片 "${cardTitle}" 吗？`)) return;
     
     try {
-      const token = TokenManager.getToken();
+      // 获取新的 CSRF Token（强制刷新）
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setMessage('✗ 无法获取 CSRF Token');
+        setTimeout(() => setMessage(''), 3000);
+        return;
+      }
+      
       const response = await fetch(`${API_URL}/api/profile/reports/${reportId}/cards`, {
         method: 'DELETE',
-        headers: token ? {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        } : { 'Content-Type': 'application/json' },
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
         body: JSON.stringify({ card_index: cardIndex })
       });
       const data = await response.json();
@@ -325,10 +392,20 @@ export default function DataManagement() {
     if (!confirm('再次确认：真的要删除所有报告吗？')) return;
     
     try {
-      const token = TokenManager.getToken();
-      const response = await fetch(`${API_URL}/api/profile/reports/all`, {
+      // 获取新的 CSRF Token（强制刷新）
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        setMessage('✗ 无法获取 CSRF Token');
+        setTimeout(() => setMessage(''), 3000);
+        return;
+      }
+      
+      const response = await fetch(`${API_URL}/api/profile/clear-all`, {
         method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
       const data = await response.json();
       

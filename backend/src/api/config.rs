@@ -527,7 +527,8 @@ async fn save_to_database(
                         "token" => "github_token",
                         _ => continue,
                     };
-                    if !field.value.is_empty() {
+                    // 🔒 忽略屏蔽值（前端返回的掩码）
+                    if !field.value.is_empty() && !field.value.starts_with("••") {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
                 }
@@ -546,7 +547,8 @@ async fn save_to_database(
                         "steam_id" => "steam_id",
                         _ => continue,
                     };
-                    if !field.value.is_empty() {
+                    // 🔒 忽略屏蔽值（前端返回的掩码）
+                    if !field.value.is_empty() && !field.value.starts_with("••") {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
                 }
@@ -558,7 +560,8 @@ async fn save_to_database(
                         "bearer_token" => "twitter_bearer_token",
                         _ => continue,
                     };
-                    if !field.value.is_empty() {
+                    // 🔒 忽略屏蔽值（前端返回的掩码）
+                    if !field.value.is_empty() && !field.value.starts_with("••") {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
                 }
@@ -585,7 +588,8 @@ async fn save_to_database(
             "openai_base_url" => "openai_base_url",
             _ => continue,
         };
-        if !field.value.is_empty() {
+        // 🔒 忽略屏蔽值（前端返回的掩码）- 保持数据库原值不变
+        if !field.value.is_empty() && !field.value.starts_with("••") {
             updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
         }
     }
@@ -624,7 +628,8 @@ async fn save_to_database(
             "imaginepro_callback_url" => ("imaginepro_callback_url", JsonValue::String(field.value.clone())),
             _ => continue,
         };
-        if !field.value.is_empty() {
+        // 🔒 忽略屏蔽值（前端返回的掩码）
+        if !field.value.is_empty() && !field.value.starts_with("••") {
             updates.insert(key.to_string(), json_value);
         }
     }
@@ -659,7 +664,8 @@ async fn save_to_database(
             "music_playlist_id" => ("music_playlist_id", JsonValue::String(field.value.clone())),
             _ => continue,
         };
-        if !field.value.is_empty() {
+        // 🔒 忽略屏蔽值（前端返回的掩码）- github_client_secret 是敏感字段
+        if !field.value.is_empty() && !field.value.starts_with("••") {
             updates.insert(key.to_string(), json_value);
         }
     }

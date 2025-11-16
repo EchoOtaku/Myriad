@@ -130,27 +130,35 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
     // Get endpoint path
     let path = req.uri().path().to_string();
 
-    // Apply different limits based on endpoint type
+    // ✅ 安全修复 P0: 使用全局单例，确保限流计数器跨请求持久化
+    // 不同类型的端点使用不同的路径前缀来区分限流规则
     let (allowed, retry_after) = if is_sensitive_endpoint(&path) {
-        // Stricter limits for login/auth endpoints
-        let config = RateLimitConfig {
-            max_requests: 5,
-            window: Duration::from_secs(300), // 5 requests per 5 minutes
+        // 敏感端点：5次请求/5分钟（全局限流器会跟踪每个IP+endpoint组合）
+        let _ = RATE_LIMITER.check_limit(ip, &path).await; // 记录请求
+                                                           // 手动检查是否超过敏感端点的阈值
+        let record_count = {
+            let records = RATE_LIMITER.records.read().await;
+            records
+                .get(&ip)
+                .and_then(|ip_rec| ip_rec.get(&path))
+                .map(|rec| rec.count)
+                .unwrap_or(0)
         };
-        let limiter = RateLimiter::new(config);
-        let allowed = limiter.check_limit(ip, &path).await;
-        (allowed, 300)
+        (record_count <= 5, 300)
     } else if is_compute_intensive(&path) {
-        // Medium limits for analysis/fetch endpoints
-        let config = RateLimitConfig {
-            max_requests: 10,
-            window: Duration::from_secs(60), // 10 requests per minute
+        // 计算密集型端点：10次请求/分钟
+        let _ = RATE_LIMITER.check_limit(ip, &path).await; // 记录请求
+        let record_count = {
+            let records = RATE_LIMITER.records.read().await;
+            records
+                .get(&ip)
+                .and_then(|ip_rec| ip_rec.get(&path))
+                .map(|rec| rec.count)
+                .unwrap_or(0)
         };
-        let limiter = RateLimiter::new(config);
-        let allowed = limiter.check_limit(ip, &path).await;
-        (allowed, 60)
+        (record_count <= 10, 60)
     } else {
-        // Standard limits for other endpoints
+        // 标准端点：使用默认配置（100次/分钟）
         let allowed = RATE_LIMITER.check_limit(ip, &path).await;
         (allowed, 60)
     };

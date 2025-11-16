@@ -272,6 +272,7 @@ pub async fn local_login(
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.clone(),
+        is_admin, // ✅ 安全修复 P0: 从数据库读取 is_admin
         exp: (Utc::now() + Duration::days(30)).timestamp(),
         iat: Utc::now().timestamp(),
     };

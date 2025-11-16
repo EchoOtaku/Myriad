@@ -17,16 +17,10 @@ export default function Config() {
   // 检查管理员权限
   useEffect(() => {
     async function checkAdmin() {
-      const token = TokenManager.getToken();
-      
-      if (!token) {
-        navigate('/login', { replace: true });
-        return;
-      }
-
+      // ✅ 直接调用 API 验证（不再手动检查 token，因为 HttpOnly Cookie 无法被 JS 读取）
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
         });
 
         if (!response.ok) {

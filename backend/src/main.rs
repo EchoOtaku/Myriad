@@ -458,23 +458,9 @@ async fn get_current_user_wrapper(headers: axum::http::HeaderMap) -> Response {
     }
 }
 
-/// Wrapper for logout that gets DB from global state
+/// Wrapper for logout - no auth required, just clear cookie
 async fn logout_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let response = api::auth::logout(axum::extract::State(db.clone())).await;
-            response.into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，认证功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
+    api::auth::logout().await.into_response()
 }
 
 /// Wrapper for get_user_info that gets DB from global state
@@ -708,7 +694,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/auth/me", get(get_current_user_wrapper))
         .route(
             "/api/auth/logout",
-            post(logout_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(logout_wrapper), // 不需要认证中间件
         )
         .route(
             "/api/auth/change-password",
@@ -728,6 +714,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/config/metadata", get(get_site_metadata_wrapper)) // 🔓 公开端点：网站元数据
         .route("/api/config/public", get(get_public_config_wrapper)) // 🔓 公开端点：平台公开信息（用于社交链接）
         .route("/api/config/ui", get(get_public_ui_config_wrapper)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
+        // ✅ 安全修复 P0: CSRF Token 获取端点
+        .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)); // 🚀 性能优化：批量API
@@ -815,7 +803,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/profile/report",
                 post(api::profile::generate_report)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             .route(
                 "/api/profile/reports/:id",
@@ -901,6 +889,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Apply middleware and layers
     let api_router = api_router
         .layer(from_fn(config_mode_middleware))
+        .layer(from_fn(middleware::csrf::csrf_middleware)) // ✅ 安全修复 P0: CSRF 防护
         .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
         .layer(cors)
         .layer(TraceLayer::new_for_http());

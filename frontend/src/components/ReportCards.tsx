@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
 import Loader from './Loader';
+import TokenManager from '../utils/tokenManager';
+import { getCSRFToken } from '../utils/csrf';
 import './ReportCards.css';
 
 interface UserInfo {
@@ -122,43 +124,21 @@ export default function ReportCards() {
         return result;
     }, []); // 空依赖数组，函数不侚重新创建
 
-    // 检测用户是否为管理员
+    // 检测用户是否为管理员（静默处理，不主动请求）
     useEffect(() => {
-        const checkAdminStatus = async () => {
-            const token = localStorage.getItem('auth_token');
-            if (!token) {
-                setIsAdmin(false);
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_URL}/api/auth/me`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (response.ok) {
-                    const user = await response.json();
-                    setIsAdmin(user.is_admin === true);
-                } else {
-                    setIsAdmin(false);
-                }
-            } catch (error) {
+        // 监听登录状态变化时更新管理员状态
+        const handleAuthChange = (e: Event) => {
+            const customEvent = e as CustomEvent;
+            if (customEvent.detail?.isAuthenticated && customEvent.detail?.isAdmin !== undefined) {
+                setIsAdmin(customEvent.detail.isAdmin === true);
+            } else {
                 setIsAdmin(false);
             }
         };
 
-        checkAdminStatus();
-
-        // 监听登录状态变化
-        const handleAuthChange = () => {
-            checkAdminStatus();
-        };
-
-        window.addEventListener('auth-state-changed', handleAuthChange);
+        window.addEventListener('auth-state-changed', handleAuthChange as EventListener);
         return () => {
-            window.removeEventListener('auth-state-changed', handleAuthChange);
+            window.removeEventListener('auth-state-changed', handleAuthChange as EventListener);
         };
     }, []);
 
@@ -447,8 +427,19 @@ export default function ReportCards() {
             setProgress('步骤 1/3: 正在连接平台获取数据...');
             setProgressPercent(10);
 
+            // 获取 CSRF Token
+            const csrfToken = await getCSRFToken(true);
+            if (!csrfToken) {
+                throw new Error('无法获取 CSRF Token');
+            }
+
             const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                },
+                credentials: 'include',
             });
 
             setProgressPercent(40);
@@ -475,12 +466,20 @@ export default function ReportCards() {
         try {
             setPersonaLoading(true);
 
+            // 获取 CSRF Token
+            const csrfToken = await getCSRFToken(true);
+            if (!csrfToken) {
+                throw new Error('无法获取 CSRF Token');
+            }
+
             // 生成新人设
             const response = await fetch(`${API_URL}/api/persona/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
                 },
+                credentials: 'include', // ✅ 发送认证 Cookie
                 body: JSON.stringify({}),
             });
 
@@ -562,6 +561,12 @@ export default function ReportCards() {
         try {
             setGeneratingImage(true);
             
+            // 获取 CSRF Token
+            const csrfToken = await getCSRFToken(true);
+            if (!csrfToken) {
+                throw new Error('无法获取 CSRF Token');
+            }
+            
             // 获取当前人设的slot
             const currentSlot = personaData?.slot || 0;
             
@@ -569,8 +574,9 @@ export default function ReportCards() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                    'X-CSRF-Token': csrfToken,
                 },
+                credentials: 'include',
                 body: JSON.stringify({ 
                     image_prompt: prompt,
                     slot: currentSlot 
@@ -612,11 +618,20 @@ export default function ReportCards() {
 
         try {
             setPersonaLoading(true);
+            
+            // 获取 CSRF Token
+            const csrfToken = await getCSRFToken(true);
+            if (!csrfToken) {
+                throw new Error('无法获取 CSRF Token');
+            }
+            
             const response = await fetch(`${API_URL}/api/persona/delete`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
                 },
+                credentials: 'include', // ✅ 发送认证 Cookie
                 body: JSON.stringify({ slot }),
             });
 
@@ -655,6 +670,12 @@ export default function ReportCards() {
             setProgress('步骤 2/3: AI 正在分析数据...');
             setProgressPercent(55);
             
+            // 获取 CSRF Token
+            const csrfToken = await getCSRFToken(true);
+            if (!csrfToken) {
+                throw new Error('无法获取 CSRF Token');
+            }
+            
             const url = forceRefresh 
                 ? `${API_URL}/api/profile/report?force=true`
                 : `${API_URL}/api/profile/report`;
@@ -663,7 +684,9 @@ export default function ReportCards() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
                 },
+                credentials: 'include', // ✅ 发送认证 Cookie
                 body: JSON.stringify(data),
             });
 
@@ -697,20 +720,6 @@ export default function ReportCards() {
     const handleGenerateReport = useCallback(async (forceRefresh: boolean = false) => {
         // 防止重复调用
         if (loading) {
-            return;
-        }
-
-        // 检查登录状态
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
-            setError('请先登录后再生成报告');
-            // 可选：显示一个提示模态框或跳转到登录
-            alert('请先登录后再生成报告');
-            // 移除loading类
-            const generateBtn = document.getElementById('generate-report-btn');
-            if (generateBtn) {
-                generateBtn.classList.remove('loading');
-            }
             return;
         }
 

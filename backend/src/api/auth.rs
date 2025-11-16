@@ -23,6 +23,7 @@ use crate::oauth_url_builder::OAuthUrlBuilder;
 pub struct Claims {
     pub sub: String,      // User ID
     pub username: String, // GitHub username
+    pub is_admin: bool,   // ✅ 安全修复 P0: Admin status from database
     pub exp: i64,         // Expiration time
     pub iat: i64,         // Issued at
 }
@@ -417,6 +418,31 @@ pub async fn github_callback(
         })?
     };
 
+    // ✅ 安全修复 P0: 查询用户的 is_admin 状态
+    let is_admin_query = "SELECT is_admin FROM users WHERE id = $1";
+    let is_admin_result = _db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            is_admin_query,
+            vec![SeaValue::Int(Some(user_id))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to query is_admin: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "User not found after creation"})),
+            )
+        })?;
+
+    let is_admin: bool = is_admin_result.try_get("", "is_admin").unwrap_or(false);
+
     // Generate JWT token
     let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
         tracing::error!("JWT_SECRET not set");
@@ -428,6 +454,7 @@ pub async fn github_callback(
     let claims = Claims {
         sub: user_id.to_string(),
         username: user_info.login.clone(),
+        is_admin, // ✅ 安全修复 P0: 从数据库读取
         exp: (Utc::now() + Duration::days(30)).timestamp(),
         iat: Utc::now().timestamp(),
     };
@@ -447,7 +474,7 @@ pub async fn github_callback(
 
     tracing::info!("✅ JWT token created for user: {}", user_info.login);
 
-    // 设置 HttpOnly Cookie（安全）
+    // ✅ 安全修复 P0: 设置 HttpOnly Cookie（安全）
     let is_production =
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
     let cookie_value = format!(
@@ -456,8 +483,9 @@ pub async fn github_callback(
         if is_production { "; Secure" } else { "" } // 生产环境启用 Secure 标志
     );
 
-    // Redirect to frontend with token (向后兼容：URL参数)
-    let redirect_url = format!("{}/?token={}", frontend_url, token);
+    // ✅ 安全修复 P0: 移除 URL 中的 token 参数，防止通过历史记录/Referer泄露
+    // 前端将完全依赖 HttpOnly Cookie 进行认证
+    let redirect_url = format!("{}/?auth=success", frontend_url);
 
     // 构建包含 Set-Cookie 的响应
     let mut response = Redirect::to(&redirect_url).into_response();
@@ -465,6 +493,7 @@ pub async fn github_callback(
         .headers_mut()
         .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
 
+    tracing::info!("✅ GitHub OAuth successful, redirecting with HttpOnly cookie (no URL token)");
     Ok(response)
 }
 
@@ -496,7 +525,7 @@ pub async fn get_current_user(
                 })
         })
         .ok_or_else(|| {
-            tracing::warn!("Missing or invalid Authorization header/cookie");
+            tracing::debug!("Missing or invalid Authorization header/cookie");
             (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
@@ -524,7 +553,7 @@ pub async fn get_current_user(
         &jsonwebtoken::Validation::default(),
     )
     .map_err(|e| {
-        tracing::warn!("Invalid JWT token: {:?}", e);
+        tracing::debug!("Invalid JWT token: {:?}", e);
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({
@@ -567,7 +596,7 @@ pub async fn get_current_user(
         })?;
 
     let user_row = user_result.ok_or_else(|| {
-        tracing::warn!("User not found: {}", user_id);
+        tracing::debug!("User not found: {}", user_id);
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({
@@ -681,7 +710,7 @@ pub async fn link_github_account(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     // ✅ P1 安全修复：从 JWT token 提取 user_id，而不是信任客户端
     use crate::middleware::auth::verify_jwt_token;
-    
+
     let claims = verify_jwt_token(&headers).map_err(|_err_response| {
         tracing::error!("Failed to verify JWT token for link-github operation");
         // verify_jwt_token 返回 Box<Response>，我们需要解包
@@ -693,7 +722,7 @@ pub async fn link_github_account(
             })),
         )
     })?;
-    
+
     // 从 JWT 的 sub (subject) 字段提取 user_id
     let user_id: i32 = claims.sub.parse().map_err(|e| {
         tracing::error!("Invalid user ID in JWT token: {:?}", e);
@@ -705,7 +734,7 @@ pub async fn link_github_account(
             })),
         )
     })?;
-    
+
     tracing::info!(
         "🔗 Linking GitHub account for authenticated user: {} (from JWT token, not client)",
         user_id
@@ -872,12 +901,26 @@ pub async fn link_github_account(
 
 /// POST /api/auth/logout
 /// Logout user and invalidate session
-pub async fn logout(State(_db): State<DatabaseConnection>) -> Json<Value> {
-    // TODO: Invalidate session token in database
-    Json(json!({
+/// 不需要认证，彻底清理Cookie
+pub async fn logout() -> impl IntoResponse {
+    tracing::info!("🚪 User logout - clearing auth cookie");
+
+    // 清除 HttpOnly Cookie（设置为空值+立即过期+删除标记）
+    // 使用 Expires 和 Max-Age 双重保险确保Cookie被删除
+    let cookie_value = "auth_token=deleted; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+    let mut response = Json(json!({
         "success": true,
         "message": "Logged out successfully"
     }))
+    .into_response();
+
+    response
+        .headers_mut()
+        .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
+
+    tracing::info!("✅ Auth cookie cleared");
+    response
 }
 
 // Helper function to hash token

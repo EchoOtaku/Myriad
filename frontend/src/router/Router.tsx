@@ -3,9 +3,9 @@
  * 管理所有路由逻辑、权限验证、页面过渡动画
  */
 
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { Suspense, lazy, useEffect } from 'react';
 import { routes } from './routes';
 
 // 懒加载页面组件
@@ -18,17 +18,49 @@ const Setup = lazy(() => import('../views/Setup.tsx'));
 
 /**
  * 路由守卫：检查认证状态
+ * ✅ 使用 API 验证（HttpOnly Cookie 无法被 JS 读取）
  */
 function RequireAuth({ children, requiresAdmin }: { children: JSX.Element; requiresAdmin?: boolean }) {
-  const token = localStorage.getItem('auth_token');
-  
-  if (!token) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setIsAuthenticated(true);
+          setIsAdmin(userData.is_admin || false);
+        } else {
+          // 401 是正常的未登录状态，静默处理
+          setIsAuthenticated(false);
+        }
+      } catch {
+        // 网络错误时静默处理
+        setIsAuthenticated(false);
+      }
+    }
+
+    checkAuth();
+  }, []);
+
+  // 加载中
+  if (isAuthenticated === null) {
+    return <div>Loading...</div>;
+  }
+
+  // 未认证
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiresAdmin) {
-    // TODO: 检查管理员权限
-    // 暂时允许所有已认证用户访问
+  // 需要管理员权限但不是管理员
+  if (requiresAdmin && !isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

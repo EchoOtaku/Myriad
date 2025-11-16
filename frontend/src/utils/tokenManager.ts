@@ -18,6 +18,9 @@ export class TokenManager {
 
   /**
    * 从 Cookie 中读取 Token
+   * ⚠️ 注意：HttpOnly Cookie 无法被 JavaScript 读取（这是安全特性）
+   * 如果后端设置了 HttpOnly 标志，此方法将返回 null
+   * 在这种情况下，应使用 credentials: 'include' 让浏览器自动发送 Cookie
    */
   private static getTokenFromCookie(): string | null {
     try {
@@ -35,22 +38,19 @@ export class TokenManager {
   }
 
   /**
-   * 获取 Token（优先从 Cookie，其次从 localStorage）
+   * 获取 Token（仅从 HttpOnly Cookie 读取）
+   * ✅ 安全修复 P0: 移除 localStorage 回退，强制使用 HttpOnly Cookie
    */
   static getToken(): string | null {
     try {
-      // 优先从 HttpOnly Cookie 读取（更安全）
+      // ✅ 安全修复 P0: 仅从 HttpOnly Cookie 读取（XSS 无法窃取）
       const cookieToken = this.getTokenFromCookie();
       if (cookieToken && this.isValidToken(cookieToken)) {
         return cookieToken;
       }
 
-      // 回退到 localStorage（向后兼容）
-      const storageToken = localStorage.getItem(this.TOKEN_KEY);
-      if (storageToken && this.isValidToken(storageToken)) {
-        return storageToken;
-      }
-
+      // ✅ 安全修复 P0: 不再回退到 localStorage
+      // 如果 Cookie 中没有 Token，说明用户未登录或 Token 已过期
       return null;
     } catch {
       return null;
@@ -58,7 +58,9 @@ export class TokenManager {
   }
 
   /**
-   * 设置 Token（同时保存到 localStorage，Cookie 由后端设置）
+   * 设置 Token（仅用于向后兼容，实际Token由后端通过HttpOnly Cookie设置）
+   * ✅ 安全修复 P0: 不再将 Token 存入 localStorage（防止 XSS 窃取）
+   * @deprecated 该方法仅用于向后兼容，新代码应依赖 HttpOnly Cookie
    */
   static setToken(token: string): void {
     try {
@@ -66,13 +68,14 @@ export class TokenManager {
         throw new Error('Invalid token format');
       }
       
-      // 保存到 localStorage（向后兼容）
-      localStorage.setItem(this.TOKEN_KEY, token);
+      // ✅ 安全修复 P0: 不再保存到 localStorage（容易被 XSS 窃取）
+      // localStorage.setItem(this.TOKEN_KEY, token);
       
       // HttpOnly Cookie 由后端在 Set-Cookie 头中设置，前端无法设置
-      // 这里只是文档说明
+      // Token 仅存储在 HttpOnly Cookie 中，JavaScript 无法访问
+      console.info('✅ Token should be set via HttpOnly Cookie by backend');
     } catch (e) {
-      console.error('Failed to store token:', e);
+      console.error('Failed to validate token:', e);
       throw e;
     }
   }

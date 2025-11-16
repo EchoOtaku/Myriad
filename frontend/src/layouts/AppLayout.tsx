@@ -438,39 +438,51 @@ export function AppLayout({ children }: AppLayoutProps) {
     prevPathRef.current = currentPath;
   }, [location.pathname, showLibraryFilters]);
 
-  // 检查认证状态
-  const checkAuth = useCallback(async () => {
-    const token = localStorage.getItem('auth_token');
-    setIsAuthenticated(!!token);
-
-    if (token) {
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+  // 检查认证状态（默认静默处理，不在控制台显示 401 错误）
+  const checkAuth = useCallback(async (silent = true) => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        credentials: 'include',
+      });
         
-        if (response.ok) {
-          const user = await response.json();
-          setIsAdmin(user.is_admin || false);
-          
-          // 获取头像
-          try {
-            const profileResponse = await fetch(`${API_URL}/api/profile/user-info`);
-            if (profileResponse.ok) {
-              const profileData = await profileResponse.json();
-              if (profileData.success && profileData.user_info?.avatar) {
-                setUserAvatar(profileData.user_info.avatar);
-              } else {
-                setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
-              }
+      if (response.ok) {
+        const user = await response.json();
+        setIsAuthenticated(true);
+        setIsAdmin(user.is_admin || false);
+        
+        // 获取头像
+        try {
+          const profileResponse = await fetch(`${API_URL}/api/profile/user-info`, {
+            credentials: 'include',
+          });
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json();
+            if (profileData.success && profileData.user_info?.avatar) {
+              setUserAvatar(profileData.user_info.avatar);
+            } else {
+              setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
             }
-          } catch {
-            setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
           }
+        } catch {
+          setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
         }
-      } catch {
+      } else {
+        // 401 是正常的未登录状态，静默处理
+        if (!silent && response.status !== 401) {
+          console.warn('Authentication check failed:', response.status);
+        }
         setIsAuthenticated(false);
+        setIsAdmin(false);
+        setUserAvatar('');
       }
+    } catch (error) {
+      // 只在非静默模式下记录网络错误
+      if (!silent) {
+        console.error('Network error during auth check:', error);
+      }
+      setIsAuthenticated(false);
+      setIsAdmin(false);
+      setUserAvatar('');
     }
   }, []);
 
@@ -575,10 +587,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, []);
 
-  // 初始化
+  // 初始化：加载壁纸和检查认证
   useEffect(() => {
-    checkAuth();
     loadWallpaper();
+    // ✅ 总是检查认证状态（静默模式），因为使用 HttpOnly Cookie 无法从 JavaScript 读取
+    // 即使未登录也会返回 401，但静默处理，不显示错误
+    checkAuth(true);
   }, [checkAuth, loadWallpaper]);
 
   // 初始化导航岛高度 - 仅在组件首次挂载时执行
@@ -649,9 +663,20 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 监听认证状态变化
   useEffect(() => {
     const handleAuthChange = (e: CustomEvent) => {
-      setIsAuthenticated(e.detail?.isAuthenticated ?? false);
-      if (e.detail?.isAuthenticated) {
-        checkAuth();
+      const isAuth = e.detail?.isAuthenticated ?? false;
+      setIsAuthenticated(isAuth);
+      
+      if (isAuth) {
+        // 登录成功，重新检查认证
+        checkAuth().then(() => {
+          // 认证检查完成后，再次触发事件，携带管理员状态
+          const adminStatus = e.detail?.isAdmin ?? false;
+          setIsAdmin(adminStatus);
+        });
+      } else {
+        // 退出登录，清理状态
+        setIsAdmin(false);
+        setUserAvatar('');
       }
     };
 

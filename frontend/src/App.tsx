@@ -3,9 +3,9 @@
  * 集成路由器和布局，构建 SPA 核心
  */
 
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { Suspense, lazy, useEffect, useRef } from 'react';
 import { AppLayout } from './layouts/AppLayout';
 import { recordNavigation } from './router/navigationHistory';
 import RouteLoader from './components/RouteLoader';
@@ -25,12 +25,49 @@ const Setup = lazy(() => import('./views/Setup.tsx'));
 
 /**
  * 路由守卫：检查认证状态
+ * ✅ 使用 API 验证（HttpOnly Cookie 无法被 JS 读取）
  */
 function RequireAuth({ children, requiresAdmin }: { children: JSX.Element; requiresAdmin?: boolean }) {
-  const token = localStorage.getItem('auth_token');
-  
-  if (!token) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setIsAuthenticated(true);
+          setIsAdmin(userData.is_admin || false);
+        } else {
+          // 401 是正常的未登录状态，静默处理
+          setIsAuthenticated(false);
+        }
+      } catch {
+        // 网络错误时静默处理
+        setIsAuthenticated(false);
+      }
+    }
+
+    checkAuth();
+  }, []);
+
+  // 加载中
+  if (isAuthenticated === null) {
+    return <LoadingFallback />;
+  }
+
+  // 未认证
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // 需要管理员权限但不是管理员
+  if (requiresAdmin && !isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

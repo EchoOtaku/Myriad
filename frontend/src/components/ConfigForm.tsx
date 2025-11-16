@@ -7,7 +7,7 @@ import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
 import { fetchConfig } from '../lib/api';
 import { useDebounce } from '../hooks/useDebounce';
-import TokenManager from '../utils/tokenManager';
+import { getCSRFToken } from '../utils/csrf';
 import './ConfigForm.css';
 
 // 注意：懒加载配置组件已创建但暂未使用，以保持稳定性
@@ -286,15 +286,21 @@ const ModernConfigForm: React.FC = () => {
     setMessage('保存中...');
 
     try {
-      const token = TokenManager.getToken();
+      // 获取 CSRF Token
+      const csrfToken = await getCSRFToken(true);
+      if (!csrfToken) {
+        throw new Error('无法获取 CSRF Token，请刷新页面后重试');
+      }
+
       const result = await fetchJson(
         `${API_URL}/api/config`,
         {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': token ? `Bearer ${token}` : ''
+            'X-CSRF-Token': csrfToken,
           },
+          credentials: 'include',
           body: JSON.stringify(config),
         },
         '保存配置失败'
@@ -309,14 +315,16 @@ const ModernConfigForm: React.FC = () => {
       );
 
       try {
-        const token = TokenManager.getToken();
+        // reload-config 也需要 CSRF Token
+        const reloadCsrfToken = await getCSRFToken(true);
         await fetchJson(
           `${API_URL}/api/system/reload-config`,
           { 
             method: 'POST',
             headers: {
-              'Authorization': token ? `Bearer ${token}` : ''
-            }
+              'X-CSRF-Token': reloadCsrfToken || '',
+            },
+            credentials: 'include'
           },
           '刷新配置失败'
         );
@@ -410,15 +418,21 @@ const ModernConfigForm: React.FC = () => {
       
       setMessage('正在保存默认配置...');
       
-      const token = TokenManager.getToken();
+      // 获取 CSRF Token
+      const resetCsrfToken = await getCSRFToken(true);
+      if (!resetCsrfToken) {
+        throw new Error('无法获取 CSRF Token，请刷新页面后重试');
+      }
+      
       const saveResult = await fetchJson(
         `${API_URL}/api/config`,
         {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': token ? `Bearer ${token}` : ''
+            'X-CSRF-Token': resetCsrfToken,
           },
+          credentials: 'include',
           body: JSON.stringify(clearedData),
         },
         '保存配置失败'
@@ -497,15 +511,21 @@ const ModernConfigForm: React.FC = () => {
         configObj[field.key] = field.value;
       });
 
-      const token = TokenManager.getToken();
+      // 获取 CSRF Token
+      const testCsrfToken = await getCSRFToken(true);
+      if (!testCsrfToken) {
+        throw new Error('无法获取 CSRF Token，请刷新页面后重试');
+      }
+
       const result = await fetchJson(
         `${API_URL}/api/config/test`,
         {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': token ? `Bearer ${token}` : ''
+            'X-CSRF-Token': testCsrfToken,
           },
+          credentials: 'include',
           body: JSON.stringify({
             platform: platformName,
             config: configObj,
@@ -931,7 +951,6 @@ const ModernConfigForm: React.FC = () => {
                   <div>
                     <h2 className="section-title">报告生成配置</h2>
                     <p className="section-description">设置报告话题风格和生成选项</p>
-                    <p className="section-description" style={{ color: '#10b981', marginTop: '0.25rem' }}>✓ 修改后立即生效，无需重启</p>
                   </div>
                 </div>
               </div>
