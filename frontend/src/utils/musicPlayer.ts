@@ -243,11 +243,7 @@ export function clearLyricsCache(): void {
 export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
   const cacheKey = `netease-${playlistId}`;
 
-  // ⚠️ 临时：清除缓存以获取包含isVip字段的新数据
-  console.log('🔄 清除歌单缓存，重新获取数据（包含VIP标记）');
-  clearPlaylistCache();
-
-  // 检查缓存（已清空，会跳过）
+  // 检查缓存
   const cached = getPlaylistFromCache(cacheKey);
   if (cached) {
     return cached;
@@ -496,11 +492,6 @@ export function getSongVipStatus(song: Song): {
   
   // 简化显示：VIP歌曲直接显示VIP标识
   const displayText = isVip ? 'VIP' : '';
-  
-  // 🔍 调试日志
-  if (displayText) {
-    console.log(`[VIP徽章] ${song.name}`);
-  }
   
   return { isVip, isTrial, displayText };
 }

@@ -484,6 +484,7 @@ async fn get_user_info_wrapper() -> Response {
 }
 
 /// Wrapper for get_cache_debug_info that gets DB from global state
+#[cfg(debug_assertions)]
 async fn get_cache_debug_info_wrapper() -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
