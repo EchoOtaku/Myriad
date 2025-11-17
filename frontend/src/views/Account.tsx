@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import AnimatedView from '../components/AnimatedView';
+
 import { getCSRFToken } from '../utils/csrf';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
@@ -135,14 +136,7 @@ export default function Account() {
   }
 
   if (loading) {
-    return (
-      <AnimatedView className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">加载中...</p>
-        </div>
-      </AnimatedView>
-    );
+    return null;
   }
 
   return (

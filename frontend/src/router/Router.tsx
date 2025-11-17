@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-route
 import { AnimatePresence } from 'framer-motion';
 import { routes } from './routes';
 
+
 // 懒加载页面组件
 const Home = lazy(() => import('../views/Home.tsx'));
 const Library = lazy(() => import('../views/Library.tsx'));
@@ -117,14 +118,7 @@ function AnimatedRoutes() {
  * 加载指示器
  */
 function LoadingFallback() {
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
-        <p className="mt-4 text-gray-600 dark:text-gray-400">加载中...</p>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 /**

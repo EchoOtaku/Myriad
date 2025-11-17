@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { fetchJsonWithRetry } from '../utils/apiRetry';
 import { API_URL } from '../config';
+import { loadResource } from '../utils/resourceLoader';
 
 interface WallpaperConfig {
   wallpaper_url: string;
@@ -152,7 +153,9 @@ export function useWallpaper() {
   } | null> => {
     try {
       const config = await fetchWallpaperConfig();
-      if (!config) return null;
+      if (!config) {
+        return null;
+      }
 
       const actualUrl = await resolveActualImageUrl(config.wallpaper_url);
 
@@ -170,9 +173,10 @@ export function useWallpaper() {
       // 应用到DOM
       applyWallpaperToDOM(actualUrl, config.wallpaper_blur);
 
-      return { actualUrl, blur: config.wallpaper_blur };
+      const result = { actualUrl, blur: config.wallpaper_blur };
+      return result;
     } catch (error) {
-      console.warn('Failed to load wallpaper:', error);
+      console.error('加载壁纸失败:', error);
       return null;
     }
   }, []);
@@ -183,7 +187,9 @@ export function useWallpaper() {
   const refreshWallpaper = useCallback(async (): Promise<void> => {
     try {
       const config = await fetchWallpaperConfig();
-      if (!config) return;
+      if (!config) {
+        return;
+      }
 
       const actualUrl = await resolveActualImageUrl(config.wallpaper_url, true);
 
@@ -209,7 +215,7 @@ export function useWallpaper() {
         })
       );
     } catch (error) {
-      console.warn('Failed to refresh wallpaper:', error);
+      console.error('刷新壁纸失败:', error);
     }
   }, []);
 

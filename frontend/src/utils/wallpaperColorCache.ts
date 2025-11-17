@@ -51,12 +51,19 @@ function normalizeUrl(url: string): string {
 export async function shouldApplyColorExtraction(url: string): Promise<{
   shouldApply: boolean;
   cacheKey?: string;
+  reason?: string;
 }> {
-  if (!url) return { shouldApply: false };
+  if (!url) {
+    return { shouldApply: false, reason: 'URL 为空' };
+  }
 
   // 快速排除明显不是壁纸的URL
-  if (url.includes('/api/proxy/music/')) return { shouldApply: false };
-  if (url.startsWith('file://')) return { shouldApply: false };
+  if (url.includes('/api/proxy/music/')) {
+    return { shouldApply: false, reason: '音乐封面' };
+  }
+  if (url.startsWith('file://')) {
+    return { shouldApply: false, reason: 'file:// 协议不支持' };
+  }
 
   try {
     // 加载图片检查尺寸
@@ -71,13 +78,13 @@ export async function shouldApplyColorExtraction(url: string): Promise<{
     });
 
     if (!loaded) {
-      return { shouldApply: false };
+      return { shouldApply: false, reason: '图片加载失败' };
     }
 
     // 检查尺寸（排除小图标）
     const isLargeEnough = img.width >= 400 && img.height >= 400;
     if (!isLargeEnough) {
-      return { shouldApply: false };
+      return { shouldApply: false, reason: `图片太小: ${img.width}x${img.height}` };
     }
 
     // 生成缓存key（标准化URL）
@@ -85,7 +92,7 @@ export async function shouldApplyColorExtraction(url: string): Promise<{
     return { shouldApply: true, cacheKey };
 
   } catch (error) {
-    return { shouldApply: false };
+    return { shouldApply: false, reason: `检查失败: ${error}` };
   }
 }
 
@@ -199,23 +206,24 @@ export function clearColorCache(): void {
  */
 export function getCacheInfo(): {
   exists: boolean;
-  url?: string;
-  age?: number;
-  remainingTime?: number;
+  count?: number;
+  items?: Array<{ url: string; age: number }>;
 } | null {
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (!cached) return { exists: false };
 
-    const data: WallpaperColorCache = JSON.parse(cached);
-    const age = Date.now() - data.timestamp;
-    const remainingTime = Math.max(0, CACHE_DURATION_MS - age);
+    const store: WallpaperColorCacheStore = JSON.parse(cached);
+    const now = Date.now();
+    const items = store.items.map(item => ({
+      url: item.url,
+      age: now - item.timestamp
+    }));
 
     return {
       exists: true,
-      url: data.url,
-      age,
-      remainingTime,
+      count: store.items.length,
+      items
     };
   } catch {
     return null;

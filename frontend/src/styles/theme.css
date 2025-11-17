@@ -1,0 +1,174 @@
+/* ============================================
+   主题变量和全局样式
+   从 index.astro 提取
+   ============================================ */
+
+:root {
+  --color-primary: #94a3b8;
+  --color-secondary: #94a3b8;
+  --color-accent: #cbd5e1;
+  --color-light: #cbd5e1;
+  --color-dark: #475569;
+  
+  /* 浅色模式背景色 */
+  --bg-primary: #fef3c7;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #fefce8;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
+  --text-muted: #9ca3af;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --border-hover: rgba(0, 0, 0, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.8);
+  --input-border: rgba(0, 0, 0, 0.15);
+}
+
+/* 深色模式变量 */
+html.dark {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+  --bg-card: rgba(26, 26, 26, 0.9);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-tertiary: #9ca3af;
+  --text-muted: #6b7280;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --input-bg: rgba(26, 26, 26, 0.8);
+  --input-border: rgba(255, 255, 255, 0.15);
+}
+
+/* 全局过渡 */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+  scroll-behavior: smooth;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+}
+
+html.dark .glass {
+  background: rgba(26, 26, 26, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 背景网格 */
+.bg-grid-pattern {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+html.dark .bg-grid-pattern {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+}
+
+html.dark #bg-container {
+  background: linear-gradient(to bottom, #0a0a0a, #1a1a1a);
+}
+
+html.dark #bg-gradient {
+  background: linear-gradient(to bottom, transparent 45%, rgba(10, 10, 10, 0.6) 50%, rgba(10, 10, 10, 0.95) 100%) !important;
+}
+
+/* 彻底隐藏滚动条 */
+html,
+body,
+* {
+  -ms-overflow-style: none !important;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 文本选择 */
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: var(--text-primary);
+}
+
+html.dark ::selection {
+  background: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  color: #fff;
+}
+
+/* 占位符 */
+::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+html.dark ::placeholder {
+  opacity: 0.5;
+}
+
+/* 移动端优化 */
+@media (max-width: 767px) {
+  html, body {
+    overscroll-behavior-y: contain;
+  }
+
+  .glass {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.08);
+  }
+
+  html.dark .glass {
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* 移动端安全区域 */
+@supports (padding: env(safe-area-inset-bottom)) {
+  @media (max-width: 767px) {
+    section {
+      padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
+    }
+  }
+}
+
+/* 减少动画 (用户偏好) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

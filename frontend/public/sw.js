@@ -1,21 +1,25 @@
-// Service Worker for Myriad
-// 提供离线支持和资源缓存
+// Service Worker v2.0 for Myriad
+// 性能优化版 - 缓存策略 + 安全过滤
 
-const CACHE_VERSION = 'myriad-v1';
+const CACHE_VERSION = 'myriad-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 
 // 需要预缓存的静态资源
-// 注意：只包含构建后确实存在的文件，避免 addAll 失败
 const STATIC_ASSETS = [
   '/',
-  '/index.html',
+  '/favicon.svg',
 ];
 
-// 最大缓存数量
+// 缓存配置
 const MAX_DYNAMIC_CACHE_SIZE = 50;
 const MAX_IMAGE_CACHE_SIZE = 30;
+const CACHE_MAX_AGE = {
+  static: 30 * 24 * 60 * 60 * 1000,  // 30天
+  images: 7 * 24 * 60 * 60 * 1000,   // 7天
+  api: 5 * 60 * 1000,                // 5分钟
+};
 
 // 安装 Service Worker
 self.addEventListener('install', (event) => {
@@ -68,6 +72,32 @@ async function limitCacheSize(cacheName, maxSize) {
   }
 }
 
+// 检查缓存是否过期
+function isCacheExpired(response, maxAge) {
+  const cachedDate = response.headers.get('sw-cached-date');
+  if (!cachedDate) return false;
+  
+  const cacheTime = new Date(cachedDate).getTime();
+  const now = Date.now();
+  return (now - cacheTime) > maxAge;
+}
+
+// 添加缓存时间戳
+async function cacheWithTimestamp(cacheName, request, response) {
+  const cache = await caches.open(cacheName);
+  const headers = new Headers(response.headers);
+  headers.set('sw-cached-date', new Date().toISOString());
+  
+  const blob = await response.blob();
+  const cachedResponse = new Response(blob, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: headers,
+  });
+  
+  await cache.put(request, cachedResponse);
+}
+
 // 拦截请求
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -116,55 +146,87 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 图片请求 - 缓存优先策略
-  if (request.destination === 'image' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url.pathname)) {
+  // 图片请求 - 缓存优先策略(带过期检查)
+  if (request.destination === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)) {
     event.respondWith(
       caches.match(request)
-        .then((cachedResponse) => {
-          if (cachedResponse) {
+        .then(async (cachedResponse) => {
+          // 检查缓存是否过期
+          if (cachedResponse && !isCacheExpired(cachedResponse, CACHE_MAX_AGE.images)) {
             return cachedResponse;
           }
 
-          return fetch(request).then((response) => {
+          try {
+            const response = await fetch(request);
             if (response.ok) {
               const responseClone = response.clone();
-              caches.open(IMAGE_CACHE).then((cache) => {
-                cache.put(request, responseClone);
-                limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE);
-              });
+              await cacheWithTimestamp(IMAGE_CACHE, request, responseClone);
+              limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE);
             }
             return response;
-          });
+          } catch (error) {
+            // 网络失败时返回过期缓存
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            throw error;
+          }
         })
     );
     return;
   }
 
-  // 静态资源 - 缓存优先，网络回退
-  event.respondWith(
-    caches.match(request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-
-        return fetch(request).then((response) => {
-          // 只缓存成功的 GET 请求
-          if (request.method === 'GET' && response.ok) {
-            const responseClone = response.clone();
-            caches.open(DYNAMIC_CACHE).then((cache) => {
-              cache.put(request, responseClone);
-              limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
-            });
+  // CSS/JS静态资源 - 缓存优先(带过期检查)
+  if (/\.(css|js|woff2?)$/i.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request)
+        .then(async (cachedResponse) => {
+          if (cachedResponse && !isCacheExpired(cachedResponse, CACHE_MAX_AGE.static)) {
+            return cachedResponse;
           }
-          return response;
-        });
+
+          try {
+            const response = await fetch(request);
+            if (response.ok) {
+              const responseClone = response.clone();
+              await cacheWithTimestamp(STATIC_CACHE, request, responseClone);
+            }
+            return response;
+          } catch (error) {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            throw error;
+          }
+        })
+    );
+    return;
+  }
+
+  // 其他请求 - 网络优先,缓存回退
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (request.method === 'GET' && response.ok) {
+          const responseClone = response.clone();
+          caches.open(DYNAMIC_CACHE).then((cache) => {
+            cache.put(request, responseClone);
+            limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
+          });
+        }
+        return response;
       })
       .catch(() => {
-        // 如果是导航请求且都失败了，返回离线页面
-        if (request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
+        return caches.match(request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // 导航请求失败返回首页
+          if (request.mode === 'navigate') {
+            return caches.match('/');
+          }
+          throw new Error('Network failed and no cache available');
+        });
       })
   );
 });

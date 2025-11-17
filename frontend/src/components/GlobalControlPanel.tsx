@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { getCSRFToken } from '../utils/csrf';
@@ -22,10 +22,17 @@ import {
   getNeteaseLyrics,
   getQQLyrics,
   getCurrentLyricIndex,
-  formatTime
+  formatTime,
+  clearPlaylistCache,
+  throttle,
+  debounce,
+  filterPlaylist,
+  highlightText,
+  getSongVipStatus
 } from '../utils/musicPlayer';
 import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
 import { useWallpaper } from '../hooks/useWallpaper';
+import { loadResource, LoadPriority, globalResourceLoader } from '../utils/resourceLoader';
 
 interface User {
   username: string;
@@ -104,15 +111,34 @@ const GlobalControlPanel: React.FC = () => {
   const playlistScrollRef = useRef<HTMLDivElement>(null);
   const seekingRef = useRef<boolean>(false);
   
+  // 封面颜色缓存，避免重复提取
+  const colorCacheRef = useRef<Map<string, any>>(new Map());
+  
   // 播放列表搜索状态
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
+  
+  // 排除VIP歌曲状态（默认开启）
+  const [excludeVipSongs, setExcludeVipSongs] = useState(true);
+  
+  // 过滤后的播放列表（使用useMemo优化性能）
+  const filteredPlaylist = useMemo(() => {
+    let filtered = filterPlaylist(playlist, playlistSearchQuery);
+    // 如果开启了排除VIP，过滤掉VIP歌曲
+    if (excludeVipSongs) {
+      filtered = filtered.filter(song => !song.isVip);
+    }
+    return filtered;
+  }, [playlist, playlistSearchQuery, excludeVipSongs]);
   
   // 预加载系统
   const preloadAudioRef = useRef<HTMLAudioElement | null>(null);
   const [preloadedSongIndex, setPreloadedSongIndex] = useState<number>(-1);
   const preloadCacheRef = useRef<Map<number, boolean>>(new Map());
   const preloadErrorCountRef = useRef<number>(0);
-  const preloadDisabledRef = useRef<boolean>(false);
+  const preloadDisabledUntilRef = useRef<number>(0); // 改用时间戳，而非永久禁用
+  
+  // 随机播放模式：预先确定的下一首歌曲索引
+  const nextShuffleIndexRef = useRef<number>(-1);
 
   // 验证并规范化颜色值（确保是有效的十六进制格式）
   const normalizeColor = (color: string): string => {
@@ -214,7 +240,7 @@ const GlobalControlPanel: React.FC = () => {
   const loadDynamicContents = useCallback(async () => {
     const contents: DynamicContent[] = [];
 
-    // 1. 问候语（始终显示）
+    // 1. 问候语（始终显示，立即加载）
     const greeting = getGreeting(user?.username);
     contents.push({
       type: 'greeting',
@@ -223,39 +249,62 @@ const GlobalControlPanel: React.FC = () => {
       subtext: greeting.time
     });
 
-    // 2. 天气信息
-    try {
-      const weather = await getWeatherInfo();
-      if (weather) {
-        setWeatherData(weather);
-        contents.push({
-          type: 'weather',
-          icon: weather.icon,
-          text: `${weather.temperature} ${weather.weather}`,
-          subtext: weather.city
-        });
-      }
-    } catch (error) {
-      // 静默处理错误
-    }
+    // 立即显示问候语
+    setDynamicContents([...contents]);
 
-    // 3. 一言警句
-    try {
-      const quote = await getRandomQuote();
-      if (quote) {
-        setQuoteData(quote);
-        contents.push({
-          type: 'quote',
-          icon: '💭',
-          text: quote.text,
-          subtext: quote.author
-        });
+    // 2. 天气信息（高优先级）
+    loadResource.high('weather-info', async () => {
+      try {
+        const weather = await getWeatherInfo();
+        if (weather) {
+          setWeatherData(weather);
+          setDynamicContents(prev => {
+            // 检查是否已存在天气信息
+            const hasWeather = prev.some(c => c.type === 'weather');
+            if (hasWeather) return prev;
+            
+            // 在问候语后插入天气信息
+            const newContents = [...prev];
+            newContents.splice(1, 0, {
+              type: 'weather',
+              icon: weather.icon,
+              text: `${weather.temperature} ${weather.weather}`,
+              subtext: weather.city
+            });
+            return newContents;
+          });
+        }
+      } catch (error) {
+        // 静默处理错误
       }
-    } catch (error) {
-      // 静默处理错误
-    }
+    });
 
-    // 4. 主题状态 - 随机提示可配置选项
+    // 3. 一言警句（高优先级）
+    loadResource.high('quote-info', async () => {
+      try {
+        const quote = await getRandomQuote();
+        if (quote) {
+          setQuoteData(quote);
+          setDynamicContents(prev => {
+            // 检查是否已存在名言
+            const hasQuote = prev.some(c => c.type === 'quote');
+            if (hasQuote) return prev;
+            
+            // 添加到列表中
+            return [...prev, {
+              type: 'quote',
+              icon: '💭',
+              text: quote.text,
+              subtext: quote.author
+            }];
+          });
+        }
+      } catch (error) {
+        // 静默处理错误
+      }
+    });
+
+    // 4. 主题状态 - 立即显示
     const theme = getThemeInfo();
     const themeTexts = [
       '主题切换',
@@ -264,14 +313,12 @@ const GlobalControlPanel: React.FC = () => {
     ];
     const randomText = themeTexts[Math.floor(Math.random() * themeTexts.length)];
     
-    contents.push({
+    setDynamicContents(prev => [...prev, {
       type: 'theme',
       icon: '⚙️',
       text: randomText,
       subtext: '点击展开设置'
-    });
-
-    setDynamicContents(contents);
+    }]);
   }, [user?.username]);
 
   // 获取平台用户信息
@@ -439,7 +486,7 @@ const GlobalControlPanel: React.FC = () => {
     try {
       // 页面加载时重置预加载错误计数和状态
       preloadErrorCountRef.current = 0;
-      preloadDisabledRef.current = false;
+      preloadDisabledUntilRef.current = 0;
       
       const response = await fetch(`${API_URL}/api/config/ui`);
       const data = await response.json();
@@ -461,10 +508,28 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, []);
 
-  // 预加载下一首歌曲
+  // 为随机模式生成下一首歌曲索引
+  const generateNextShuffleIndex = useCallback((currentIndex: number) => {
+    if (playlist.length <= 1) return -1;
+    
+    const availableSongs = excludeVipSongs 
+      ? playlist.map((song, idx) => ({ song, idx })).filter(item => !item.song.isVip)
+      : playlist.map((song, idx) => ({ song, idx }));
+    
+    if (availableSongs.length === 0) return -1;
+    
+    // 从可用歌曲中随机选择一首（排除当前歌曲）
+    const availableOptions = availableSongs.filter(item => item.idx !== currentIndex);
+    if (availableOptions.length === 0) return availableSongs[0].idx;
+    
+    const randomItem = availableOptions[Math.floor(Math.random() * availableOptions.length)];
+    return randomItem.idx;
+  }, [playlist, excludeVipSongs]);
+  
+  // 预加载下一首歌曲（使用资源加载管理器，低优先级）
   const preloadNextSong = useCallback((nextIndex: number) => {
-    // 如果预加载已被禁用（连续失败3次），跳过
-    if (preloadDisabledRef.current) {
+    // 如果预加载被临时禁用，检查是否到达解禁时间
+    if (preloadDisabledUntilRef.current > Date.now()) {
       return;
     }
     
@@ -478,78 +543,118 @@ const GlobalControlPanel: React.FC = () => {
     }
     
     const nextSong = playlist[nextIndex];
-    if (nextSong) {
-      const preloadAudio = preloadAudioRef.current;
-      
-      // 监听加载错误
-      const handleError = () => {
-        preloadErrorCountRef.current += 1;
-        
-        // 连续3次失败，禁用预加载
-        if (preloadErrorCountRef.current >= 3) {
-          preloadDisabledRef.current = true;
-          console.warn('音乐预加载已禁用：连续3次失败（可能因版权或地理限制）');
-        }
-        
-        // 清理事件监听
-        preloadAudio.removeEventListener('error', handleError);
-        preloadAudio.removeEventListener('canplay', handleCanPlay);
-      };
-      
-      // 监听加载成功
-      const handleCanPlay = () => {
-        // 重置错误计数
-        preloadErrorCountRef.current = 0;
-        
-        // 清理事件监听
-        preloadAudio.removeEventListener('error', handleError);
-        preloadAudio.removeEventListener('canplay', handleCanPlay);
-      };
-      
-      preloadAudio.addEventListener('error', handleError);
-      preloadAudio.addEventListener('canplay', handleCanPlay);
-      
-      preloadAudio.src = nextSong.url;
-      preloadAudio.load();
-      setPreloadedSongIndex(nextIndex);
-      preloadCacheRef.current.set(nextIndex, true);
-      
-      // 保持缓存大小：只保留最近的3首
-      if (preloadCacheRef.current.size > 3) {
-        const oldestKey = Array.from(preloadCacheRef.current.keys())[0];
-        preloadCacheRef.current.delete(oldestKey);
-      }
+    if (!nextSong) return;
+    
+    // 如果开启了排除VIP且下一首是VIP歌曲，跳过预加载
+    if (excludeVipSongs && nextSong.isVip) {
+      console.log(`⏭️ 跳过VIP歌曲预加载: ${nextSong.name}`);
+      return;
     }
-  }, [playlist]);
+
+    // 使用资源加载管理器进行低优先级加载
+    loadResource.low(`music-preload-${nextIndex}`, async () => {
+      const preloadAudio = preloadAudioRef.current;
+      if (!preloadAudio) return;
+
+      return new Promise<void>((resolve, reject) => {
+        // 监听加载错误
+        const handleError = () => {
+          preloadErrorCountRef.current += 1;
+          
+          // 连续3次失败，临时禁用5分钟
+          if (preloadErrorCountRef.current >= 3) {
+            preloadDisabledUntilRef.current = Date.now() + 5 * 60 * 1000; // 5分钟
+            console.warn('音乐预加载已临时禁用5分钟（连续3次失败，可能因版权或地理限制）');
+          }
+          
+          // 清理事件监听
+          cleanup();
+          reject(new Error('Preload failed'));
+        };
+        
+        // 监听加载成功
+        const handleCanPlay = () => {
+          // 重置错误计数
+          preloadErrorCountRef.current = 0;
+          
+          setPreloadedSongIndex(nextIndex);
+          preloadCacheRef.current.set(nextIndex, true);
+          
+          // 保持缓存大小：只保留最近的3首
+          if (preloadCacheRef.current.size > 3) {
+            const oldestKey = Array.from(preloadCacheRef.current.keys())[0];
+            preloadCacheRef.current.delete(oldestKey);
+          }
+          
+          // 清理事件监听
+          cleanup();
+          resolve();
+        };
+        
+        const cleanup = () => {
+          preloadAudio.removeEventListener('error', handleError);
+          preloadAudio.removeEventListener('canplay', handleCanPlay);
+        };
+        
+        preloadAudio.addEventListener('error', handleError);
+        preloadAudio.addEventListener('canplay', handleCanPlay);
+        
+        preloadAudio.src = nextSong.url;
+        preloadAudio.load();
+      });
+    });
+  }, [playlist, excludeVipSongs]);
 
   // 选择歌曲
   const selectSong = useCallback(async (song: Song, index: number, autoPlay: boolean = false) => {
+    // 如果开启了排除VIP且当前歌曲是VIP，跳过
+    if (excludeVipSongs && song.isVip) {
+      console.log(`⚠️ 跳过VIP歌曲: ${song.name}`);
+      return;
+    }
+    
     setCurrentSong(song);
     setCurrentSongIndex(index);
 
     // 提取封面颜色 - 添加淡出淡入效果
     if (song.cover) {
       try {
-        // 先淡出当前颜色
         const musicContainer = document.querySelector('.music-player-container');
-        if (musicContainer) {
-          musicContainer.classList.add('color-transitioning');
-        }
-
-        // 提取新颜色 - 标记为音乐上下文，不会取消壁纸颜色提取
-        const colors = await extractColorsFromImage(song.cover, { context: 'music' });
         
-        // 短暂延迟后应用新颜色并淡入
-        setTimeout(() => {
-          setMusicColors(colors);
+        // 检查缓存
+        if (colorCacheRef.current.has(song.cover)) {
+          const cachedColors = colorCacheRef.current.get(song.cover);
+          setMusicColors(cachedColors);
+        } else {
+          // 先淡出当前颜色
           if (musicContainer) {
-            setTimeout(() => {
-              musicContainer.classList.remove('color-transitioning');
-            }, 50);
+            musicContainer.classList.add('color-transitioning');
           }
-        }, 300);
+
+          // 提取新颜色 - 标记为音乐上下文，不会取消壁纸颜色提取
+          const colors = await extractColorsFromImage(song.cover, { context: 'music' });
+          
+          // 存入缓存（限制50个）
+          if (colorCacheRef.current.size >= 50) {
+            const firstKey = colorCacheRef.current.keys().next().value;
+            if (firstKey !== undefined) {
+              colorCacheRef.current.delete(firstKey);
+            }
+          }
+          colorCacheRef.current.set(song.cover, colors);
+          
+          // 短暂延迟后应用新颜色并淡入
+          setTimeout(() => {
+            setMusicColors(colors);
+            if (musicContainer) {
+              setTimeout(() => {
+                musicContainer.classList.remove('color-transitioning');
+              }, 50);
+            }
+          }, 300);
+        }
       } catch (error) {
-        // 静默处理错误
+        console.warn('Failed to extract colors from cover:', error);
         setMusicColors(null);
         const musicContainer = document.querySelector('.music-player-container');
         if (musicContainer) {
@@ -560,26 +665,28 @@ const GlobalControlPanel: React.FC = () => {
       setMusicColors(null);
     }
 
-    // 加载歌词
+    // 加载歌词 - 使用低优先级异步加载，不阻塞音乐播放
     setLyrics([]); // 先清空旧歌词
     setCurrentLyricIndex(-1);
     
-    try {
-      const fetchedLyrics = song.source === 'netease'
-        ? await getNeteaseLyrics(song.id)
-        : await getQQLyrics(song.id);
-      
-      if (fetchedLyrics && fetchedLyrics.length > 0) {
-        setLyrics(fetchedLyrics);
-        setCurrentLyricIndex(-1); // 初始化为-1，等待时间更新
-      } else {
+    loadResource.low(`lyrics-${song.id}`, async () => {
+      try {
+        const fetchedLyrics = song.source === 'netease'
+          ? await getNeteaseLyrics(song.id)
+          : await getQQLyrics(song.id);
+        
+        if (fetchedLyrics && fetchedLyrics.length > 0) {
+          setLyrics(fetchedLyrics);
+          setCurrentLyricIndex(-1); // 初始化为-1，等待时间更新
+        } else {
+          setLyrics([]);
+        }
+      } catch (error) {
+        // 静默处理错误
         setLyrics([]);
+        setCurrentLyricIndex(-1);
       }
-    } catch (error) {
-      // 静默处理错误
-      setLyrics([]);
-      setCurrentLyricIndex(-1);
-    }
+    });
 
     // 加载歌曲
     if (audioRef.current) {
@@ -599,42 +706,81 @@ const GlobalControlPanel: React.FC = () => {
       setCurrentTime(0);
     }
 
-    // 预加载下一首歌曲（仅在列表循环模式下）
-    if (playMode === 'loop') {
-      const nextIndex = (index + 1) % playlist.length;
-      if (nextIndex !== index && playlist.length > 1) {
-        // 延迟500ms预加载，避免影响当前歌曲加载
-        setTimeout(() => {
+    // 预加载下一首歌曲（支持所有播放模式）
+    // 使用资源加载管理器会自动处理延迟和优先级
+    if (playlist.length > 1) {
+      if (playMode === 'loop') {
+        // 列表循环：预加载下一首（跳过VIP）
+        let nextIndex = (index + 1) % playlist.length;
+        if (excludeVipSongs) {
+          let attempts = 0;
+          while (playlist[nextIndex]?.isVip && attempts < playlist.length) {
+            nextIndex = (nextIndex + 1) % playlist.length;
+            attempts++;
+          }
+        }
+        if (nextIndex !== index && !playlist[nextIndex]?.isVip) {
           preloadNextSong(nextIndex);
-        }, 500);
+        }
+      } else if (playMode === 'shuffle') {
+        // 随机播放：提前确定并预加载下一首
+        const nextIndex = generateNextShuffleIndex(index);
+        if (nextIndex !== -1 && nextIndex !== index) {
+          nextShuffleIndexRef.current = nextIndex;
+          preloadNextSong(nextIndex);
+          console.log(`🎲 随机模式：已确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}`);
+        }
       }
+      // 单曲循环模式不需要预加载
     }
 
     // 更新动态内容
     loadDynamicContents();
   }, [loadDynamicContents, playlist.length, preloadNextSong, playMode]);
 
-  // 加载歌单
+  // 加载歌单（使用资源加载管理器，中优先级）
   const loadPlaylist = useCallback(async (source: MusicSource, plistId: string) => {
-    try {
-      setMusicError(''); // 清除之前的错误
-      const songs = source === 'netease'
-        ? await getNeteasePlaylist(plistId)
-        : await getQQPlaylist(plistId);
+    // 使用中优先级加载歌单，在关键内容加载后执行
+    loadResource.medium(`music-playlist-${plistId}`, async () => {
+      try {
+        setMusicError(''); // 清除之前的错误
+        const songs = source === 'netease'
+          ? await getNeteasePlaylist(plistId)
+          : await getQQPlaylist(plistId);
 
-      setPlaylist(songs);
+        setPlaylist(songs);
 
-      // 加载第一首歌但不自动播放
-      if (songs.length > 0) {
-        selectSong(songs[0], 0);
+        // 加载第一首歌但不自动播放（如果开启了排除VIP，选择第一首非VIP歌曲）
+        if (songs.length > 0) {
+          let firstSongIndex = 0;
+          if (excludeVipSongs) {
+            // 查找第一首非VIP歌曲
+            const nonVipIndex = songs.findIndex(song => !song.isVip);
+            if (nonVipIndex !== -1) {
+              firstSongIndex = nonVipIndex;
+            } else {
+              console.warn('⚠️ 歌单中所有歌曲都是VIP');
+            }
+          }
+          selectSong(songs[firstSongIndex], firstSongIndex);
+        }
+      } catch (error) {
+        // 改进错误处理，提供更友好的错误信息
+        let errorMessage = '加载歌单失败';
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
+        console.error('Failed to load music playlist:', error);
+        setMusicError(errorMessage);
+        setPlaylist([]);
+        
+        // 3秒后清除错误消息
+        setTimeout(() => {
+          setMusicError('');
+        }, 3000);
       }
-    } catch (error) {
-      // 静默处理错误
-      const errorMessage = error instanceof Error ? error.message : '加载歌单失败';
-      setMusicError(errorMessage);
-      setPlaylist([]);
-    }
-  }, [selectSong]);
+    });
+  }, [selectSong, excludeVipSongs]);
 
   // 监听登录成功事件
   useEffect(() => {
@@ -856,6 +1002,9 @@ const GlobalControlPanel: React.FC = () => {
     localStorage.clear();
     sessionStorage.clear();
     
+    // 清空音乐播放器缓存
+    clearPlaylistCache();
+    
     // 手动删除所有Cookie（双保险）
     document.cookie.split(';').forEach(cookie => {
       const name = cookie.split('=')[0].trim();
@@ -882,12 +1031,13 @@ const GlobalControlPanel: React.FC = () => {
     if (!preloadAudioRef.current) {
       preloadAudioRef.current = new Audio();
       preloadAudioRef.current.preload = 'auto';
+      preloadAudioRef.current.volume = volume; // 继承主音频音量
     }
 
     const audio = audioRef.current;
 
-    // 监听播放时间更新
-    const handleTimeUpdate = () => {
+    // 监听播放时间更新（使用节流优化，降低更新频率）
+    const handleTimeUpdate = throttle(() => {
       const currentTime = audio.currentTime;
       setCurrentTime(currentTime);
 
@@ -897,6 +1047,22 @@ const GlobalControlPanel: React.FC = () => {
         if (index !== currentLyricIndex) {
           setCurrentLyricIndex(index);
         }
+      }
+    }, 100); // 100ms 节流，降低更新频率
+
+    // 监听播放错误 - 提升稳定性
+    const handleError = () => {
+      console.error('音频播放错误:', audio.error);
+      setIsPlaying(false);
+      // 可选：尝试播放下一首
+      if (playlist.length > 1 && playMode !== 'single') {
+        setTimeout(() => {
+          const nextIndex = (currentSongIndex + 1) % playlist.length;
+          if (playlist[nextIndex]) {
+            console.log('尝试播放下一首...');
+            selectSong(playlist[nextIndex], nextIndex, true);
+          }
+        }, 1000);
       }
     };
 
@@ -909,23 +1075,40 @@ const GlobalControlPanel: React.FC = () => {
       
       if (playlist.length > 0) {
         let newIndex: number;
+        let attempts = 0;
         
         // 根据播放模式决定下一首
         if (playMode === 'single') {
           // 单曲循环：重复当前歌曲
           newIndex = currentSongIndex;
         } else if (playMode === 'shuffle') {
-          // 随机播放：随机选择一首（避免重复当前歌曲）
-          if (playlist.length > 1) {
-            do {
-              newIndex = Math.floor(Math.random() * playlist.length);
-            } while (newIndex === currentSongIndex);
+          // 随机播放：使用预先确定的下一首
+          if (nextShuffleIndexRef.current !== -1) {
+            newIndex = nextShuffleIndexRef.current;
+            console.log(`🎲 使用预先确定的下一首: #${newIndex}`);
           } else {
-            newIndex = 0;
+            // 备用方案：如果没有预先确定，现场生成
+            newIndex = generateNextShuffleIndex(currentSongIndex);
+            if (newIndex === -1) {
+              newIndex = 0;
+            }
           }
         } else {
-          // 列表循环：顺序播放下一首
+          // 列表循环：顺序播放下一首（跳过VIP）
           newIndex = (currentSongIndex + 1) % playlist.length;
+          
+          // 如果开启了排除VIP，循环查找下一首非VIP歌曲
+          while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
+            newIndex = (newIndex + 1) % playlist.length;
+            attempts++;
+          }
+        }
+        
+        // 如果找不到非VIP歌曲，停止播放
+        if (attempts >= playlist.length && excludeVipSongs && playlist[newIndex]?.isVip) {
+          console.warn('⚠️ 没有可播放的歌曲（所有歌曲都是VIP）');
+          setIsPlaying(false);
+          return;
         }
         
         const nextSong = playlist[newIndex];
@@ -938,7 +1121,9 @@ const GlobalControlPanel: React.FC = () => {
           preloadAudioRef.current = temp;
           
           if (audioRef.current) {
+            // 同步所有状态确保无缝切换
             audioRef.current.volume = volume;
+            audioRef.current.currentTime = 0; // 确保从头播放
             audioRef.current.play().catch(() => setIsPlaying(false));
             setIsPlaying(true);
           }
@@ -972,27 +1157,47 @@ const GlobalControlPanel: React.FC = () => {
             setMusicColors(null);
           }
           
-          // 加载歌词
+          // 加载歌词 - 低优先级异步
           setLyrics([]);
           setCurrentLyricIndex(-1);
-          try {
-            const fetchedLyrics = nextSong.source === 'netease'
-              ? await getNeteaseLyrics(nextSong.id)
-              : await getQQLyrics(nextSong.id);
-            
-            if (fetchedLyrics && fetchedLyrics.length > 0) {
-              setLyrics(fetchedLyrics);
-              setCurrentLyricIndex(-1);
+          loadResource.low(`lyrics-${nextSong.id}`, async () => {
+            try {
+              const fetchedLyrics = nextSong.source === 'netease'
+                ? await getNeteaseLyrics(nextSong.id)
+                : await getQQLyrics(nextSong.id);
+              
+              if (fetchedLyrics && fetchedLyrics.length > 0) {
+                setLyrics(fetchedLyrics);
+                setCurrentLyricIndex(-1);
+              }
+            } catch (error) {
+              setLyrics([]);
             }
-          } catch (error) {
-            setLyrics([]);
-          }
+          });
           
-          // 预加载再下一首（仅在列表循环模式下）
-          if (playMode === 'loop' && playlist.length > 1) {
-            const nextNextIndex = (newIndex + 1) % playlist.length;
-            if (nextNextIndex !== newIndex) {
-              setTimeout(() => preloadNextSong(nextNextIndex), 500);
+          // 预加载下一首（支持所有播放模式）
+          // 资源加载管理器会自动处理优先级和延迟
+          if (playlist.length > 1) {
+            if (playMode === 'loop') {
+              let nextNextIndex = (newIndex + 1) % playlist.length;
+              if (excludeVipSongs) {
+                let attempts = 0;
+                while (playlist[nextNextIndex]?.isVip && attempts < playlist.length) {
+                  nextNextIndex = (nextNextIndex + 1) % playlist.length;
+                  attempts++;
+                }
+              }
+              if (nextNextIndex !== newIndex && !playlist[nextNextIndex]?.isVip) {
+                preloadNextSong(nextNextIndex);
+              }
+            } else if (playMode === 'shuffle') {
+              // 随机模式：生成新的下一首并预加载
+              const nextIndex = generateNextShuffleIndex(newIndex);
+              if (nextIndex !== -1 && nextIndex !== newIndex) {
+                nextShuffleIndexRef.current = nextIndex;
+                preloadNextSong(nextIndex);
+                console.log(`🎲 随机模式：已确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}`);
+              }
             }
           }
           
@@ -1009,23 +1214,70 @@ const GlobalControlPanel: React.FC = () => {
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
     };
   }, [lyrics, currentLyricIndex, volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong, playMode, loadDynamicContents]);
 
-  // 播放/暂停
-  const togglePlay = useCallback(() => {
+  // 组件卸载时清理音频资源
+  useEffect(() => {
+    return () => {
+      // 清理主音频元素
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
+      
+      // 清理预加载音频元素
+      if (preloadAudioRef.current) {
+        preloadAudioRef.current.pause();
+        preloadAudioRef.current.src = '';
+        preloadAudioRef.current = null;
+      }
+      
+      // 清理颜色缓存
+      colorCacheRef.current.clear();
+    };
+  }, []);
+
+  // 播放/暂停（带自动重试机制）
+  const togglePlay = useCallback(async () => {
     if (!audioRef.current || !currentSong) return;
 
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play();
-      setIsPlaying(true);
+      // 实现自动重试机制
+      const maxRetries = 3;
+      let retries = 0;
+      
+      while (retries < maxRetries) {
+        try {
+          await audioRef.current.play();
+          setIsPlaying(true);
+          break; // 播放成功，退出循环
+        } catch (error) {
+          retries++;
+          console.warn(`播放失败，重试 ${retries}/${maxRetries}:`, error);
+          
+          if (retries >= maxRetries) {
+            // 所有重试都失败
+            console.error('播放失败，已达到最大重试次数:', error);
+            setMusicError('播放失败，请检查网络连接或歌曲是否可用');
+            setTimeout(() => setMusicError(''), 3000);
+            setIsPlaying(false);
+          } else {
+            // 等待后重试（指数退避）
+            await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+          }
+        }
+      }
     }
   }, [isPlaying, currentSong]);
 
@@ -1033,23 +1285,83 @@ const GlobalControlPanel: React.FC = () => {
   const playPrevious = useCallback(() => {
     if (playlist.length === 0) return;
 
-    const newIndex = currentSongIndex === 0 ? playlist.length - 1 : currentSongIndex - 1;
-    selectSong(playlist[newIndex], newIndex);
-  }, [playlist, currentSongIndex, selectSong]);
+    let newIndex: number;
+    
+    // 随机模式：随机选择一首新歌（不使用锁定的下一首）
+    if (playMode === 'shuffle') {
+      newIndex = generateNextShuffleIndex(currentSongIndex);
+      console.log(`🎲 随机模式：随机选择上一首 #${newIndex}`);
+    } else {
+      // 顺序模式：循环查找上一首非VIP歌曲
+      newIndex = currentSongIndex === 0 ? playlist.length - 1 : currentSongIndex - 1;
+      let attempts = 0;
+      
+      while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
+        newIndex = newIndex === 0 ? playlist.length - 1 : newIndex - 1;
+        attempts++;
+      }
+      
+      if (attempts >= playlist.length) {
+        console.warn('⚠️ 所有歌曲都是VIP，无法播放');
+        return;
+      }
+    }
+    
+    selectSong(playlist[newIndex], newIndex, true);
+  }, [playlist, currentSongIndex, selectSong, excludeVipSongs, playMode, generateNextShuffleIndex]);
 
   // 下一首
   const playNext = useCallback(() => {
     if (playlist.length === 0) return;
 
-    const newIndex = (currentSongIndex + 1) % playlist.length;
-    selectSong(playlist[newIndex], newIndex);
-  }, [playlist, currentSongIndex, selectSong]);
+    let newIndex: number;
+    
+    // 随机模式：使用已锁定的下一首
+    if (playMode === 'shuffle') {
+      newIndex = nextShuffleIndexRef.current !== -1 
+        ? nextShuffleIndexRef.current 
+        : generateNextShuffleIndex(currentSongIndex);
+      console.log(`🎲 随机模式：使用已锁定的下一首 #${newIndex}`);
+    } else {
+      // 顺序模式：循环查找下一首非VIP歌曲
+      newIndex = (currentSongIndex + 1) % playlist.length;
+      let attempts = 0;
+      
+      while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
+        newIndex = (newIndex + 1) % playlist.length;
+        attempts++;
+      }
+      
+      if (attempts >= playlist.length) {
+        console.warn('⚠️ 所有歌曲都是VIP，无法播放');
+        return;
+      }
+    }
+    
+    selectSong(playlist[newIndex], newIndex, true);
+  }, [playlist, currentSongIndex, selectSong, excludeVipSongs, playMode, generateNextShuffleIndex]);
 
   // 调整音量
   const handleVolumeChange = useCallback((newVolume: number) => {
-    setVolume(newVolume);
+    // 确保音量在有效范围内
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
+    setVolume(clampedVolume);
+    
     if (audioRef.current) {
-      audioRef.current.volume = newVolume;
+      try {
+        audioRef.current.volume = clampedVolume;
+      } catch (error) {
+        console.warn('Failed to set audio volume:', error);
+      }
+    }
+    
+    // 同时更新预加载音频的音量
+    if (preloadAudioRef.current) {
+      try {
+        preloadAudioRef.current.volume = clampedVolume;
+      } catch (error) {
+        // 静默处理
+      }
     }
   }, []);
 
@@ -1429,7 +1741,17 @@ const GlobalControlPanel: React.FC = () => {
                               
                               <div className="music-info-right">
                                 <div className="music-song-info">
-                                  <div className="music-song-name">{currentSong.name}</div>
+                                  <div className="music-song-name-row">
+                                    <div className="music-song-name">{currentSong.name}</div>
+                                    {(() => {
+                                      const vipStatus = getSongVipStatus(currentSong);
+                                      return vipStatus.displayText && (
+                                        <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
+                                          {vipStatus.displayText}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
                                   <div className="music-song-artist">{currentSong.artist}</div>
                                 </div>
                                 
@@ -1591,7 +1913,17 @@ const GlobalControlPanel: React.FC = () => {
                             </svg>
                           </button>
                           <div className="music-lyrics-title">
-                            <div className="music-lyrics-song-name">{currentSong.name}</div>
+                            <div className="music-lyrics-song-name-row">
+                              <div className="music-lyrics-song-name">{currentSong.name}</div>
+                              {(() => {
+                                const vipStatus = getSongVipStatus(currentSong);
+                                return vipStatus.displayText && (
+                                  <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
+                                    {vipStatus.displayText}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                             <div className="music-lyrics-artist">{currentSong.artist}</div>
                           </div>
                         </div>
@@ -1658,6 +1990,26 @@ const GlobalControlPanel: React.FC = () => {
                               播放列表 ({filteredPlaylist.length}/{playlist.length}首)
                             </div>
                             
+                            {/* 排除VIP开关 */}
+                            <button
+                              onClick={() => setExcludeVipSongs(!excludeVipSongs)}
+                              className={`music-vip-filter-toggle ${excludeVipSongs ? 'active' : ''}`}
+                              aria-label={excludeVipSongs ? '显示VIP歌曲' : '隐藏VIP歌曲'}
+                              title={excludeVipSongs ? '跳过VIP歌曲（点击显示全部）' : '显示全部歌曲（点击跳过VIP）'}
+                            >
+                              {excludeVipSongs ? (
+                                /* 跳过图标 - 快进符号 */
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>
+                                </svg>
+                              ) : (
+                                /* 播放全部图标 */
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z"/>
+                                </svg>
+                              )}
+                            </button>
+                            
                             {/* 搜索框 - 紧凑版 */}
                             <div className="music-playlist-search-compact">
                               <svg className="music-search-icon" fill="currentColor" viewBox="0 0 20 20">
@@ -1701,8 +2053,32 @@ const GlobalControlPanel: React.FC = () => {
                                   >
                                     <span className="music-playlist-index">{originalIndex + 1}</span>
                                     <div className="music-playlist-info">
-                                      <div className="music-playlist-name">{song.name}</div>
-                                      <div className="music-playlist-artist">{song.artist}</div>
+                                      <div className="music-playlist-name-row">
+                                        <div 
+                                          className="music-playlist-name"
+                                          dangerouslySetInnerHTML={{ 
+                                            __html: playlistSearchQuery 
+                                              ? highlightText(song.name, playlistSearchQuery)
+                                              : song.name 
+                                          }}
+                                        />
+                                        {(() => {
+                                          const vipStatus = getSongVipStatus(song);
+                                          return vipStatus.displayText && (
+                                            <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
+                                              {vipStatus.displayText}
+                                            </span>
+                                          );
+                                        })()}
+                                      </div>
+                                      <div 
+                                        className="music-playlist-artist"
+                                        dangerouslySetInnerHTML={{ 
+                                          __html: playlistSearchQuery 
+                                            ? highlightText(song.artist, playlistSearchQuery)
+                                            : song.artist 
+                                        }}
+                                      />
                                     </div>
                                     {currentSongIndex === originalIndex && (
                                       <span className="music-playlist-playing">

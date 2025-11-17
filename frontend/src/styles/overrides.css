@@ -1,0 +1,224 @@
+/* ============================================
+   Tailwind颜色覆盖和表单样式
+   从 index.astro 提取
+   ============================================ */
+
+/* Tailwind颜色类全局覆盖 */
+.text-gray-700 { color: var(--text-primary) !important; }
+.text-gray-800 { color: var(--text-primary) !important; }
+.text-gray-600 { color: var(--text-secondary) !important; }
+.text-gray-500 { color: var(--text-tertiary) !important; }
+.text-gray-400 { color: var(--text-muted) !important; }
+.text-gray-300 { color: var(--text-secondary) !important; }
+
+html.dark .dark\:text-gray-100 { color: var(--text-primary) !important; }
+html.dark .dark\:text-gray-300 { color: var(--text-secondary) !important; }
+html.dark .dark\:text-gray-400 { color: var(--text-tertiary) !important; }
+html.dark .dark\:text-gray-500 { color: var(--text-muted) !important; }
+
+/* 背景颜色覆盖 */
+html.dark .dark\:bg-gray-700 { background-color: var(--bg-tertiary) !important; }
+html.dark .dark\:bg-gray-800\/50 { 
+  background-color: rgba(31, 33, 40, 0.5) !important;
+  background-color: color-mix(in srgb, var(--bg-tertiary) 50%, transparent) !important; 
+}
+html.dark .dark\:hover\:bg-gray-700:hover { background-color: var(--bg-hover) !important; }
+
+/* 边框颜色覆盖 */
+.border-gray-200\/50 { 
+  border-color: rgba(229, 231, 235, 0.5) !important;
+  border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important; 
+}
+.border-gray-300 { border-color: var(--border-color) !important; }
+html.dark .dark\:border-gray-600 { border-color: var(--border-color) !important; }
+html.dark .dark\:border-gray-700\/50 { 
+  border-color: rgba(55, 58, 71, 0.5) !important;
+  border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important; 
+}
+
+/* 主题色覆盖 */
+.bg-indigo-500,
+.bg-indigo-600 {
+  background-color: var(--color-primary) !important;
+}
+
+.hover\:bg-indigo-600:hover,
+html.dark .dark\:hover\:bg-indigo-700:hover {
+  background-color: rgba(79, 82, 217, 1) !important;
+  background-color: color-mix(in srgb, var(--color-primary) 90%, black) !important;
+}
+
+.focus\:ring-indigo-500:focus {
+  --tw-ring-color: rgba(99, 102, 241, 0.5) !important;
+  --tw-ring-color: color-mix(in srgb, var(--color-primary) 50%, transparent) !important;
+}
+
+.bg-gray-900 {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)) !important;
+}
+
+.hover\:bg-gray-800:hover {
+  background: linear-gradient(135deg,
+    rgba(79, 82, 217, 1),
+    rgba(139, 92, 246, 1)) !important;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary) 90%, black),
+    color-mix(in srgb, var(--color-secondary) 90%, black)) !important;
+}
+
+/* 表单和输入框样式 */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="url"],
+input[type="number"],
+textarea,
+select {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  background: var(--bg-secondary);
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+/* 按钮样式 */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 动态颜色工具类 */
+.progress-bar-fill {
+  background-color: var(--color-primary);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 50%, transparent);
+}
+
+.report-info-card {
+  border-color: rgba(99, 102, 241, 0.3);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.platform-indicator {
+  background-color: var(--color-primary);
+}
+
+.report-card {
+  border-color: rgba(99, 102, 241, 0.2);
+  border-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.tag-badge {
+  background-color: rgba(99, 102, 241, 0.7);
+  background-color: color-mix(in srgb, var(--color-primary) 70%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.modal-card {
+  border-color: rgba(99, 102, 241, 0.3);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.icon-primary {
+  color: var(--color-primary);
+}
+
+.ai-insight-box {
+  background-color: rgba(99, 102, 241, 0.1);
+  background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border-left: 4px solid var(--color-primary);
+}
+
+.btn-primary-large {
+  background-color: var(--color-primary);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+.btn-secondary-large {
+  background-color: var(--color-secondary);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-secondary) 40%, transparent);
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+}
+
+.btn-secondary {
+  background-color: var(--color-secondary);
+}
+
+.via-primary {
+  --tw-gradient-stops: var(--tw-gradient-from), var(--color-primary), var(--tw-gradient-to);
+}
+
+/* 移动端文字优化 */
+@media (max-width: 640px) {
+  body {
+    font-size: 15px;
+  }
+
+  h1 { font-size: 1.75rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.25rem; }
+
+  .px-4 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .py-8 {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+  }
+}
+
+@media (max-width: 375px) {
+  body {
+    font-size: 14px;
+  }
+
+  .px-4 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+/* 横屏模式 */
+@media (max-height: 500px) and (orientation: landscape) {
+  .min-h-screen {
+    min-height: 0;
+  }
+
+  .pt-\[calc\(15vh\)\] {
+    padding-top: 2rem !important;
+  }
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+  :root {
+    --border-color: rgba(0, 0, 0, 0.3);
+  }
+
+  html.dark {
+    --border-color: rgba(255, 255, 255, 0.3);
+  }
+}

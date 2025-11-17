@@ -1,13 +1,6 @@
 /* SetupWizard Component Styles - Performance Optimized */
 
-.setup-spinner {
-  color: var(--color-primary);
-  /* 硬件加速 */
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-/* 深色模式下使用相同颜色,已在基础样式中定义 */
+/* setup-spinner 已统一使用 PageSpinner 组件 */
 
 .setup-retry-button {
   background-color: var(--color-dark);
@@ -186,11 +179,6 @@ html.dark .setup-create-admin-button {
 html.dark .setup-create-admin-button:hover:not(:disabled) {
   background-color: var(--color-secondary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-/* 深色模式加载增强 */
-html.dark .setup-spinner {
-  filter: drop-shadow(0 0 8px var(--color-primary));
 }
 
 /* 深色模式焦点状态 */

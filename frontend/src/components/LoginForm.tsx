@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
-import { FaUser, FaLock, FaSpinner, FaGithub } from 'react-icons/fa';
+import { FaUser, FaLock, FaGithub } from 'react-icons/fa';
+import { Spinner } from './Spinner';
 import { fetchJson } from '../utils/apiHelper';
 import { RateLimitError } from '../utils/rateLimiter';
 import { sanitizeUsername } from '../utils/inputSanitizer';
@@ -189,7 +190,7 @@ const LoginForm: React.FC = () => {
           >
             {submitting ? (
               <>
-                <FaSpinner className="animate-spin" style={{ color: 'white' }} />
+                <Spinner size="sm" variant="white" />
                 <span>登录中...</span>
               </>
             ) : (

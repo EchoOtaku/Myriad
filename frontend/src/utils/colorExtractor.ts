@@ -368,6 +368,7 @@ function saveToLocalStorage(url: string, palette: ColorPalette): void {
 
 export function applyColorPalette(palette: ColorPalette): void {
     const root = document.documentElement;
+    
     root.style.setProperty('--color-primary', palette.primary);
     root.style.setProperty('--color-secondary', palette.secondary);
     root.style.setProperty('--color-accent', palette.accent);

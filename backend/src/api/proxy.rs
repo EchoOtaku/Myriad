@@ -244,7 +244,9 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
     }
 
     // 检查缓存（歌单缓存1小时）
-    {
+    // ⚠️ 临时禁用缓存以确保包含新的isVip字段
+    let use_cache = false;
+    if use_cache {
         let cache = MUSIC_CACHE.read().await;
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
@@ -309,12 +311,46 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
                     // 将所有 HTTP 图片链接转换为 HTTPS，避免 Mixed Content 警告
                     convert_http_to_https(&mut data);
 
+                    // 为每首歌添加VIP标记
+                    if let Some(playlist) = data.get_mut("playlist") {
+                        if let Some(tracks) = playlist.get_mut("tracks") {
+                            if let Some(tracks_array) = tracks.as_array_mut() {
+                                let mut vip_count = 0;
+                                for track in tracks_array.iter_mut() {
+                                    if let Some(fee) = track.get("fee").and_then(|f| f.as_i64()) {
+                                        // fee字段说明：
+                                        // 0 - 免费歌曲（完全免费）
+                                        // 1 - VIP歌曲（必须会员才能播放）⚠️
+                                        // 4 - 付费专辑（必须购买才能播放）⚠️
+                                        // 8 - 非会员可播放低品质版本（可完整听，但音质受限）
+                                        // 只有 fee=1 和 fee=4 才算真正的VIP歌曲（无法完整播放）
+                                        let is_vip = fee == 1 || fee == 4;
+                                        track.as_object_mut().unwrap().insert(
+                                            "isVip".to_string(),
+                                            json!(is_vip)
+                                        );
+                                        if is_vip {
+                                            vip_count += 1;
+                                        }
+                                    } else {
+                                        track.as_object_mut().unwrap().insert(
+                                            "isVip".to_string(),
+                                            json!(false)
+                                        );
+                                    }
+                                }
+                                tracing::info!("Playlist {} 解析完成: {} 首歌曲，{} 首VIP", 
+                                    playlist_id, tracks_array.len(), vip_count);
+                            }
+                        }
+                    }
+
                     // 存入缓存
                     {
                         let mut cache = MUSIC_CACHE.write().await;
                         cache.insert(cache_key, CacheEntry {
                             data: data.clone(),
-                            expires_at: Instant::now() + Duration::from_secs(3600), // 1小时
+                            expires_at: Instant::now() + Duration::from_secs(10800), // 3小时
                         });
                     }
 
@@ -417,8 +453,44 @@ fn get_random_user_agent() -> &'static str {
 
     user_agents[rng.gen_range(0..user_agents.len())]
 }
-/// 代理QQ音乐歌单请求
+/// 代理QQ音乐歌单请求（带缓存）
 pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
+    let cache_key = format!("qq_playlist:{}", playlist_id);
+
+    // 检查限流
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            tracing::warn!("Rate limit exceeded for QQ playlist: {}", playlist_id);
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({
+                    "error": "Too many requests",
+                    "message": "请求过于频繁，请稍后再试"
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    // 检查缓存（歌单缓存1小时）
+    // ⚠️ 临时禁用缓存以确保包含新的isVip字段
+    let use_cache = false;
+    if use_cache {
+        let cache = MUSIC_CACHE.read().await;
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.expires_at > Instant::now() {
+                tracing::debug!("Cache hit for QQ playlist: {}", playlist_id);
+                return (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(entry.data.clone()),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
@@ -436,12 +508,44 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
         .await
     {
         Ok(resp) => match resp.json::<Value>().await {
-            Ok(data) => (
-                StatusCode::OK,
-                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-                Json(data),
-            )
-                .into_response(),
+            Ok(mut data) => {
+                // 为QQ音乐歌曲添加VIP标记（QQ音乐通常不区分VIP，都可播放）
+                if let Some(cdlist) = data.get_mut("cdlist") {
+                    if let Some(cdlist_array) = cdlist.as_array_mut() {
+                        for cd in cdlist_array.iter_mut() {
+                            if let Some(songlist) = cd.get_mut("songlist") {
+                                if let Some(songlist_array) = songlist.as_array_mut() {
+                                    for song in songlist_array.iter_mut() {
+                                        // QQ音乐大部分歌曲免费，标记为非VIP
+                                        song.as_object_mut()
+                                            .unwrap()
+                                            .insert("isVip".to_string(), json!(false));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 存入缓存
+                {
+                    let mut cache = MUSIC_CACHE.write().await;
+                    cache.insert(
+                        cache_key,
+                        CacheEntry {
+                            data: data.clone(),
+                            expires_at: Instant::now() + Duration::from_secs(10800), // 3小时
+                        },
+                    );
+                }
+
+                (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(data),
+                )
+                    .into_response()
+            }
             Err(e) => {
                 tracing::error!("Failed to parse QQ playlist: {}", e);
                 (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
@@ -787,8 +891,38 @@ pub async fn get_client_geo(
         .into_response()
 }
 
-/// 代理QQ音乐歌词请求
+/// 代理QQ音乐歌词请求（带缓存）
 pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
+    let cache_key = format!("qq_lyrics:{}", song_mid);
+
+    // 检查限流
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({"error": "Too many requests"})),
+            )
+                .into_response();
+        }
+    }
+
+    // 检查缓存（歌词缓存24小时）
+    {
+        let cache = MUSIC_CACHE.read().await;
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.expires_at > Instant::now() {
+                tracing::debug!("Cache hit for QQ lyrics: {}", song_mid);
+                return (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(entry.data.clone()),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
@@ -806,12 +940,26 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
         .await
     {
         Ok(resp) => match resp.json::<Value>().await {
-            Ok(data) => (
-                StatusCode::OK,
-                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-                Json(data),
-            )
-                .into_response(),
+            Ok(data) => {
+                // 存入缓存
+                {
+                    let mut cache = MUSIC_CACHE.write().await;
+                    cache.insert(
+                        cache_key,
+                        CacheEntry {
+                            data: data.clone(),
+                            expires_at: Instant::now() + Duration::from_secs(86400), // 24小时
+                        },
+                    );
+                }
+
+                (
+                    StatusCode::OK,
+                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                    Json(data),
+                )
+                    .into_response()
+            }
             Err(e) => {
                 tracing::error!("Failed to parse QQ lyrics: {}", e);
                 (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()

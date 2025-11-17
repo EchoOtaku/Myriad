@@ -489,6 +489,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 加载壁纸和颜色（使用 Hook）
   const loadWallpaper = useCallback(async () => {
     const wallpaperResult = await loadWallpaperFromHook();
+    
+    if (!wallpaperResult) {
+      return;
+    }
+    
     if (wallpaperResult) {
       const { actualUrl } = wallpaperResult;
 
@@ -510,8 +515,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         const colors = await extractColorsFromImage(actualUrl, { context: 'wallpaper' });
         applyColorPalette(colors);
         saveColorToCache(actualUrl, colors);
-      } catch {
-        // 提取失败，静默处理
+      } catch (error) {
+        console.error('颜色提取失败:', error);
       }
     }
   }, [loadWallpaperFromHook]);
@@ -589,7 +594,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 初始化：加载壁纸和检查认证
   useEffect(() => {
-    loadWallpaper();
+    (async () => {
+      await loadWallpaper();
+    })();
     // ✅ 总是检查认证状态（静默模式），因为使用 HttpOnly Cookie 无法从 JavaScript 读取
     // 即使未登录也会返回 401，但静默处理，不显示错误
     checkAuth(true);
@@ -642,8 +649,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         const colors = await extractColorsFromImage(newUrl, { context: 'wallpaper' });
         applyColorPalette(colors);
         saveColorToCache(newUrl, colors);
-      } catch {
-        // 提取失败，静默处理
+      } catch (error) {
+        console.error('颜色提取失败:', error);
       }
     };
 

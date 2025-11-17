@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
 import Toast from './Toast';
+import { ButtonSpinner } from './Spinner';
 import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
 import { fetchJson } from '../utils/apiHelper';
 import { fetchConfig } from '../lib/api';
@@ -616,12 +617,7 @@ const ModernConfigForm: React.FC = () => {
   }, [config]);
 
   if (loading) {
-    return (
-      <div className="modern-config-loading">
-        <div className="modern-spinner"></div>
-        <p>加载配置中...</p>
-      </div>
-    );
+    return null;
   }
 
   if (!config) {
@@ -1532,7 +1528,7 @@ const ModernConfigForm: React.FC = () => {
                 >
                   {testing === platform.name ? (
                     <>
-                      <div className="button-spinner"></div>
+                      <ButtonSpinner />
                       <span>测试中...</span>
                     </>
                   ) : (

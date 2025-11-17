@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
 import Loader from './Loader';
+import { Spinner } from './Spinner';
 import TokenManager from '../utils/tokenManager';
 import { getCSRFToken } from '../utils/csrf';
 import './ReportCards.css';
@@ -991,20 +992,15 @@ export default function ReportCards() {
     // 移除自动生成插图的 useEffect
     // 插图现在需要在配置页面手动生成
 
-    // 初始加载状态 - 显示简约加载动画
+    // 初始加载状态 - 不显示加载动画
     if (loading && !report) {
-        return (
-            <div className="flex items-center justify-center min-h-[600px]">
-                <Loader size="large" />
-            </div>
-        );
+        return null;
     }
 
     // 无报告且加载完成 - 显示提示
     if (!report) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[600px] gap-6">
-                <Loader size="large" />
                 <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-md">
                     {error || "点击导航岛的灯泡图标开始生成报告"}
                 </p>
@@ -1445,21 +1441,6 @@ export default function ReportCards() {
                     >
                         <div className="overflow-y-auto max-h-[85vh] custom-scrollbar">
                             <div className="p-10 relative">
-                                {/* 加载遮罩 - 覆盖整个内容区域 */}
-                                {personaLoading && (
-                                    <div className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
-                                        <div className="text-center">
-                                            <div className="persona-loading-spinner animate-spin rounded-full h-12 w-12 border-4 border-gray-200 dark:border-gray-700 mx-auto mb-4"></div>
-                                            <p className="text-lg font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                                                AI 正在生成虚拟人物设定
-                                            </p>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                这可能需要 20-40 秒，请耐心等待...
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-                                
                                 {personaData ? (
                                     <>
                                         {/* 头部 */}
@@ -1597,7 +1578,7 @@ export default function ReportCards() {
                                                     >
                                                         {generatingImage ? (
                                                             <>
-                                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white"></div>
+                                                                <Spinner size="sm" variant="white" />
                                                                 <span>生成中...</span>
                                                             </>
                                                         ) : (
@@ -1634,7 +1615,7 @@ export default function ReportCards() {
                                                     >
                                                         {generatingImage ? (
                                                             <>
-                                                                <div className="generating-image-spinner animate-spin rounded-full h-4 w-4 border-2 border-white/50"></div>
+                                                                <Spinner size="sm" variant="white" />
                                                                 <span>生成中...</span>
                                                             </>
                                                         ) : (

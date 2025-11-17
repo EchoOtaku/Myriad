@@ -382,27 +382,8 @@ html.dark .persona-prompt-edit-bg {
 }
 
 /* ========================================
-   Loading Spinners
+   Loading Spinners - 已统一使用 Spinner 组件
    ======================================== */
-
-/* 虚拟人物加载旋转器 */
-.persona-loading-spinner {
-    border-top-color: var(--color-primary);
-}
-
-html.dark .persona-loading-spinner {
-    box-shadow: 0 0 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
-}
-
-/* 图片生成旋转器 */
-.generating-image-spinner {
-    border-top-color: white;
-}
-
-html.dark .generating-image-spinner {
-    border-top-color: white;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
-}
 
 /* ========================================
    社交平台胶囊样式 - Platform Links

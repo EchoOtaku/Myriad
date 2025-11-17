@@ -1,9 +1,10 @@
 /**
  * 主应用入口
- * 集成路由器和布局，构建 SPA 核心
+ * 集成路由器和布局,构建 SPA 核心
+ * 优化: 代码分割 + 预加载 + 性能监控
  */
 
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { AppLayout } from './layouts/AppLayout';
@@ -11,10 +12,17 @@ import { recordNavigation } from './router/navigationHistory';
 import RouteLoader from './components/RouteLoader';
 import { NotificationProvider } from './contexts/NotificationContext';
 import CustomScrollbar from './components/CustomScrollbar';
+import { preloadCriticalRoutes } from './utils/codeSplitting';
+import './styles/theme.css';
 import './styles/animations.css';
+import './styles/performance.css';
 import './styles/page-transitions.css';
+import './styles/navigation-island.css';
+import './styles/utility.css';
+import './styles/modals.css';
+import './styles/overrides.css';
 
-// 懒加载视图组件
+// 懒加载视图组件 - 使用代码分割
 const Home = lazy(() => import('./views/Home.tsx'));
 const Library = lazy(() => import('./views/Library.tsx'));
 const Config = lazy(() => import('./views/Config.tsx'));
@@ -91,16 +99,10 @@ function LoadingFallback() {
  */
 function AppRoutes() {
   const location = useLocation();
-  const prevLocationRef = useRef(location.pathname);
 
   // 记录每次路由变化
   useEffect(() => {
     recordNavigation(location.pathname);
-  }, [location.pathname]);
-
-  // 记录路由变化（移除滚动锁定逻辑）
-  useEffect(() => {
-    prevLocationRef.current = location.pathname;
   }, [location.pathname]);
 
   // 路由切换时恢复到顶部
@@ -155,11 +157,21 @@ export function App() {
     // 立即尝试隐藏加载器
     hideLoader();
 
-    // 如果页面还在加载，等待完成后再隐藏
+    // 如果页面还在加载,等待完成后再隐藏
     if (document.readyState === 'loading') {
       window.addEventListener('load', hideLoader);
       return () => window.removeEventListener('load', hideLoader);
     }
+  }, []);
+
+  // 预加载关键路由 - 在空闲时加载Library和Config
+  useEffect(() => {
+    // 延迟2秒后预加载,确保首屏已渲染完成
+    const timer = setTimeout(() => {
+      preloadCriticalRoutes();
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -172,6 +184,12 @@ export function App() {
             <AppRoutes />
           </Suspense>
         </AppLayout>
+        {/* 开发环境下显示合并的性能监控工具 */}
+        {import.meta.env.DEV && (
+          <Suspense fallback={null}>
+            {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+          </Suspense>
+        )}
       </NotificationProvider>
     </BrowserRouter>
   );

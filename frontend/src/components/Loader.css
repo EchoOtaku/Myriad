@@ -1,6 +1,6 @@
 /**
- * 纯光效加载器
- * 克制理性的设计
+ * 简约圆圈加载器
+ * 统一的旋转环设计
  */
 
 .loader-container {
@@ -10,36 +10,26 @@
     justify-content: center;
 }
 
-/* 光效核心 - 使用全局主色 */
+/* 圆圈加载环 */
 .loader-light {
     position: relative;
     border-radius: 50%;
-    background: radial-gradient(circle,
-        color-mix(in srgb, var(--color-primary, #6366f1) 15%, transparent) 0%,
-        color-mix(in srgb, var(--color-primary, #8b5cf6) 8%, transparent) 30%,
-        color-mix(in srgb, var(--color-primary, #a855f7) 4%, transparent) 50%,
-        transparent 70%
-    );
-    animation: light-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-               light-breathe 3s ease-in-out 0.5s infinite;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-top-color: var(--color-primary, #6366f1);
+    animation: spin 0.8s linear infinite;
 }
 
-/* 暗黑模式 - 增强光效强度 */
+/* 暗黑模式 */
 @media (prefers-color-scheme: dark) {
     .loader-light {
-        background: radial-gradient(circle,
-            color-mix(in srgb, var(--color-primary, #818cf8) 20%, transparent) 0%,
-            color-mix(in srgb, var(--color-primary, #a78bfa) 12%, transparent) 30%,
-            color-mix(in srgb, var(--color-primary, #c4b5fd) 6%, transparent) 50%,
-            transparent 70%
-        );
+        border-color: rgba(255, 255, 255, 0.1);
+        border-top-color: var(--color-primary, #818cf8);
     }
 }
 
 /* 尊重用户动画偏好 */
 @media (prefers-reduced-motion: reduce) {
     .loader-light {
-        animation: none;
-        opacity: 0.8;
+        animation: spin 1.5s linear infinite;
     }
 }

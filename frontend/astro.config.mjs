@@ -31,6 +31,17 @@ export default defineConfig({
     },
     build: {
       cssCodeSplit: true,
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          drop_console: import.meta.env.PROD,
+          drop_debugger: true,
+          passes: 2,
+        },
+        mangle: {
+          safari10: true,
+        },
+      },
       rollupOptions: {
         output: {
           manualChunks: {
@@ -39,8 +50,16 @@ export default defineConfig({
             'chart-vendor': ['chart.js', 'react-chartjs-2'],
             'framer-motion': ['framer-motion'],
           },
+          // 优化文件名用于长期缓存
+          chunkFileNames: 'assets/[name]-[hash].js',
+          entryFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: 'assets/[name]-[hash].[ext]',
         },
       },
+      assetsInlineLimit: 4096,
+      // 启用 gzip 和 brotli 压缩报告
+      reportCompressedSize: true,
+      chunkSizeWarningLimit: 1000,
     },
     server: {
       proxy: {

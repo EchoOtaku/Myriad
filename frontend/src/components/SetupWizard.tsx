@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
-import { FaCheck, FaSpinner, FaDatabase, FaUser, FaExclamationTriangle } from 'react-icons/fa';
+import { FaCheck, FaDatabase, FaUser, FaExclamationTriangle } from 'react-icons/fa';
+import { Spinner } from './Spinner';
 import './SetupWizard.css';
 
 interface SetupStatus {
@@ -276,17 +277,7 @@ const SetupWizard: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center">
-          <FaSpinner 
-            className="animate-spin text-5xl sm:text-6xl mx-auto mb-4 setup-spinner"
-            style={{ color: 'var(--color-primary)' }}
-          />
-          <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">检查系统状态...</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   if (error) {
@@ -469,7 +460,7 @@ const SetupWizard: React.FC = () => {
                         disabled={savingDb || !dbConfig.password}
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
-                        {savingDb ? <FaSpinner className="animate-spin" style={{ color: 'white' }} /> : '💾'}
+                        {savingDb ? <Spinner size="sm" variant="white" /> : '💾'}
                         <span>{savingDb ? '保存中...' : '保存并连接数据库'}</span>
                       </button>
                     </div>
@@ -519,7 +510,7 @@ const SetupWizard: React.FC = () => {
                               disabled={migratingDb}
                               className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
                             >
-                              {migratingDb ? <FaSpinner className="animate-spin" style={{ color: 'white' }} /> : <FaDatabase />}
+                              {migratingDb ? <Spinner size="sm" variant="white" /> : <FaDatabase />}
                               <span>{migratingDb ? '初始化中...' : '初始化数据库表'}</span>
                             </button>
                           </div>
@@ -586,7 +577,7 @@ const SetupWizard: React.FC = () => {
                           disabled={creatingAdmin}
                           className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
-                          {creatingAdmin ? <FaSpinner className="animate-spin" style={{ color: 'white' }} /> : <FaUser />}
+                          {creatingAdmin ? <Spinner size="sm" variant="white" /> : <FaUser />}
                           <span>{creatingAdmin ? '创建中...' : '创建管理员账户'}</span>
                         </button>
                       </>

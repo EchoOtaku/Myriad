@@ -25,8 +25,8 @@ export default function LoadingToast({ message = '加载中...', show }: Loading
             show ? 'opacity-100 translate-y-0 animate-fade-in' : 'opacity-0 translate-y-2'
         }`}>
             <div className="loading-toast-container glass rounded-xl px-4 py-3 shadow-lg border flex items-center gap-3 backdrop-blur-md">
-                {/* 使用简约光效替代旋转动画 */}
-                <div className="w-4 h-4 rounded-full bg-gradient-radial from-indigo-400/30 to-transparent animate-pulse"></div>
+                {/* 简约圆圈加载环 */}
+                <div className="loading-toast-spinner"></div>
 
                 {/* 加载文字 */}
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200">

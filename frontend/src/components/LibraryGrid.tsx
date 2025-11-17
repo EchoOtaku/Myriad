@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
 import Loader from './Loader';
+import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
 import { usePagedLoad } from '../hooks/useVirtualScroll';
 import { useNotification } from '../contexts/NotificationContext';
@@ -78,22 +79,6 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         
-        /* 加载spinner */
-        .loading-spinner {
-            animation: spin 1s linear infinite;
-            border-radius: 9999px;
-            height: 1.25rem;
-            width: 1.25rem;
-            border-width: 2px;
-            border-style: solid;
-            border-color: transparent;
-        }
-        
-        .loading-spinner.primary-spinner {
-            border-top-color: var(--color-primary, #3b82f6);
-            border-right-color: var(--color-primary, #3b82f6);
-        }
-        
         /* 加载按钮主题色 */
         .load-more-btn.primary-load-btn {
             background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
@@ -103,15 +88,6 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
         
         .load-more-btn.primary-load-btn:hover {
             background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
-        }
-        
-        @keyframes spin {
-            from {
-                transform: rotate(0deg);
-            }
-            to {
-                transform: rotate(360deg);
-            }
         }
     `;
     document.head.appendChild(style);
@@ -449,13 +425,9 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         return Math.max(...heights, 500) + 20;
     }, [layouts]);
 
-    // 初次加载时显示简洁的加载指示
+    // 初次加载时不显示任何加载动画
     if (loading && allItems.length === 0) {
-        return (
-            <div className="flex items-center justify-center min-h-[600px]">
-                <Loader size="large" />
-            </div>
-        );
+        return null;
     }
 
     // 内容过渡动画
@@ -671,7 +643,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 <div className="flex justify-center mt-8 mb-4">
                     {loadingMore ? (
                         <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                            <div className="loading-spinner primary-spinner"></div>
+                            <Spinner size="sm" variant="primary" />
                             <span className="text-sm">加载更多...</span>
                         </div>
                     ) : (

@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import AnimatedView from '../components/AnimatedView';
 import Toast from '../components/Toast';
+import { ButtonSpinner } from '../components/Spinner';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { getCSRFToken } from '../utils/csrf';
@@ -458,12 +459,7 @@ export default function DataManagement() {
   }, [isAdmin]);
 
   if (loading) {
-    return (
-      <AnimatedView className="modern-config-loading">
-        <div className="modern-spinner"></div>
-        <p>加载中...</p>
-      </AnimatedView>
-    );
+    return null;
   }
 
   if (!isAdmin) {
@@ -504,7 +500,7 @@ export default function DataManagement() {
               disabled={metadataLoading}
             >
               {metadataLoading ? (
-                <div className="button-spinner"></div>
+                <ButtonSpinner />
               ) : (
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -515,12 +511,7 @@ export default function DataManagement() {
           </div>
 
           <div className="config-form">
-            {metadataLoading ? (
-              <div className="info-card loading-container">
-                <div className="button-spinner spinner-center"></div>
-                <p className="info-text loading-text">加载中...</p>
-              </div>
-            ) : metadataList.length === 0 ? (
+            {metadataList.length === 0 && !metadataLoading ? (
               <div className="info-card empty-container">
                 <p className="info-title">暂无元数据缓存</p>
                 <p className="info-text empty-text">
@@ -559,7 +550,7 @@ export default function DataManagement() {
                           aria-label="强制刷新此平台数据"
                         >
                           {refreshingPlatform === metadata.platform_name ? (
-                            <div className="button-spinner spinner-small"></div>
+                            <ButtonSpinner size="sm" />
                           ) : (
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -610,12 +601,7 @@ export default function DataManagement() {
           </div>
 
           <div className="config-form">
-            {reportsLoading ? (
-              <div className="info-card loading-container">
-                <div className="button-spinner spinner-center"></div>
-                <p className="info-text loading-text">加载中...</p>
-              </div>
-            ) : reports.length === 0 ? (
+            {reports.length === 0 && !reportsLoading ? (
               <div className="info-card empty-container">
                 <p className="info-title">暂无报告</p>
                 <p className="info-text empty-text">
