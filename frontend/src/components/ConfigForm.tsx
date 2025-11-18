@@ -9,6 +9,7 @@ import { fetchJson } from '../utils/apiHelper';
 import { fetchConfig } from '../lib/api';
 import { useDebounce } from '../hooks/useDebounce';
 import { getCSRFToken } from '../utils/csrf';
+import { clearPlaylistCache } from '../utils/musicPlayer';
 import './ConfigForm.css';
 
 // 注意：懒加载配置组件已创建但暂未使用，以保持稳定性
@@ -1407,6 +1408,30 @@ const ModernConfigForm: React.FC = () => {
                       ? '网易云音乐歌单链接中的数字ID，如 https://music.163.com/#/playlist?id=2884035'
                       : 'QQ音乐歌单链接中的数字ID，如 https://y.qq.com/n/ryqq/playlist/8039305244'}
                   </p>
+                </div>
+
+                {/* 清理音乐缓存按钮 */}
+                <div className="info-card" style={{ marginTop: '1rem' }}>
+                  <p className="info-title">缓存管理</p>
+                  <p style={{ marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    清空本地音乐缓存，强制重新加载歌单数据
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearPlaylistCache();
+                      setToast({
+                        show: true,
+                        message: '音乐缓存已清空，下次加载时将重新获取数据',
+                        type: 'success'
+                      });
+                      setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+                    }}
+                    className="button-secondary"
+                    style={{ width: 'auto' }}
+                  >
+                    清空音乐缓存
+                  </button>
                 </div>
               </div>
             </div>

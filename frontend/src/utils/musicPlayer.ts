@@ -110,7 +110,7 @@ interface PlaylistCacheEntry {
 }
 
 const playlistMemoryCache = new Map<string, PlaylistCacheEntry>();
-const PLAYLIST_CACHE_DURATION = 30 * 60 * 1000; // 30分钟
+const PLAYLIST_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7天
 const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache';
 
 /**
@@ -546,3 +546,193 @@ export function highlightText(text: string, query: string): string {
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
   return text.replace(regex, '<mark>$1</mark>');
 }
+
+/**
+ * 全局音频管理器 - 确保同一时间只有一个音频在播放
+ */
+class GlobalAudioManager {
+  private static instance: GlobalAudioManager;
+  private currentAudio: HTMLAudioElement | null = null;
+  private currentSong: Song | null = null;
+
+  private constructor() {}
+
+  static getInstance(): GlobalAudioManager {
+    if (!GlobalAudioManager.instance) {
+      GlobalAudioManager.instance = new GlobalAudioManager();
+    }
+    return GlobalAudioManager.instance;
+  }
+
+  /**
+   * 设置当前音频实例
+   * 会自动停止并清理之前的音频
+   */
+  setCurrentAudio(audio: HTMLAudioElement | null, song: Song | null = null): void {
+    // 如果有之前的音频在播放，先停止并清理
+    if (this.currentAudio && this.currentAudio !== audio) {
+      this.currentAudio.pause();
+      this.currentAudio.src = '';
+      this.currentAudio.load(); // 重置音频元素
+    }
+
+    this.currentAudio = audio;
+    this.currentSong = song;
+
+    // 如果设置了新音频和歌曲信息，更新 Media Session
+    if (audio && song) {
+      this.updateMediaSession(song);
+    }
+  }
+
+  /**
+   * 获取当前音频实例
+   */
+  getCurrentAudio(): HTMLAudioElement | null {
+    return this.currentAudio;
+  }
+
+  /**
+   * 获取当前歌曲信息
+   */
+  getCurrentSong(): Song | null {
+    return this.currentSong;
+  }
+
+  /**
+   * 停止当前音频
+   */
+  stopCurrentAudio(): void {
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.src = '';
+      this.currentAudio.load();
+      this.currentAudio = null;
+      this.currentSong = null;
+      this.clearMediaSession();
+    }
+  }
+
+  /**
+   * 更新 Media Session API (移动端系统级媒体控制)
+   */
+  private updateMediaSession(song: Song): void {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: song.name,
+        artist: song.artist,
+        album: song.album,
+        artwork: [
+          { src: song.cover, sizes: '96x96', type: 'image/jpeg' },
+          { src: song.cover, sizes: '128x128', type: 'image/jpeg' },
+          { src: song.cover, sizes: '192x192', type: 'image/jpeg' },
+          { src: song.cover, sizes: '256x256', type: 'image/jpeg' },
+          { src: song.cover, sizes: '384x384', type: 'image/jpeg' },
+          { src: song.cover, sizes: '512x512', type: 'image/jpeg' },
+        ],
+      });
+    }
+  }
+
+  /**
+   * 清除 Media Session
+   */
+  private clearMediaSession(): void {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = null;
+    }
+  }
+
+  /**
+   * 设置 Media Session 操作处理器
+   */
+  setMediaSessionHandlers(handlers: {
+    play?: () => void;
+    pause?: () => void;
+    previoustrack?: () => void;
+    nexttrack?: () => void;
+    seekbackward?: () => void;
+    seekforward?: () => void;
+    seekto?: (details: { seekTime: number }) => void;
+  }): void {
+    if ('mediaSession' in navigator) {
+      // 设置播放/暂停
+      if (handlers.play) {
+        try {
+          navigator.mediaSession.setActionHandler('play', handlers.play);
+        } catch (error) {
+          console.log('Media Session action "play" is not supported');
+        }
+      }
+
+      if (handlers.pause) {
+        try {
+          navigator.mediaSession.setActionHandler('pause', handlers.pause);
+        } catch (error) {
+          console.log('Media Session action "pause" is not supported');
+        }
+      }
+
+      // 设置上一首/下一首
+      if (handlers.previoustrack) {
+        try {
+          navigator.mediaSession.setActionHandler('previoustrack', handlers.previoustrack);
+        } catch (error) {
+          console.log('Media Session action "previoustrack" is not supported');
+        }
+      }
+
+      if (handlers.nexttrack) {
+        try {
+          navigator.mediaSession.setActionHandler('nexttrack', handlers.nexttrack);
+        } catch (error) {
+          console.log('Media Session action "nexttrack" is not supported');
+        }
+      }
+
+      // 设置快进/快退
+      if (handlers.seekbackward) {
+        try {
+          navigator.mediaSession.setActionHandler('seekbackward', handlers.seekbackward);
+        } catch (error) {
+          console.log('Media Session action "seekbackward" is not supported');
+        }
+      }
+
+      if (handlers.seekforward) {
+        try {
+          navigator.mediaSession.setActionHandler('seekforward', handlers.seekforward);
+        } catch (error) {
+          console.log('Media Session action "seekforward" is not supported');
+        }
+      }
+
+      // 设置进度跳转
+      if (handlers.seekto) {
+        try {
+          navigator.mediaSession.setActionHandler('seekto', (details) => {
+            if (handlers.seekto && details.seekTime !== undefined) {
+              handlers.seekto({ seekTime: details.seekTime });
+            }
+          });
+        } catch (error) {
+          console.log('Media Session action "seekto" is not supported');
+        }
+      }
+    }
+  }
+
+  /**
+   * 更新播放状态
+   */
+  setPlaybackState(state: 'none' | 'paused' | 'playing'): void {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = state;
+    }
+  }
+}
+
+/**
+ * 导出全局音频管理器实例
+ */
+export const audioManager = GlobalAudioManager.getInstance();

@@ -243,14 +243,12 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         }
     }
 
-    // 检查缓存（歌单缓存1小时）
-    // ⚠️ 临时禁用缓存以确保包含新的isVip字段
-    let use_cache = false;
-    if use_cache {
+    // 检查缓存（歌单缓存7天）
+    {
         let cache = MUSIC_CACHE.read().await;
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
-                tracing::debug!("Cache hit for playlist: {}", playlist_id);
+                tracing::debug!("✅ Cache hit for playlist: {}", playlist_id);
                 return (
                     StatusCode::OK,
                     [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
@@ -274,8 +272,9 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         .build()
         .unwrap();
 
+    // 使用trackIds参数可以获取所有歌曲ID，即使超过1000首
     let url = format!(
-        "https://music.163.com/api/v6/playlist/detail?id={}&n=100000&s=0&t=0",
+        "https://music.163.com/api/v6/playlist/detail?id={}&n=1000&s=0&t=0",
         playlist_id
     );
 
@@ -290,11 +289,11 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         .header("Accept", "*/*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
         .header("Connection", "keep-alive")
-        .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true", 
+        .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
             device_id, timestamp, rand::random::<u16>() % 10000))
         // 优化的代理链伪装
-        .header("X-Forwarded-For", forwarded_for)
-        .header("X-Real-IP", client_ip)
+        .header("X-Forwarded-For", forwarded_for.clone())
+        .header("X-Real-IP", client_ip.clone())
         .send()
         .await
     {
@@ -313,8 +312,15 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
 
                     // 为每首歌添加VIP标记
                     if let Some(playlist) = data.get_mut("playlist") {
+                        // 获取歌曲总数
+                        let track_count = playlist.get("trackCount").and_then(|t| t.as_i64()).unwrap_or(0) as usize;
+
+                        // 提前克隆trackIds以避免后续借用冲突
+                        let track_ids = playlist.get("trackIds").and_then(|ids| ids.as_array()).cloned();
+
                         if let Some(tracks) = playlist.get_mut("tracks") {
                             if let Some(tracks_array) = tracks.as_array_mut() {
+                                let loaded_tracks = tracks_array.len();
                                 let mut vip_count = 0;
                                 for track in tracks_array.iter_mut() {
                                     if let Some(fee) = track.get("fee").and_then(|f| f.as_i64()) {
@@ -339,8 +345,130 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
                                         );
                                     }
                                 }
-                                tracing::info!("Playlist {} 解析完成: {} 首歌曲，{} 首VIP", 
-                                    playlist_id, tracks_array.len(), vip_count);
+
+                                // 🎵 突破1000首限制：如果歌单总数超过已加载数量，使用trackIds继续获取
+                                if track_count > loaded_tracks && loaded_tracks >= 1000 {
+                                    tracing::info!("🎵 歌单超过1000首 ({}/{}), 使用trackIds方式获取剩余歌曲...", loaded_tracks, track_count);
+
+                                    // 使用之前克隆的trackIds
+                                    if let Some(track_ids_array) = track_ids {
+                                        tracing::info!("📋 trackIds总数: {}", track_ids_array.len());
+
+                                        let mut all_tracks = tracks_array.clone();
+                                        let batch_size = 200; // song/detail API单次限制约200首
+                                        let mut offset = loaded_tracks; // 从已加载的位置继续
+
+                                        while all_tracks.len() < track_ids_array.len() {
+                                            let start_idx = offset;
+                                            let end_idx = std::cmp::min(start_idx + batch_size, track_ids_array.len());
+
+                                            if start_idx >= track_ids_array.len() {
+                                                break;
+                                            }
+
+                                            let batch_num = (offset - loaded_tracks) / batch_size + 1;
+
+                                            // 提取当前批次的ID列表
+                                            let batch_ids: Vec<String> = track_ids_array[start_idx..end_idx]
+                                                .iter()
+                                                .filter_map(|id_obj| id_obj.get("id").and_then(|v| v.as_i64()).map(|n| n.to_string()))
+                                                .collect();
+
+                                            if batch_ids.is_empty() {
+                                                tracing::warn!("⚠️ 批次 {} 没有有效的歌曲ID", batch_num);
+                                                break;
+                                            }
+
+                                            tracing::debug!("📥 获取批次 {} ({}-{}/{} 首)", batch_num, start_idx, end_idx, track_ids_array.len());
+
+                                            // 使用song/detail API批量获取歌曲信息
+                                            let ids_str = batch_ids.join(",");
+                                            let track_url = format!(
+                                                "https://music.163.com/api/song/detail?ids=[{}]",
+                                                ids_str
+                                            );
+
+                                            tracing::debug!("📦 请求URL: {}", &track_url[..std::cmp::min(150, track_url.len())]);
+
+                                            // 添加小延迟避免请求过快
+                                            tokio::time::sleep(Duration::from_millis(300)).await;
+
+                                            match client.get(&track_url)
+                                                .header("Referer", "https://music.163.com/")
+                                                .header("Origin", "https://music.163.com")
+                                                .header("Accept", "*/*")
+                                                .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+                                                .header("Connection", "keep-alive")
+                                                .header("Cookie", format!("osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
+                                                    device_id, timestamp, rand::random::<u16>() % 10000))
+                                                .header("X-Forwarded-For", forwarded_for.clone())
+                                                .header("X-Real-IP", client_ip.clone())
+                                                .send()
+                                                .await
+                                            {
+                                                Ok(resp) => match resp.json::<Value>().await {
+                                                    Ok(batch_data) => {
+                                                        if let Some(code) = batch_data.get("code").and_then(|c| c.as_i64()) {
+                                                            if code != 200 {
+                                                                tracing::error!("❌ 获取歌曲批次失败，错误码: {}, 响应: {:?}", code, batch_data);
+                                                                break;
+                                                            }
+                                                        }
+
+                                                        if let Some(songs) = batch_data.get("songs").and_then(|s| s.as_array()) {
+                                                            // 为新获取的歌曲添加VIP标记
+                                                            for mut song in songs.clone() {
+                                                                if let Some(fee) = song.get("fee").and_then(|f| f.as_i64()) {
+                                                                    let is_vip = fee == 1 || fee == 4;
+                                                                    song.as_object_mut().unwrap().insert(
+                                                                        "isVip".to_string(),
+                                                                        json!(is_vip)
+                                                                    );
+                                                                    if is_vip {
+                                                                        vip_count += 1;
+                                                                    }
+                                                                } else {
+                                                                    song.as_object_mut().unwrap().insert(
+                                                                        "isVip".to_string(),
+                                                                        json!(false)
+                                                                    );
+                                                                }
+                                                                all_tracks.push(song);
+                                                            }
+
+                                                            tracing::debug!("✅ 已累计获取 {} 首歌曲 (当前批次: {})", all_tracks.len(), songs.len());
+                                                        } else {
+                                                            tracing::warn!("⚠️ 响应中没有找到songs字段");
+                                                            break;
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        tracing::error!("❌ 解析歌曲批次失败: {}", e);
+                                                        break;
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    tracing::error!("❌ 请求歌曲批次失败: {}", e);
+                                                    break;
+                                                }
+                                            }
+
+                                            offset += batch_size;
+                                        }
+
+                                        // 更新歌曲列表
+                                        *tracks_array = all_tracks;
+                                        tracing::info!("✅ Playlist {} 完整加载: {} 首歌曲，{} 首VIP",
+                                            playlist_id, tracks_array.len(), vip_count);
+                                    } else {
+                                        tracing::warn!("⚠️ 歌单中没有找到trackIds字段，无法突破1000首限制");
+                                        tracing::info!("✅ Playlist {} 部分加载: {} 首歌曲 (总计{}首)，{} 首VIP",
+                                            playlist_id, tracks_array.len(), track_count, vip_count);
+                                    }
+                                } else {
+                                    tracing::info!("✅ Playlist {} 解析完成: {} 首歌曲，{} 首VIP",
+                                        playlist_id, tracks_array.len(), vip_count);
+                                }
                             }
                         }
                     }
@@ -350,7 +478,7 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
                         let mut cache = MUSIC_CACHE.write().await;
                         cache.insert(cache_key, CacheEntry {
                             data: data.clone(),
-                            expires_at: Instant::now() + Duration::from_secs(10800), // 3小时
+                            expires_at: Instant::now() + Duration::from_secs(604800), // 7天 (7*24*3600)
                         });
                     }
 
@@ -534,7 +662,7 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
                         cache_key,
                         CacheEntry {
                             data: data.clone(),
-                            expires_at: Instant::now() + Duration::from_secs(10800), // 3小时
+                            expires_at: Instant::now() + Duration::from_secs(604800), // 7天 (7*24*3600)
                         },
                     );
                 }

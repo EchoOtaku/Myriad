@@ -8,6 +8,7 @@ import {
   getNeteaseLyrics,
   getQQLyrics,
   getCurrentLyricIndex,
+  audioManager,
 } from '../utils/musicPlayer';
 import { extractColorsFromImage, ColorPalette } from '../utils/colorExtractor';
 
@@ -238,6 +239,11 @@ export function useMusicPlayer() {
     async (song: Song, index: number) => {
       dispatch({ type: 'SET_CURRENT_SONG', payload: { song, index } });
 
+      // 通过全局音频管理器注册当前音频实例
+      if (audioRef.current) {
+        audioManager.setCurrentAudio(audioRef.current, song);
+      }
+
       // 加载歌词
       await loadLyrics(song);
 
@@ -256,8 +262,10 @@ export function useMusicPlayer() {
     if (audioRef.current) {
       if (state.isPlaying) {
         audioRef.current.pause();
+        audioManager.setPlaybackState('paused');
       } else {
         audioRef.current.play();
+        audioManager.setPlaybackState('playing');
       }
       dispatch({ type: 'TOGGLE_PLAYING' });
     }
@@ -310,6 +318,54 @@ export function useMusicPlayer() {
   const setView = useCallback((view: 'info' | 'lyrics' | 'playlist') => {
     dispatch({ type: 'SET_VIEW', payload: view });
   }, []);
+
+  // 初始化 Media Session API 处理器
+  useEffect(() => {
+    audioManager.setMediaSessionHandlers({
+      play: () => {
+        if (audioRef.current && !state.isPlaying) {
+          audioRef.current.play();
+          dispatch({ type: 'SET_PLAYING', payload: true });
+        }
+      },
+      pause: () => {
+        if (audioRef.current && state.isPlaying) {
+          audioRef.current.pause();
+          dispatch({ type: 'SET_PLAYING', payload: false });
+        }
+      },
+      previoustrack: () => {
+        dispatch({ type: 'PREV_SONG' });
+      },
+      nexttrack: () => {
+        dispatch({ type: 'NEXT_SONG' });
+      },
+      seekbackward: () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10);
+        }
+      },
+      seekforward: () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.min(
+            audioRef.current.duration || 0,
+            audioRef.current.currentTime + 10
+          );
+        }
+      },
+      seekto: (details) => {
+        if (audioRef.current && details.seekTime !== undefined) {
+          audioRef.current.currentTime = details.seekTime;
+          dispatch({ type: 'SET_CURRENT_TIME', payload: details.seekTime });
+        }
+      },
+    });
+
+    // 清理函数：组件卸载时清除媒体会话
+    return () => {
+      audioManager.stopCurrentAudio();
+    };
+  }, [state.isPlaying]);
 
   return {
     state,

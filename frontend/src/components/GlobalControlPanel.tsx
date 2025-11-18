@@ -28,7 +28,8 @@ import {
   debounce,
   filterPlaylist,
   highlightText,
-  getSongVipStatus
+  getSongVipStatus,
+  audioManager
 } from '../utils/musicPlayer';
 import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
 import { useWallpaper } from '../hooks/useWallpaper';
@@ -89,6 +90,7 @@ const GlobalControlPanel: React.FC = () => {
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(0.7);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
@@ -136,9 +138,96 @@ const GlobalControlPanel: React.FC = () => {
   const preloadCacheRef = useRef<Map<number, boolean>>(new Map());
   const preloadErrorCountRef = useRef<number>(0);
   const preloadDisabledUntilRef = useRef<number>(0); // 改用时间戳，而非永久禁用
-  
+
   // 随机播放模式：预先确定的下一首歌曲索引
   const nextShuffleIndexRef = useRef<number>(-1);
+
+  // 预加载触发控制
+  const currentSongLoadedRef = useRef<boolean>(false); // 当前歌曲是否加载完毕
+  const currentSongStartTimeRef = useRef<number>(0); // 当前歌曲开始播放的时间
+  const preloadTriggeredRef = useRef<boolean>(false); // 是否已触发预加载（防止重复）
+
+  // 进度条呼吸动画控制
+  const progressBarRef = useRef<HTMLInputElement | null>(null);
+  const breathAnimationRef = useRef<number | null>(null);
+
+  // 启动进度条呼吸动画
+  const startProgressBreathAnimation = useCallback(() => {
+    if (!progressBarRef.current) return;
+
+    // 如果已有动画在运行，先停止
+    if (breathAnimationRef.current !== null) {
+      cancelAnimationFrame(breathAnimationRef.current);
+    }
+
+    const progressBar = progressBarRef.current;
+    const startTime = Date.now();
+    const duration = 1500; // 1.5秒一个周期
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = (elapsed % duration) / duration; // 0-1循环
+
+      // 使用sin函数创建平滑的呼吸效果
+      const scale = 1 + 0.3 * Math.sin(progress * Math.PI * 2); // 1.0 ~ 1.3
+      const opacity = 0.85 + 0.15 * Math.sin(progress * Math.PI * 2); // 0.85 ~ 1.0
+      const shadowIntensity = 0.3 + 0.25 * Math.sin(progress * Math.PI * 2); // 0.3 ~ 0.55
+
+      // 获取当前音乐主题色（从CSS变量读取）
+      const primaryColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--music-primary')
+        .trim() || '#ec4899'; // 默认粉色
+
+      // 将hex颜色转为rgba
+      const hexToRgba = (hex: string, alpha: number) => {
+        const cleanHex = hex.replace('#', '');
+        const r = parseInt(cleanHex.substring(0, 2), 16);
+        const g = parseInt(cleanHex.substring(2, 4), 16);
+        const b = parseInt(cleanHex.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      };
+
+      // 直接修改CSS变量来控制滑块样式，使用动态颜色
+      progressBar.style.setProperty('--thumb-scale', scale.toString());
+      progressBar.style.setProperty('--thumb-opacity', opacity.toString());
+      progressBar.style.setProperty('--thumb-shadow', 
+        `0 ${2 + 2 * (scale - 1) / 0.3}px ${6 + 6 * (scale - 1) / 0.3}px ${hexToRgba(primaryColor, shadowIntensity)}, 0 0 ${20 * (scale - 1) / 0.3}px ${hexToRgba(primaryColor, shadowIntensity * 0.6)}`
+      );
+
+      breathAnimationRef.current = requestAnimationFrame(animate);
+    };
+
+    breathAnimationRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  // 停止进度条呼吸动画
+  const stopProgressBreathAnimation = useCallback(() => {
+    if (breathAnimationRef.current !== null) {
+      cancelAnimationFrame(breathAnimationRef.current);
+      breathAnimationRef.current = null;
+    }
+
+    // 重置样式
+    if (progressBarRef.current) {
+      progressBarRef.current.style.removeProperty('--thumb-scale');
+      progressBarRef.current.style.removeProperty('--thumb-opacity');
+      progressBarRef.current.style.removeProperty('--thumb-shadow');
+    }
+  }, []);
+
+  // 控制进度条呼吸动画：根据音频加载状态
+  useEffect(() => {
+    if (isAudioLoading) {
+      startProgressBreathAnimation();
+    } else {
+      stopProgressBreathAnimation();
+    }
+
+    // 清理函数：组件卸载时停止动画
+    return () => {
+      stopProgressBreathAnimation();
+    };
+  }, [isAudioLoading, startProgressBreathAnimation, stopProgressBreathAnimation]);
 
   // 验证并规范化颜色值（确保是有效的十六进制格式）
   const normalizeColor = (color: string): string => {
@@ -196,10 +285,11 @@ const GlobalControlPanel: React.FC = () => {
 
     // 加载动态内容
     loadDynamicContents();
-    
+
     // 加载壁纸配置以初始化 canRefresh 状态
     loadWallpaper();
-  }, [loadWallpaper]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 只在挂载时运行一次，避免循环依赖
 
   // 点击外部关闭音量弹窗
   useEffect(() => {
@@ -487,7 +577,7 @@ const GlobalControlPanel: React.FC = () => {
       // 页面加载时重置预加载错误计数和状态
       preloadErrorCountRef.current = 0;
       preloadDisabledUntilRef.current = 0;
-      
+
       const response = await fetch(`${API_URL}/api/config/ui`);
       const data = await response.json();
 
@@ -506,7 +596,8 @@ const GlobalControlPanel: React.FC = () => {
     } catch (error) {
       // 静默处理错误
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 只在初始化时执行，避免循环依赖
 
   // 为随机模式生成下一首歌曲索引
   const generateNextShuffleIndex = useCallback((currentIndex: number) => {
@@ -527,29 +618,57 @@ const GlobalControlPanel: React.FC = () => {
   }, [playlist, excludeVipSongs]);
   
   // 预加载下一首歌曲（使用资源加载管理器，低优先级）
-  const preloadNextSong = useCallback((nextIndex: number) => {
+  const preloadNextSong = useCallback((nextIndex: number, force: boolean = false) => {
     // 如果预加载被临时禁用，检查是否到达解禁时间
     if (preloadDisabledUntilRef.current > Date.now()) {
+      console.log('⏸️ 预加载已临时禁用');
       return;
     }
-    
+
     if (!preloadAudioRef.current || nextIndex < 0 || nextIndex >= playlist.length) {
       return;
     }
-    
+
     // 如果已经预加载过这首歌，跳过
     if (preloadCacheRef.current.has(nextIndex)) {
+      console.log(`✅ 歌曲 #${nextIndex} 已在缓存中，跳过预加载`);
       return;
     }
-    
+
+    // 🚫 严格检查：如果不是强制预加载，需要满足条件
+    if (!force) {
+      // 条件1: 当前歌曲必须加载完毕
+      if (!currentSongLoadedRef.current) {
+        console.log('⏳ 当前歌曲尚未加载完毕，延迟预加载');
+        return;
+      }
+
+      // 条件2: 当前歌曲已播放至少30秒
+      const currentPlayTime = Date.now() - currentSongStartTimeRef.current;
+      if (currentPlayTime < 30000) { // 30秒 = 30000毫秒
+        console.log(`⏳ 当前歌曲播放时间不足30秒 (${Math.round(currentPlayTime / 1000)}s)，延迟预加载`);
+        return;
+      }
+
+      // 条件3: 防止重复触发
+      if (preloadTriggeredRef.current) {
+        console.log('⏭️ 已触发预加载，跳过重复请求');
+        return;
+      }
+    }
+
     const nextSong = playlist[nextIndex];
     if (!nextSong) return;
-    
+
     // 如果开启了排除VIP且下一首是VIP歌曲，跳过预加载
     if (excludeVipSongs && nextSong.isVip) {
       console.log(`⏭️ 跳过VIP歌曲预加载: ${nextSong.name}`);
       return;
     }
+
+    // 标记已触发预加载
+    preloadTriggeredRef.current = true;
+    console.log(`🔄 开始预加载歌曲 #${nextIndex}: ${nextSong.name}`);
 
     // 使用资源加载管理器进行低优先级加载
     loadResource.low(`music-preload-${nextIndex}`, async () => {
@@ -579,9 +698,9 @@ const GlobalControlPanel: React.FC = () => {
           
           setPreloadedSongIndex(nextIndex);
           preloadCacheRef.current.set(nextIndex, true);
-          
-          // 保持缓存大小：只保留最近的3首
-          if (preloadCacheRef.current.size > 3) {
+
+          // 保持缓存大小：只保留最近的1首（减少内存占用）
+          if (preloadCacheRef.current.size > 1) {
             const oldestKey = Array.from(preloadCacheRef.current.keys())[0];
             preloadCacheRef.current.delete(oldestKey);
           }
@@ -612,7 +731,12 @@ const GlobalControlPanel: React.FC = () => {
       console.log(`⚠️ 跳过VIP歌曲: ${song.name}`);
       return;
     }
-    
+
+    // 🔄 重置预加载状态（切歌时）
+    currentSongLoadedRef.current = false;
+    currentSongStartTimeRef.current = 0;
+    preloadTriggeredRef.current = false;
+
     setCurrentSong(song);
     setCurrentSongIndex(index);
 
@@ -690,48 +814,45 @@ const GlobalControlPanel: React.FC = () => {
 
     // 加载歌曲
     if (audioRef.current) {
+      // 开始加载，显示呼吸动画
+      setIsAudioLoading(true);
+
+      // 先暂停并清空当前音频，防止旧音频事件干扰
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+
+      // 设置新音频源
       audioRef.current.src = song.url;
       audioRef.current.load();
-      
+
+      // 通过全局音频管理器更新当前歌曲
+      audioManager.setCurrentAudio(audioRef.current, song);
+
       if (autoPlay) {
         // 自动播放
         setTimeout(() => {
           audioRef.current?.play().catch(() => setIsPlaying(false));
           setIsPlaying(true);
+          audioManager.setPlaybackState('playing');
         }, 100);
       } else {
         // 等待用户点击播放按钮
         setIsPlaying(false);
+        audioManager.setPlaybackState('paused');
       }
       setCurrentTime(0);
     }
 
-    // 预加载下一首歌曲（支持所有播放模式）
-    // 使用资源加载管理器会自动处理延迟和优先级
-    if (playlist.length > 1) {
-      if (playMode === 'loop') {
-        // 列表循环：预加载下一首（跳过VIP）
-        let nextIndex = (index + 1) % playlist.length;
-        if (excludeVipSongs) {
-          let attempts = 0;
-          while (playlist[nextIndex]?.isVip && attempts < playlist.length) {
-            nextIndex = (nextIndex + 1) % playlist.length;
-            attempts++;
-          }
-        }
-        if (nextIndex !== index && !playlist[nextIndex]?.isVip) {
-          preloadNextSong(nextIndex);
-        }
-      } else if (playMode === 'shuffle') {
-        // 随机播放：提前确定并预加载下一首
-        const nextIndex = generateNextShuffleIndex(index);
-        if (nextIndex !== -1 && nextIndex !== index) {
-          nextShuffleIndexRef.current = nextIndex;
-          preloadNextSong(nextIndex);
-          console.log(`🎲 随机模式：已确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}`);
-        }
+    // ⚠️ 移除立即预加载逻辑，改为在播放30秒后智能触发（见 handleTimeUpdate）
+    // 这样可以防止频繁切歌时的重复预加载请求
+
+    // 随机模式需要提前确定下一首（但不立即预加载）
+    if (playMode === 'shuffle' && playlist.length > 1) {
+      const nextIndex = generateNextShuffleIndex(index);
+      if (nextIndex !== -1 && nextIndex !== index) {
+        nextShuffleIndexRef.current = nextIndex;
+        console.log(`🎲 随机模式：预先确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}（将在播放30秒后预加载）`);
       }
-      // 单曲循环模式不需要预加载
     }
 
     // 更新动态内容
@@ -810,11 +931,12 @@ const GlobalControlPanel: React.FC = () => {
     };
   }, []);
 
-  // 初始化时加载音乐配置和GitHub OAuth检查
+  // 初始化时加载音乐配置和GitHub OAuth检查（只在挂载时运行一次）
   useEffect(() => {
     loadMusicConfig();
     checkGithubOAuth();
-  }, [loadMusicConfig, checkGithubOAuth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 仅在组件挂载时运行一次
 
   // 动态内容轮播（带淡入淡出效果）
   useEffect(() => {
@@ -1025,8 +1147,10 @@ const GlobalControlPanel: React.FC = () => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
       audioRef.current.volume = volume;
+      // 通过全局音频管理器注册
+      audioManager.setCurrentAudio(audioRef.current, currentSong);
     }
-    
+
     // 创建预加载 audio 元素
     if (!preloadAudioRef.current) {
       preloadAudioRef.current = new Audio();
@@ -1048,12 +1172,59 @@ const GlobalControlPanel: React.FC = () => {
           setCurrentLyricIndex(index);
         }
       }
-    }, 100); // 100ms 节流，降低更新频率
+
+      // 🔄 智能预加载触发：播放30秒后触发
+      if (currentSongLoadedRef.current && !preloadTriggeredRef.current) {
+        const playTime = Date.now() - currentSongStartTimeRef.current;
+        if (playTime >= 30000) { // 30秒
+          console.log('⏰ 已播放30秒，触发预加载');
+
+          // 根据播放模式预加载下一首
+          if (playlist.length > 1) {
+            if (playMode === 'loop') {
+              // 列表循环：预加载下一首（跳过VIP）
+              let nextIndex = (currentSongIndex + 1) % playlist.length;
+              if (excludeVipSongs) {
+                let attempts = 0;
+                while (playlist[nextIndex]?.isVip && attempts < playlist.length) {
+                  nextIndex = (nextIndex + 1) % playlist.length;
+                  attempts++;
+                }
+              }
+              if (nextIndex !== currentSongIndex && !playlist[nextIndex]?.isVip) {
+                preloadNextSong(nextIndex);
+              }
+            } else if (playMode === 'shuffle') {
+              // 随机播放：提前确定并预加载下一首
+              const nextIndex = generateNextShuffleIndex(currentSongIndex);
+              if (nextIndex !== -1 && nextIndex !== currentSongIndex) {
+                nextShuffleIndexRef.current = nextIndex;
+                preloadNextSong(nextIndex);
+                console.log(`🎲 随机模式：已确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}`);
+              }
+            }
+            // 单曲循环模式不需要预加载
+          }
+        }
+      }
+    }, 200); // 200ms 节流，进一步降低更新频率（5次/秒已足够流畅）
+
+    // 监听歌曲加载完毕 - 标记为已加载
+    const handleCanPlay = () => {
+      if (!currentSongLoadedRef.current) {
+        currentSongLoadedRef.current = true;
+        currentSongStartTimeRef.current = Date.now();
+        console.log('✅ 当前歌曲加载完毕，开始计时');
+      }
+      // 音频可以播放了，关闭加载状态
+      setIsAudioLoading(false);
+    };
 
     // 监听播放错误 - 提升稳定性
     const handleError = () => {
       console.error('音频播放错误:', audio.error);
       setIsPlaying(false);
+      setIsAudioLoading(false); // 出错也要关闭加载状态
       // 可选：尝试播放下一首
       if (playlist.length > 1 && playMode !== 'single') {
         setTimeout(() => {
@@ -1072,7 +1243,13 @@ const GlobalControlPanel: React.FC = () => {
       if (seekingRef.current) {
         return;
       }
-      
+
+      // 确保这是当前音频实例的事件，防止处理旧音频的ended事件
+      if (audio !== audioRef.current) {
+        console.log('⚠️ 忽略旧音频的ended事件');
+        return;
+      }
+
       if (playlist.length > 0) {
         let newIndex: number;
         let attempts = 0;
@@ -1115,11 +1292,14 @@ const GlobalControlPanel: React.FC = () => {
         
         // 如果下一首已经预加载，优先使用预加载的数据
         if (preloadedSongIndex === newIndex && preloadAudioRef.current && preloadAudioRef.current.readyState >= 2) {
+          // 预加载的音频已经准备好了，无需加载状态
+          setIsAudioLoading(false);
+
           // 交换 audioRef 和 preloadAudioRef
           const temp = audioRef.current;
           audioRef.current = preloadAudioRef.current;
           preloadAudioRef.current = temp;
-          
+
           if (audioRef.current) {
             // 同步所有状态确保无缝切换
             audioRef.current.volume = volume;
@@ -1127,7 +1307,7 @@ const GlobalControlPanel: React.FC = () => {
             audioRef.current.play().catch(() => setIsPlaying(false));
             setIsPlaying(true);
           }
-          
+
           setCurrentSong(nextSong);
           setCurrentSongIndex(newIndex);
           setCurrentTime(0);
@@ -1175,29 +1355,13 @@ const GlobalControlPanel: React.FC = () => {
             }
           });
           
-          // 预加载下一首（支持所有播放模式）
-          // 资源加载管理器会自动处理优先级和延迟
-          if (playlist.length > 1) {
-            if (playMode === 'loop') {
-              let nextNextIndex = (newIndex + 1) % playlist.length;
-              if (excludeVipSongs) {
-                let attempts = 0;
-                while (playlist[nextNextIndex]?.isVip && attempts < playlist.length) {
-                  nextNextIndex = (nextNextIndex + 1) % playlist.length;
-                  attempts++;
-                }
-              }
-              if (nextNextIndex !== newIndex && !playlist[nextNextIndex]?.isVip) {
-                preloadNextSong(nextNextIndex);
-              }
-            } else if (playMode === 'shuffle') {
-              // 随机模式：生成新的下一首并预加载
-              const nextIndex = generateNextShuffleIndex(newIndex);
-              if (nextIndex !== -1 && nextIndex !== newIndex) {
-                nextShuffleIndexRef.current = nextIndex;
-                preloadNextSong(nextIndex);
-                console.log(`🎲 随机模式：已确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}`);
-              }
+          // ⚠️ 移除立即预加载逻辑，改为在新歌曲播放30秒后智能触发
+          // 随机模式需要提前确定下一首
+          if (playMode === 'shuffle' && playlist.length > 1) {
+            const nextIndex = generateNextShuffleIndex(newIndex);
+            if (nextIndex !== -1 && nextIndex !== newIndex) {
+              nextShuffleIndexRef.current = nextIndex;
+              console.log(`🎲 随机模式：预先确定下一首 #${nextIndex} - ${playlist[nextIndex]?.name}（将在播放30秒后预加载）`);
             }
           }
           
@@ -1215,31 +1379,36 @@ const GlobalControlPanel: React.FC = () => {
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
+    audio.addEventListener('canplay', handleCanPlay);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
+      audio.removeEventListener('canplay', handleCanPlay);
     };
-  }, [lyrics, currentLyricIndex, volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong, playMode, loadDynamicContents]);
+  }, [lyrics, currentLyricIndex, volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong, playMode, loadDynamicContents, generateNextShuffleIndex, excludeVipSongs]);
 
   // 组件卸载时清理音频资源
   useEffect(() => {
     return () => {
+      // 通过全局音频管理器清理
+      audioManager.stopCurrentAudio();
+
       // 清理主音频元素
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = '';
         audioRef.current = null;
       }
-      
+
       // 清理预加载音频元素
       if (preloadAudioRef.current) {
         preloadAudioRef.current.pause();
         preloadAudioRef.current.src = '';
         preloadAudioRef.current = null;
       }
-      
+
       // 清理颜色缓存
       colorCacheRef.current.clear();
     };
@@ -1252,15 +1421,17 @@ const GlobalControlPanel: React.FC = () => {
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      audioManager.setPlaybackState('paused');
     } else {
       // 实现自动重试机制
       const maxRetries = 3;
       let retries = 0;
-      
+
       while (retries < maxRetries) {
         try {
           await audioRef.current.play();
           setIsPlaying(true);
+          audioManager.setPlaybackState('playing');
           break; // 播放成功，退出循环
         } catch (error) {
           retries++;
@@ -1315,31 +1486,76 @@ const GlobalControlPanel: React.FC = () => {
     if (playlist.length === 0) return;
 
     let newIndex: number;
-    
+
     // 随机模式：使用已锁定的下一首
     if (playMode === 'shuffle') {
-      newIndex = nextShuffleIndexRef.current !== -1 
-        ? nextShuffleIndexRef.current 
+      newIndex = nextShuffleIndexRef.current !== -1
+        ? nextShuffleIndexRef.current
         : generateNextShuffleIndex(currentSongIndex);
       console.log(`🎲 随机模式：使用已锁定的下一首 #${newIndex}`);
     } else {
       // 顺序模式：循环查找下一首非VIP歌曲
       newIndex = (currentSongIndex + 1) % playlist.length;
       let attempts = 0;
-      
+
       while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
         newIndex = (newIndex + 1) % playlist.length;
         attempts++;
       }
-      
+
       if (attempts >= playlist.length) {
         console.warn('⚠️ 所有歌曲都是VIP，无法播放');
         return;
       }
     }
-    
+
     selectSong(playlist[newIndex], newIndex, true);
   }, [playlist, currentSongIndex, selectSong, excludeVipSongs, playMode, generateNextShuffleIndex]);
+
+  // 初始化 Media Session API（移动端系统级媒体控制）
+  useEffect(() => {
+    audioManager.setMediaSessionHandlers({
+      play: () => {
+        if (audioRef.current && !isPlaying) {
+          audioRef.current.play().catch(() => {});
+          setIsPlaying(true);
+        }
+      },
+      pause: () => {
+        if (audioRef.current && isPlaying) {
+          audioRef.current.pause();
+          setIsPlaying(false);
+        }
+      },
+      previoustrack: () => {
+        // 上一首
+        playPrevious();
+      },
+      nexttrack: () => {
+        // 下一首
+        playNext();
+      },
+      seekbackward: () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10);
+        }
+      },
+      seekforward: () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.min(
+            audioRef.current.duration || 0,
+            audioRef.current.currentTime + 10
+          );
+        }
+      },
+      seekto: (details) => {
+        if (audioRef.current && details.seekTime !== undefined) {
+          audioRef.current.currentTime = details.seekTime;
+          setCurrentTime(details.seekTime);
+        }
+      },
+    });
+  }, [isPlaying, playPrevious, playNext]);
 
   // 调整音量
   const handleVolumeChange = useCallback((newVolume: number) => {
@@ -1521,9 +1737,18 @@ const GlobalControlPanel: React.FC = () => {
   }, [musicPlayerView, currentSong, lyrics.length]);
 
   // 当有歌词时，更新动态内容以显示歌词（仅播放时）
+  // 使用 useRef 来减少状态更新频率
+  const lastLyricTextRef = useRef<string>('');
+
   useEffect(() => {
     if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0 && !isExpanded) {
       const currentLyric = lyrics[currentLyricIndex];
+
+      // 如果歌词文本没有变化，跳过更新（避免重复渲染）
+      if (lastLyricTextRef.current === currentLyric.text) {
+        return;
+      }
+      lastLyricTextRef.current = currentLyric.text;
 
       // 播放时显示歌词
       setDynamicContents(prev => {
@@ -1542,6 +1767,9 @@ const GlobalControlPanel: React.FC = () => {
         ];
       });
     } else if (currentSong && !isExpanded) {
+      // 重置歌词文本引用
+      lastLyricTextRef.current = '';
+
       // 暂停时或没有歌词时只显示歌曲名
       setDynamicContents(prev => {
         const filtered = prev.filter(c => c.type !== 'music');
@@ -1558,6 +1786,7 @@ const GlobalControlPanel: React.FC = () => {
       });
     } else {
       // 没有歌曲时移除音乐内容
+      lastLyricTextRef.current = '';
       setDynamicContents(prev => prev.filter(c => c.type !== 'music'));
     }
   }, [currentSong, lyrics, currentLyricIndex, isPlaying, isExpanded]);
@@ -1758,6 +1987,7 @@ const GlobalControlPanel: React.FC = () => {
                                 <div className="music-progress-container">
                                   <span className="music-time">{formatTime(currentTime)}</span>
                                   <input
+                                    ref={progressBarRef}
                                     type="range"
                                     min="0"
                                     max={currentSong.duration || 0}
@@ -1767,7 +1997,7 @@ const GlobalControlPanel: React.FC = () => {
                                     onTouchStart={handleSeekStart}
                                     onTouchEnd={handleSeekEnd}
                                     onInput={(e) => handleSeek(parseFloat(e.currentTarget.value))}
-                                    className="music-progress-bar"
+                                    className={`music-progress-bar ${isAudioLoading ? 'loading' : ''}`}
                                     aria-label="音乐进度"
                                   />
                                   <span className="music-time">-{formatTime((currentSong.duration || 0) - currentTime)}</span>
@@ -2045,7 +2275,13 @@ const GlobalControlPanel: React.FC = () => {
                                   <div
                                     key={song.id}
                                     onClick={() => {
-                                      selectSong(song, originalIndex);
+                                      // 手动选择歌曲时重置预加载状态和随机模式的下一首锁定
+                                      preloadTriggeredRef.current = false;
+                                      nextShuffleIndexRef.current = -1;
+                                      setPreloadedSongIndex(-1);
+
+                                      // 自动播放选中的歌曲
+                                      selectSong(song, originalIndex, true);
                                       setMusicPlayerView('info');
                                       setPlaylistSearchQuery('');
                                     }}
@@ -2147,6 +2383,7 @@ const GlobalControlPanel: React.FC = () => {
                       </button>
                     </div>
                   )}
+
                 </div>
             </div>
           </div>
