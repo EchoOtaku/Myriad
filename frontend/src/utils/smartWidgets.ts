@@ -129,28 +129,12 @@ async function getClientIP(): Promise<string | null> {
     console.warn('[IP] 后端代理失败:', error);
   }
 
-  // 方案2: 使用 ipapi.co
+  // 方案2: 使用后端代理获取IP（避免浏览器跟踪保护拦截）
   try {
-    const response = await fetch('https://ipapi.co/json/', {
+    const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
       signal: AbortSignal.timeout(5000)
     });
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data.ip) {
-        return data.ip;
-      }
-    }
-  } catch (error) {
-    console.warn('[IP] ipapi.co 失败:', error);
-  }
 
-  // 方案3: 使用 ipify.org
-  try {
-    const response = await fetch('https://api.ipify.org?format=json', {
-      signal: AbortSignal.timeout(5000)
-    });
-    
     if (response.ok) {
       const data = await response.json();
       if (data.ip) {
@@ -158,7 +142,7 @@ async function getClientIP(): Promise<string | null> {
       }
     }
   } catch (error) {
-    console.warn('[IP] ipify 失败:', error);
+    console.warn('[IP] 后端代理获取失败:', error);
   }
 
   // 所有方案失败，使用固定标识符（基于浏览器特征）

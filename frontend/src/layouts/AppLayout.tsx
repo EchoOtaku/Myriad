@@ -333,13 +333,42 @@ export function AppLayout({ children }: AppLayoutProps) {
       groups.forEach(group => {
         (group as HTMLElement).removeAttribute('data-animation');
       });
-      
+
       // 3.2: 解锁渲染模式并切换状态
       renderModeRef.current = 'normal';
       setShowLibraryFilters(false);
-      
+
       // 3.3: 重置动画状态，触发进入动画
       setIsAnimating(false);
+
+      // 3.4: 重新设置导航选中状态（因为DOM重新渲染）
+      setTimeout(() => {
+        const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
+        navItems.forEach(item => {
+          const href = item.getAttribute('href');
+          const ariaLabel = item.getAttribute('aria-label');
+          let isActive = false;
+
+          if (href) {
+            isActive = href === location.pathname || (location.pathname === '/' && href === '/');
+          } else if (ariaLabel) {
+            const labelToPathMap: Record<string, string> = {
+              '资料库': '/library',
+              '返回主页': '/',
+            };
+            const targetPath = labelToPathMap[ariaLabel];
+            if (targetPath) {
+              isActive = location.pathname === targetPath;
+            }
+          }
+
+          if (isActive) {
+            item.setAttribute('aria-current', 'page');
+          } else {
+            item.removeAttribute('aria-current');
+          }
+        });
+      }, 50);
     }, exitDuration);
 
     // 清理函数
@@ -392,13 +421,42 @@ export function AppLayout({ children }: AppLayoutProps) {
       groups.forEach(group => {
         (group as HTMLElement).removeAttribute('data-animation');
       });
-      
+
       // 3.2: 解锁渲染模式并切换状态
       renderModeRef.current = 'library';
       setShowLibraryFilters(true);
-      
+
       // 3.3: 重置动画状态，触发进入动画
       setIsAnimating(false);
+
+      // 3.4: 重新设置导航选中状态（因为DOM重新渲染）
+      setTimeout(() => {
+        const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
+        navItems.forEach(item => {
+          const href = item.getAttribute('href');
+          const ariaLabel = item.getAttribute('aria-label');
+          let isActive = false;
+
+          if (href) {
+            isActive = href === location.pathname || (location.pathname === '/' && href === '/');
+          } else if (ariaLabel) {
+            const labelToPathMap: Record<string, string> = {
+              '资料库': '/library',
+              '返回主页': '/',
+            };
+            const targetPath = labelToPathMap[ariaLabel];
+            if (targetPath) {
+              isActive = location.pathname === targetPath;
+            }
+          }
+
+          if (isActive) {
+            item.setAttribute('aria-current', 'page');
+          } else {
+            item.removeAttribute('aria-current');
+          }
+        });
+      }, 50);
     }, exitDuration);
 
     // 清理函数
@@ -526,7 +584,26 @@ export function AppLayout({ children }: AppLayoutProps) {
     const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
     navItems.forEach(item => {
       const href = item.getAttribute('href');
-      if (href === location.pathname || (location.pathname === '/' && href === '/')) {
+      const ariaLabel = item.getAttribute('aria-label');
+      let isActive = false;
+
+      // 处理链接元素（通过 href 匹配）
+      if (href) {
+        isActive = href === location.pathname || (location.pathname === '/' && href === '/');
+      }
+      // 处理按钮元素（通过 aria-label 匹配路径）
+      else if (ariaLabel) {
+        const labelToPathMap: Record<string, string> = {
+          '资料库': '/library',
+          '返回主页': '/',
+        };
+        const targetPath = labelToPathMap[ariaLabel];
+        if (targetPath) {
+          isActive = location.pathname === targetPath;
+        }
+      }
+
+      if (isActive) {
         item.setAttribute('aria-current', 'page');
       } else {
         item.removeAttribute('aria-current');

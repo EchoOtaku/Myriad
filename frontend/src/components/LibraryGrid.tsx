@@ -211,10 +211,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         ? allItems 
         : allItems.filter(item => item.item_type === filter);
     
-    // 使用分页加载 Hook - 初始加载40个，每次加载20个
+    // 使用分页加载 Hook - 初始加载15个，每次加载15个，避免图片请求过多导致429错误
     const { items, loadMore, hasMore, loading: loadingMore } = usePagedLoad(
         filteredAllItems,
-        { pageSize: 20, initialPages: 2, threshold: 800 }
+        { pageSize: 15, initialPages: 1, threshold: 1000 }
     );
 
     // 获取卡片尺寸配置 - 统一高度
@@ -377,17 +377,17 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         try {
             setLoading(true);
             const response = await fetch(`${API_URL}/api/library`);
-            
+
             if (!response.ok) {
                 throw new Error('Failed to fetch library data');
             }
 
             const data: LibraryResponse = await response.json();
-            
+
             if (data.success) {
-                // 随机打乱数据
-                const shuffled = [...data.items].sort(() => Math.random() - 0.5);
-                setAllItems(shuffled);
+                // 按分类平衡打乱数据
+                const balanced = balancedShuffle(data.items);
+                setAllItems(balanced);
                 setLoading(false);
             } else {
                 throw new Error('No library data available');
@@ -397,6 +397,48 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             setError(message);
             setLoading(false);
         }
+    };
+
+    /**
+     * 按分类平衡打乱数据
+     * 确保各个分类(游戏、视频、音乐)比较平均地分布，而不是因为某个分类数量多就都显示该分类
+     */
+    const balancedShuffle = (items: LibraryItem[]): LibraryItem[] => {
+        // 按类型分组
+        const groups: Record<string, LibraryItem[]> = {
+            game: [],
+            video: [],
+            music: []
+        };
+
+        items.forEach(item => {
+            const type = item.item_type;
+            if (groups[type]) {
+                groups[type].push(item);
+            }
+        });
+
+        // 打乱每个分组内的顺序
+        Object.keys(groups).forEach(key => {
+            groups[key].sort(() => Math.random() - 0.5);
+        });
+
+        // 轮流从各个分组中取出项目，实现平衡分布
+        const result: LibraryItem[] = [];
+        const maxLength = Math.max(groups.game.length, groups.video.length, groups.music.length);
+
+        for (let i = 0; i < maxLength; i++) {
+            // 按随机顺序访问各个分类，增加随机性
+            const typeOrder = ['game', 'video', 'music'].sort(() => Math.random() - 0.5);
+
+            typeOrder.forEach(type => {
+                if (groups[type][i]) {
+                    result.push(groups[type][i]);
+                }
+            });
+        }
+
+        return result;
     };
 
     // 显示错误通知
