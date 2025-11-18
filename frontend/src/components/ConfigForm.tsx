@@ -1411,26 +1411,23 @@ const ModernConfigForm: React.FC = () => {
                 </div>
 
                 {/* 清理音乐缓存按钮 */}
-                <div className="info-card" style={{ marginTop: '1rem' }}>
-                  <p className="info-title">缓存管理</p>
-                  <p style={{ marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                <div className="config-field" style={{ marginTop: '1.5rem' }}>
+                  <label className="field-label">缓存管理</label>
+                  <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
                     清空本地音乐缓存，强制重新加载歌单数据
                   </p>
                   <button
                     type="button"
                     onClick={() => {
                       clearPlaylistCache();
-                      setToast({
-                        show: true,
-                        message: '音乐缓存已清空，下次加载时将重新获取数据',
-                        type: 'success'
-                      });
-                      setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+                      setMessage('✓ 音乐缓存已清空，下次加载时将重新获取数据');
+                      setTimeout(() => setMessage(''), 3000);
                     }}
-                    className="button-secondary"
+                    className="test-button"
                     style={{ width: 'auto' }}
                   >
-                    清空音乐缓存
+                    <span>🗑️</span>
+                    <span>清空音乐缓存</span>
                   </button>
                 </div>
               </div>

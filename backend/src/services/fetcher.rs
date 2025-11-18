@@ -680,147 +680,22 @@ impl PlatformFetcher {
     }
 
     // ==================== Netease Cloud Music API ====================
+    // ✅ 已重构：使用统一的 NeteaseService 服务层
+    // - 自动享受防封技术（IP伪装、随机User-Agent）
+    // - 支持大歌单（1000+首歌曲）
+    // - VIP歌曲检测
+    // - 缓存和限流保护
 
-    /// 获取网易云音乐用户的喜欢列表（我喜欢的音乐）- 返回完整JSON数据
+    /// 获取网易云音乐用户的喜欢列表（我喜欢的音乐）- 使用统一服务层
     pub async fn fetch_netease_liked_songs(&self, user_id: i64) -> Result<Vec<serde_json::Value>> {
-        // 网易云音乐API需要通过用户ID获取喜欢的音乐
-        // likelist API需要登录态，改用公开的用户歌单API获取"我喜欢的音乐"（通常是第一个歌单）
-        // 使用 NeteaseCloudMusicApi 项目：https://github.com/Binaryify/NeteaseCloudMusicApi
-
-        // 首先获取用户歌单列表
-        let playlist_url = format!(
-            "https://netease-cloud-music-api-rho-silk.vercel.app/user/playlist?uid={}&limit=1",
-            user_id
-        );
-
-        let playlist_response: serde_json::Value = self
-            .client
-            .get(&playlist_url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        if playlist_response["code"].as_i64() != Some(200) {
-            return Err(anyhow!(
-                "Failed to fetch Netease playlists: {:?}",
-                playlist_response["message"]
-            ));
-        }
-
-        // 获取第一个歌单（"我喜欢的音乐"）的ID
-        let playlists = playlist_response["playlist"]
-            .as_array()
-            .ok_or_else(|| anyhow!("Invalid response: no playlist field"))?;
-
-        if playlists.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let liked_playlist_id = playlists[0]["id"]
-            .as_i64()
-            .ok_or_else(|| anyhow!("Failed to get playlist ID"))?;
-
-        // 获取歌单详情
-        let detail_url = format!(
-            "https://netease-cloud-music-api-rho-silk.vercel.app/playlist/detail?id={}",
-            liked_playlist_id
-        );
-
-        let detail_response: serde_json::Value = self
-            .client
-            .get(&detail_url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        if detail_response["code"].as_i64() != Some(200) {
-            return Err(anyhow!("Failed to fetch playlist details"));
-        }
-
-        let track_ids = detail_response["playlist"]["trackIds"]
-            .as_array()
-            .ok_or_else(|| anyhow!("Invalid response: no trackIds field"))?;
-
-        if track_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // 获取歌曲详情（批量，最多100首避免API限制）
-        let ids_str: Vec<String> = track_ids
-            .iter()
-            .take(100)
-            .filter_map(|track| track["id"].as_i64().map(|i| i.to_string()))
-            .collect();
-
-        if ids_str.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let detail_url = format!(
-            "https://netease-cloud-music-api-rho-silk.vercel.app/song/detail?ids={}",
-            ids_str.join(",")
-        );
-
-        let detail_response: serde_json::Value = self
-            .client
-            .get(&detail_url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        if detail_response["code"].as_i64() != Some(200) {
-            return Err(anyhow!("Failed to fetch song details"));
-        }
-
-        let songs = detail_response["songs"]
-            .as_array()
-            .ok_or_else(|| anyhow!("Invalid response: no songs field"))?;
-
-        // 返回完整的歌曲JSON数据，包含封面、歌手等所有信息
-        Ok(songs.clone())
+        let netease_service = crate::services::netease_service::NeteaseService::new();
+        netease_service.fetch_user_liked_songs(user_id).await
     }
 
-    /// 获取网易云音乐用户基本信息（用于验证）
+    /// 获取网易云音乐用户基本信息（用于验证）- 使用统一服务层
     pub async fn fetch_netease_user(&self, user_id: i64) -> Result<serde_json::Value> {
-        let url = format!(
-            "https://netease-cloud-music-api-rho-silk.vercel.app/user/detail?uid={}",
-            user_id
-        );
-
-        let response: serde_json::Value = self
-            .client
-            .get(&url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        if response["code"].as_i64() != Some(200) {
-            return Err(anyhow!(
-                "Failed to fetch Netease user info: Invalid user ID"
-            ));
-        }
-
-        Ok(response)
+        let netease_service = crate::services::netease_service::NeteaseService::new();
+        netease_service.fetch_user_info(user_id).await
     }
 }
 

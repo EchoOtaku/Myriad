@@ -147,6 +147,21 @@ const GlobalControlPanel: React.FC = () => {
   const currentSongStartTimeRef = useRef<number>(0); // 当前歌曲开始播放的时间
   const preloadTriggeredRef = useRef<boolean>(false); // 是否已触发预加载（防止重复）
 
+  // 临时播放模式：用于从资料库等外部来源播放单曲
+  const tempPlayModeRef = useRef<{
+    enabled: boolean;
+    originalPlaylist: Song[];
+    originalIndex: number;
+    originalSource: MusicSource;
+    originalPlaylistId: string;
+  }>({
+    enabled: false,
+    originalPlaylist: [],
+    originalIndex: 0,
+    originalSource: 'netease',
+    originalPlaylistId: '',
+  });
+
   // 进度条呼吸动画控制
   const progressBarRef = useRef<HTMLInputElement | null>(null);
   const breathAnimationRef = useRef<number | null>(null);
@@ -859,6 +874,40 @@ const GlobalControlPanel: React.FC = () => {
     loadDynamicContents();
   }, [loadDynamicContents, playlist.length, preloadNextSong, playMode]);
 
+  // 外部调用接口：播放单首歌曲（临时播放模式）
+  const playSong = useCallback((song: Song) => {
+    console.log('🎵 GlobalControlPanel.playSong 被调用（临时播放）:', song.name);
+    
+    // 只在非临时播放模式下保存状态
+    if (!tempPlayModeRef.current.enabled) {
+      tempPlayModeRef.current = {
+        enabled: true,
+        originalPlaylist: [...playlist],
+        originalIndex: currentSongIndex,
+        originalSource: musicSource,
+        originalPlaylistId: playlistId,
+      };
+      
+      console.log('💾 保存原播放列表:', {
+        歌曲数: playlist.length,
+        当前索引: currentSongIndex,
+        当前歌曲: currentSong?.name,
+      });
+    }
+    
+    // 启用音乐播放器（如果未启用）
+    if (!musicEnabled) {
+      setMusicEnabled(true);
+      setMusicSource(song.source || 'netease');
+    }
+    
+    // 临时设置单曲播放列表
+    setPlaylist([song]);
+    
+    // 选择并自动播放
+    selectSong(song, 0, true);
+  }, [musicEnabled, playlist, currentSongIndex, currentSong, musicSource, playlistId, selectSong]);
+
   // 加载歌单（使用资源加载管理器，中优先级）
   const loadPlaylist = useCallback(async (source: MusicSource, plistId: string) => {
     // 使用中优先级加载歌单，在关键内容加载后执行
@@ -1247,6 +1296,36 @@ const GlobalControlPanel: React.FC = () => {
       // 确保这是当前音频实例的事件，防止处理旧音频的ended事件
       if (audio !== audioRef.current) {
         console.log('⚠️ 忽略旧音频的ended事件');
+        return;
+      }
+
+      // 检查是否处于临时播放模式
+      if (tempPlayModeRef.current.enabled) {
+        console.log('🔄 临时播放结束，恢复原播放列表');
+        
+        // 恢复原播放列表
+        const { originalPlaylist, originalIndex, originalSource, originalPlaylistId } = tempPlayModeRef.current;
+        
+        // 清除临时播放模式标记
+        tempPlayModeRef.current.enabled = false;
+        
+        // 完全停止当前音频
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
+        
+        // 恢复播放列表状态
+        setPlaylist(originalPlaylist);
+        setMusicSource(originalSource);
+        setPlaylistId(originalPlaylistId);
+        
+        // 恢复到原来的歌曲但不自动播放（关键：autoPlay = false）
+        if (originalPlaylist.length > 0 && originalPlaylist[originalIndex]) {
+          await selectSong(originalPlaylist[originalIndex], originalIndex, false);
+        }
+        
+        console.log('✅ 已恢复原播放列表，保持停止状态');
         return;
       }
 
@@ -1791,6 +1870,101 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, [currentSong, lyrics, currentLyricIndex, isPlaying, isExpanded]);
 
+  // 监听播放歌曲事件
+  useEffect(() => {
+    const handlePlaySong = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const song = customEvent.detail?.song;
+      if (song) {
+        playSong(song);
+      }
+    };
+
+    window.addEventListener('play-song', handlePlaySong);
+    return () => {
+      window.removeEventListener('play-song', handlePlaySong);
+    };
+  }, [playSong]);
+
+  // 监听切换播放/暂停事件
+  useEffect(() => {
+    const handleTogglePlayPause = () => {
+      togglePlay();
+    };
+
+    window.addEventListener('toggle-play-pause', handleTogglePlayPause);
+    return () => {
+      window.removeEventListener('toggle-play-pause', handleTogglePlayPause);
+    };
+  }, [togglePlay]);
+
+  // 监听打开控制面板事件（来自音乐卡片点击）
+  useEffect(() => {
+    const handleOpenPanel = () => {
+      if (!isExpanded) {
+        handleTogglePanel();
+      }
+    };
+
+    window.addEventListener('open-control-panel', handleOpenPanel);
+    return () => {
+      window.removeEventListener('open-control-panel', handleOpenPanel);
+    };
+  }, [isExpanded, handleTogglePanel]);
+
+  // 发送音乐播放器状态变化事件
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('music-player-state-change', {
+      detail: {
+        currentSong,
+        isEnabled: musicEnabled,
+        isPlaying,
+        musicColor: musicColors?.primary || '#ef4444', // 发送封面提取的主色调
+        isTempPlay: tempPlayModeRef.current.enabled, // 是否为临时播放模式
+      },
+    }));
+  }, [currentSong, musicEnabled, isPlaying, musicColors]);
+
+  // 监听停止临时播放事件
+  useEffect(() => {
+    const handleStopTempPlay = async () => {
+      if (!tempPlayModeRef.current.enabled) return;
+      
+      console.log('🛑 收到停止临时播放请求');
+      const { originalPlaylist, originalIndex, originalSource, originalPlaylistId } = tempPlayModeRef.current;
+      
+      // 清除临时播放模式标记
+      tempPlayModeRef.current.enabled = false;
+      
+      // 完全停止当前音频
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setIsPlaying(false);
+      
+      // 恢复播放列表状态
+      setPlaylist(originalPlaylist);
+      setMusicSource(originalSource);
+      setPlaylistId(originalPlaylistId);
+      
+      // 恢复到原来的歌曲但不自动播放
+      if (originalPlaylist.length > 0 && originalPlaylist[originalIndex]) {
+        await selectSong(originalPlaylist[originalIndex], originalIndex, false);
+      } else {
+        // 如果没有原播放列表，清空当前歌曲
+        setCurrentSong(null);
+      }
+      
+      console.log('✅ 已停止临时播放并恢复原播放列表');
+    };
+
+    window.addEventListener('stop-temp-play', handleStopTempPlay);
+    return () => {
+      window.removeEventListener('stop-temp-play', handleStopTempPlay);
+    };
+  }, [selectSong]);
+
   // 获取当前显示的动态内容
   const currentContent = dynamicContents[currentContentIndex];
 
@@ -1944,6 +2118,47 @@ const GlobalControlPanel: React.FC = () => {
                 {/* 音乐播放器 */}
                 {musicEnabled && (
                   <div className="music-player-container">
+                    {/* 临时播放模式：右上角关闭按钮 */}
+                    {tempPlayModeRef.current.enabled && musicPlayerView === 'info' && (
+                      <button
+                        onClick={async () => {
+                          console.log('🛑 点击关闭临时播放按钮');
+                          const { originalPlaylist, originalIndex, originalSource, originalPlaylistId } = tempPlayModeRef.current;
+                          
+                          // 清除临时播放模式标记
+                          tempPlayModeRef.current.enabled = false;
+                          
+                          // 完全停止当前音频
+                          if (audioRef.current) {
+                            audioRef.current.pause();
+                            audioRef.current.currentTime = 0;
+                          }
+                          setIsPlaying(false);
+                          
+                          // 恢复播放列表状态
+                          setPlaylist(originalPlaylist);
+                          setMusicSource(originalSource);
+                          setPlaylistId(originalPlaylistId);
+                          
+                          // 恢复到原来的歌曲但不自动播放
+                          if (originalPlaylist.length > 0 && originalPlaylist[originalIndex]) {
+                            await selectSong(originalPlaylist[originalIndex], originalIndex, false);
+                          } else {
+                            // 如果没有原播放列表，清空当前歌曲
+                            setCurrentSong(null);
+                          }
+                          
+                          console.log('✅ 已停止临时播放并恢复原播放列表');
+                        }}
+                        className="music-player-temp-close-btn"
+                        aria-label="停止临时播放"
+                        title="停止临时播放并恢复原播放列表"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                      </button>
+                    )}
                     {/* 状态：音乐信息（主状态） */}
                     {musicPlayerView === 'info' && (
                       <div className="music-view music-view-info">
@@ -2021,15 +2236,17 @@ const GlobalControlPanel: React.FC = () => {
                                     </svg>
                                   </button>
                                 )}
-                                {/* 播放顺序按钮 */}
-                                <button
-                                  onClick={togglePlayMode}
-                                  className="music-view-switch-btn"
-                                  aria-label={getPlayModeIcon().text}
-                                  title={getPlayModeIcon().text}
-                                >
-                                  {getPlayModeIcon().icon}
-                                </button>
+                                {/* 播放顺序按钮 - 临时播放模式下隐藏 */}
+                                {!tempPlayModeRef.current.enabled && (
+                                  <button
+                                    onClick={togglePlayMode}
+                                    className="music-view-switch-btn"
+                                    aria-label={getPlayModeIcon().text}
+                                    title={getPlayModeIcon().text}
+                                  >
+                                    {getPlayModeIcon().icon}
+                                  </button>
+                                )}
                               </div>
 
                               {/* 中间：核心控制按钮 */}

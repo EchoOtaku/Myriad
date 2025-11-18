@@ -129,13 +129,20 @@ export default function CustomScrollbar() {
       childList: true,
       subtree: true,
       attributes: true,
+      characterData: true,
       attributeFilter: ['style', 'class'],
     });
+
+    // 额外的 ResizeObserver 监听内容尺寸变化
+    const resizeObserver = new ResizeObserver(handleUpdate);
+    resizeObserver.observe(document.body);
+    resizeObserver.observe(document.documentElement);
 
     return () => {
       window.removeEventListener('scroll', handleUpdate);
       window.removeEventListener('resize', handleUpdate);
       observer.disconnect();
+      resizeObserver.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [updateThumb]);

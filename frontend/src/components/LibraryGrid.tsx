@@ -6,6 +6,8 @@ import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
 import { usePagedLoad } from '../hooks/useVirtualScroll';
 import { useNotification } from '../contexts/NotificationContext';
+import { useMusicPlayerControl } from '../contexts/MusicPlayerContext';
+import type { Song } from '../utils/musicPlayer';
 
 // 添加样式到页面
 if (typeof document !== 'undefined' && !document.getElementById('library-grid-styles')) {
@@ -63,6 +65,14 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
         .platform-icon-bg svg,
         .platform-icon-bg img {
             color: var(--platform-color, #6b7280);
+            transition: color 0.3s ease;
+        }
+        
+        /* 播放中的平台图标颜色变化 */
+        .playing-breath svg,
+        .playing-breath img {
+            color: var(--music-color, var(--platform-color, #ef4444)) !important;
+            filter: drop-shadow(0 0 4px color-mix(in srgb, var(--music-color, #ef4444) 40%, transparent));
         }
         
         /* 加载按钮样式 */
@@ -88,6 +98,71 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
         
         .load-more-btn.primary-load-btn:hover {
             background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
+        }
+
+        /* 播放中指示器 - 中央显示，保留原呼吸动画和旋转边框效果 */
+        @keyframes breath {
+            0%, 100% {
+                box-shadow: 0 0 0 0 color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 60%, transparent),
+                            0 0 15px 0 color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 30%, transparent);
+                transform: translate(-50%, -50%) scale(1);
+            }
+            50% {
+                box-shadow: 0 0 0 8px transparent,
+                            0 0 25px 5px color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 20%, transparent);
+                transform: translate(-50%, -50%) scale(1.05);
+            }
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .playing-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 5rem;
+            height: 5rem;
+            border-radius: 9999px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: breath 2s ease-in-out infinite;
+            z-index: 10;
+            pointer-events: none;
+            border: 2px solid color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 40%, transparent);
+        }
+        
+        /* 统一使用大幅透明背景，不区分亮色/暗色模式 */
+        .playing-indicator {
+            background-color: color-mix(in srgb, var(--music-color, #ef4444) 8%, transparent);
+        }
+        
+        .playing-indicator::before {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 9999px;
+            background: conic-gradient(from 0deg, 
+                transparent 0deg, 
+                color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 30%, transparent) 90deg,
+                color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 50%, transparent) 180deg,
+                color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 30%, transparent) 270deg,
+                transparent 360deg);
+            animation: spin 3s linear infinite;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .playing-indicator svg,
+        .playing-indicator img {
+            width: 2rem;
+            height: 2rem;
+            color: var(--music-color, var(--platform-color, #ef4444)) !important;
+            filter: drop-shadow(0 0 4px color-mix(in srgb, var(--music-color, #ef4444) 40%, transparent));
         }
     `;
     document.head.appendChild(style);
@@ -128,6 +203,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map());
     const containerRef = useRef<HTMLDivElement>(null);
     const { showInfo } = useNotification();
+    const { playSong, togglePlayPause, stopTempPlay, currentSong, isPlaying: globalIsPlaying, musicColor, isTempPlay } = useMusicPlayerControl();
     
     // 筛选后的所有项目
     const filteredAllItems = filter === 'all' 
@@ -387,15 +463,91 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             const hours = Math.round(item.metadata.playtime_forever / 60);
             return `游玩 ${hours} 小时`;
         }
-        if (item.item_type === 'music' && item.metadata.ar) {
-            const artists = item.metadata.ar.map((a: any) => a.name).join(', ');
-            return artists;
+        if (item.item_type === 'music') {
+            // 支持多种艺术家字段格式
+            const artists = item.metadata.ar || item.metadata.artists || [];
+            if (Array.isArray(artists) && artists.length > 0) {
+                return artists.map((a: any) => a.name || a).join(', ');
+            }
+            // 兜底：查找artist字段
+            if (item.metadata.artist) {
+                return item.metadata.artist;
+            }
         }
         if (item.item_type === 'video' && item.metadata.progress) {
             return item.metadata.progress;
         }
         return null;
     }, []);
+
+    // 处理音乐播放 - 调用全局音乐播放器并打开控制面板
+    const handlePlayMusic = useCallback((item: LibraryItem) => {
+        // 提取歌曲ID，用于判断是否为当前歌曲
+        const songId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
+        
+        // 如果点击的是当前正在播放的歌曲，只打开控制面板
+        if (currentSong && currentSong.id === songId) {
+            window.dispatchEvent(new CustomEvent('open-control-panel'));
+            showInfo('🎵 已在播放中，打开控制面板');
+            return;
+        }
+        
+        // 检查是否为VIP歌曲（仅提示，不阻止播放）
+        const isVip = item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4;
+        
+        if (isVip) {
+            showInfo('⚠️ VIP歌曲可能无法完整播放');
+        }
+
+        // 提取歌曲信息（支持多种字段格式）
+        const name = item.metadata.name || item.title;
+            
+            // 艺术家信息（支持多种格式）
+            let artist = '未知艺术家';
+            const artists = item.metadata.ar || item.metadata.artists || [];
+            if (Array.isArray(artists) && artists.length > 0) {
+                artist = artists.map((a: any) => a.name || a).join(', ');
+            } else if (item.metadata.artist) {
+                artist = item.metadata.artist;
+            }
+
+            // 专辑信息（支持多种格式）
+            let album = '未知专辑';
+            let cover = item.cover || '';
+            if (item.metadata.al) {
+                album = item.metadata.al.name || album;
+                cover = item.metadata.al.picUrl || cover;
+            } else if (item.metadata.album) {
+                album = item.metadata.album.name || item.metadata.album;
+                if (item.metadata.album.picUrl) {
+                    cover = item.metadata.album.picUrl;
+                }
+            }
+
+            // 时长信息（秒）
+            const duration = item.metadata.dt ? Math.floor(item.metadata.dt / 1000) : 
+                            item.metadata.duration ? item.metadata.duration : 0;
+
+            const song: Song = {
+                id: songId.toString(),
+                name,
+                artist,
+                album,
+                cover,
+                url: `${API_URL}/api/proxy/music/netease/audio/${songId}`,
+                duration,
+                source: 'netease',
+                isVip: false
+            };
+
+        // 调用全局播放器播放
+        playSong(song);
+        
+        // 打开控制面板以显示播放状态
+        window.dispatchEvent(new CustomEvent('open-control-panel'));
+        
+        showInfo(`🎵 正在播放: ${name}`);
+    }, [playSong, showInfo, currentSong]);
 
     // 判断是否为子分组之间的切换（游戏↔视频、游戏↔音乐、视频↔音乐）
     const needsTransition = (from: string, to: string) => {
@@ -458,6 +610,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         if (!layout) return null;
 
                         const platformColor = getPlatformColor(item.platform);
+                        const isVip = (item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4);
+                        const currentSongId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
+                        const isCurrentSong = currentSong && currentSong.id === currentSongId;
+                        const isPlaying = isCurrentSong && globalIsPlaying;
                         
                         // 计算卡片所在行（基于 top 值分组）
                         const rowIndex = Math.floor(layout.top / 300); // 每300px算一行
@@ -480,7 +636,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                             {item.item_type === 'music' ? (
                                 // 音乐卡片：正方形专辑封面
                                 <div className="relative bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
-                                    <div className="block w-full h-full relative">
+                                    <div 
+                                        className="block w-full h-full relative cursor-pointer"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handlePlayMusic(item);
+                                        }}
+                                    >
                                         {item.cover ? (
                                             <img
                                                 src={item.cover}
@@ -498,29 +661,62 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                             </div>
                                         )}
                                         
-                                        {/* 悬停显示信息 - 音乐卡片 */}
+                                        {/* 播放中指示器 - 中央显示，使用封面提取的颜色 */}
+                                        {isPlaying && (
+                                            <div 
+                                                className="playing-indicator"
+                                                style={{
+                                                    '--music-color': musicColor,
+                                                    '--platform-color': musicColor,
+                                                } as React.CSSProperties}
+                                            >
+                                                <PlatformIcon platform={item.platform} className="w-8 h-8" />
+                                            </div>
+                                        )}
+                                        
+                                        {/* 悬停显示歌曲信息 - 音乐卡片 */}
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
-                                            <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1">
-                                                {item.title}
-                                            </h3>
-                                            {getExtraInfo(item) && (
-                                                <p className="text-[10px] text-white/75 line-clamp-1">
-                                                    {getExtraInfo(item)}
-                                                </p>
-                                            )}
+                                            {/* 底部歌曲信息 + VIP标识 */}
+                                            <div>
+                                                <div className="flex items-start gap-1">
+                                                    <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
+                                                        {item.title}
+                                                    </h3>
+                                                    {/* VIP 标识 */}
+                                                    {isVip && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gradient-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
+                                                            VIP
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {getExtraInfo(item) && (
+                                                    <p className="text-[10px] text-white/75 line-clamp-1">
+                                                        {getExtraInfo(item)}
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     
-                                    {/* 右上角平台图标（音乐） */}
-                                    <div className="absolute top-3 right-3 group/platform">
-                                        <div className="platform-icon-bg">
-                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                    {/* 右上角平台图标 - 播放时隐藏 */}
+                                    {!isPlaying && (
+                                        <div className="absolute top-3 right-3 flex gap-2">
+                                            <div className="group/platform">
+                                                <div 
+                                                    className="platform-icon-bg"
+                                                    style={{
+                                                        '--platform-color': platformColor,
+                                                    } as React.CSSProperties}
+                                                >
+                                                    <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                                </div>
+                                                {/* hover显示平台名称 */}
+                                                <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                                                    {item.platform}
+                                                </div>
+                                            </div>
                                         </div>
-                                        {/* hover显示平台名称 */}
-                                        <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                                            {item.platform}
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             ) : item.item_type === 'video' ? (
                                 // 视频卡片：横向宽屏，16:9比例

@@ -1331,6 +1331,61 @@ html.dark .music-song-artist {
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
 }
 
+/* 播放器临时播放模式关闭按钮 - 位于播放器容器右上角，与其他按钮风格统一 */
+.music-player-temp-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: 
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.25s ease;
+  z-index: 100;
+}
+
+html.dark .music-player-temp-close-btn {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.music-player-temp-close-btn:hover {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 12%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 12%, transparent)
+  );
+  color: var(--music-base-primary);
+  transform: translateY(-2px);
+}
+
+html.dark .music-player-temp-close-btn:hover {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--music-base-primary) 18%, transparent), 
+    color-mix(in srgb, var(--music-base-secondary) 18%, transparent)
+  );
+  color: var(--music-base-light);
+}
+
+.music-player-temp-close-btn:active {
+  transform: translateY(0);
+}
+
+.music-player-temp-close-btn svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
 @keyframes music-pulse {
   0%, 100% {
     transform: scale(1);

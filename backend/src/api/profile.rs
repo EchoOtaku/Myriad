@@ -1919,11 +1919,34 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                             song.get("id").and_then(|i| i.as_i64()),
                             song.get("name").and_then(|n| n.as_str()),
                         ) {
+                            // 提取封面 - 支持多种字段格式
                             let cover = song
                                 .get("al")
-                                .and_then(|al| al.get("picUrl"))
+                                .or_else(|| song.get("album"))
+                                .and_then(|al| {
+                                    al.get("picUrl")
+                                        .or_else(|| al.get("pic_url"))
+                                        .or_else(|| al.get("cover"))
+                                })
                                 .and_then(|p| p.as_str())
                                 .map(|s| s.to_string());
+
+                            // 规范化metadata确保包含所有必要字段
+                            let mut normalized_metadata = song.clone();
+                            if let Some(obj) = normalized_metadata.as_object_mut() {
+                                // 确保有ar字段（艺术家数组）
+                                if !obj.contains_key("ar") && !obj.contains_key("artists") {
+                                    obj.insert("ar".to_string(), json!([]));
+                                }
+                                // 确保有al字段（专辑信息）
+                                if !obj.contains_key("al") && !obj.contains_key("album") {
+                                    obj.insert("al".to_string(), json!({"name": "未知专辑"}));
+                                }
+                                // 确保有dt字段（时长毫秒）
+                                if !obj.contains_key("dt") && !obj.contains_key("duration") {
+                                    obj.insert("dt".to_string(), json!(0));
+                                }
+                            }
 
                             library_items.push(LibraryItem {
                                 id: format!("netease_song_{}", id),
@@ -1931,7 +1954,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                                 title: name.to_string(),
                                 cover,
                                 platform: "Netease".to_string(),
-                                metadata: song.clone(),
+                                metadata: normalized_metadata,
                             });
                         }
                     }
@@ -2066,11 +2089,34 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                         song.get("id").and_then(|i| i.as_i64()),
                         song.get("name").and_then(|n| n.as_str()),
                     ) {
+                        // 提取封面 - 支持多种字段格式
                         let cover = song
                             .get("al")
-                            .and_then(|al| al.get("picUrl"))
+                            .or_else(|| song.get("album"))
+                            .and_then(|al| {
+                                al.get("picUrl")
+                                    .or_else(|| al.get("pic_url"))
+                                    .or_else(|| al.get("cover"))
+                            })
                             .and_then(|p| p.as_str())
                             .map(|s| s.to_string());
+
+                        // 规范化metadata确保包含所有必要字段
+                        let mut normalized_metadata = song.clone();
+                        if let Some(obj) = normalized_metadata.as_object_mut() {
+                            // 确保有ar字段（艺术家数组）
+                            if !obj.contains_key("ar") && !obj.contains_key("artists") {
+                                obj.insert("ar".to_string(), json!([]));
+                            }
+                            // 确保有al字段（专辑信息）
+                            if !obj.contains_key("al") && !obj.contains_key("album") {
+                                obj.insert("al".to_string(), json!({"name": "未知专辑"}));
+                            }
+                            // 确保有dt字段（时长毫秒）
+                            if !obj.contains_key("dt") && !obj.contains_key("duration") {
+                                obj.insert("dt".to_string(), json!(0));
+                            }
+                        }
 
                         library_items.push(LibraryItem {
                             id: format!("netease_song_{}", id),
@@ -2078,7 +2124,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                             title: name.to_string(),
                             cover,
                             platform: "Netease".to_string(),
-                            metadata: song.clone(),
+                            metadata: normalized_metadata,
                         });
                     }
                 }
