@@ -422,8 +422,10 @@ export async function getRandomQuote(): Promise<QuoteData | null> {
       }
     }
 
-    // 使用一言 API
-    const response = await fetch('https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json');
+    // 使用后端代理访问一言 API（解决 CORS 问题）
+    const response = await fetch(`${API_URL}/api/proxy/hitokoto`, {
+      signal: AbortSignal.timeout(10000)
+    });
 
     if (!response.ok) throw new Error('Hitokoto API failed');
 

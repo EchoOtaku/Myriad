@@ -833,6 +833,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/proxy/image", get(api::proxy::proxy_image))
             // Client geo location route
             .route("/api/proxy/client-geo", get(api::proxy::get_client_geo))
+            // Hitokoto proxy route
+            .route("/api/proxy/hitokoto", get(api::proxy::proxy_hitokoto))
             // Music proxy routes
             .route(
                 "/api/proxy/music/netease/playlist/:id",

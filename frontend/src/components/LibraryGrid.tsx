@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
+import MusicCard from './MusicCard'; // ✅ 导入优化后的 MusicCard 组件
 import Loader from './Loader';
 import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
@@ -216,6 +217,121 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         { pageSize: 20, initialPages: 2, threshold: 800 }
     );
 
+    // 获取卡片尺寸配置 - 统一高度
+    const getCardSize = useCallback((type: string, containerWidth: number) => {
+        const gap = 16;
+        let columns = 5;
+
+        // 响应式列数
+        if (containerWidth < 640) columns = 2;
+        else if (containerWidth < 768) columns = 3;
+        else if (containerWidth < 1024) columns = 4;
+        else if (containerWidth < 1536) columns = 5;
+        else columns = 6;
+
+        const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
+        // 统一高度 = 1个基础列宽度
+        const uniformHeight = baseWidth;
+
+        switch (type) {
+            case 'video':
+                // 视频：占2列宽度，统一高度
+                const videoWidth = baseWidth * 2 + gap;
+                return {
+                    width: videoWidth,
+                    height: uniformHeight,
+                    span: 2
+                };
+            case 'game':
+                // 游戏：占2列宽度，统一高度
+                const gameWidth = baseWidth * 2 + gap;
+                return {
+                    width: gameWidth,
+                    height: uniformHeight,
+                    span: 2
+                };
+            case 'music':
+                // 音乐：占1列宽度，统一高度（正方形）
+                return {
+                    width: baseWidth,
+                    height: uniformHeight,
+                    span: 1
+                };
+            default:
+                return {
+                    width: baseWidth,
+                    height: uniformHeight,
+                    span: 1
+                };
+        }
+    }, []);
+
+    // ✅ 智能瀑布流布局算法 - 使用 useCallback 避免重复创建
+    const calculateLayouts = useCallback(() => {
+        if (!containerRef.current) return;
+
+        const containerWidth = containerRef.current.offsetWidth;
+        const gap = 16;
+        let columns = 5;
+
+        // 响应式列数
+        if (containerWidth < 640) columns = 2;
+        else if (containerWidth < 768) columns = 3;
+        else if (containerWidth < 1024) columns = 4;
+        else if (containerWidth < 1536) columns = 5;
+        else columns = 6;
+
+        const columnHeights = new Array(columns).fill(gap);
+        const newLayouts = new Map<string, CardLayout>();
+        const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
+
+        // 检查是否只有大卡片（游戏/视频）
+        const hasBigCards = items.some(item => item.item_type === 'game' || item.item_type === 'video');
+        const hasSmallCards = items.some(item => item.item_type === 'music');
+
+        // 遍历所有项目，计算每张卡片的布局
+        items.forEach((item) => {
+            const size = getCardSize(item.item_type, containerWidth);
+            const span = size.span;
+
+            // 找到最矮的列（考虑跨度）
+            let bestColumn = 0;
+            let minHeight = Infinity;
+
+            // 对于跨度大于1的卡片，需要找到连续的最矮列组合
+            if (span > 1) {
+                for (let col = 0; col <= columns - span; col++) {
+                    const maxHeightInSpan = Math.max(...columnHeights.slice(col, col + span));
+                    if (maxHeightInSpan < minHeight) {
+                        minHeight = maxHeightInSpan;
+                        bestColumn = col;
+                    }
+                }
+            } else {
+                // 单列卡片直接找最矮的列
+                minHeight = Math.min(...columnHeights);
+                bestColumn = columnHeights.indexOf(minHeight);
+            }
+
+            const left = gap + bestColumn * (baseWidth + gap);
+            const top = minHeight;
+
+            newLayouts.set(item.id, {
+                left,
+                top,
+                width: size.width,
+                height: size.height,
+            });
+
+            // 更新所有跨越的列的高度
+            for (let col = bestColumn; col < bestColumn + span; col++) {
+                columnHeights[col] = top + size.height + gap;
+            }
+        });
+
+        setLayouts(newLayouts);
+    }, [items, getCardSize]); // ✅ 添加依赖项
+
     useEffect(() => {
         fetchLibraryData();
     }, []);
@@ -227,15 +343,17 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             if (isTransitioning) {
                 calculateLayouts();
             } else {
-                // 其他情况添加短暂防抖
+                // ✅ 其他情况添加防抖，增加到 150ms 以减少计算频率
                 const timeoutId = setTimeout(() => {
                     calculateLayouts();
-                }, 30);
+                }, 150);
                 return () => clearTimeout(timeoutId);
             }
         }
+        // ✅ calculateLayouts 通过 useCallback memoized，不需要在依赖数组中
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filter, items, isTransitioning]);
-    
+
     useEffect(() => {
         let resizeTimeout: NodeJS.Timeout;
         const handleResize = () => {
@@ -246,12 +364,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 }
             }, 150);
         };
-        
+
         window.addEventListener('resize', handleResize);
         return () => {
             window.removeEventListener('resize', handleResize);
             clearTimeout(resizeTimeout);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [items]);
 
     const fetchLibraryData = async () => {
@@ -295,132 +414,6 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }, [loading, filteredAllItems.length, error, showInfo]);
 
     // filteredItems 现在由 usePagedLoad 提供的 items 代替
-
-    // 获取卡片尺寸配置 - 统一高度
-    const getCardSize = (type: string, containerWidth: number) => {
-        const gap = 16;
-        let columns = 5;
-        
-        // 响应式列数
-        if (containerWidth < 640) columns = 2;
-        else if (containerWidth < 768) columns = 3;
-        else if (containerWidth < 1024) columns = 4;
-        else if (containerWidth < 1536) columns = 5;
-        else columns = 6;
-        
-        const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
-        // 统一高度 = 1个基础列宽度
-        const uniformHeight = baseWidth;
-        
-        switch (type) {
-            case 'video':
-                // 视频：占2列宽度，统一高度
-                const videoWidth = baseWidth * 2 + gap;
-                return { 
-                    width: videoWidth, 
-                    height: uniformHeight,
-                    span: 2 
-                }; 
-            case 'game':
-                // 游戏：占2列宽度，统一高度
-                const gameWidth = baseWidth * 2 + gap;
-                return { 
-                    width: gameWidth, 
-                    height: uniformHeight,
-                    span: 2
-                }; 
-            case 'music':
-                // 音乐：占1列宽度，统一高度（正方形）
-                return { 
-                    width: baseWidth, 
-                    height: uniformHeight,
-                    span: 1
-                }; 
-            default:
-                return { 
-                    width: baseWidth, 
-                    height: uniformHeight,
-                    span: 1
-                };
-        }
-    };
-
-    // 智能瀑布流布局算法 - 考虑卡片跨度 + 逐行动画
-    const calculateLayouts = () => {
-        if (!containerRef.current) return;
-
-        const containerWidth = containerRef.current.offsetWidth;
-        const gap = 16;
-        let columns = 5;
-        
-        // 响应式列数
-        if (containerWidth < 640) columns = 2;
-        else if (containerWidth < 768) columns = 3;
-        else if (containerWidth < 1024) columns = 4;
-        else if (containerWidth < 1536) columns = 5;
-        else columns = 6;
-
-        const columnHeights = new Array(columns).fill(gap);
-        const newLayouts = new Map<string, CardLayout>();
-        const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
-
-        // 检查是否只有大卡片（游戏/视频）
-        const hasOnlyLargeCards = items.every(item => 
-            item.item_type === 'game' || item.item_type === 'video'
-        );
-        
-        // 如果只有大卡片且列数为奇数，计算居中偏移
-        let centerOffset = 0;
-        if (hasOnlyLargeCards && columns % 2 === 1) {
-            // 大卡片占2列，在奇数列布局中会有1列空白，让整体居中
-            centerOffset = (baseWidth + gap) / 2;
-        }
-
-        // 计算每行的起始高度，用于逐行动画
-        const rowTops: number[] = [];
-        let currentRowTop = gap;
-
-        items.forEach((item) => {
-            const size = getCardSize(item.item_type, containerWidth);
-            const span = size.span || 1;
-            
-            // 找到可以放置此卡片的最佳位置 (考虑跨列)
-            let bestColumn = 0;
-            let minHeight = Infinity;
-            
-            for (let col = 0; col <= columns - span; col++) {
-                // 计算此位置的最大高度(跨越的所有列)
-                const maxHeight = Math.max(...columnHeights.slice(col, col + span));
-                if (maxHeight < minHeight) {
-                    minHeight = maxHeight;
-                    bestColumn = col;
-                }
-            }
-            
-            const left = gap + bestColumn * (baseWidth + gap) + centerOffset;
-            const top = minHeight;
-            
-            // 检测是否开始新行（top值大幅增加）
-            if (rowTops.length === 0 || Math.abs(top - currentRowTop) > 50) {
-                currentRowTop = top;
-                rowTops.push(top);
-            }
-            
-            newLayouts.set(item.id, {
-                left,
-                top,
-                width: size.width,
-                height: size.height
-            });
-            
-            // 更新所有跨越的列的高度
-            for (let col = bestColumn; col < bestColumn + span; col++) {
-                columnHeights[col] = top + size.height + gap;
-            }
-        });
-
-        setLayouts(newLayouts);
-    };
 
     // 获取平台品牌色
     // 🚀 性能优化：使用 useCallback 缓存函数，避免每次渲染重新创建
@@ -480,13 +473,15 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         return null;
     }, []);
 
-    // 处理音乐播放 - 调用全局音乐播放器并打开控制面板
+    // ✅ 处理音乐播放 - 优化依赖，避免频繁重建
     const handlePlayMusic = useCallback((item: LibraryItem) => {
         // 提取歌曲ID，用于判断是否为当前歌曲
         const songId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
-        
-        // 如果点击的是当前正在播放的歌曲，只打开控制面板
-        if (currentSong && currentSong.id === songId) {
+
+        // ✅ 直接从事件中获取当前播放状态，而不是依赖 currentSong prop
+        // 这样可以避免 currentSong 变化时重新创建所有卡片的点击处理器
+        const musicState = (window as any).__musicPlayerState;
+        if (musicState?.currentSong?.id === songId) {
             window.dispatchEvent(new CustomEvent('open-control-panel'));
             showInfo('🎵 已在播放中，打开控制面板');
             return;
@@ -547,7 +542,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         window.dispatchEvent(new CustomEvent('open-control-panel'));
         
         showInfo(`🎵 正在播放: ${name}`);
-    }, [playSong, showInfo, currentSong]);
+        // ✅ 移除 currentSong 依赖，避免每次播放状态变化都重建处理器
+    }, [playSong, showInfo]);
 
     // 判断是否为子分组之间的切换（游戏↔视频、游戏↔音乐、视频↔音乐）
     const needsTransition = (from: string, to: string) => {
@@ -649,7 +645,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                                 src={item.cover}
                                                 alt={item.title}
                                                 className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                loading="eager"
+                                                loading="lazy"
                                                 decoding="async"
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
@@ -732,7 +728,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                                 src={item.cover}
                                                 alt={item.title}
                                                 className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                loading="eager"
+                                                loading="lazy"
                                                 decoding="async"
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
@@ -790,7 +786,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                                     src={item.cover}
                                                     alt={item.title}
                                                     className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                    loading="eager"
+                                                    loading="lazy"
                                                     decoding="async"
                                                     onError={(e) => {
                                                         (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;

@@ -9,7 +9,11 @@ interface PlatformIconProps {
     style?: React.CSSProperties;
 }
 
-const PlatformIcon: React.FC<PlatformIconProps> = ({ platform, className = "w-6 h-6", style }) => {
+/**
+ * ✅ PlatformIcon 组件 - 已使用 React.memo 优化
+ * 只在 props 变化时重新渲染
+ */
+const PlatformIcon: React.FC<PlatformIconProps> = React.memo(({ platform, className = "w-6 h-6", style }) => {
     switch (platform.toLowerCase()) {
         case 'github':
             return <FaGithub className={className} style={style} />;
@@ -27,6 +31,8 @@ const PlatformIcon: React.FC<PlatformIconProps> = ({ platform, className = "w-6 
             {/* @ts-ignore - Style prop needs to be passed through */}
             return <span className={className} style={style}>?</span>;
     }
-};
+});
+
+PlatformIcon.displayName = 'PlatformIcon';
 
 export default PlatformIcon;

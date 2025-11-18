@@ -20,11 +20,22 @@ export function useMusicPlayerControl() {
   useEffect(() => {
     const handleMusicStateChange = (e: Event) => {
       const customEvent = e as CustomEvent;
-      setCurrentSong(customEvent.detail?.currentSong || null);
-      setIsEnabled(customEvent.detail?.isEnabled || false);
-      setIsPlaying(customEvent.detail?.isPlaying || false);
-      setMusicColor(customEvent.detail?.musicColor || '#ef4444');
-      setIsTempPlay(customEvent.detail?.isTempPlay || false);
+      const newState = {
+        currentSong: customEvent.detail?.currentSong || null,
+        isEnabled: customEvent.detail?.isEnabled || false,
+        isPlaying: customEvent.detail?.isPlaying || false,
+        musicColor: customEvent.detail?.musicColor || '#ef4444',
+        isTempPlay: customEvent.detail?.isTempPlay || false,
+      };
+
+      setCurrentSong(newState.currentSong);
+      setIsEnabled(newState.isEnabled);
+      setIsPlaying(newState.isPlaying);
+      setMusicColor(newState.musicColor);
+      setIsTempPlay(newState.isTempPlay);
+
+      // ✅ 设置全局状态，供其他组件无需 prop 即可访问（避免依赖链导致的重新渲染）
+      (window as any).__musicPlayerState = newState;
     };
 
     window.addEventListener('music-player-state-change', handleMusicStateChange);

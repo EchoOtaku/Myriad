@@ -706,3 +706,61 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
 }
 
 // ===== 所有旧的网易云音乐函数已删除，使用统一服务层 =====
+
+/// 代理一言 (Hitokoto) API 请求
+/// GET /api/proxy/hitokoto
+///
+/// 解决前端直接调用 hitokoto.cn 时的 CORS 问题
+pub async fn proxy_hitokoto() -> Response {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+        .unwrap();
+
+    let url = "https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json";
+
+    match client.get(url).send().await {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                tracing::error!("Hitokoto API returned status: {}", resp.status());
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({"error": "Hitokoto API failed"})),
+                )
+                    .into_response();
+            }
+
+            match resp.json::<Value>().await {
+                Ok(data) => {
+                    tracing::debug!("Hitokoto data fetched successfully");
+                    (
+                        StatusCode::OK,
+                        [
+                            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+                            (header::CACHE_CONTROL, "public, max-age=600"), // 10分钟缓存
+                        ],
+                        Json(data),
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to parse Hitokoto response: {}", e);
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(json!({"error": "Failed to parse Hitokoto response"})),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch Hitokoto: {}", e);
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({"error": "Failed to fetch Hitokoto"})),
+            )
+                .into_response()
+        }
+    }
+}
