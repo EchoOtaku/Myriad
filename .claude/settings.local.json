@@ -35,7 +35,15 @@
       "Bash(del \"C:\\Users\\Think\\Documents\\GitHub\\Myriad\\frontend\\src\\utils\\scrollbarLock.ts\")",
       "Bash(taskkill:*)",
       "Bash(timeout /t 3)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(npm run check:*)",
+      "Bash(npx astro:*)",
+      "Bash(docker exec:*)",
+      "Bash(start /B targetreleasemyriad-backend.exe)",
+      "Bash(targetreleasemyriad-backend.exe)",
+      "Bash(\"./target/release/myriad-backend.exe\")",
+      "Bash(python -m json.tool:*)",
+      "Bash(timeout /t 2)"
     ],
     "deny": [],
     "ask": []

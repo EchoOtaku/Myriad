@@ -1846,6 +1846,16 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                             item.get("title").and_then(|t| t.as_str()),
                             item.get("cover").and_then(|c| c.as_str()),
                         ) {
+                            // 根据season_type判断类型
+                            // 1=番剧(动画), 2=电视剧, 3=纪录片, 4=国创, 5=电影
+                            let season_type = item.get("season_type").and_then(|s| s.as_i64()).unwrap_or(1);
+                            let item_type = match season_type {
+                                1 | 4 => "anime",        // 番剧和国创归类为anime
+                                2 => "tv_series",        // 电视剧
+                                3 | 5 => "video",        // 纪录片和电影保持为video
+                                _ => "anime",            // 默认为anime
+                            };
+
                             // 创建包含链接信息的metadata
                             let mut metadata = item.clone();
                             if let Some(obj) = metadata.as_object_mut() {
@@ -1860,7 +1870,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
 
                             library_items.push(LibraryItem {
                                 id: format!("bilibili_bangumi_{}", season_id),
-                                item_type: "video".to_string(),
+                                item_type: item_type.to_string(),
                                 title: title.to_string(),
                                 cover: Some(proxy_image_url(cover)),
                                 platform: "Bilibili".to_string(),
@@ -2017,6 +2027,15 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                         item.get("title").and_then(|t| t.as_str()),
                         item.get("cover").and_then(|c| c.as_str()),
                     ) {
+                        // 根据season_type判断类型
+                        let season_type = item.get("season_type").and_then(|s| s.as_i64()).unwrap_or(1);
+                        let item_type = match season_type {
+                            1 | 4 => "anime",
+                            2 => "tv_series",
+                            3 | 5 => "video",
+                            _ => "anime",
+                        };
+
                         // 创建包含链接信息的metadata
                         let mut metadata = item.clone();
                         if let Some(obj) = metadata.as_object_mut() {
@@ -2031,7 +2050,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
 
                         library_items.push(LibraryItem {
                             id: format!("bilibili_bangumi_{}", season_id),
-                            item_type: "video".to_string(),
+                            item_type: item_type.to_string(),
                             title: title.to_string(),
                             cover: Some(proxy_image_url(cover)),
                             platform: "Bilibili".to_string(),

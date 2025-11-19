@@ -171,7 +171,7 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
 
 interface LibraryItem {
     id: string;
-    item_type: 'game' | 'video' | 'music';
+    item_type: 'game' | 'video' | 'music' | 'anime' | 'tv_series';
     title: string;
     cover: string | null;
     platform: string;
@@ -192,14 +192,14 @@ interface CardLayout {
 }
 
 interface LibraryGridProps {
-    filter: 'all' | 'game' | 'video' | 'music';
+    filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series';
 }
 
 export default function LibraryGrid({ filter }: LibraryGridProps) {
     const [allItems, setAllItems] = useState<LibraryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
+    const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all');
     const [isTransitioning, setIsTransitioning] = useState(false); // 子分组切换动画状态
     const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map());
     const containerRef = useRef<HTMLDivElement>(null);
@@ -250,6 +250,20 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                     height: uniformHeight,
                     span: 2
                 };
+            case 'anime':
+                // 追番/动画：占1列宽度，2倍高度（竖向布局）
+                return {
+                    width: baseWidth,
+                    height: baseWidth * 2 + gap,
+                    span: 1
+                };
+            case 'tv_series':
+                // 追剧/电视剧：占1列宽度，2倍高度（竖向布局）
+                return {
+                    width: baseWidth,
+                    height: baseWidth * 2 + gap,
+                    span: 1
+                };
             case 'music':
                 // 音乐：占1列宽度，统一高度（正方形）
                 return {
@@ -285,21 +299,41 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         const newLayouts = new Map<string, CardLayout>();
         const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
 
-        // 检查是否只有大卡片（游戏/视频）
-        const hasBigCards = items.some(item => item.item_type === 'game' || item.item_type === 'video');
+        // 检查是否只有大卡片（游戏/视频/追番/追剧）
+        const hasBigCards = items.some(item =>
+            item.item_type === 'game' ||
+            item.item_type === 'video' ||
+            item.item_type === 'anime' ||
+            item.item_type === 'tv_series'
+        );
         const hasSmallCards = items.some(item => item.item_type === 'music');
 
-        // 遍历所有项目，计算每张卡片的布局
-        items.forEach((item) => {
+        // ====== 前瞻式空隙填充算法：保持原始顺序 + 多步预判 ======
+        
+        const uniformHeight = baseWidth; // 1x1卡片的标准高度
+        
+        // 预处理：统计后续卡片类型（用于智能决策）
+        const remainingCards = items.map(item => {
             const size = getCardSize(item.item_type, containerWidth);
+            return {
+                item,
+                size,
+                isWide: size.span === 2,
+                isTall: size.span === 1 && size.height > size.width,
+                isSmall: size.span === 1 && size.height === size.width
+            };
+        });
+        
+        // 按原始顺序遍历items
+        remainingCards.forEach((cardData, index) => {
+            const { item, size, isWide, isTall, isSmall } = cardData;
             const span = size.span;
-
-            // 找到最矮的列（考虑跨度）
             let bestColumn = 0;
             let minHeight = Infinity;
+            let bestScore = -Infinity;
 
-            // 对于跨度大于1的卡片，需要找到连续的最矮列组合
             if (span > 1) {
+                // 横向卡片（2x1）：找连续最矮列
                 for (let col = 0; col <= columns - span; col++) {
                     const maxHeightInSpan = Math.max(...columnHeights.slice(col, col + span));
                     if (maxHeightInSpan < minHeight) {
@@ -308,9 +342,74 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                     }
                 }
             } else {
-                // 单列卡片直接找最矮的列
-                minHeight = Math.min(...columnHeights);
-                bestColumn = columnHeights.indexOf(minHeight);
+                // 单列卡片（1x1、1x2）：前瞻式空隙填充
+                
+                // 统计后续卡片类型分布
+                const futureCards = remainingCards.slice(index + 1);
+                const futureSmallCount = futureCards.filter(c => c.isSmall).length;
+                const futureTallCount = futureCards.filter(c => c.isTall).length;
+                
+                for (let col = 0; col < columns; col++) {
+                    const currentHeight = columnHeights[col];
+                    
+                    // 计算每列与最高列的差距
+                    const maxHeight = Math.max(...columnHeights);
+                    const minColHeight = Math.min(...columnHeights);
+                    const gapSize = maxHeight - currentHeight;
+                    const maxGap = maxHeight - minColHeight;
+                    
+                    // 评分系统：
+                    let score = 0;
+                    
+                    // 1. 精确空隙匹配（最高优先级）
+                    const heightDiff = Math.abs(gapSize - size.height);
+                    if (heightDiff <= gap) {
+                        // 完美匹配空隙
+                        score = 10000000 + (maxGap - gapSize) * 1000;
+                    }
+                    // 2. 填充最大空隙（次高优先级）
+                    else if (gapSize === maxGap && gapSize > uniformHeight * 0.5) {
+                        // 当前列是最低的，且有明显空隙
+                        if (size.height <= gapSize + gap * 2) {
+                            // 卡片能放入空隙
+                            score = 1000000 + (gapSize - heightDiff) * 100;
+                        } else {
+                            // 卡片比空隙大，但能减少空隙
+                            score = 500000 - heightDiff * 10;
+                        }
+                    }
+                    // 3. 为后续卡片预留空隙（智能判断）
+                    else if (gapSize > uniformHeight * 0.3 && gapSize < uniformHeight * 0.8) {
+                        // 中等空隙：判断是否应该留给后续更合适的卡片
+                        if (isSmall && futureTallCount > 0 && gapSize > uniformHeight * 0.6) {
+                            // 当前是1x1，后面还有1x2，且空隙更适合1x2
+                            score = -100000 - currentHeight; // 降低优先级
+                        } else if (isTall && futureSmallCount > futureSmallCount / 2) {
+                            // 当前是1x2，但后面还有很多1x1需要填充
+                            score = 50000 + (uniformHeight - heightDiff) * 10;
+                        } else {
+                            score = 100000 - heightDiff;
+                        }
+                    }
+                    // 4. 无明显空隙：选择最矮列，保持平衡
+                    else {
+                        // 计算放置后的列高度均衡度
+                        const testHeights = [...columnHeights];
+                        testHeights[col] = currentHeight + size.height + gap;
+                        const maxAfter = Math.max(...testHeights);
+                        const minAfter = Math.min(...testHeights);
+                        const gapAfter = maxAfter - minAfter;
+                        
+                        // 优先选择能保持最小高度差的位置
+                        score = -gapAfter * 1000 - currentHeight;
+                    }
+                    
+                    if (score > bestScore) {
+                        bestScore = score;
+                        minHeight = currentHeight;
+                        bestColumn = col;
+                    }
+                }
             }
 
             const left = gap + bestColumn * (baseWidth + gap);
@@ -323,7 +422,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 height: size.height,
             });
 
-            // 更新所有跨越的列的高度
+            // 更新列高度
             for (let col = bestColumn; col < bestColumn + span; col++) {
                 columnHeights[col] = top + size.height + gap;
             }
@@ -408,7 +507,9 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         const groups: Record<string, LibraryItem[]> = {
             game: [],
             video: [],
-            music: []
+            music: [],
+            anime: [],
+            tv_series: []
         };
 
         items.forEach(item => {
@@ -425,11 +526,17 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
         // 轮流从各个分组中取出项目，实现平衡分布
         const result: LibraryItem[] = [];
-        const maxLength = Math.max(groups.game.length, groups.video.length, groups.music.length);
+        const maxLength = Math.max(
+            groups.game.length, 
+            groups.video.length, 
+            groups.music.length,
+            groups.anime.length,
+            groups.tv_series.length
+        );
 
         for (let i = 0; i < maxLength; i++) {
             // 按随机顺序访问各个分类，增加随机性
-            const typeOrder = ['game', 'video', 'music'].sort(() => Math.random() - 0.5);
+            const typeOrder = ['game', 'video', 'music', 'anime', 'tv_series'].sort(() => Math.random() - 0.5);
 
             typeOrder.forEach(type => {
                 if (groups[type][i]) {
@@ -509,7 +616,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 return item.metadata.artist;
             }
         }
-        if (item.item_type === 'video' && item.metadata.progress) {
+        if ((item.item_type === 'video' || item.item_type === 'anime' || item.item_type === 'tv_series') && item.metadata.progress) {
             return item.metadata.progress;
         }
         return null;
@@ -755,6 +862,70 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                             </div>
                                         </div>
                                     )}
+                                </div>
+                            ) : item.item_type === 'anime' || item.item_type === 'tv_series' ? (
+                                // 追番/追剧卡片：横向宽屏，类似视频样式
+                                <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
+                                    <a
+                                        href={item.metadata.url || '#'}
+                                        target={item.metadata.url ? "_blank" : undefined}
+                                        rel={item.metadata.url ? "noopener noreferrer" : undefined}
+                                        className="block w-full h-full relative group"
+                                    >
+                                        {item.cover ? (
+                                            <img
+                                                src={item.cover}
+                                                alt={item.title}
+                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                loading="lazy"
+                                                decoding="async"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-purple-500">
+                                                <span className="text-6xl">{item.item_type === 'anime' ? '📺' : '🎬'}</span>
+                                            </div>
+                                        )}
+
+                                        {/* 底部标题标签 */}
+                                        <div className="absolute bottom-3 left-3 right-3">
+                                            <div className="inline-flex items-start max-w-full">
+                                                <div className="bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg w-full">
+                                                    {/* 标题和标签在同一行 */}
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-bold text-gray-900 text-sm line-clamp-1 leading-snug flex-1">
+                                                            {item.title}
+                                                        </h3>
+                                                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
+                                                            item.item_type === 'anime'
+                                                                ? 'bg-pink-100 text-pink-700'
+                                                                : 'bg-purple-100 text-purple-700'
+                                                        }`}>
+                                                            {item.item_type === 'anime' ? '追番' : '追剧'}
+                                                        </span>
+                                                    </div>
+                                                    {getExtraInfo(item) && (
+                                                        <p className="text-xs text-gray-600 line-clamp-1">
+                                                            {getExtraInfo(item)}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </a>
+
+                                    {/* 右上角平台图标 */}
+                                    <div className="absolute top-3 right-3 group/platform">
+                                        <div className="platform-icon-bg">
+                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                        </div>
+                                        {/* hover显示平台名称 */}
+                                        <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                                            {item.platform}
+                                        </div>
+                                    </div>
                                 </div>
                             ) : item.item_type === 'video' ? (
                                 // 视频卡片：横向宽屏，16:9比例

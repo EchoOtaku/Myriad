@@ -1,5 +1,6 @@
 // Service layer modules
 pub mod analyzer;
+pub mod bilibili_utils;    // ✅ Bilibili 工具函数（IP伪装、防封技术）
 pub mod config_service;
 pub mod fetcher;
 pub mod imaginepro;

@@ -2,6 +2,10 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
+use super::bilibili_utils::{
+    generate_bilibili_cookie, get_random_china_ip, get_random_user_agent,
+};
+
 pub struct PlatformFetcher {
     client: reqwest::Client,
 }
@@ -104,11 +108,21 @@ impl PlatformFetcher {
         // 使用不需要WBI签名的旧API端点
         let url = format!("https://api.bilibili.com/x/space/acc/info?mid={}", uid);
 
+        // IP 伪装
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
         let response: serde_json::Value = self.client
             .get(&url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .header("User-Agent", get_random_user_agent())
             .header("Referer", "https://www.bilibili.com")
+            .header("Origin", "https://www.bilibili.com")
             .header("Accept", "application/json, text/plain, */*")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Cookie", generate_bilibili_cookie())
+            .header("X-Forwarded-For", forwarded_for)
+            .header("X-Real-IP", client_ip)
             .send()
             .await?
             .json()
@@ -137,13 +151,21 @@ impl PlatformFetcher {
             fav_id
         );
 
+        // IP 伪装
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
         let response: serde_json::Value = self
             .client
             .get(&url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
+            .header("User-Agent", get_random_user_agent())
+            .header("Referer", "https://www.bilibili.com")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Cookie", generate_bilibili_cookie())
+            .header("X-Forwarded-For", forwarded_for)
+            .header("X-Real-IP", client_ip)
             .send()
             .await?
             .json()
@@ -181,13 +203,21 @@ impl PlatformFetcher {
             uid
         );
 
+        // IP 伪装
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
         let response: serde_json::Value = self
             .client
             .get(&url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
+            .header("User-Agent", get_random_user_agent())
+            .header("Referer", "https://www.bilibili.com")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Cookie", generate_bilibili_cookie())
+            .header("X-Forwarded-For", forwarded_for)
+            .header("X-Real-IP", client_ip)
             .send()
             .await?
             .json()
@@ -218,8 +248,9 @@ impl PlatformFetcher {
                     videos,
                 });
 
-                // 避免请求过快
-                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                // 避免请求过快 - 增加延迟到800-1200毫秒
+                let delay = 800 + (rand::random::<u64>() % 400);
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
             }
         }
 
@@ -232,11 +263,12 @@ impl PlatformFetcher {
         uid: i64,
         bangumi_type: i32,
     ) -> Result<Vec<BilibiliBangumi>> {
-        // 参考 PHP 代码，使用 vmid 而非 mid，并添加 follow_status 参数
+        // 使用 vmid 参数获取追番数据
         // type: 1=番剧(动画), 2=电影, 3=纪录片, 4=国创, 5=电视剧, 7=综艺
+        // 注意:参数顺序很重要,follow_status参数会导致-400错误
         let url = format!(
-            "https://api.bilibili.com/x/space/bangumi/follow/list?type={}&pn=1&ps=50&follow_status=0&vmid={}",
-            bangumi_type, uid
+            "https://api.bilibili.com/x/space/bangumi/follow/list?vmid={}&pn=1&ps=15&type={}",
+            uid, bangumi_type
         );
 
         tracing::info!(
@@ -245,16 +277,27 @@ impl PlatformFetcher {
             url
         );
 
-        let response: serde_json::Value = self
+        // IP 伪装 - 关键改进
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
+        let http_response = self
             .client
             .get(&url)
-            .header("Host", "api.bilibili.com")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97")
+            .header("User-Agent", get_random_user_agent())
             .header("Referer", format!("https://space.bilibili.com/{}", uid))
+            .header("Cookie", generate_bilibili_cookie())
+            .header("X-Forwarded-For", forwarded_for)
+            .header("X-Real-IP", client_ip)
             .send()
-            .await?
-            .json()
             .await?;
+
+        // 先获取文本以调试
+        let response_text = http_response.text().await?;
+        tracing::debug!("Bilibili bangumi raw response (first 500 chars): {}", &response_text.chars().take(500).collect::<String>());
+
+        let response: serde_json::Value = serde_json::from_str(&response_text)?;
 
         // 打印完整响应以调试
         tracing::info!(
@@ -335,8 +378,9 @@ impl PlatformFetcher {
                     e
                 ),
             }
-            // 避免请求过快
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            // 避免请求过快 - 增加延迟到1.5-2.5秒之间
+            let delay = 1500 + (rand::random::<u64>() % 1000);
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
         }
 
         Ok(all_bangumi)

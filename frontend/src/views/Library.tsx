@@ -8,11 +8,11 @@ import LibraryGrid from '../components/LibraryGrid';
 import AnimatedView from '../components/AnimatedView';
 
 export default function Library() {
-  const [filter, setFilter] = useState<'all' | 'game' | 'video' | 'music'>('all');
+  const [filter, setFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all');
 
   // 监听来自 AppLayout 的筛选变化
   useEffect(() => {
-    const handleFilterChange = (e: CustomEvent<{ filter: 'all' | 'game' | 'video' | 'music' }>) => {
+    const handleFilterChange = (e: CustomEvent<{ filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' }>) => {
       setFilter(e.detail.filter);
     };
 
