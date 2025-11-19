@@ -174,9 +174,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
       island.style.removeProperty('width');
     } else {
-      if (metrics.width) {
-        island.style.width = `${metrics.width}px`;
-      }
+      // 移动端：不强制设置宽度，让 CSS width: auto 处理自适应
+      // 这样可以避免内容变化时宽度不更新导致的"双重边框"（空白区域）问题
+      island.style.removeProperty('width');
       island.style.removeProperty('height');
     }
   };
@@ -241,9 +241,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         }
         island.style.removeProperty('width');
       } else {
-        if (metrics.width) {
-          island.style.width = `${metrics.width}px`;
-        }
+        // 移动端：移除宽度限制，避免固定宽度导致的布局问题
+        island.style.removeProperty('width');
         island.style.removeProperty('height');
       }
 
