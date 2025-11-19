@@ -24,6 +24,36 @@
     width: auto;
     height: auto;
     min-height: 65px;
+    /* 移动端适配：允许横向滚动 */
+    max-width: calc(100vw - 2rem);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;  /* IE 10+ */
+    /* 确保滚动容器有弹性 */
+    display: flex;
+    justify-content: flex-start; /* 内容靠左（开始）对齐，允许滚动 */
+  }
+  
+  .dynamic-island::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  /* 确保内部容器宽度自适应内容 */
+  .dynamic-island > div {
+    width: max-content;
+    min-width: 100%;
+    padding: 0 4px; /* 增加一点内边距防止贴边 */
+  }
+
+  .nav-island-content {
+    flex-direction: row;
+    width: max-content;
+  }
+  
+  /* 防止图标被压缩 */
+  .nav-group {
+    flex-shrink: 0;
   }
 }
 

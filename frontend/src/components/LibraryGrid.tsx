@@ -1,11 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import PlatformIcon from './PlatformIcon';
-import MusicCard from './MusicCard'; // ✅ 导入优化后的 MusicCard 组件
-import Loader from './Loader';
 import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
-import { usePagedLoad } from '../hooks/useVirtualScroll';
 import { useNotification } from '../contexts/NotificationContext';
 import { useMusicPlayerControl } from '../contexts/MusicPlayerContext';
 import type { Song } from '../utils/musicPlayer';
@@ -189,100 +186,56 @@ interface CardLayout {
     top: number;
     width: number;
     height: number;
+    gridX: number;
+    gridY: number;
+    gridW: number;
+    gridH: number;
 }
 
 interface LibraryGridProps {
     filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series';
 }
 
+// 获取项目在网格中的尺寸 (w, h)
+const getItemGridSize = (type: string) => {
+    switch (type) {
+        case 'video':
+        case 'game':
+            return { w: 2, h: 1 };
+        case 'anime':
+        case 'tv_series':
+            return { w: 1, h: 2 };
+        case 'music':
+        default:
+            return { w: 1, h: 1 };
+    }
+};
+
 export default function LibraryGrid({ filter }: LibraryGridProps) {
     const [allItems, setAllItems] = useState<LibraryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all');
-    const [isTransitioning, setIsTransitioning] = useState(false); // 子分组切换动画状态
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    
+    // 布局状态
     const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map());
+    const [visibleCount, setVisibleCount] = useState(20); // 初始显示数量
+    
     const containerRef = useRef<HTMLDivElement>(null);
     const { showInfo } = useNotification();
-    const { playSong, togglePlayPause, stopTempPlay, currentSong, isPlaying: globalIsPlaying, musicColor, isTempPlay } = useMusicPlayerControl();
+    const { playSong, currentSong, isPlaying: globalIsPlaying, musicColor } = useMusicPlayerControl();
     
     // 筛选后的所有项目
-    const filteredAllItems = filter === 'all' 
-        ? allItems 
-        : allItems.filter(item => item.item_type === filter);
-    
-    // 使用分页加载 Hook - 初始加载15个，每次加载15个，避免图片请求过多导致429错误
-    const { items, loadMore, hasMore, loading: loadingMore } = usePagedLoad(
-        filteredAllItems,
-        { pageSize: 15, initialPages: 1, threshold: 1000 }
-    );
+    const filteredAllItems = useMemo(() => {
+        return filter === 'all' 
+            ? allItems 
+            : allItems.filter(item => item.item_type === filter);
+    }, [filter, allItems]);
 
-    // 获取卡片尺寸配置 - 统一高度
-    const getCardSize = useCallback((type: string, containerWidth: number) => {
-        const gap = 16;
-        let columns = 5;
-
-        // 响应式列数
-        if (containerWidth < 640) columns = 2;
-        else if (containerWidth < 768) columns = 3;
-        else if (containerWidth < 1024) columns = 4;
-        else if (containerWidth < 1536) columns = 5;
-        else columns = 6;
-
-        const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
-        // 统一高度 = 1个基础列宽度
-        const uniformHeight = baseWidth;
-
-        switch (type) {
-            case 'video':
-                // 视频：占2列宽度，统一高度
-                const videoWidth = baseWidth * 2 + gap;
-                return {
-                    width: videoWidth,
-                    height: uniformHeight,
-                    span: 2
-                };
-            case 'game':
-                // 游戏：占2列宽度，统一高度
-                const gameWidth = baseWidth * 2 + gap;
-                return {
-                    width: gameWidth,
-                    height: uniformHeight,
-                    span: 2
-                };
-            case 'anime':
-                // 追番/动画：占1列宽度，2倍高度（竖向布局）
-                return {
-                    width: baseWidth,
-                    height: baseWidth * 2 + gap,
-                    span: 1
-                };
-            case 'tv_series':
-                // 追剧/电视剧：占1列宽度，2倍高度（竖向布局）
-                return {
-                    width: baseWidth,
-                    height: baseWidth * 2 + gap,
-                    span: 1
-                };
-            case 'music':
-                // 音乐：占1列宽度，统一高度（正方形）
-                return {
-                    width: baseWidth,
-                    height: uniformHeight,
-                    span: 1
-                };
-            default:
-                return {
-                    width: baseWidth,
-                    height: uniformHeight,
-                    span: 1
-                };
-        }
-    }, []);
-
-    // ✅ 智能瀑布流布局算法 - 使用 useCallback 避免重复创建
-    const calculateLayouts = useCallback(() => {
-        if (!containerRef.current) return;
+    // 核心布局算法：完全避免空隙
+    const computeLayout = useCallback(() => {
+        if (!containerRef.current || filteredAllItems.length === 0) return;
 
         const containerWidth = containerRef.current.offsetWidth;
         const gap = 16;
@@ -295,182 +248,247 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         else if (containerWidth < 1536) columns = 5;
         else columns = 6;
 
-        const columnHeights = new Array(columns).fill(gap);
-        const newLayouts = new Map<string, CardLayout>();
         const baseWidth = (containerWidth - gap * (columns + 1)) / columns;
+        const uniformHeight = baseWidth;
 
-        // 检查是否只有大卡片（游戏/视频/追番/追剧）
-        const hasBigCards = items.some(item =>
-            item.item_type === 'game' ||
-            item.item_type === 'video' ||
-            item.item_type === 'anime' ||
-            item.item_type === 'tv_series'
-        );
-        const hasSmallCards = items.some(item => item.item_type === 'music');
+        // 居中逻辑修正：针对纯宽卡片（2x1）在奇数列数下的居中处理
+        let startOffset = 0;
+        let layoutColumns = columns;
+        
+        // 如果是游戏或视频分类（只有宽2的卡片），且列数是奇数
+        // 那么最后一列无法被填满（因为没有宽1的卡片），导致整体偏左
+        // 需要计算偏移量使内容居中
+        if ((filter === 'game' || filter === 'video') && columns % 2 !== 0 && columns > 1) {
+            layoutColumns = columns - 1;
+            // 剩余空间 = 1个列宽 + 1个间隙
+            // 偏移量 = 剩余空间 / 2
+            startOffset = (baseWidth + gap) / 2;
+        }
 
-        // ====== 前瞻式空隙填充算法：保持原始顺序 + 多步预判 ======
-        
-        const uniformHeight = baseWidth; // 1x1卡片的标准高度
-        
-        // 预处理：统计后续卡片类型（用于智能决策）
-        const remainingCards = items.map(item => {
-            const size = getCardSize(item.item_type, containerWidth);
-            return {
-                item,
-                size,
-                isWide: size.span === 2,
-                isTall: size.span === 1 && size.height > size.width,
-                isSmall: size.span === 1 && size.height === size.width
-            };
-        });
-        
-        // 按原始顺序遍历items
-        remainingCards.forEach((cardData, index) => {
-            const { item, size, isWide, isTall, isSmall } = cardData;
-            const span = size.span;
-            let bestColumn = 0;
-            let minHeight = Infinity;
-            let bestScore = -Infinity;
+        // 1. 准备队列：按尺寸分类，保持原始相对顺序
+        const queues: Record<string, { item: LibraryItem, originalIndex: number }[]> = {
+            '1x1': [],
+            '1x2': [],
+            '2x1': [],
+            // '2x2': [] // 暂无2x2类型
+        };
 
-            if (span > 1) {
-                // 横向卡片（2x1）：找连续最矮列
-                for (let col = 0; col <= columns - span; col++) {
-                    const maxHeightInSpan = Math.max(...columnHeights.slice(col, col + span));
-                    if (maxHeightInSpan < minHeight) {
-                        minHeight = maxHeightInSpan;
-                        bestColumn = col;
-                    }
-                }
+        filteredAllItems.forEach((item, index) => {
+            const size = getItemGridSize(item.item_type);
+            const key = `${size.w}x${size.h}`;
+            if (queues[key]) {
+                queues[key].push({ item, originalIndex: index });
             } else {
-                // 单列卡片（1x1、1x2）：前瞻式空隙填充
-                
-                // 统计后续卡片类型分布
-                const futureCards = remainingCards.slice(index + 1);
-                const futureSmallCount = futureCards.filter(c => c.isSmall).length;
-                const futureTallCount = futureCards.filter(c => c.isTall).length;
-                
-                for (let col = 0; col < columns; col++) {
-                    const currentHeight = columnHeights[col];
-                    
-                    // 计算每列与最高列的差距
-                    const maxHeight = Math.max(...columnHeights);
-                    const minColHeight = Math.min(...columnHeights);
-                    const gapSize = maxHeight - currentHeight;
-                    const maxGap = maxHeight - minColHeight;
-                    
-                    // 评分系统：
-                    let score = 0;
-                    
-                    // 1. 精确空隙匹配（最高优先级）
-                    const heightDiff = Math.abs(gapSize - size.height);
-                    if (heightDiff <= gap) {
-                        // 完美匹配空隙
-                        score = 10000000 + (maxGap - gapSize) * 1000;
-                    }
-                    // 2. 填充最大空隙（次高优先级）
-                    else if (gapSize === maxGap && gapSize > uniformHeight * 0.5) {
-                        // 当前列是最低的，且有明显空隙
-                        if (size.height <= gapSize + gap * 2) {
-                            // 卡片能放入空隙
-                            score = 1000000 + (gapSize - heightDiff) * 100;
-                        } else {
-                            // 卡片比空隙大，但能减少空隙
-                            score = 500000 - heightDiff * 10;
-                        }
-                    }
-                    // 3. 为后续卡片预留空隙（智能判断）
-                    else if (gapSize > uniformHeight * 0.3 && gapSize < uniformHeight * 0.8) {
-                        // 中等空隙：判断是否应该留给后续更合适的卡片
-                        if (isSmall && futureTallCount > 0 && gapSize > uniformHeight * 0.6) {
-                            // 当前是1x1，后面还有1x2，且空隙更适合1x2
-                            score = -100000 - currentHeight; // 降低优先级
-                        } else if (isTall && futureSmallCount > futureSmallCount / 2) {
-                            // 当前是1x2，但后面还有很多1x1需要填充
-                            score = 50000 + (uniformHeight - heightDiff) * 10;
-                        } else {
-                            score = 100000 - heightDiff;
-                        }
-                    }
-                    // 4. 无明显空隙：选择最矮列，保持平衡
-                    else {
-                        // 计算放置后的列高度均衡度
-                        const testHeights = [...columnHeights];
-                        testHeights[col] = currentHeight + size.height + gap;
-                        const maxAfter = Math.max(...testHeights);
-                        const minAfter = Math.min(...testHeights);
-                        const gapAfter = maxAfter - minAfter;
-                        
-                        // 优先选择能保持最小高度差的位置
-                        score = -gapAfter * 1000 - currentHeight;
-                    }
-                    
-                    if (score > bestScore) {
-                        bestScore = score;
-                        minHeight = currentHeight;
-                        bestColumn = col;
-                    }
-                }
-            }
-
-            const left = gap + bestColumn * (baseWidth + gap);
-            const top = minHeight;
-
-            newLayouts.set(item.id, {
-                left,
-                top,
-                width: size.width,
-                height: size.height,
-            });
-
-            // 更新列高度
-            for (let col = bestColumn; col < bestColumn + span; col++) {
-                columnHeights[col] = top + size.height + gap;
+                // 默认归为 1x1
+                queues['1x1'].push({ item, originalIndex: index });
             }
         });
+
+        // 2. 网格状态追踪
+        // 使用 Map 记录被占用的格子 "x,y" -> true
+        const occupied = new Set<string>();
+        const isOccupied = (x: number, y: number) => occupied.has(`${x},${y}`);
+        const markOccupied = (x: number, y: number, w: number, h: number) => {
+            for (let i = 0; i < w; i++) {
+                for (let j = 0; j < h; j++) {
+                    occupied.add(`${x + i},${y + j}`);
+                }
+            }
+        };
+
+        const newLayouts = new Map<string, CardLayout>();
+        let maxY = 0;
+        let placedCount = 0;
+        const totalItems = filteredAllItems.length;
+
+        // 3. 遍历网格填充
+        // y 从 0 开始无限增长，x 从 0 到 columns-1
+        let y = 0;
+        while (placedCount < totalItems) {
+            let rowHasEmpty = false;
+            
+            for (let x = 0; x < layoutColumns; x++) {
+                if (isOccupied(x, y)) continue;
+                
+                // 发现空位 (x, y)
+                // 尝试寻找最佳匹配项
+                // 优先级：
+                // 1. 检查是否能放入 2x1 (需要 x+1 空闲)
+                // 2. 检查是否能放入 1x2 (需要 y+1 空闲 - 总是假设 y+1 空闲，除非有预占，但这里我们是逐行扫描，y+1通常未处理)
+                //    注意：如果之前有 1x2 占据了 (x, y+1)，则 isOccupied(x, y+1) 会为 true。
+                // 3. 放入 1x1
+                
+                // 为了保持"平均开始排布"，我们在所有能放入的候选中，选择 originalIndex 最小的那个
+                
+                const candidates: { type: string, index: number, item: LibraryItem, w: number, h: number }[] = [];
+
+                // 检查 1x1
+                if (queues['1x1'].length > 0) {
+                    const qItem = queues['1x1'][0];
+                    candidates.push({ item: qItem.item, index: qItem.originalIndex, type: '1x1', w: 1, h: 1 });
+                }
+
+                // 检查 2x1
+                const canFit2x1 = x + 1 < layoutColumns && !isOccupied(x + 1, y);
+                if (canFit2x1 && queues['2x1'].length > 0) {
+                    const qItem = queues['2x1'][0];
+                    candidates.push({ item: qItem.item, index: qItem.originalIndex, type: '2x1', w: 2, h: 1 });
+                }
+
+                // 检查 1x2
+                // 垂直方向通常是无限的，但要检查是否被上方的某些长条物体阻挡？
+                // 我们是按 y 递增扫描，所以 (x, y+1) 只有可能被之前的操作占据（不太可能，除非有复杂形状）
+                // 但为了严谨，检查一下
+                const canFit1x2 = !isOccupied(x, y + 1);
+                if (canFit1x2 && queues['1x2'].length > 0) {
+                    const qItem = queues['1x2'][0];
+                    candidates.push({ item: qItem.item, index: qItem.originalIndex, type: '1x2', w: 1, h: 2 });
+                }
+
+                if (candidates.length === 0) {
+                    // 没有剩余物品能放入此格
+                    // 只能留空 (虽然用户说避免空白，但如果没有物品了就没办法)
+                    // 或者：如果只有 2x1 且当前只有 1格宽，那必须留空
+                    // 标记此格为"跳过/虚拟占用"以继续循环?
+                    // 不，直接 continue，外层循环会处理下一个 x
+                    // 但如果不标记，下次循环回来还是空的。
+                    // 所以必须标记为"废弃"
+                    // 但如果后续还有物品，只是当前放不下（比如只有2x1但这里只有1格），那这个格子就真的废了
+                    // 除非我们能从后面拉一个 1x1 过来。但如果 1x1 队列空了，那就真没办法。
+                    // 标记为占用，但不放置物品
+                    // occupied.add(`${x},${y}`); // 实际上不需要显式add，只要不处理就行，但为了算法推进，视为已处理
+                    continue; 
+                }
+
+                // 选择 originalIndex 最小的候选者
+                candidates.sort((a, b) => a.index - b.index);
+                const best = candidates[0];
+
+                // 放置物品
+                const queue = queues[best.type as keyof typeof queues];
+                queue.shift(); // 移除已使用的
+
+                // 计算像素位置
+                const left = gap + x * (baseWidth + gap) + startOffset;
+                const top = gap + y * (uniformHeight + gap);
+                const width = best.w * baseWidth + (best.w - 1) * gap;
+                const height = best.h * uniformHeight + (best.h - 1) * gap;
+
+                newLayouts.set(best.item.id, {
+                    left,
+                    top,
+                    width,
+                    height,
+                    gridX: x,
+                    gridY: y,
+                    gridW: best.w,
+                    gridH: best.h
+                });
+
+                markOccupied(x, y, best.w, best.h);
+                placedCount++;
+                
+                // 更新最大高度
+                const itemBottom = top + height;
+                if (itemBottom > maxY) maxY = itemBottom;
+            }
+
+            // 检查当前行是否还有未处理的空位（被跳过的）
+            // 如果所有列都处理过（占用或尝试过），进入下一行
+            y++;
+            
+            // 安全阀：防止死循环 (如果数据异常)
+            if (y > totalItems * 2) break;
+        }
 
         setLayouts(newLayouts);
-    }, [items, getCardSize]); // ✅ 添加依赖项
+    }, [filteredAllItems, filter]);
+
+    // 监听窗口大小变化和数据变化
+    useEffect(() => {
+        const handleResize = () => {
+            computeLayout();
+        };
+        
+        // 初始计算
+        computeLayout();
+
+        // 防抖监听
+        let timeoutId: NodeJS.Timeout;
+        const debouncedResize = () => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(handleResize, 150);
+        };
+
+        window.addEventListener('resize', debouncedResize);
+        return () => {
+            window.removeEventListener('resize', debouncedResize);
+            clearTimeout(timeoutId);
+        };
+    }, [computeLayout]);
+
+    // 滚动加载更多
+    const loadMore = useCallback(() => {
+        setVisibleCount(prev => Math.min(prev + 20, filteredAllItems.length));
+    }, [filteredAllItems.length]);
+
+    const hasMore = visibleCount < filteredAllItems.length;
+
+    // 自动加载监听
+    const observerTarget = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            entries => {
+                if (entries[0].isIntersecting && hasMore) {
+                    loadMore();
+                }
+            },
+            { threshold: 0.1, rootMargin: '100px' }
+        );
+
+        if (observerTarget.current) {
+            observer.observe(observerTarget.current);
+        }
+
+        return () => observer.disconnect();
+    }, [hasMore, loadMore]);
+
+    // 排序后的可见项目
+    const visibleItems = useMemo(() => {
+        if (layouts.size === 0) return [];
+        
+        // 获取所有已布局的项目
+        const laidOutItems = filteredAllItems.filter(item => layouts.has(item.id));
+        
+        // 按布局位置排序 (top, then left) - 实际上布局算法已经大致按顺序了，但为了确保渲染顺序
+        laidOutItems.sort((a, b) => {
+            const layoutA = layouts.get(a.id)!;
+            const layoutB = layouts.get(b.id)!;
+            if (Math.abs(layoutA.top - layoutB.top) > 10) return layoutA.top - layoutB.top;
+            return layoutA.left - layoutB.left;
+        });
+
+        return laidOutItems.slice(0, visibleCount);
+    }, [filteredAllItems, layouts, visibleCount]);
+
+    // 动态计算容器高度
+    const containerHeight = useMemo(() => {
+        if (visibleItems.length === 0) return 400;
+        let maxBottom = 0;
+        visibleItems.forEach(item => {
+            const layout = layouts.get(item.id);
+            if (layout) {
+                const bottom = layout.top + layout.height;
+                if (bottom > maxBottom) maxBottom = bottom;
+            }
+        });
+        return maxBottom + 20;
+    }, [visibleItems, layouts]);
 
     useEffect(() => {
         fetchLibraryData();
     }, []);
-
-    // 合并：当 filter 或 items 变化时，重新计算布局
-    useEffect(() => {
-        if (items.length > 0) {
-            // 筛选切换时立即计算，避免位置跳变
-            if (isTransitioning) {
-                calculateLayouts();
-            } else {
-                // ✅ 其他情况添加防抖，增加到 150ms 以减少计算频率
-                const timeoutId = setTimeout(() => {
-                    calculateLayouts();
-                }, 150);
-                return () => clearTimeout(timeoutId);
-            }
-        }
-        // ✅ calculateLayouts 通过 useCallback memoized，不需要在依赖数组中
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filter, items, isTransitioning]);
-
-    useEffect(() => {
-        let resizeTimeout: NodeJS.Timeout;
-        const handleResize = () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                if (items.length > 0) {
-                    calculateLayouts();
-                }
-            }, 150);
-        };
-
-        window.addEventListener('resize', handleResize);
-        return () => {
-            window.removeEventListener('resize', handleResize);
-            clearTimeout(resizeTimeout);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [items]);
 
     const fetchLibraryData = async () => {
         try {
@@ -484,7 +502,6 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             const data: LibraryResponse = await response.json();
 
             if (data.success) {
-                // 按分类平衡打乱数据
                 const balanced = balancedShuffle(data.items);
                 setAllItems(balanced);
                 setLoading(false);
@@ -498,12 +515,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         }
     };
 
-    /**
-     * 按分类平衡打乱数据
-     * 确保各个分类(游戏、视频、音乐)比较平均地分布，而不是因为某个分类数量多就都显示该分类
-     */
     const balancedShuffle = (items: LibraryItem[]): LibraryItem[] => {
-        // 按类型分组
         const groups: Record<string, LibraryItem[]> = {
             game: [],
             video: [],
@@ -519,12 +531,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             }
         });
 
-        // 打乱每个分组内的顺序
         Object.keys(groups).forEach(key => {
             groups[key].sort(() => Math.random() - 0.5);
         });
 
-        // 轮流从各个分组中取出项目，实现平衡分布
         const result: LibraryItem[] = [];
         const maxLength = Math.max(
             groups.game.length, 
@@ -535,9 +545,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         );
 
         for (let i = 0; i < maxLength; i++) {
-            // 按随机顺序访问各个分类，增加随机性
             const typeOrder = ['game', 'video', 'music', 'anime', 'tv_series'].sort(() => Math.random() - 0.5);
-
             typeOrder.forEach(type => {
                 if (groups[type][i]) {
                     result.push(groups[type][i]);
@@ -562,56 +570,38 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         }
     }, [loading, filteredAllItems.length, error, showInfo]);
 
-    // filteredItems 现在由 usePagedLoad 提供的 items 代替
-
-    // 获取平台品牌色
-    // 🚀 性能优化：使用 useCallback 缓存函数，避免每次渲染重新创建
     const getPlatformColor = useCallback((platform: string) => {
         switch (platform.toLowerCase()) {
-            case 'bilibili':
-                return '#00A1D6';
-            case 'steam':
-                return '#171a21';
+            case 'bilibili': return '#00A1D6';
+            case 'steam': return '#171a21';
             case 'netease music':
-            case 'netease':
-                return '#d33a31';
-            case 'github':
-                return '#24292e';
+            case 'netease': return '#d33a31';
+            case 'github': return '#24292e';
             case 'twitter':
-            case 'x':
-                return '#000000';
-            default:
-                return '#6b7280';
+            case 'x': return '#000000';
+            default: return '#6b7280';
         }
     }, []);
 
-    // 获取类型图标
     const getTypeIcon = useCallback((type: string) => {
         switch (type) {
-            case 'game':
-                return '🎮';
-            case 'video':
-                return '🎬';
-            case 'music':
-                return '🎵';
-            default:
-                return '📦';
+            case 'game': return '🎮';
+            case 'video': return '🎬';
+            case 'music': return '🎵';
+            default: return '📦';
         }
     }, []);
 
-    // 获取额外信息
     const getExtraInfo = useCallback((item: LibraryItem) => {
         if (item.item_type === 'game' && item.metadata.playtime_forever) {
             const hours = Math.round(item.metadata.playtime_forever / 60);
             return `游玩 ${hours} 小时`;
         }
         if (item.item_type === 'music') {
-            // 支持多种艺术家字段格式
             const artists = item.metadata.ar || item.metadata.artists || [];
             if (Array.isArray(artists) && artists.length > 0) {
                 return artists.map((a: any) => a.name || a).join(', ');
             }
-            // 兜底：查找artist字段
             if (item.metadata.artist) {
                 return item.metadata.artist;
             }
@@ -622,13 +612,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         return null;
     }, []);
 
-    // ✅ 处理音乐播放 - 优化依赖，避免频繁重建
     const handlePlayMusic = useCallback((item: LibraryItem) => {
-        // 提取歌曲ID，用于判断是否为当前歌曲
         const songId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
-
-        // ✅ 直接从事件中获取当前播放状态，而不是依赖 currentSong prop
-        // 这样可以避免 currentSong 变化时重新创建所有卡片的点击处理器
         const musicState = (window as any).__musicPlayerState;
         if (musicState?.currentSong?.id === songId) {
             window.dispatchEvent(new CustomEvent('open-control-panel'));
@@ -636,74 +621,58 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             return;
         }
         
-        // 检查是否为VIP歌曲（仅提示，不阻止播放）
         const isVip = item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4;
-        
         if (isVip) {
             showInfo('⚠️ VIP歌曲可能无法完整播放');
         }
 
-        // 提取歌曲信息（支持多种字段格式）
         const name = item.metadata.name || item.title;
-            
-            // 艺术家信息（支持多种格式）
-            let artist = '未知艺术家';
-            const artists = item.metadata.ar || item.metadata.artists || [];
-            if (Array.isArray(artists) && artists.length > 0) {
-                artist = artists.map((a: any) => a.name || a).join(', ');
-            } else if (item.metadata.artist) {
-                artist = item.metadata.artist;
+        let artist = '未知艺术家';
+        const artists = item.metadata.ar || item.metadata.artists || [];
+        if (Array.isArray(artists) && artists.length > 0) {
+            artist = artists.map((a: any) => a.name || a).join(', ');
+        } else if (item.metadata.artist) {
+            artist = item.metadata.artist;
+        }
+
+        let album = '未知专辑';
+        let cover = item.cover || '';
+        if (item.metadata.al) {
+            album = item.metadata.al.name || album;
+            cover = item.metadata.al.picUrl || cover;
+        } else if (item.metadata.album) {
+            album = item.metadata.album.name || item.metadata.album;
+            if (item.metadata.album.picUrl) {
+                cover = item.metadata.album.picUrl;
             }
+        }
 
-            // 专辑信息（支持多种格式）
-            let album = '未知专辑';
-            let cover = item.cover || '';
-            if (item.metadata.al) {
-                album = item.metadata.al.name || album;
-                cover = item.metadata.al.picUrl || cover;
-            } else if (item.metadata.album) {
-                album = item.metadata.album.name || item.metadata.album;
-                if (item.metadata.album.picUrl) {
-                    cover = item.metadata.album.picUrl;
-                }
-            }
+        const duration = item.metadata.dt ? Math.floor(item.metadata.dt / 1000) : 
+                        item.metadata.duration ? item.metadata.duration : 0;
 
-            // 时长信息（秒）
-            const duration = item.metadata.dt ? Math.floor(item.metadata.dt / 1000) : 
-                            item.metadata.duration ? item.metadata.duration : 0;
+        const song: Song = {
+            id: songId.toString(),
+            name,
+            artist,
+            album,
+            cover,
+            url: `${API_URL}/api/proxy/music/netease/audio/${songId}`,
+            duration,
+            source: 'netease',
+            isVip: false
+        };
 
-            const song: Song = {
-                id: songId.toString(),
-                name,
-                artist,
-                album,
-                cover,
-                url: `${API_URL}/api/proxy/music/netease/audio/${songId}`,
-                duration,
-                source: 'netease',
-                isVip: false
-            };
-
-        // 调用全局播放器播放
         playSong(song);
-        
-        // 打开控制面板以显示播放状态
         window.dispatchEvent(new CustomEvent('open-control-panel'));
-        
         showInfo(`🎵 正在播放: ${name}`);
-        // ✅ 移除 currentSong 依赖，避免每次播放状态变化都重建处理器
     }, [playSong, showInfo]);
 
-    // 判断是否为子分组之间的切换（游戏↔视频、游戏↔音乐、视频↔音乐）
     const needsTransition = (from: string, to: string) => {
         return from !== 'all' && to !== 'all' && from !== to;
     };
 
-    // 监听 filter 变化
     useEffect(() => {
         if (filter === prevFilter) return;
-        
-        // 如果是子分组之间的切换，添加过渡动画
         if (needsTransition(prevFilter, filter)) {
             setIsTransitioning(true);
             setTimeout(() => {
@@ -711,359 +680,314 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 setTimeout(() => setIsTransitioning(false), 150);
             }, 200);
         } else {
-            // 全部 ↔ 子分组，直接切换
             setPrevFilter(filter);
         }
+        // 切换分类时重置显示数量
+        setVisibleCount(20);
     }, [filter, prevFilter]);
 
-    // 🚀 性能优化：使用 useMemo 缓存容器高度计算
-    const containerHeight = useMemo(() => {
-        const heights = Array.from(layouts.values()).map(l => l.top + l.height);
-        return Math.max(...heights, 500) + 20;
-    }, [layouts]);
-
-    // 初次加载时不显示任何加载动画
     if (loading && allItems.length === 0) {
         return null;
     }
 
-    // 内容过渡动画
     return (
-        <div 
-            className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out"
-        >
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
             {error ? (
-                <div className="flex items-center justify-center min-h-[400px]">
-                    {/* 错误提示已移至角落通知 */}
-                </div>
+                <div className="flex items-center justify-center min-h-[400px]"></div>
             ) : (
-        <div className="space-y-8">
-            {/* 瀑布流容器 - 使用快速过渡 */}
-            <QuickTransition transitioning={isTransitioning}>
-                {/* Dynamic height required for waterfall layout */}
-                <div 
-                    ref={containerRef}
-                    className="relative w-full"
-                    style={{ 
-                        height: `${containerHeight}px`, 
-                        minHeight: '400px',
-                        transition: 'height 0.4s ease-out'
-                    }}
-                >
-                    {items.map((item, index) => {
-                        const layout = layouts.get(item.id);
-                        if (!layout) return null;
+                <div className="space-y-8">
+                    <QuickTransition transitioning={isTransitioning}>
+                        <div 
+                            ref={containerRef}
+                            className="relative w-full"
+                            style={{ 
+                                height: `${containerHeight}px`, 
+                                minHeight: '400px',
+                                transition: 'height 0.4s ease-out'
+                            }}
+                        >
+                            {visibleItems.map((item) => {
+                                const layout = layouts.get(item.id);
+                                if (!layout) return null;
 
-                        const platformColor = getPlatformColor(item.platform);
-                        const isVip = (item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4);
-                        const currentSongId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
-                        const isCurrentSong = currentSong && currentSong.id === currentSongId;
-                        const isPlaying = isCurrentSong && globalIsPlaying;
-                        
-                        // 计算卡片所在行（基于 top 值分组）
-                        const rowIndex = Math.floor(layout.top / 300); // 每300px算一行
-                        const animationDelay = rowIndex * 0.08; // 每行延迟80ms
-                        
-                        {/* Dynamic positioning required for waterfall layout */}
-                        return (
-                            <div
-                                key={item.id}
-                                className="absolute group library-card-container"
-                                style={{
-                                    left: `${layout.left}px`,
-                                    top: `${layout.top}px`,
-                                    width: `${layout.width}px`,
-                                    height: `${layout.height}px`,
-                                    '--platform-color': platformColor,
-                                    animationDelay: `${animationDelay}s`
-                                } as React.CSSProperties}
-                            >
-                            {item.item_type === 'music' ? (
-                                // 音乐卡片：正方形专辑封面
-                                <div className="relative bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
-                                    <div 
-                                        className="block w-full h-full relative cursor-pointer"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            handlePlayMusic(item);
-                                        }}
+                                const platformColor = getPlatformColor(item.platform);
+                                const isVip = (item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4);
+                                const currentSongId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
+                                const isCurrentSong = currentSong && currentSong.id === currentSongId;
+                                const isPlaying = isCurrentSong && globalIsPlaying;
+                                
+                                const rowIndex = Math.floor(layout.top / 300);
+                                const animationDelay = rowIndex * 0.05;
+                                
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className="absolute group library-card-container"
+                                        style={{
+                                            left: `${layout.left}px`,
+                                            top: `${layout.top}px`,
+                                            width: `${layout.width}px`,
+                                            height: `${layout.height}px`,
+                                            '--platform-color': platformColor,
+                                            animationDelay: `${animationDelay}s`
+                                        } as React.CSSProperties}
                                     >
-                                        {item.cover ? (
-                                            <img
-                                                src={item.cover}
-                                                alt={item.title}
-                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                loading="lazy"
-                                                decoding="async"
-                                                onError={(e) => {
-                                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
-                                                }}
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-pink-500">
-                                                <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
-                                            </div>
-                                        )}
-                                        
-                                        {/* 播放中指示器 - 中央显示，使用封面提取的颜色 */}
-                                        {isPlaying && (
-                                            <div 
-                                                className="playing-indicator"
-                                                style={{
-                                                    '--music-color': musicColor,
-                                                    '--platform-color': musicColor,
-                                                } as React.CSSProperties}
-                                            >
-                                                <PlatformIcon platform={item.platform} className="w-8 h-8" />
-                                            </div>
-                                        )}
-                                        
-                                        {/* 悬停显示歌曲信息 - 音乐卡片 */}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
-                                            {/* 底部歌曲信息 + VIP标识 */}
-                                            <div>
-                                                <div className="flex items-start gap-1">
-                                                    <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
-                                                        {item.title}
-                                                    </h3>
-                                                    {/* VIP 标识 */}
-                                                    {isVip && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gradient-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
-                                                            VIP
-                                                        </span>
+                                        {item.item_type === 'music' ? (
+                                            <div className="relative bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
+                                                <div 
+                                                    className="block w-full h-full relative cursor-pointer"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handlePlayMusic(item);
+                                                    }}
+                                                >
+                                                    {item.cover ? (
+                                                        <img
+                                                            src={item.cover}
+                                                            alt={item.title}
+                                                            className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                            loading="lazy"
+                                                            decoding="async"
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-pink-500">
+                                                            <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
+                                                        </div>
                                                     )}
+                                                    
+                                                    {isPlaying && (
+                                                        <div 
+                                                            className="playing-indicator"
+                                                            style={{
+                                                                '--music-color': musicColor,
+                                                                '--platform-color': musicColor,
+                                                            } as React.CSSProperties}
+                                                        >
+                                                            <PlatformIcon platform={item.platform} className="w-8 h-8" />
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
+                                                        <div>
+                                                            <div className="flex items-start gap-1">
+                                                                <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
+                                                                    {item.title}
+                                                                </h3>
+                                                                {isVip && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gradient-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
+                                                                        VIP
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {getExtraInfo(item) && (
+                                                                <p className="text-[10px] text-white/75 line-clamp-1">
+                                                                    {getExtraInfo(item)}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                {getExtraInfo(item) && (
-                                                    <p className="text-[10px] text-white/75 line-clamp-1">
-                                                        {getExtraInfo(item)}
-                                                    </p>
+                                                
+                                                {!isPlaying && (
+                                                    <div className="absolute top-3 right-3 flex gap-2">
+                                                        <div className="group/platform">
+                                                            <div 
+                                                                className="platform-icon-bg"
+                                                                style={{
+                                                                    '--platform-color': platformColor,
+                                                                } as React.CSSProperties}
+                                                            >
+                                                                <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                                            </div>
+                                                            <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                                                                {item.platform}
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* 右上角平台图标 - 播放时隐藏 */}
-                                    {!isPlaying && (
-                                        <div className="absolute top-3 right-3 flex gap-2">
-                                            <div className="group/platform">
-                                                <div 
-                                                    className="platform-icon-bg"
-                                                    style={{
-                                                        '--platform-color': platformColor,
-                                                    } as React.CSSProperties}
+                                        ) : item.item_type === 'anime' || item.item_type === 'tv_series' ? (
+                                            <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
+                                                <a
+                                                    href={item.metadata.url || '#'}
+                                                    target={item.metadata.url ? "_blank" : undefined}
+                                                    rel={item.metadata.url ? "noopener noreferrer" : undefined}
+                                                    className="block w-full h-full relative group"
                                                 >
-                                                    <PlatformIcon platform={item.platform} className="w-5 h-5" />
-                                                </div>
-                                                {/* hover显示平台名称 */}
-                                                <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                                                    {item.platform}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : item.item_type === 'anime' || item.item_type === 'tv_series' ? (
-                                // 追番/追剧卡片：横向宽屏，类似视频样式
-                                <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
-                                    <a
-                                        href={item.metadata.url || '#'}
-                                        target={item.metadata.url ? "_blank" : undefined}
-                                        rel={item.metadata.url ? "noopener noreferrer" : undefined}
-                                        className="block w-full h-full relative group"
-                                    >
-                                        {item.cover ? (
-                                            <img
-                                                src={item.cover}
-                                                alt={item.title}
-                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                loading="lazy"
-                                                decoding="async"
-                                                onError={(e) => {
-                                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
-                                                }}
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-purple-500">
-                                                <span className="text-6xl">{item.item_type === 'anime' ? '📺' : '🎬'}</span>
-                                            </div>
-                                        )}
+                                                    {item.cover ? (
+                                                        <img
+                                                            src={item.cover}
+                                                            alt={item.title}
+                                                            className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                            loading="lazy"
+                                                            decoding="async"
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-purple-500">
+                                                            <span className="text-6xl">{item.item_type === 'anime' ? '📺' : '🎬'}</span>
+                                                        </div>
+                                                    )}
 
-                                        {/* 底部标题标签 */}
-                                        <div className="absolute bottom-3 left-3 right-3">
-                                            <div className="inline-flex items-start max-w-full">
-                                                <div className="bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg w-full">
-                                                    {/* 标题和标签在同一行 */}
-                                                    <div className="flex items-center gap-2">
-                                                        <h3 className="font-bold text-gray-900 text-sm line-clamp-1 leading-snug flex-1">
+                                                    <div className="absolute bottom-3 left-3 right-3">
+                                                        <div className="inline-flex items-start max-w-full">
+                                                            <div className="bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg w-full">
+                                                                <div className="flex items-center gap-2">
+                                                                    <h3 className="font-bold text-gray-900 text-sm line-clamp-1 leading-snug flex-1">
+                                                                        {item.title}
+                                                                    </h3>
+                                                                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
+                                                                        item.item_type === 'anime'
+                                                                            ? 'bg-pink-100 text-pink-700'
+                                                                            : 'bg-purple-100 text-purple-700'
+                                                                    }`}>
+                                                                        {item.item_type === 'anime' ? '追番' : '追剧'}
+                                                                    </span>
+                                                                </div>
+                                                                {getExtraInfo(item) && (
+                                                                    <p className="text-xs text-gray-600 line-clamp-1">
+                                                                        {getExtraInfo(item)}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </a>
+
+                                                <div className="absolute top-3 right-3 group/platform">
+                                                    <div className="platform-icon-bg">
+                                                        <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                                                        {item.platform}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : item.item_type === 'video' ? (
+                                            <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
+                                                <a 
+                                                    href={item.metadata.url || '#'} 
+                                                    target={item.metadata.url ? "_blank" : undefined}
+                                                    rel={item.metadata.url ? "noopener noreferrer" : undefined}
+                                                    className="block w-full h-full relative"
+                                                >
+                                                    {item.cover ? (
+                                                        <img
+                                                            src={item.cover}
+                                                            alt={item.title}
+                                                            className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                            loading="lazy"
+                                                            decoding="async"
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-blue-500">
+                                                            <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="absolute bottom-3 left-3 right-3">
+                                                        <div className="inline-flex items-start max-w-full">
+                                                            <div className="bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
+                                                                <h3 className="font-bold text-gray-900 text-sm line-clamp-2 leading-snug">
+                                                                    {item.title}
+                                                                </h3>
+                                                                {getExtraInfo(item) && (
+                                                                    <p className="text-xs text-gray-600 mt-1">
+                                                                        {getExtraInfo(item)}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </a>
+                                                
+                                                <div className="absolute top-3 right-3 group/platform">
+                                                    <div className="platform-icon-bg">
+                                                        <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                                                        {item.platform}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
+                                                <div className="relative overflow-hidden h-full bg-gradient-to-br from-gray-900 to-gray-800">
+                                                    <a 
+                                                        href={item.platform.toLowerCase() === 'steam' && item.metadata.appid 
+                                                            ? `https://store.steampowered.com/app/${item.metadata.appid}` 
+                                                            : (item.metadata.url || '#')}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block w-full h-full relative"
+                                                    >
+                                                        {item.cover ? (
+                                                            <img
+                                                                src={item.cover}
+                                                                alt={item.title}
+                                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                                onError={(e) => {
+                                                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-400 to-pink-500">
+                                                                <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
+                                                            </div>
+                                                        )}
+                                                    </a>
+                                                    
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+                                                        <h3 className="font-bold text-white text-base line-clamp-2 leading-snug mb-1">
                                                             {item.title}
                                                         </h3>
-                                                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
-                                                            item.item_type === 'anime'
-                                                                ? 'bg-pink-100 text-pink-700'
-                                                                : 'bg-purple-100 text-purple-700'
-                                                        }`}>
-                                                            {item.item_type === 'anime' ? '追番' : '追剧'}
-                                                        </span>
+                                                        {getExtraInfo(item) && (
+                                                            <p className="text-sm text-white/80">
+                                                                {getExtraInfo(item)}
+                                                            </p>
+                                                        )}
                                                     </div>
-                                                    {getExtraInfo(item) && (
-                                                        <p className="text-xs text-gray-600 line-clamp-1">
-                                                            {getExtraInfo(item)}
-                                                        </p>
-                                                    )}
+                                                    
+                                                    <div className="absolute top-3 right-3 group/platform z-10">
+                                                        <div className="platform-icon-bg">
+                                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
+                                                        </div>
+                                                        <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                                                            {item.platform}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    </a>
-
-                                    {/* 右上角平台图标 */}
-                                    <div className="absolute top-3 right-3 group/platform">
-                                        <div className="platform-icon-bg">
-                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
-                                        </div>
-                                        {/* hover显示平台名称 */}
-                                        <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                                            {item.platform}
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : item.item_type === 'video' ? (
-                                // 视频卡片：横向宽屏，16:9比例
-                                <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
-                                    <a 
-                                        href={item.metadata.url || '#'} 
-                                        target={item.metadata.url ? "_blank" : undefined}
-                                        rel={item.metadata.url ? "noopener noreferrer" : undefined}
-                                        className="block w-full h-full relative"
-                                    >
-                                        {item.cover ? (
-                                            <img
-                                                src={item.cover}
-                                                alt={item.title}
-                                                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                loading="lazy"
-                                                decoding="async"
-                                                onError={(e) => {
-                                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
-                                                }}
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-blue-500">
-                                                <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
                                             </div>
                                         )}
-                                        
-                                        {/* 底部标题标签 - 视频 */}
-                                        <div className="absolute bottom-3 left-3 right-3">
-                                            <div className="inline-flex items-start max-w-full">
-                                                <div className="bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
-                                                    <h3 className="font-bold text-gray-900 text-sm line-clamp-2 leading-snug">
-                                                        {item.title}
-                                                    </h3>
-                                                    {getExtraInfo(item) && (
-                                                        <p className="text-xs text-gray-600 mt-1">
-                                                            {getExtraInfo(item)}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </a>
-                                    
-                                    {/* 右上角平台图标（视频） */}
-                                    <div className="absolute top-3 right-3 group/platform">
-                                        <div className="platform-icon-bg">
-                                            <PlatformIcon platform={item.platform} className="w-5 h-5" />
-                                        </div>
-                                        {/* hover显示平台名称 */}
-                                        <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                                            {item.platform}
-                                        </div>
                                     </div>
-                                </div>
-                            ) : (
-                                // 游戏卡片：横向宽卡片，Steam封面比例
-                                <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
-                                    {/* 封面区域 - 游戏 */}
-                                    <div className="relative overflow-hidden h-full bg-gradient-to-br from-gray-900 to-gray-800">
-                                        <a 
-                                            href={item.platform.toLowerCase() === 'steam' && item.metadata.appid 
-                                                ? `https://store.steampowered.com/app/${item.metadata.appid}` 
-                                                : (item.metadata.url || '#')}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="block w-full h-full relative"
-                                        >
-                                            {item.cover ? (
-                                                <img
-                                                    src={item.cover}
-                                                    alt={item.title}
-                                                    className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110"
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                    onError={(e) => {
-                                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=400&background=random`;
-                                                    }}
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-400 to-pink-500">
-                                                    <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
-                                                </div>
-                                            )}
-                                        </a>
-                                        
-                                        {/* 渐变遮罩 + 游戏信息 */}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
-                                            <h3 className="font-bold text-white text-base line-clamp-2 leading-snug mb-1">
-                                                {item.title}
-                                            </h3>
-                                            {getExtraInfo(item) && (
-                                                <p className="text-sm text-white/80">
-                                                    {getExtraInfo(item)}
-                                                </p>
-                                            )}
-                                        </div>
-                                        
-                                        {/* 平台图标 */}
-                                        <div className="absolute top-3 right-3 group/platform z-10">
-                                            <div className="platform-icon-bg">
-                                                <PlatformIcon platform={item.platform} className="w-5 h-5" />
-                                            </div>
-                                            {/* hover显示平台名称 */}
-                                            <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                                                {item.platform}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                                );
+                            })}
                         </div>
-                    );
-                })}
-                </div>
-            </QuickTransition>
+                    </QuickTransition>
 
-            {/* 加载更多指示器 */}
-            {hasMore && (
-                <div className="flex justify-center mt-8 mb-4">
-                    {loadingMore ? (
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                            <Spinner size="sm" variant="primary" />
-                            <span className="text-sm">加载更多...</span>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={loadMore}
-                            className="load-more-btn primary-load-btn"
+                    {hasMore && (
+                        <div 
+                            ref={observerTarget}
+                            className="flex justify-center mt-8 mb-4 py-4 w-full"
                         >
-                            加载更多 ({filteredAllItems.length - items.length} 项待加载)
-                        </button>
+                            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                <Spinner size="sm" variant="primary" />
+                                <span className="text-sm">正在加载更多内容...</span>
+                            </div>
+                        </div>
                     )}
                 </div>
-            )}
-
-            {/* 空状态提示已移至角落通知 */}
-        </div>
             )}
         </div>
     );
