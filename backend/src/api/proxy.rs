@@ -5,12 +5,117 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 // 导入网易云音乐统一服务
 use crate::services::netease_service::{CacheEntry, NeteaseService, MUSIC_CACHE, RATE_LIMITER};
+
+// ===== 简单的令牌桶限流器 =====
+struct TokenBucket {
+    tokens: f64,
+    last_refill: Instant,
+    refill_rate: f64, // 每秒生成的令牌数
+    capacity: f64,    // 桶容量
+}
+
+impl TokenBucket {
+    fn new(rate: f64, capacity: f64) -> Self {
+        Self {
+            tokens: capacity,
+            last_refill: Instant::now(),
+            refill_rate: rate,
+            capacity,
+        }
+    }
+
+    fn try_acquire(&mut self) -> Option<Duration> {
+        self.refill();
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            None // Success
+        } else {
+            let needed = 1.0 - self.tokens;
+            let wait_secs = needed / self.refill_rate;
+            Some(Duration::from_secs_f64(wait_secs))
+        }
+    }
+
+    fn refill(&mut self) {
+        let now = Instant::now();
+        let duration = now.duration_since(self.last_refill).as_secs_f64();
+        if duration > 0.0 {
+            let new_tokens = duration * self.refill_rate;
+            self.tokens = (self.tokens + new_tokens).min(self.capacity);
+            self.last_refill = now;
+        }
+    }
+}
+
+// 全局代理限流器映射 (域名 -> 令牌桶)
+static PROXY_LIMITERS: Lazy<Arc<Mutex<HashMap<String, TokenBucket>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// 获取域名的主标识 (例如 i0.hdslb.com -> hdslb.com)
+fn get_domain_key(url: &str) -> String {
+    if url.contains("hdslb.com") {
+        return "hdslb.com".to_string();
+    } else if url.contains("bilibili.com") {
+        return "bilibili.com".to_string();
+    } else if url.contains("steamstatic.com") {
+        return "steamstatic.com".to_string();
+    } else if url.contains("126.net") || url.contains("163.com") {
+        return "netease".to_string();
+    }
+    "other".to_string()
+}
+
+/// 等待获取代理许可
+/// 如果获取成功返回 Ok(()), 超时返回 Err(())
+async fn wait_for_proxy_permit(url: &str) -> Result<(), ()> {
+    let domain = get_domain_key(url);
+    let start = Instant::now();
+    let timeout = Duration::from_secs(15); // 最多等待15秒
+
+    loop {
+        let wait_duration = {
+            let mut limiters = PROXY_LIMITERS.lock().await;
+            let bucket = limiters.entry(domain.clone()).or_insert_with(|| {
+                // 针对不同域名设置不同的限流策略
+                match domain.as_str() {
+                    // B站图片CDN：允许突发，但限制持续速率
+                    // 之前是无限制导致429，现在限制为每秒5个请求，突发30个
+                    "hdslb.com" | "bilibili.com" => TokenBucket::new(5.0, 30.0),
+                    // Steam通常比较宽松
+                    "steamstatic.com" => TokenBucket::new(20.0, 100.0),
+                    // 网易云
+                    "netease" => TokenBucket::new(10.0, 50.0),
+                    // 其他
+                    _ => TokenBucket::new(5.0, 20.0),
+                }
+            });
+
+            bucket.try_acquire()
+        };
+
+        match wait_duration {
+            None => return Ok(()), // 获取成功
+            Some(d) => {
+                // 检查是否会超时
+                if start.elapsed() + d > timeout {
+                    return Err(());
+                }
+                // 等待所需的时间（加上一点点缓冲）
+                tokio::time::sleep(d + Duration::from_millis(10)).await;
+            }
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ImageProxyQuery {
@@ -38,6 +143,16 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
         return (
             StatusCode::FORBIDDEN,
             "Only images from supported platforms are allowed",
+        )
+            .into_response();
+    }
+
+    // ✅ 限流保护：等待获取令牌
+    if wait_for_proxy_permit(&url).await.is_err() {
+        tracing::warn!("🚨 Proxy rate limit exceeded (timeout) for URL: {}", url);
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            "Rate limit exceeded, please try again later",
         )
             .into_response();
     }
