@@ -122,9 +122,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     appendIconGroup(parent);
     appendIconGroup(parent, 'nav-group-spaced');
     appendIconGroup(parent, 'nav-group-spaced');
-    if (isAdmin) {
-      appendIconGroup(parent, 'nav-group-spaced');
-    }
     if (routeContext === 'library') {
       appendDividerGroup(parent);
       appendIconGroup(parent);

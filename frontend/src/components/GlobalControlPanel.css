@@ -626,30 +626,37 @@ html.dark .control-item:hover {
 }
 
 .control-item-compact .control-item-icon {
-  width: 2rem;
+  width: 2.25rem;
   height: 2rem;
-  min-width: 2rem;
+  min-width: 2.25rem;
   min-height: 2rem;
   font-size: 1.5rem;
   border-radius: 0;
+  justify-content: center;
 }
 
-/* 动态图标动画 */
-.control-item:hover .icon-theme {
-  transform: rotate(180deg) scale(1.1);
+/* 动态图标动画 - 常驻且温和 */
+.icon-theme {
+  animation: icon-sway 4s ease-in-out infinite;
+  transform-origin: bottom center;
 }
 
-.control-item:hover .icon-wallpaper {
-  animation: icon-float 2s ease-in-out infinite;
+.icon-wallpaper {
+  animation: icon-float 3s ease-in-out infinite;
 }
 
-.control-item:hover .icon-config {
-  animation: icon-spin 3s linear infinite;
+.icon-config {
+  animation: icon-spin 10s linear infinite;
+}
+
+@keyframes icon-sway {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
 }
 
 @keyframes icon-float {
-  0%, 100% { transform: translateY(0) scale(1.1); }
-  50% { transform: translateY(-4px) scale(1.1); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
 }
 
 @keyframes icon-spin {
