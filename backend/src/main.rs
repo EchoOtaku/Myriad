@@ -100,16 +100,6 @@ async fn run_server() -> anyhow::Result<()> {
                 // Load dynamic configuration from database
                 let config_service = ConfigService::new(db.clone());
 
-                // Migrate environment variables to database if not already present
-                match config_service.migrate_from_env().await {
-                    Ok(_) => {
-                        tracing::info!("✅ Environment variables synced to database");
-                    }
-                    Err(e) => {
-                        tracing::warn!("⚠️  Failed to migrate env to database: {}", e);
-                    }
-                }
-
                 // Load the merged configuration
                 match config_service.load_config().await {
                     Ok(dynamic_config) => {
@@ -740,6 +730,36 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // These routes require more complex state handling so keep them conditional for now
     if let Some(db) = db_opt {
         let db_router = Router::new()
+            // 双层报告系统API - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/reports/platform",
+                post(api::reports::generate_platform_reports)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
+            .route(
+                "/api/reports/comprehensive",
+                post(api::reports::generate_comprehensive_report)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
+            .route(
+                "/api/reports/generate-all",
+                post(api::reports::generate_all_reports)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
+            .route("/api/reports/latest", get(api::reports::get_latest_report))
+            .route(
+                "/api/reports/comprehensive/list",
+                get(api::reports::get_comprehensive_reports_list),
+            )
+            .route(
+                "/api/reports/comprehensive/:id",
+                get(api::reports::get_comprehensive_report_by_id),
+            )
+            .route(
+                "/api/reports/comprehensive/:id/delete",
+                delete(api::reports::delete_comprehensive_report)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
             .route("/api/auth/github/login", get(api::auth::github_login))
             .route("/api/auth/github/callback", get(api::auth::github_callback))
             .route(
@@ -794,6 +814,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/profile/fetch-all",
                 post(api::profile::fetch_all_data)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/profile/fetch-platform",
+                post(api::profile::fetch_single_platform_data)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
@@ -942,7 +967,24 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                                     tracing::info!("✅ Database connection established!");
 
                                     // Update global database connection
-                                    *DB_CONNECTION.write().await = Some(db);
+                                    *DB_CONNECTION.write().await = Some(db.clone());
+
+                                    // Reload dynamic configuration from database
+                                    let config_service = ConfigService::new(db);
+                                    match config_service.load_config().await {
+                                        Ok(dynamic_config) => {
+                                            *GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
+                                            tracing::info!(
+                                                "✅ Dynamic configuration reloaded from database"
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                "⚠️  Failed to reload dynamic config: {}",
+                                                e
+                                            );
+                                        }
+                                    }
 
                                     // Switch to full mode FIRST before logging
                                     CONFIG_MODE.store(false, Ordering::Relaxed);

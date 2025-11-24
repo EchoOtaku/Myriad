@@ -4,7 +4,7 @@
  * 与 AnimatePresence 配合，实现完整的页面切换效果
  */
 
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 
 interface AnimatedViewProps {
   children: React.ReactNode;
@@ -16,7 +16,7 @@ interface AnimatedViewProps {
  * - 进入: 从下方淡入，带轻微缩放
  * - 退出: 向上淡出，带轻微缩小
  */
-const pageVariants = {
+const pageVariants: Variants = {
   initial: {
     opacity: 0,
     y: 20,

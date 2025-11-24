@@ -1,0 +1,128 @@
+[
+  {
+    "name": "周杰伦",
+    "genres": ["流行", "R&B"],
+    "region": "华语",
+    "style": ["中国风", "嘻哈"]
+  },
+  {
+    "name": "陈奕迅",
+    "genres": ["流行"],
+    "region": "华语",
+    "style": ["情歌"]
+  },
+  {
+    "name": "林俊杰",
+    "genres": ["流行", "R&B"],
+    "region": "华语",
+    "style": ["抒情"]
+  },
+  {
+    "name": "邓紫棋",
+    "genres": ["流行"],
+    "region": "华语",
+    "style": ["励志", "抒情"]
+  },
+  {
+    "name": "薛之谦",
+    "genres": ["流行"],
+    "region": "华语",
+    "style": ["情歌"]
+  },
+  {
+    "name": "李荣浩",
+    "genres": ["流行", "摇滚"],
+    "region": "华语",
+    "style": ["简约"]
+  },
+  {
+    "name": "五月天",
+    "genres": ["摇滚", "流行"],
+    "region": "华语",
+    "style": ["励志"]
+  },
+  {
+    "name": "许巍",
+    "genres": ["摇滚", "民谣"],
+    "region": "华语",
+    "style": ["抒情"]
+  },
+  {
+    "name": "朴树",
+    "genres": ["民谣", "摇滚"],
+    "region": "华语",
+    "style": ["文艺"]
+  },
+  {
+    "name": "GAI",
+    "genres": ["说唱"],
+    "region": "华语",
+    "style": ["川渝", "硬核"]
+  },
+  {
+    "name": "那吾克热",
+    "genres": ["说唱"],
+    "region": "华语",
+    "style": ["新疆"]
+  },
+  {
+    "name": "Taylor Swift",
+    "genres": ["流行", "乡村"],
+    "region": "欧美",
+    "style": ["抒情"]
+  },
+  {
+    "name": "Ed Sheeran",
+    "genres": ["流行", "民谣"],
+    "region": "欧美",
+    "style": ["吉他"]
+  },
+  {
+    "name": "Adele",
+    "genres": ["流行", "灵魂乐"],
+    "region": "欧美",
+    "style": ["情歌"]
+  },
+  {
+    "name": "Linkin Park",
+    "genres": ["摇滚", "电子"],
+    "region": "欧美",
+    "style": ["另类"]
+  },
+  {
+    "name": "Imagine Dragons",
+    "genres": ["摇滚", "流行"],
+    "region": "欧美",
+    "style": ["激昂"]
+  },
+  {
+    "name": "米津玄師",
+    "genres": ["流行", "摇滚"],
+    "region": "日本",
+    "style": ["实验"]
+  },
+  {
+    "name": "YOASOBI",
+    "genres": ["流行", "电子"],
+    "region": "日本",
+    "style": ["动画"]
+  },
+  {
+    "name": "BTS",
+    "genres": ["流行", "说唱"],
+    "region": "韩国",
+    "style": ["偶像"]
+  },
+  {
+    "name": "双笙",
+    "genres": ["古风"],
+    "region": "华语",
+    "style": ["空灵"]
+  },
+  {
+    "name": "银临",
+    "genres": ["古风"],
+    "region": "华语",
+    "style": ["古典"]
+  }
+]

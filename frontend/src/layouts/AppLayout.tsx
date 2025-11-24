@@ -21,13 +21,8 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-interface ProgressData {
-  progress: string;
-  progressPercent: number;
-}
-
-type NavMode = 'library' | 'normal';
-type RouteContext = 'library' | 'global';
+type NavMode = 'library' | 'reports' | 'normal';
+type RouteContext = 'library' | 'reports' | 'global';
 interface ModeMetrics {
   height?: number;
   width?: number;
@@ -39,7 +34,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAvatar, setUserAvatar] = useState('');
-  const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const { notifications } = useNotification();
@@ -50,6 +44,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 导航岛状态管理
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all');
   const [showLibraryFilters, setShowLibraryFilters] = useState(false);
+  const [reportsTab, setReportsTab] = useState<'platform' | 'comprehensive'>('platform');
+  const [showReportsTabs, setShowReportsTabs] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const navContentRef = useRef<HTMLDivElement>(null);
   const lastModeRef = useRef<NavMode>('normal');
@@ -61,7 +57,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const resolveRouteContext = (mode: NavMode, explicit?: RouteContext): RouteContext => {
     if (explicit) return explicit;
     if (mode === 'library') return 'library';
-    return location.pathname === '/library' ? 'library' : 'global';
+    if (mode === 'reports') return 'reports';
+    if (location.pathname === '/library') return 'library';
+    if (location.pathname === '/reports') return 'reports';
+    return 'global';
   };
   const buildMetricsKey = (mode: NavMode, variant: 'desktop' | 'mobile', routeContext: RouteContext) => `${mode}-${variant}-${routeContext}`;
 
@@ -113,13 +112,24 @@ export function AppLayout({ children }: AppLayoutProps) {
       return;
     }
 
+    if (mode === 'reports') {
+      appendIconGroup(parent);
+      appendDividerGroup(parent);
+      ['platform', 'comprehensive'].forEach(() => appendIconGroup(parent, 'nav-group-spaced'));
+      return;
+    }
+
     appendIconGroup(parent);
+    appendIconGroup(parent, 'nav-group-spaced');
     appendIconGroup(parent, 'nav-group-spaced');
     if (isAdmin) {
       appendIconGroup(parent, 'nav-group-spaced');
-      appendIconGroup(parent, 'nav-group-spaced', 'generate-btn');
     }
     if (routeContext === 'library') {
+      appendDividerGroup(parent);
+      appendIconGroup(parent);
+    }
+    if (routeContext === 'reports') {
       appendDividerGroup(parent);
       appendIconGroup(parent);
     }
@@ -190,6 +200,162 @@ export function AppLayout({ children }: AppLayoutProps) {
     }));
   }, []);
 
+  // 处理报告标签变化
+  const handleReportsTabChange = useCallback((newTab: 'platform' | 'comprehensive') => {
+    setReportsTab(newTab);
+    // 触发自定义事件通知 Reports 组件
+    window.dispatchEvent(new CustomEvent('reports-tab-change', {
+      detail: { tab: newTab }
+    }));
+  }, []);
+
+  // 处理从正常模式进入报告标签模式
+  const handleEnterReportsTabs = useCallback(() => {
+    if (isAnimating || showReportsTabs || renderModeRef.current === 'reports') return;
+
+    const content = navContentRef.current;
+    if (!content) {
+      setShowReportsTabs(true);
+      return;
+    }
+
+    setIsAnimating(true);
+    renderModeRef.current = 'normal';
+    const groups = Array.from(content.querySelectorAll('.nav-group'));
+    const island = content.closest('.dynamic-island') as HTMLElement;
+    
+    if (island) {
+      applyModeMetrics('reports', island, 'reports');
+    }
+    
+    const exitTimers: number[] = [];
+    
+    groups.forEach((group, index) => {
+      const el = group as HTMLElement;
+      el.removeAttribute('data-animation');
+      const timer = window.setTimeout(() => {
+        el.setAttribute('data-animation', 'exit');
+      }, index * 20);
+      exitTimers.push(timer);
+    });
+
+    const exitDuration = groups.length * 20 + 280;
+    const switchTimer = window.setTimeout(() => {
+      groups.forEach(group => {
+        (group as HTMLElement).removeAttribute('data-animation');
+      });
+
+      renderModeRef.current = 'reports';
+      setShowReportsTabs(true);
+      setIsAnimating(false);
+
+      setTimeout(() => {
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+          const href = item.getAttribute('href');
+          const ariaLabel = item.getAttribute('aria-label');
+          let isActive = false;
+
+          if (href) {
+            isActive = href === location.pathname || (location.pathname === '/' && href === '/');
+          } else if (ariaLabel) {
+            const labelToPathMap: Record<string, string> = {
+              '资料库': '/library',
+              '数据报告': '/reports',
+              '返回主页': '/',
+            };
+            const targetPath = labelToPathMap[ariaLabel];
+            if (targetPath) {
+              isActive = location.pathname === targetPath;
+            }
+          }
+
+          if (isActive) {
+            item.setAttribute('aria-current', 'page');
+          } else {
+            item.removeAttribute('aria-current');
+          }
+        });
+      }, 50);
+    }, exitDuration);
+
+    return () => {
+      exitTimers.forEach(timer => clearTimeout(timer));
+      clearTimeout(switchTimer);
+    };
+  }, [isAnimating, showReportsTabs, location.pathname, isAdmin]);
+
+  // 处理从报告标签模式退出到正常模式
+  const handleExitReportsTabs = useCallback(() => {
+    const content = navContentRef.current;
+    if (!content || isAnimating || !showReportsTabs || renderModeRef.current === 'normal') return;
+
+    setIsAnimating(true);
+    renderModeRef.current = 'reports';
+    const groups = Array.from(content.querySelectorAll('.nav-group'));
+    const island = content.closest('.dynamic-island') as HTMLElement;
+    
+    if (island) {
+      applyModeMetrics('normal', island, 'reports');
+    }
+    
+    const exitTimers: number[] = [];
+    
+    groups.forEach((group, index) => {
+      const el = group as HTMLElement;
+      el.removeAttribute('data-animation');
+      const timer = window.setTimeout(() => {
+        el.setAttribute('data-animation', 'exit');
+      }, index * 20);
+      exitTimers.push(timer);
+    });
+
+    const exitDuration = groups.length * 20 + 280;
+    const switchTimer = window.setTimeout(() => {
+      groups.forEach(group => {
+        (group as HTMLElement).removeAttribute('data-animation');
+      });
+
+      renderModeRef.current = 'normal';
+      setShowReportsTabs(false);
+      setIsAnimating(false);
+
+      setTimeout(() => {
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+          const href = item.getAttribute('href');
+          const ariaLabel = item.getAttribute('aria-label');
+          let isActive = false;
+
+          if (href) {
+            isActive = href === location.pathname || (location.pathname === '/' && href === '/');
+          } else if (ariaLabel) {
+            const labelToPathMap: Record<string, string> = {
+              '资料库': '/library',
+              '数据报告': '/reports',
+              '返回主页': '/',
+            };
+            const targetPath = labelToPathMap[ariaLabel];
+            if (targetPath) {
+              isActive = location.pathname === targetPath;
+            }
+          }
+
+          if (isActive) {
+            item.setAttribute('aria-current', 'page');
+          } else {
+            item.removeAttribute('aria-current');
+          }
+        });
+      }, 50);
+    }, exitDuration);
+
+    return () => {
+      exitTimers.forEach(timer => clearTimeout(timer));
+      clearTimeout(switchTimer);
+    };
+  }, [isAnimating, isAdmin, showReportsTabs, location.pathname]);
+
   // Apple 风格动画控制 - 精致的进入动画
   useLayoutEffect(() => {
     // 布局阶段先写入进入状态，避免初次绘制闪烁
@@ -199,7 +365,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     // 如果正在动画中，等待下一次
     if (isAnimating) return;
 
-    const currentMode: NavMode = (location.pathname === '/library' && showLibraryFilters) ? 'library' : 'normal';
+    const currentMode: NavMode = 
+      (location.pathname === '/reports' && showReportsTabs) ? 'reports' :
+      (location.pathname === '/library' && showLibraryFilters) ? 'library' : 
+      'normal';
     const routeContext = resolveRouteContext(currentMode);
     
     // 如果模式没有变化或渲染模式未同步，不执行动画
@@ -278,7 +447,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       enterTimers.forEach(timer => clearTimeout(timer));
       clearTimeout(cleanupTimer);
     };
-  }, [showLibraryFilters, location.pathname, isAnimating]);
+  }, [showLibraryFilters, showReportsTabs, location.pathname, isAnimating]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -342,7 +511,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       // 3.4: 重新设置导航选中状态（因为DOM重新渲染）
       setTimeout(() => {
-        const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
+        const navItems = document.querySelectorAll('.nav-item');
         navItems.forEach(item => {
           const href = item.getAttribute('href');
           const ariaLabel = item.getAttribute('aria-label');
@@ -353,6 +522,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           } else if (ariaLabel) {
             const labelToPathMap: Record<string, string> = {
               '资料库': '/library',
+              '数据报告': '/reports',
               '返回主页': '/',
             };
             const targetPath = labelToPathMap[ariaLabel];
@@ -430,7 +600,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       // 3.4: 重新设置导航选中状态（因为DOM重新渲染）
       setTimeout(() => {
-        const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
+        const navItems = document.querySelectorAll('.nav-item');
         navItems.forEach(item => {
           const href = item.getAttribute('href');
           const ariaLabel = item.getAttribute('aria-label');
@@ -441,6 +611,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           } else if (ariaLabel) {
             const labelToPathMap: Record<string, string> = {
               '资料库': '/library',
+              '数据报告': '/reports',
               '返回主页': '/',
             };
             const targetPath = labelToPathMap[ariaLabel];
@@ -491,9 +662,30 @@ export function AppLayout({ children }: AppLayoutProps) {
         applyModeMetrics('normal', island, 'global');
       }, 30);
     }
+
+    // 只在从报告页面离开时触发优雅的退出动画
+    if (prevPath === '/reports' && currentPath !== '/reports' && !showReportsTabs) {
+      const content = navContentRef.current;
+      const island = content?.closest('.dynamic-island') as HTMLElement;
+      if (!content || !island) return;
+
+      const groups = content.querySelectorAll('[data-group="current-tab"], [data-group="divider"]');
+      
+      // 级联淡出 - 与其他退出动画保持一致
+      Array.from(groups).forEach((group, index) => {
+        setTimeout(() => {
+          (group as HTMLElement).setAttribute('data-animation', 'exit');
+        }, index * 35);
+      });
+
+      // 同步调整导航岛尺寸，区分桌面/移动端
+      setTimeout(() => {
+        applyModeMetrics('normal', island, 'global');
+      }, 30);
+    }
     
     prevPathRef.current = currentPath;
-  }, [location.pathname, showLibraryFilters]);
+  }, [location.pathname, showLibraryFilters, showReportsTabs]);
 
   // 检查认证状态（默认静默处理，不在控制台显示 401 错误）
   const checkAuth = useCallback(async (silent = true) => {
@@ -580,7 +772,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 设置当前导航项
   const setActiveNav = useCallback(() => {
-    const navItems = document.querySelectorAll('.nav-item:not(.generate-btn)');
+    const navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(item => {
       const href = item.getAttribute('href');
       const ariaLabel = item.getAttribute('aria-label');
@@ -594,6 +786,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       else if (ariaLabel) {
         const labelToPathMap: Record<string, string> = {
           '资料库': '/library',
+          '数据报告': '/reports',
           '返回主页': '/',
         };
         const targetPath = labelToPathMap[ariaLabel];
@@ -610,24 +803,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     });
   }, [location]);
 
-  // 处理生成报告
-  const handleGenerateReport = useCallback(() => {
-    if (location.pathname !== '/') {
-      navigate('/');
-    }
-
-    // 添加loading类到生成按钮
-    const generateBtn = document.getElementById('generate-report-btn');
-    if (generateBtn) {
-      generateBtn.classList.add('loading');
-    }
-
-    setTimeout(() => {
-      if (typeof (window as any).generateReport === 'function') {
-        (window as any).generateReport();
-      }
-    }, 100);
-  }, [location, navigate]);
 
   // 检查后端连接状态
   useEffect(() => {
@@ -769,69 +944,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [checkAuth]);
 
-  // 监听进度事件
-  useEffect(() => {
-    const handleProgress = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      setProgressData(customEvent.detail);
-    };
 
-    const handleProgressEnd = () => {
-      setProgressData(null);
-    };
-
-    window.addEventListener('report-progress', handleProgress);
-    window.addEventListener('report-progress-end', handleProgressEnd);
-
-    return () => {
-      window.removeEventListener('report-progress', handleProgress);
-      window.removeEventListener('report-progress-end', handleProgressEnd);
-    };
-  }, []);
-
-  // 动态定位进度提示到生成按钮旁边
-  useEffect(() => {
-    if (!progressData) return;
-
-    const updateProgressPosition = () => {
-      const progressTip = document.getElementById('progress-tip');
-      const generateBtn = document.getElementById('generate-report-btn');
-
-      if (!progressTip || !generateBtn) return;
-
-      const btnRect = generateBtn.getBoundingClientRect();
-      const isMobile = window.innerWidth < 768;
-
-      if (isMobile) {
-        // 移动端：在生成按钮上方，距离稍远
-        progressTip.style.bottom = `${window.innerHeight - btnRect.top + 24}px`;
-        progressTip.style.left = '50%';
-        progressTip.style.top = 'auto';
-        progressTip.style.right = 'auto';
-        progressTip.style.transform = 'translateX(-50%)';
-      } else {
-        // 桌面端：在生成按钮右侧，距离稍远，稍微偏下
-        progressTip.style.left = `${btnRect.right + 24}px`;
-        progressTip.style.top = `${btnRect.top + btnRect.height / 2 + 8}px`;
-        progressTip.style.bottom = 'auto';
-        progressTip.style.right = 'auto';
-        progressTip.style.transform = 'translateY(-50%)';
-      }
-    };
-
-    // 初始定位
-    const timer = setTimeout(updateProgressPosition, 50);
-
-    // 监听窗口变化
-    window.addEventListener('resize', updateProgressPosition);
-    window.addEventListener('scroll', updateProgressPosition);
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateProgressPosition);
-      window.removeEventListener('scroll', updateProgressPosition);
-    };
-  }, [progressData]);
 
   // 导航岛自动隐藏逻辑
   useEffect(() => {
@@ -920,41 +1033,71 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* 背景 */}
       <div id="bg-container" className="fixed inset-0 -z-10 overflow-hidden">
-        <div id="wallpaper" className="absolute inset-0 bg-cover bg-center bg-no-repeat"></div>
-        <div id="bg-gradient" className="absolute inset-0 bg-gradient-to-b from-transparent from-[45%] via-white/60 via-[50%] to-white/95"></div>
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-[45%] left-10 w-96 h-96 bg-green-400/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-          <div className="absolute top-[45%] right-10 w-96 h-96 bg-pink-400/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+        <div id="wallpaper" className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-in-out"></div>
+        <div id="bg-gradient" className="absolute inset-0 bg-gradient-to-b from-transparent from-[35%] via-white/40 via-[55%] to-white/90 to-[85%] transition-opacity duration-500 ease-out"></div>
+        <div className="absolute inset-0 opacity-20 transition-opacity duration-700">
+          <div className="absolute top-[40%] left-10 w-96 h-96 bg-green-400/30 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+          <div className="absolute top-[40%] right-10 w-96 h-96 bg-pink-400/30 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+          <div className="absolute top-[60%] left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/25 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
         </div>
         <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
       </div>
-
-      {/* 进度提示 - 动态定位到生成按钮旁边 */}
-      {progressData && (
-        <div
-          id="progress-tip"
-          className="fixed z-[60] glass rounded-2xl p-4 shadow-2xl border animate-fade-in w-72 max-w-[calc(100vw-2rem)] pointer-events-none"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">生成报告中</p>
-          </div>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{progressData.progress}</p>
-          <div className="relative w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="absolute top-0 left-0 h-full transition-all duration-500 ease-out rounded-full progress-bar-fill"
-              style={{ width: `${progressData.progressPercent}%` }}
-            ></div>
-          </div>
-          <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-2">{progressData.progressPercent}%</p>
-        </div>
-      )}
 
       {/* 导航栏 */}
       <nav className="nav-container" aria-label="主导航">
         <div className="dynamic-island shadow-2xl" role="navigation">
           <div className="flex flex-row md:flex-col items-center gap-1 relative">
-            {(isAnimating ? renderModeRef.current === 'library' : (location.pathname === '/library' && showLibraryFilters)) ? (
+            {(isAnimating ? renderModeRef.current === 'reports' : (location.pathname === '/reports' && showReportsTabs)) ? (
+              /* 报告模式 - 显示返回按钮 + 分隔符 + 报告标签 */
+              <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="reports-mode">
+                {/* 返回按钮 */}
+                <div className="nav-group" data-group="back">
+                  <button 
+                    onClick={handleExitReportsTabs}
+                    className="nav-item"
+                    title="返回"
+                    aria-label="返回导航"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* 分隔符 */}
+                <div className="nav-group nav-group-spaced" data-group="divider">
+                  <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                </div>
+
+                {/* 平台报告标签 */}
+                <div className="nav-group nav-group-spaced" data-group="platform">
+                  <button 
+                    onClick={() => handleReportsTabChange('platform')}
+                    className={`nav-item ${reportsTab === 'platform' ? 'active-secondary' : ''}`}
+                    title="平台报告"
+                    aria-label="显示平台报告"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* 综合报告标签 */}
+                <div className="nav-group nav-group-spaced" data-group="comprehensive">
+                  <button 
+                    onClick={() => handleReportsTabChange('comprehensive')}
+                    className={`nav-item ${reportsTab === 'comprehensive' ? 'active-secondary' : ''}`}
+                    title="综合报告"
+                    aria-label="显示综合报告"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ) : (isAnimating ? renderModeRef.current === 'library' : (location.pathname === '/library' && showLibraryFilters)) ? (
               /* 资料库模式 - 显示返回按钮 + 分隔符 + 资料库筛选标签 */
               <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="library-mode">
                 {/* 返回按钮 */}
@@ -1066,10 +1209,10 @@ export function AppLayout({ children }: AppLayoutProps) {
 
                 {/* 资料库按钮 */}
                 <div className="nav-group nav-group-spaced" data-group="library">
-                  <button 
-                    className="nav-item" 
-                    title="资料库" 
-                    aria-label="资料库" 
+                  <button
+                    className="nav-item"
+                    title="资料库"
+                    aria-label="资料库"
                     onClick={() => {
                       if (location.pathname === '/library') {
                         // 已在资料库页面，直接触发展开动画
@@ -1096,6 +1239,38 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </button>
                 </div>
 
+                {/* 报告按钮 */}
+                <div className="nav-group nav-group-spaced" data-group="reports">
+                  <button
+                    className="nav-item"
+                    title="报告"
+                    aria-label="数据报告"
+                    onClick={() => {
+                      if (location.pathname === '/reports') {
+                        // 已在报告页面，直接触发展开动画
+                        handleEnterReportsTabs();
+                      } else {
+                        // 导航到报告页面，延长等待时间确保路径已更新
+                        navigate('/reports');
+                        // 等待路径更新后再触发动画
+                        setTimeout(() => {
+                          // 再次检查路径，确保已经导航完成
+                          if (window.location.pathname === '/reports') {
+                            handleEnterReportsTabs();
+                          } else {
+                            // 如果路径还没更新，再等待一次
+                            setTimeout(() => handleEnterReportsTabs(), 100);
+                          }
+                        }, 150);
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                    </svg>
+                  </button>
+                </div>
+
                 {/* 配置按钮（管理员） */}
                 {isAdmin && (
                   <div className="nav-group nav-group-spaced" data-group="config">
@@ -1108,19 +1283,15 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </div>
                 )}
 
-                {/* 报告功能组（管理员） */}
-                {isAdmin && (
-                  <div className="nav-group nav-group-spaced" data-group="report">
-                    <button id="generate-report-btn" className="nav-item generate-btn" title="生成报告" aria-label="生成数据报告" onClick={handleGenerateReport}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                      </svg>
-                    </button>
+                {/* 分隔符 - 仅在资料库页面且未显示筛选时显示 */}
+                {location.pathname === '/library' && !showLibraryFilters && (
+                  <div className="nav-group nav-group-spaced" data-group="divider">
+                    <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
                   </div>
                 )}
 
-                {/* 分隔符 - 仅在资料库页面且未显示筛选时显示 */}
-                {location.pathname === '/library' && !showLibraryFilters && (
+                {/* 分隔符 - 仅在报告页面且未显示标签时显示 */}
+                {location.pathname === '/reports' && !showReportsTabs && (
                   <div className="nav-group nav-group-spaced" data-group="divider">
                     <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
                   </div>
@@ -1194,6 +1365,34 @@ export function AppLayout({ children }: AppLayoutProps) {
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* 当前报告选中标签显示 - 仅在报告页面且未显示标签时显示 */}
+                {location.pathname === '/reports' && !showReportsTabs && (
+                  <div className="nav-group" data-group="current-tab">
+                    {reportsTab === 'platform' && (
+                      <button 
+                        className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
+                        title="当前查看：平台报告 - 点击展开切换"
+                        onClick={handleEnterReportsTabs}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z" />
+                        </svg>
+                      </button>
+                    )}
+                    {reportsTab === 'comprehensive' && (
+                      <button 
+                        className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
+                        title="当前查看：综合报告 - 点击展开切换"
+                        onClick={handleEnterReportsTabs}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
                         </svg>
                       </button>
                     )}

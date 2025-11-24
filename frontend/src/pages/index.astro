@@ -31,15 +31,21 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
     <link rel="dns-prefetch" href="https://api.fuukei.org" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Inter 字体延迟加载 -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"
     />
+    <!-- Qwitcher Grypen 字体 - 按照 Google Fonts 官方文档 -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
     <noscript>
       <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Qwitcher+Grypen:wght@400;700&display=swap"
         rel="stylesheet"
       />
     </noscript>
@@ -277,6 +283,19 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
         overflow-x: hidden;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Qwitcher Grypen 字体 - Google Fonts 官方 CSS 类 */
+      .qwitcher-grypen-regular {
+        font-family: "Qwitcher Grypen", cursive;
+        font-weight: 400;
+        font-style: normal;
+      }
+
+      .qwitcher-grypen-bold {
+        font-family: "Qwitcher Grypen", cursive;
+        font-weight: 700;
+        font-style: normal;
       }
 
       /* Glass effect - 浅色模式 */

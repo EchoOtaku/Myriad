@@ -106,7 +106,7 @@ pub fn generate_buvid3() -> String {
         .map(|_| chars[rng.gen_range(0..chars.len())])
         .collect();
 
-    format!("{}", random_part)
+    random_part
 }
 
 /// 生成 Bilibili Cookie

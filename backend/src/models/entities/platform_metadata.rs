@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub user_id: String,
+    pub user_id: i32,
     pub platform_name: String,
     pub raw_data: Json,
-    pub fetched_at: DateTimeWithTimeZone,
-    pub created_at: DateTimeWithTimeZone,
-    pub updated_at: DateTimeWithTimeZone,
+    pub fetched_at: DateTime,
+    pub created_at: DateTime,
+    pub updated_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

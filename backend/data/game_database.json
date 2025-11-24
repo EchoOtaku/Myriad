@@ -1,0 +1,110 @@
+[
+  {
+    "name": "Counter-Strike: Global Offensive",
+    "genres": ["FPS", "竞技"],
+    "tags": ["射击", "多人"],
+    "rating": 9.0
+  },
+  {
+    "name": "VALORANT",
+    "genres": ["FPS", "竞技"],
+    "tags": ["射击", "战术"],
+    "rating": 8.5
+  },
+  {
+    "name": "Dota 2",
+    "genres": ["MOBA", "竞技"],
+    "tags": ["策略", "多人"],
+    "rating": 9.1
+  },
+  {
+    "name": "The Witcher 3: Wild Hunt",
+    "genres": ["RPG", "开放世界"],
+    "tags": ["剧情", "冒险"],
+    "rating": 9.5
+  },
+  {
+    "name": "Elden Ring",
+    "genres": ["RPG", "魂系"],
+    "tags": ["困难", "探索"],
+    "rating": 9.3
+  },
+  {
+    "name": "塞尔达传说 旷野之息",
+    "genres": ["RPG", "开放世界"],
+    "tags": ["冒险", "探索"],
+    "rating": 9.7
+  },
+  {
+    "name": "Grand Theft Auto V",
+    "genres": ["动作冒险", "开放世界"],
+    "tags": ["犯罪", "多人"],
+    "rating": 9.2
+  },
+  {
+    "name": "Red Dead Redemption 2",
+    "genres": ["动作冒险", "开放世界"],
+    "tags": ["西部", "剧情"],
+    "rating": 9.6
+  },
+  {
+    "name": "Minecraft",
+    "genres": ["沙盒", "生存"],
+    "tags": ["创造", "建造"],
+    "rating": 9.0
+  },
+  {
+    "name": "Terraria",
+    "genres": ["沙盒", "冒险"],
+    "tags": ["像素", "探索"],
+    "rating": 9.1
+  },
+  {
+    "name": "Civilization VI",
+    "genres": ["策略", "回合制"],
+    "tags": ["4X", "历史"],
+    "rating": 8.7
+  },
+  {
+    "name": "Resident Evil Village",
+    "genres": ["恐怖", "动作"],
+    "tags": ["生存", "解谜"],
+    "rating": 8.9
+  },
+  {
+    "name": "Hollow Knight",
+    "genres": ["Metroidvania", "平台"],
+    "tags": ["困难", "探索"],
+    "rating": 9.4
+  },
+  {
+    "name": "Celeste",
+    "genres": ["平台", "独立"],
+    "tags": ["困难", "剧情"],
+    "rating": 9.2
+  },
+  {
+    "name": "Hades",
+    "genres": ["Roguelike", "动作"],
+    "tags": ["快节奏", "剧情"],
+    "rating": 9.3
+  },
+  {
+    "name": "黑神话：悟空",
+    "genres": ["动作", "RPG"],
+    "tags": ["中国风", "神话"],
+    "rating": 9.0
+  },
+  {
+    "name": "原神",
+    "genres": ["RPG", "开放世界"],
+    "tags": ["二次元", "冒险"],
+    "rating": 8.5
+  },
+  {
+    "name": "赛博朋克2077",
+    "genres": ["RPG", "FPS"],
+    "tags": ["Sci-Fi", "Story Rich"],
+    "rating": 8.8
+  }
+]

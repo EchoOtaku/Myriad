@@ -559,7 +559,14 @@ const ModernConfigForm: React.FC = () => {
     const field = newFields.find(f => f.key === fieldKey);
 
     if (field) {
-      field.value = value;
+      // 🔒 安全措施：如果新值包含掩码字符，说明用户在掩码上直接输入，需要清除掩码
+      const isMasked = (val: string) => val.includes('••') || val.includes('**') || val === '********';
+      if (isMasked(value) && value !== '••••••••' && value !== '********') {
+        // 移除所有掩码字符，只保留用户新输入的内容
+        field.value = value.replace(/[•*]+/g, '');
+      } else {
+        field.value = value;
+      }
 
       if (providerFieldKey && fieldKey === providerFieldKey) {
         setConfig({
@@ -586,7 +593,15 @@ const ModernConfigForm: React.FC = () => {
     const newPlatforms = [...config.platforms];
     const field = newPlatforms[platformIndex].config_fields.find(f => f.key === fieldKey);
     if (field) {
-      field.value = value;
+      // 🔒 安全措施：如果新值包含掩码字符，说明用户在掩码上直接输入，需要清除掩码
+      // 检测是否在掩码基础上输入（例如 "a••••••••"）
+      const isMasked = (val: string) => val.includes('••') || val.includes('**') || val === '********';
+      if (isMasked(value) && value !== '••••••••' && value !== '********') {
+        // 移除所有掩码字符，只保留用户新输入的内容
+        field.value = value.replace(/[•*]+/g, '');
+      } else {
+        field.value = value;
+      }
       setConfig({ ...config, platforms: newPlatforms });
       notifyDirtyState(true);
     }
@@ -929,6 +944,13 @@ const ModernConfigForm: React.FC = () => {
                           type={field.field_type}
                           value={field.value}
                           onChange={(e) => updateAiFieldValue(field.key, e.target.value)}
+                          onFocus={(e) => {
+                            // 🔒 如果是掩码值，自动选中全部内容，用户输入会直接替换
+                            const isMasked = e.target.value === '••••••••' || e.target.value === '********';
+                            if (isMasked) {
+                              e.target.select();
+                            }
+                          }}
                           placeholder={field.placeholder}
                           className="field-input"
                         />
@@ -1137,6 +1159,13 @@ const ModernConfigForm: React.FC = () => {
                         type="password"
                         value={config.persona_config.config_fields.find(f => f.key === 'imaginepro_api_key')?.value || ''}
                         onChange={(e) => updatePersonaFieldValue('imaginepro_api_key', e.target.value)}
+                        onFocus={(e) => {
+                          // 🔒 如果是掩码值，自动选中全部内容，用户输入会直接替换
+                          const isMasked = e.target.value === '••••••••' || e.target.value === '********';
+                          if (isMasked) {
+                            e.target.select();
+                          }
+                        }}
                         placeholder="从 imaginepro.ai 获取"
                         className="field-input"
                       />
@@ -1297,6 +1326,13 @@ const ModernConfigForm: React.FC = () => {
                     type="password"
                     value={config.ui_config.config_fields.find(f => f.key === 'github_client_secret')?.value || ''}
                     onChange={(e) => updateUiFieldValue('github_client_secret', e.target.value)}
+                    onFocus={(e) => {
+                      // 🔒 如果是掩码值，自动选中全部内容，用户输入会直接替换
+                      const isMasked = e.target.value === '••••••••' || e.target.value === '********';
+                      if (isMasked) {
+                        e.target.select();
+                      }
+                    }}
                     placeholder="GitHub OAuth App 的 Client Secret"
                     className="field-input"
                   />
@@ -1537,6 +1573,13 @@ const ModernConfigForm: React.FC = () => {
                       type={field.field_type}
                       value={field.value}
                       onChange={(e) => updateFieldValue(platformIndex, field.key, e.target.value)}
+                      onFocus={(e) => {
+                        // 🔒 如果是掩码值，自动选中全部内容，用户输入会直接替换
+                        const isMasked = e.target.value === '••••••••' || e.target.value === '********';
+                        if (isMasked) {
+                          e.target.select();
+                        }
+                      }}
                       placeholder={field.placeholder}
                       className="field-input"
                     />

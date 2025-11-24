@@ -8,8 +8,6 @@ interface SetupStatus {
   is_setup_required: boolean;
   has_database: boolean;
   has_admin_user: boolean;
-  has_github_oauth: boolean;
-  has_gemini_api: boolean;
   missing_configs: string[];
 }
 
@@ -60,8 +58,6 @@ const SetupWizard: React.FC = () => {
           is_setup_required: true,
           has_database: false,
           has_admin_user: false,
-          has_github_oauth: false,
-          has_gemini_api: false,
           missing_configs: ['Database not configured'],
         });
         setDbConfigured(false);
@@ -80,8 +76,6 @@ const SetupWizard: React.FC = () => {
             is_setup_required: true,
             has_database: healthData.database_connected,
             has_admin_user: false,
-            has_github_oauth: false,
-            has_gemini_api: false,
             missing_configs: ['Checking configuration...'],
           });
           // 数据库已连接，应该显示下一步

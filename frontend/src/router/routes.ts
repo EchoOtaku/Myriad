@@ -26,6 +26,12 @@ export const routes: RouteConfig[] = [
     description: '浏览你的多平台数据收藏',
   },
   {
+    path: '/reports',
+    component: () => import('../views/Reports.tsx'),
+    title: '数据报告 - Myriad',
+    description: '基于5W框架的双层智能分析报告',
+  },
+  {
     path: '/config',
     component: () => import('../views/Config.tsx'),
     title: '系统配置 - Myriad',

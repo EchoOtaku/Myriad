@@ -2,9 +2,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
-use super::bilibili_utils::{
-    generate_bilibili_cookie, get_random_china_ip, get_random_user_agent,
-};
+use super::bilibili_utils::{generate_bilibili_cookie, get_random_china_ip, get_random_user_agent};
 
 pub struct PlatformFetcher {
     client: reqwest::Client,
@@ -113,7 +111,8 @@ impl PlatformFetcher {
         let proxy_ip = get_random_china_ip();
         let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
 
-        let response: serde_json::Value = self.client
+        let response: serde_json::Value = self
+            .client
             .get(&url)
             .header("User-Agent", get_random_user_agent())
             .header("Referer", "https://www.bilibili.com")
@@ -295,7 +294,10 @@ impl PlatformFetcher {
 
         // 先获取文本以调试
         let response_text = http_response.text().await?;
-        tracing::debug!("Bilibili bangumi raw response (first 500 chars): {}", &response_text.chars().take(500).collect::<String>());
+        tracing::debug!(
+            "Bilibili bangumi raw response (first 500 chars): {}",
+            &response_text.chars().take(500).collect::<String>()
+        );
 
         let response: serde_json::Value = serde_json::from_str(&response_text)?;
 
@@ -599,7 +601,126 @@ impl PlatformFetcher {
             "total_forks": total_forks,
             "top_languages": languages,
             "repos": repos,
+            "contribution_calendar": match self.fetch_github_contributions(username, token).await {
+                Ok(calendar) => {
+                    tracing::info!("✓ GitHub contributions fetched: {} days", calendar.len());
+                    Some(calendar)
+                },
+                Err(e) => {
+                    tracing::warn!("⚠ Failed to fetch GitHub contributions: {}", e);
+                    None
+                }
+            },
         }))
+    }
+
+    /// 获取 GitHub 贡献日历数据（通过爬取用户页面）
+    pub async fn fetch_github_contributions(
+        &self,
+        username: &str,
+        _token: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>> {
+        tracing::info!("🔄 Fetching GitHub contributions for: {}", username);
+
+        // 获取用户的贡献图表 SVG 片段
+        let url = format!("https://github.com/users/{}/contributions", username);
+
+        let response = self
+            .client
+            .get(&url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
+            .header("Accept", "text/html,application/xhtml+xml")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to fetch GitHub contributions: {}",
+                response.status()
+            ));
+        }
+
+        let html = response.text().await?;
+
+        tracing::debug!(
+            "Fetched GitHub contributions HTML, length: {} bytes",
+            html.len()
+        );
+
+        // 解析 SVG 中的 <rect> 或 <td> 标签提取贡献数据
+        // GitHub 可能使用 rect 或 table 格式
+        let mut contributions = Vec::new();
+
+        // 使用更稳健的解析策略：先匹配标签，再提取属性
+        // 这样可以忽略属性顺序和中间的其他属性
+        let tag_re = regex::Regex::new(r#"<(?:rect|td)([^>]+)>"#)?;
+        let date_re = regex::Regex::new(r#"data-date="([0-9]{4}-[0-9]{2}-[0-9]{2})""#)?;
+        let level_re = regex::Regex::new(r#"data-level="(\d+)""#)?;
+
+        for cap in tag_re.captures_iter(&html) {
+            let attrs = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+
+            // 必须同时包含 data-date 和 data-level
+            if let (Some(date_cap), Some(level_cap)) =
+                (date_re.captures(attrs), level_re.captures(attrs))
+            {
+                let date = date_cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                let level = level_cap
+                    .get(1)
+                    .and_then(|m| m.as_str().parse::<i64>().ok())
+                    .unwrap_or(0);
+
+                // 将 level (0-4) 转换为近似的贡献数
+                let count = match level {
+                    0 => 0,
+                    1 => 2,
+                    2 => 5,
+                    3 => 8,
+                    _ => 12,
+                };
+
+                contributions.push(serde_json::json!({
+                    "date": date,
+                    "count": count
+                }));
+            }
+        }
+
+        tracing::debug!("Extracted {} contribution days", contributions.len());
+
+        if contributions.is_empty() {
+            // 保存HTML用于调试
+            let debug_path = "cache/debug_github_contributions.html";
+            if let Err(e) = std::fs::write(debug_path, &html) {
+                tracing::warn!("Failed to write debug HTML: {}", e);
+            } else {
+                tracing::warn!("No contribution data found. HTML saved to {}", debug_path);
+            }
+
+            tracing::warn!(
+                "No contribution data found. HTML preview: {}",
+                &html.chars().take(500).collect::<String>()
+            );
+            return Err(anyhow!("No contribution data found in HTML"));
+        }
+
+        // ✅ 返回完整的贡献历史数据（365天），而非截断
+        // 前端会在显示热力图时只取最近60天，但计算总贡献数需要完整数据
+        let total_days = contributions.len();
+        let total_contributions: i64 = contributions
+            .iter()
+            .filter_map(|c| c.get("count").and_then(|v| v.as_i64()))
+            .sum();
+
+        tracing::info!(
+            "✅ Returning {} contribution days with total {} contributions",
+            total_days,
+            total_contributions
+        );
+        Ok(contributions)
     }
 
     // ==================== X (Twitter) API ====================

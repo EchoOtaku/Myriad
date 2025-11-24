@@ -43,7 +43,9 @@
       "Bash(targetreleasemyriad-backend.exe)",
       "Bash(\"./target/release/myriad-backend.exe\")",
       "Bash(python -m json.tool:*)",
-      "Bash(timeout /t 2)"
+      "Bash(timeout /t 2)",
+      "Bash(timeout /t 10 /nobreak)",
+      "Bash(node -e:*)"
     ],
     "deny": [],
     "ask": []

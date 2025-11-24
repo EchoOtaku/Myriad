@@ -1,5 +1,5 @@
 use crate::models::entities::{metadata_history, platform_metadata};
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, Set,
@@ -21,7 +21,7 @@ impl MetadataService {
     /// 保存或更新平台元数据，并记录变化
     pub async fn save_platform_metadata(
         &self,
-        user_id: &str,
+        user_id: i32,
         platform_name: &str,
         raw_data: Value,
     ) -> Result<i32, Box<dyn std::error::Error>> {
@@ -39,8 +39,7 @@ impl MetadataService {
             .one(&self.db)
             .await?;
 
-        let now = Utc::now();
-        let now_with_tz: DateTime<FixedOffset> = now.into();
+        let now = Utc::now().naive_utc();
 
         match existing {
             Some(old_metadata) => {
@@ -57,8 +56,8 @@ impl MetadataService {
                 // 更新现有记录
                 let mut active_model: platform_metadata::ActiveModel = old_metadata.clone().into();
                 active_model.raw_data = Set(raw_data.clone());
-                active_model.fetched_at = Set(now_with_tz);
-                active_model.updated_at = Set(now_with_tz);
+                active_model.fetched_at = Set(now);
+                active_model.updated_at = Set(now);
 
                 let updated = active_model.update(&self.db).await?;
                 let metadata_id = updated.id;
@@ -80,12 +79,12 @@ impl MetadataService {
             None => {
                 // 创建新记录
                 let new_metadata = platform_metadata::ActiveModel {
-                    user_id: Set(user_id.to_string()),
+                    user_id: Set(user_id),
                     platform_name: Set(platform_name.to_string()),
                     raw_data: Set(raw_data.clone()),
-                    fetched_at: Set(now_with_tz),
-                    created_at: Set(now_with_tz),
-                    updated_at: Set(now_with_tz),
+                    fetched_at: Set(now),
+                    created_at: Set(now),
+                    updated_at: Set(now),
                     ..Default::default()
                 };
 
@@ -213,21 +212,21 @@ impl MetadataService {
     async fn record_metadata_change(
         &self,
         metadata_id: i32,
-        user_id: &str,
+        user_id: i32,
         platform_name: &str,
         changed_fields: Vec<String>,
         old_data: Option<Value>,
         new_data: Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let now_with_tz: DateTime<FixedOffset> = Utc::now().into();
+        let now = Utc::now().naive_utc();
         let history = metadata_history::ActiveModel {
-            metadata_id: Set(metadata_id),
-            user_id: Set(user_id.to_string()),
+            metadata_id: Set(Some(metadata_id)),
+            user_id: Set(user_id),
             platform_name: Set(platform_name.to_string()),
             changed_fields: Set(json!(changed_fields)),
             old_data: Set(old_data),
-            new_data: Set(new_data),
-            change_date: Set(now_with_tz),
+            new_data: Set(Some(new_data)),
+            change_date: Set(now),
             ..Default::default()
         };
 
@@ -240,7 +239,7 @@ impl MetadataService {
     #[allow(dead_code)]
     pub async fn get_latest_metadata(
         &self,
-        user_id: &str,
+        user_id: i32,
         platform_name: &str,
     ) -> Result<Option<platform_metadata::Model>, Box<dyn std::error::Error>> {
         let metadata = platform_metadata::Entity::find()
@@ -257,7 +256,7 @@ impl MetadataService {
     #[allow(dead_code)]
     pub async fn get_all_latest_metadata(
         &self,
-        user_id: &str,
+        user_id: i32,
     ) -> Result<HashMap<String, Value>, Box<dyn std::error::Error>> {
         let all_metadata = platform_metadata::Entity::find()
             .filter(platform_metadata::Column::UserId.eq(user_id))
@@ -283,7 +282,7 @@ impl MetadataService {
     #[allow(dead_code)]
     pub async fn get_metadata_history(
         &self,
-        user_id: &str,
+        user_id: i32,
         platform_name: Option<&str>,
         limit: Option<u64>,
     ) -> Result<Vec<metadata_history::Model>, Box<dyn std::error::Error>> {
@@ -324,7 +323,7 @@ impl MetadataService {
     #[allow(dead_code)]
     pub async fn count_changes(
         &self,
-        user_id: &str,
+        user_id: i32,
         platform_name: Option<&str>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         let mut query =

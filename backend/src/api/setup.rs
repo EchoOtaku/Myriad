@@ -13,8 +13,6 @@ pub struct SetupStatus {
     pub is_setup_required: bool,
     pub has_database: bool,
     pub has_admin_user: bool,
-    pub has_github_oauth: bool,
-    pub has_gemini_api: bool,
     pub missing_configs: Vec<String>,
 }
 
@@ -35,12 +33,6 @@ pub async fn check_setup_status(
         false
     };
 
-    // Check GitHub OAuth configuration
-    let has_github_oauth = check_github_oauth_config();
-
-    // Check Gemini API configuration
-    let has_gemini_api = check_gemini_api_config();
-
     // Collect missing configurations
     let mut missing_configs = Vec::new();
 
@@ -51,14 +43,6 @@ pub async fn check_setup_status(
         missing_configs.push("No admin user registered".to_string());
     }
 
-    // GitHub OAuth and Gemini API are optional - just note if missing
-    if !has_github_oauth {
-        missing_configs.push("GitHub OAuth not configured (optional)".to_string());
-    }
-    if !has_gemini_api {
-        missing_configs.push("Gemini API key not configured (optional)".to_string());
-    }
-
     // Setup is only required if database or admin user is missing
     let is_setup_required = !has_database || !has_admin_user;
 
@@ -66,8 +50,6 @@ pub async fn check_setup_status(
         is_setup_required,
         has_database,
         has_admin_user,
-        has_github_oauth,
-        has_gemini_api,
         missing_configs,
     };
 
@@ -79,19 +61,20 @@ pub async fn check_setup_status(
 /// GET /api/setup/config
 /// Get safe configuration info (no secrets)
 pub async fn get_setup_config() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let config_guard = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+
     let config = json!({
         "database_url_set": env::var("DATABASE_URL").is_ok(),
         "server_host": env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
         "server_port": env::var("SERVER_PORT").unwrap_or_else(|_| "3000".to_string()),
         "github_oauth": {
-            "client_id_set": env::var("GITHUB_CLIENT_ID").is_ok(),
-            "client_secret_set": env::var("GITHUB_CLIENT_SECRET").is_ok(),
-            "redirect_url": env::var("GITHUB_REDIRECT_URL")
-                .unwrap_or_else(|_| "http://localhost:3000/api/auth/github/callback".to_string()),
+            "client_id_set": config_guard.github_client_id.is_some(),
+            "client_secret_set": config_guard.github_client_secret.is_some(),
+            "redirect_url": config_guard.github_redirect_url.clone(),
         },
         "gemini_api": {
-            "api_key_set": env::var("GEMINI_API_KEY").is_ok(),
-            "model": env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string()),
+            "api_key_set": config_guard.gemini_api_key.is_some(),
+            "model": config_guard.gemini_model.clone(),
         },
     });
 
@@ -171,34 +154,6 @@ async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
             false
         }
     }
-}
-
-/// Check if GitHub OAuth is configured
-fn check_github_oauth_config() -> bool {
-    let client_id = env::var("GITHUB_CLIENT_ID").ok();
-    let client_secret = env::var("GITHUB_CLIENT_SECRET").ok();
-
-    let has_config = client_id
-        .as_ref()
-        .is_some_and(|id| !id.is_empty() && !id.contains("your_"))
-        && client_secret
-            .as_ref()
-            .is_some_and(|secret| !secret.is_empty() && !secret.contains("your_"));
-
-    tracing::info!("GitHub OAuth configured: {}", has_config);
-    has_config
-}
-
-/// Check if Gemini API is configured
-fn check_gemini_api_config() -> bool {
-    let api_key = env::var("GEMINI_API_KEY").ok();
-
-    let has_config = api_key
-        .as_ref()
-        .is_some_and(|key| !key.is_empty() && !key.contains("your-"));
-
-    tracing::info!("Gemini API configured: {}", has_config);
-    has_config
 }
 
 /// POST /api/setup/init-database
@@ -726,6 +681,37 @@ pub async fn update_env_file(
                             tracing::info!("Dynamic configuration reloaded");
                         }
                     }
+                }
+            } else {
+                // Check if we have any app config to save
+                let has_app_config = config.ai_provider.is_some()
+                    || config.gemini_api_key.is_some()
+                    || config.gemini_model.is_some()
+                    || config.openai_api_key.is_some()
+                    || config.openai_model.is_some()
+                    || config.openai_base_url.is_some()
+                    || config.deepseek_api_key.is_some()
+                    || config.deepseek_model.is_some()
+                    || config.topic_style.is_some()
+                    || config.github_username.is_some()
+                    || config.github_token.is_some()
+                    || config.bilibili_uid.is_some()
+                    || config.steam_api_key.is_some()
+                    || config.steam_id.is_some()
+                    || config.netease_user_id.is_some()
+                    || config.twitter_bearer_token.is_some()
+                    || config.github_client_id.is_some()
+                    || config.github_client_secret.is_some()
+                    || config.github_redirect_url.is_some();
+
+                if has_app_config {
+                    tracing::warn!("⚠️ Application configuration received but Database is not connected. Settings will NOT be saved.");
+                    return Ok(Json(json!({
+                        "success": true,
+                        "message": "Core configuration updated, but application settings could not be saved because the database is not connected.",
+                        "warning": "Application settings (AI keys, etc.) were NOT saved. Please ensure the database is connected and try again.",
+                        "path": env_path.display().to_string()
+                    })));
                 }
             }
 

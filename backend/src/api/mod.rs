@@ -11,6 +11,7 @@ pub mod platforms;
 pub mod profile;
 pub mod prompt;
 pub mod proxy;
+pub mod reports;    // ✅ 双层报告系统API
 pub mod setup;
 pub mod steam;
 pub mod system;

@@ -1,0 +1,24 @@
+/* ============================================
+   字体定义 - Qwitcher Grypen from Google Fonts
+   ============================================ */
+
+/* Qwitcher Grypen Regular - 400 */
+@import url('https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@400;700&display=swap');
+
+/* Qwitcher Grypen 字体类 - Google Fonts 官方推荐 */
+.qwitcher-grypen-regular {
+  font-family: "Qwitcher Grypen", cursive;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.qwitcher-grypen-bold {
+  font-family: "Qwitcher Grypen", cursive;
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* 备用：直接使用 Qwitcher Grypen 字体 */
+.qwitcher-grypen {
+  font-family: "Qwitcher Grypen", cursive;
+}

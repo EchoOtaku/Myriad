@@ -178,7 +178,7 @@ export default function DataManagement() {
 
   // 刷新单个平台数据
   const refreshSinglePlatform = async (platformName: string) => {
-    if (!confirm(`确定要刷新 ${platformName} 的数据吗？将清理缓存并重新获取。`)) return;
+    if (!confirm(`确定要刷新 ${platformName} 的数据吗？将重新获取该平台数据。`)) return;
     
     setRefreshingPlatform(platformName);
     try {
@@ -191,27 +191,15 @@ export default function DataManagement() {
         return;
       }
       
-      // 第一步：删除缓存
-      const cacheResponse = await fetch(`${API_URL}/api/profile/cache`, {
-        method: 'DELETE',
-        credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
-        headers: {
-          'X-CSRF-Token': csrfToken,
-        },
-      });
-      
-      if (!cacheResponse.ok) {
-        const errorData = await cacheResponse.json().catch(() => ({}));
-        throw new Error(errorData.message || `删除缓存失败 (${cacheResponse.status})`);
-      }
-      
-      // 第二步：重新获取所有平台数据
-      const response = await fetch(`${API_URL}/api/profile/fetch-all`, {
+      // 调用新的单平台刷新 API
+      const response = await fetch(`${API_URL}/api/profile/fetch-platform`, {
         method: 'POST',
         credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
         headers: {
+          'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken,
         },
+        body: JSON.stringify({ platform: platformName }),
       });
       
       if (!response.ok) {

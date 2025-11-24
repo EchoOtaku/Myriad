@@ -16,6 +16,7 @@ const Config = lazy(() => import('../views/Config.tsx'));
 const Login = lazy(() => import('../views/Login.tsx'));
 const Details = lazy(() => import('../views/Details.tsx'));
 const Setup = lazy(() => import('../views/Setup.tsx'));
+const Reports = lazy(() => import('../views/Reports.tsx'));
 
 /**
  * 路由守卫：检查认证状态
@@ -92,21 +93,22 @@ function AnimatedRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Home />} />
         <Route path="/library" element={<Library />} />
-        <Route 
-          path="/config" 
+        <Route path="/reports" element={<Reports />} />
+        <Route
+          path="/config"
           element={
             <RequireAuth requiresAdmin>
               <Config />
             </RequireAuth>
-          } 
+          }
         />
         <Route path="/login" element={<Login />} />
         <Route path="/details" element={<Details />} />
         <Route path="/setup" element={<Setup />} />
-        
+
         {/* 旧的 /account 路由重定向到首页，控制面板已整合账户管理 */}
         <Route path="/account" element={<Navigate to="/" replace />} />
-        
+
         {/* 404 页面 - 重定向到首页 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

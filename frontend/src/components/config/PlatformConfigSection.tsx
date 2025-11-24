@@ -72,6 +72,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
                     type="checkbox"
                     checked={platform.enabled}
                     onChange={() => onTogglePlatform(index)}
+                    aria-label={`启用 ${platform.name} 平台`}
                   />
                   <span className="toggle-slider"></span>
                 </label>

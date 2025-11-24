@@ -88,7 +88,8 @@ async fn get_personas_from_db(db: &DatabaseConnection, user_id: &str) -> Vec<Vir
     {
         Ok(rows) => {
             // 只保留每个slot最新的一条记录
-            let mut latest_personas: std::collections::HashMap<i32, VirtualPersona> = std::collections::HashMap::new();
+            let mut latest_personas: std::collections::HashMap<i32, VirtualPersona> =
+                std::collections::HashMap::new();
 
             for row in rows {
                 match VirtualPersona::from_query_result(&row, "") {
@@ -625,14 +626,14 @@ pub async fn generate_image(
 
     // 根据配置选择图片提供商
     let provider = dynamic_config.persona_image_provider.to_lowercase();
-    
+
     let (image_url, task_id) = match provider.as_str() {
         "imaginepro" => {
             // 使用 ImaginePro (Midjourney)
             match &dynamic_config.imaginepro_api_key {
                 Some(api_key) if !api_key.is_empty() => {
                     tracing::info!("🎨 Using ImaginePro (Midjourney) for image generation");
-                    
+
                     let client = crate::services::imaginepro::ImagineProClient::new(
                         api_key.clone(),
                         dynamic_config.imaginepro_callback_url.clone(),
@@ -642,7 +643,7 @@ pub async fn generate_image(
                     let aspect_ratio = payload.aspect_ratio.or_else(|| {
                         let width = dynamic_config.persona_image_width;
                         let height = dynamic_config.persona_image_height;
-                        
+
                         // 简化比例
                         let gcd = |mut a: i32, mut b: i32| {
                             while b != 0 {
@@ -652,16 +653,19 @@ pub async fn generate_image(
                             }
                             a
                         };
-                        
+
                         let divisor = gcd(width, height);
                         Some(format!("{}:{}", width / divisor, height / divisor))
                     });
 
-                    match client.generate_and_wait(
-                        &payload.image_prompt,
-                        aspect_ratio.as_deref(),
-                        120, // 最长等待120秒
-                    ).await {
+                    match client
+                        .generate_and_wait(
+                            &payload.image_prompt,
+                            aspect_ratio.as_deref(),
+                            120, // 最长等待120秒
+                        )
+                        .await
+                    {
                         Ok(url) => {
                             tracing::info!("✓ ImaginePro image generated: {}", url);
                             (url, None)
@@ -698,34 +702,37 @@ pub async fn generate_image(
         "pollinations" => {
             // 使用 Pollinations AI (默认)
             tracing::info!("🎨 Using Pollinations AI for image generation");
-            
+
             let url = generate_persona_image_url(
                 &payload.image_prompt,
                 &dynamic_config.persona_image_model,
                 dynamic_config.persona_image_width,
                 dynamic_config.persona_image_height,
             );
-            
+
             (url, None)
         }
         _ => {
             // 未知提供商，降级到 Pollinations
-            tracing::warn!("Unknown provider '{}', falling back to Pollinations", provider);
-            
+            tracing::warn!(
+                "Unknown provider '{}', falling back to Pollinations",
+                provider
+            );
+
             let url = generate_persona_image_url(
                 &payload.image_prompt,
                 &dynamic_config.persona_image_model,
                 dynamic_config.persona_image_width,
                 dynamic_config.persona_image_height,
             );
-            
+
             (url, None)
         }
     };
 
     // 更新数据库中的图片URL和prompt
     let update_sql = r#"
-        UPDATE virtual_persona
+        UPDATE virtual_personas
         SET image_url = $1, image_prompt = $2
         WHERE user_id = $3 AND slot = $4
     "#;
@@ -815,7 +822,7 @@ pub async fn delete_persona(
 
     // 删除指定槽位的人设
     let delete_sql = r#"
-        DELETE FROM virtual_persona
+        DELETE FROM virtual_personas
         WHERE user_id = $1 AND slot = $2
     "#;
 

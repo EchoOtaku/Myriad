@@ -13,6 +13,7 @@ import RouteLoader from './components/RouteLoader';
 import { NotificationProvider } from './contexts/NotificationContext';
 import CustomScrollbar from './components/CustomScrollbar';
 import { preloadCriticalRoutes } from './utils/codeSplitting';
+import './styles/fonts.css';
 import './styles/theme.css';
 import './styles/animations.css';
 import './styles/performance.css';
@@ -25,6 +26,7 @@ import './styles/overrides.css';
 // 懒加载视图组件 - 使用代码分割
 const Home = lazy(() => import('./views/Home.tsx'));
 const Library = lazy(() => import('./views/Library.tsx'));
+const Reports = lazy(() => import('./views/Reports.tsx'));
 const Config = lazy(() => import('./views/Config.tsx'));
 const DataManagement = lazy(() => import('./views/DataManagement.tsx'));
 const Login = lazy(() => import('./views/Login.tsx'));
@@ -115,6 +117,7 @@ function AppRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Home />} />
         <Route path="/library" element={<Library />} />
+        <Route path="/reports" element={<Reports />} />
         <Route
           path="/config"
           element={

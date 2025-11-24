@@ -6,7 +6,7 @@
 import { Link as RouterLink, LinkProps } from 'react-router-dom';
 import { forwardRef } from 'react';
 
-interface CustomLinkProps extends Omit<LinkProps, 'to'> {
+interface CustomLinkProps extends Omit<LinkProps, 'to' | 'prefetch'> {
   href: string;
   prefetch?: boolean;
 }
@@ -17,6 +17,7 @@ interface CustomLinkProps extends Omit<LinkProps, 'to'> {
  */
 export const Link = forwardRef<HTMLAnchorElement, CustomLinkProps>(
   ({ href, prefetch, ...props }, ref) => {
+    // @ts-ignore - prefetch type mismatch between boolean and PrefetchBehavior
     return <RouterLink ref={ref} to={href} {...props} />;
   }
 );

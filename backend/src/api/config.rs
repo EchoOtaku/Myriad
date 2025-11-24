@@ -265,6 +265,22 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     placeholder: "https://api.openai.com/v1 or https://api.deepseek.com (base URL only, no /chat/completions)".to_string(),
                     required: false,
                 },
+                ConfigField {
+                    key: "deepseek_api_key".to_string(),
+                    label: "Deepseek API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(db_config.as_ref().and_then(|c| c.deepseek_api_key.clone()), "DEEPSEEK_API_KEY")),
+                    placeholder: "Deepseek API Key".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "deepseek_model".to_string(),
+                    label: "Deepseek Model Name".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config.as_ref().map(|c| c.deepseek_model.clone()).unwrap_or_else(|| std::env::var("DEEPSEEK_MODEL").unwrap_or_else(|_| "deepseek-chat".to_string())),
+                    placeholder: "deepseek-chat, deepseek-coder".to_string(),
+                    required: false,
+                },
             ],
         },
         report_config: ReportConfig {
@@ -483,7 +499,7 @@ pub async fn update_config(
     tracing::info!("✅ Configuration saved to database");
 
     // 2. 保存到 .env 文件（向后兼容）
-    match save_all_configs(&payload).await {
+    let response = match save_all_configs(&payload).await {
         Ok(_) => {
             tracing::info!("✅ Configuration saved to .env file");
             (
@@ -504,7 +520,27 @@ pub async fn update_config(
                 })),
             )
         }
+    };
+
+    // 3. 更新全局动态配置缓存
+    match config_service.load_config().await {
+        Ok(dynamic_config) => {
+            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
+            tracing::info!("✅ Global dynamic configuration cache updated");
+        }
+        Err(e) => {
+            tracing::warn!("⚠️ Failed to reload dynamic config into cache: {}", e);
+        }
     }
+
+    // 4. 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)
+    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    tracing::info!(
+        "🔄 Configuration reload flag set - changes will be picked up within 2-3 seconds"
+    );
+
+    response
 }
 
 /// 保存配置到数据库
@@ -517,6 +553,11 @@ async fn save_to_database(
 
     let mut updates: HashMap<String, JsonValue> = HashMap::new();
 
+    // Helper to check if a value is masked
+    let is_masked = |value: &str| -> bool {
+        value.starts_with("••") || value.starts_with("**") || value == "********"
+    };
+
     // 保存平台配置
     for platform in &config.platforms {
         match platform.name.as_str() {
@@ -528,7 +569,7 @@ async fn save_to_database(
                         _ => continue,
                     };
                     // 🔒 忽略屏蔽值（前端返回的掩码）
-                    if !field.value.is_empty() && !field.value.starts_with("••") {
+                    if !field.value.is_empty() && !is_masked(&field.value) {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
                 }
@@ -548,7 +589,7 @@ async fn save_to_database(
                         _ => continue,
                     };
                     // 🔒 忽略屏蔽值（前端返回的掩码）
-                    if !field.value.is_empty() && !field.value.starts_with("••") {
+                    if !field.value.is_empty() && !is_masked(&field.value) {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
                 }
@@ -561,7 +602,7 @@ async fn save_to_database(
                         _ => continue,
                     };
                     // 🔒 忽略屏蔽值（前端返回的掩码）
-                    if !field.value.is_empty() && !field.value.starts_with("••") {
+                    if !field.value.is_empty() && !is_masked(&field.value) {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
                 }
@@ -586,10 +627,12 @@ async fn save_to_database(
             "openai_api_key" => "openai_api_key",
             "openai_model" => "openai_model",
             "openai_base_url" => "openai_base_url",
+            "deepseek_api_key" => "deepseek_api_key",
+            "deepseek_model" => "deepseek_model",
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）- 保持数据库原值不变
-        if !field.value.is_empty() && !field.value.starts_with("••") {
+        if !field.value.is_empty() && !is_masked(&field.value) {
             updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
         }
     }
@@ -629,7 +672,7 @@ async fn save_to_database(
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）
-        if !field.value.is_empty() && !field.value.starts_with("••") {
+        if !field.value.is_empty() && !is_masked(&field.value) {
             updates.insert(key.to_string(), json_value);
         }
     }
@@ -665,7 +708,7 @@ async fn save_to_database(
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）- github_client_secret 是敏感字段
-        if !field.value.is_empty() && !field.value.starts_with("••") {
+        if !field.value.is_empty() && !is_masked(&field.value) {
             updates.insert(key.to_string(), json_value);
         }
     }
@@ -757,6 +800,8 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "openai_api_key" => "OPENAI_API_KEY",
             "openai_model" => "OPENAI_MODEL",
             "openai_base_url" => "OPENAI_BASE_URL",
+            "deepseek_api_key" => "DEEPSEEK_API_KEY",
+            "deepseek_model" => "DEEPSEEK_MODEL",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);

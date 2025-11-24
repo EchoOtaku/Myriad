@@ -71,8 +71,6 @@
   image-rendering: -webkit-optimize-contrast;
   /* Firefox 支持 */
   image-rendering: -moz-crisp-edges;
-  /* 现代浏览器标准属性 */
-  image-rendering: crisp-edges;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
   transition: transform 0.3s ease;
   width: 100%;
@@ -171,6 +169,16 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(var(--brand-color-rgb, 99, 102, 241), 0.2);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--brand-color) 20%, transparent);
+}
+
+/* 隐藏滚动条 */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* 移动端禁用选择 */

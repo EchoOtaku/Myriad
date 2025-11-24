@@ -11,6 +11,11 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Deserialize)]
+pub struct FetchPlatformRequest {
+    pub platform: String,
+}
+
 // 数据缓存结构
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct PlatformDataCache {
@@ -111,7 +116,7 @@ fn save_cache_to_disk() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// 检查缓存是否有效（7天内）- 返回最新的报告，并合并所有历史卡片
-fn get_cached_report(user_id: &str, force_refresh: bool) -> Option<PersonalReport> {
+fn get_cached_report(user_id: i32, force_refresh: bool) -> Option<PersonalReport> {
     if force_refresh {
         tracing::info!("⚡ Force refresh requested, skipping cache");
         return None;
@@ -119,12 +124,13 @@ fn get_cached_report(user_id: &str, force_refresh: bool) -> Option<PersonalRepor
 
     let cache = REPORT_CACHE.lock().unwrap();
     let now = Utc::now();
+    let user_id_str = user_id.to_string();
 
     // 查找该用户的所有有效缓存
     let mut valid_reports: Vec<(String, PersonalReport, DateTime<Utc>)> = cache
         .iter()
         .filter(|(key, (_, created_at))| {
-            key.starts_with(user_id) && now - *created_at < Duration::days(7)
+            key.starts_with(&user_id_str) && now - *created_at < Duration::days(7)
         })
         .map(|(key, (report, created_at))| (key.clone(), report.clone(), *created_at))
         .collect();
@@ -298,7 +304,7 @@ pub async fn get_cached_or_fresh_data(
 
     // 缓存不存在或已过期，获取新鲜数据
     tracing::info!("🔄 Fetching fresh platform data...");
-    fetch_fresh_platform_data(db).await
+    fetch_fresh_platform_data(db, None).await
 }
 
 /// 一键获取所有平台数据（带缓存）
@@ -322,7 +328,7 @@ pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode
 
     // 缓存不存在或已过期，重新获取
     tracing::info!("🔄 Fetching fresh platform data...");
-    match fetch_fresh_platform_data(&db).await {
+    match fetch_fresh_platform_data(&db, None).await {
         Ok(data) => {
             // 保存到缓存
             if let Err(e) = save_platform_data_cache(&data) {
@@ -384,7 +390,7 @@ pub async fn refresh_platform_data(
     }
 
     tracing::info!("🔄 Force refreshing platform data...");
-    match fetch_fresh_platform_data(&db).await {
+    match fetch_fresh_platform_data(&db, None).await {
         Ok(data) => {
             // 保存到缓存
             if let Err(e) = save_platform_data_cache(&data) {
@@ -414,163 +420,267 @@ pub async fn refresh_platform_data(
     }
 }
 
+/// 刷新单个平台数据
+pub async fn fetch_single_platform_data(
+    State(db): State<DatabaseConnection>,
+    Json(req): Json<FetchPlatformRequest>,
+) -> (StatusCode, Json<Value>) {
+    tracing::info!("🔄 Fetching data for platform: {}...", req.platform);
+
+    match fetch_fresh_platform_data(&db, Some(&req.platform)).await {
+        Ok(data) => {
+            // 保存到缓存
+            if let Err(e) = save_platform_data_cache(&data) {
+                tracing::error!("Failed to save platform cache: {}", e);
+            }
+
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "message": format!("Data for {} fetched successfully", req.platform),
+                    "data": data,
+                    "fetched_at": chrono::Utc::now().to_rfc3339()
+                })),
+            )
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch platform data: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Failed to fetch data: {}", e)
+                })),
+            )
+        }
+    }
+}
+
 /// 获取新鲜的平台数据（实际执行API调用）
 async fn fetch_fresh_platform_data(
     db: &DatabaseConnection,
+    target_platform: Option<&str>,
 ) -> Result<Value, Box<dyn std::error::Error>> {
-    tracing::info!("Starting fetch all data...");
+    tracing::info!(
+        "Starting fetch platform data (target: {:?})...",
+        target_platform
+    );
 
     let fetcher = PlatformFetcher::new();
-    let mut all_data = json!({});
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
+
+    // 获取动态配置
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+
+    // 1. 如果是增量更新，先加载现有数据
+    let mut all_data = if target_platform.is_some() {
+        load_platform_data_cache()
+            .map(|c| c.data)
+            .unwrap_or(json!({}))
+    } else {
+        json!({})
+    };
+
+    // 辅助闭包：判断是否应该获取该平台
+    let should_fetch = |p: &str| target_platform.is_none() || target_platform == Some(p);
 
     // 创建元数据服务
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
 
     // 获取GitHub数据（包含仓库信息）
-    if let Ok(github_username) = std::env::var("GITHUB_USERNAME") {
-        let github_token = std::env::var("GITHUB_TOKEN").ok();
+    if should_fetch("github") {
+        if let Some(github_username) = &config.github_username {
+            let github_token = config.github_token.as_deref();
 
-        // 获取用户基本信息
-        match fetcher
-            .fetch_github_user(&github_username, github_token.as_deref())
-            .await
-        {
-            Ok(user_data) => {
-                all_data["github"]["user"] = user_data;
-                tracing::info!("✓ GitHub user data fetched");
-            }
-            Err(e) => tracing::warn!("GitHub user fetch failed: {}", e),
-        }
-
-        // 获取仓库列表
-        match fetcher
-            .fetch_github_repos(&github_username, github_token.as_deref())
-            .await
-        {
-            Ok(repos) => {
-                all_data["github"]["repos"] = json!(repos);
-                tracing::info!("✓ GitHub repos fetched: {} repositories", repos.len());
-            }
-            Err(e) => tracing::warn!("GitHub repos fetch failed: {}", e),
-        }
-
-        // 保存GitHub数据到数据库
-        if !all_data["github"].is_null() {
-            if let Err(e) = metadata_service
-                .save_platform_metadata(user_id, "github", all_data["github"].clone())
+            // 获取用户基本信息
+            match fetcher
+                .fetch_github_user(github_username, github_token)
                 .await
             {
-                tracing::error!("Failed to save GitHub metadata to database: {}", e);
+                Ok(user_data) => {
+                    all_data["github"]["user"] = user_data;
+                    tracing::info!("✓ GitHub user data fetched");
+                }
+                Err(e) => tracing::warn!("GitHub user fetch failed: {}", e),
+            }
+
+            // 获取仓库列表
+            match fetcher
+                .fetch_github_repos(github_username, github_token)
+                .await
+            {
+                Ok(repos) => {
+                    all_data["github"]["repos"] = json!(repos);
+                    tracing::info!("✓ GitHub repos fetched: {} repositories", repos.len());
+                }
+                Err(e) => tracing::warn!("GitHub repos fetch failed: {}", e),
+            }
+
+            // 获取贡献历史
+            match fetcher
+                .fetch_github_contributions(github_username, github_token)
+                .await
+            {
+                Ok(contributions) => {
+                    tracing::info!(
+                        "✓ GitHub contributions fetched: {} days",
+                        contributions.len()
+                    );
+                    if !contributions.is_empty() {
+                        tracing::debug!("First contribution: {:?}", contributions.first());
+                        tracing::debug!("Last contribution: {:?}", contributions.last());
+                    }
+                    all_data["github"]["contribution_calendar"] = json!(contributions);
+                }
+                Err(e) => tracing::warn!("⚠ GitHub contributions fetch failed: {}", e),
+            }
+
+            // 保存GitHub数据到数据库
+            if !all_data["github"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "github", all_data["github"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save GitHub metadata to database: {}", e);
+                }
             }
         }
     }
 
     // 获取Bilibili数据
-    if let Ok(uid_str) = std::env::var("BILIBILI_UID") {
-        if let Ok(uid) = uid_str.parse::<i64>() {
-            match fetcher.fetch_bilibili_user(uid).await {
-                Ok(user_data) => {
-                    all_data["bilibili"]["user"] = json!(user_data);
-                    tracing::info!("✓ Bilibili user data fetched");
+    if should_fetch("bilibili") {
+        if let Some(uid_str) = &config.bilibili_uid {
+            if let Ok(uid) = uid_str.parse::<i64>() {
+                match fetcher.fetch_bilibili_user(uid).await {
+                    Ok(user_data) => {
+                        // 使用 user_info 字段名以匹配 SmartFilter 的期待
+                        all_data["bilibili"]["user_info"] = json!(user_data);
+                        tracing::info!("✓ Bilibili user data fetched");
+                    }
+                    Err(e) => tracing::warn!("Bilibili user fetch failed: {}", e),
                 }
-                Err(e) => tracing::warn!("Bilibili user fetch failed: {}", e),
-            }
 
-            // 获取追番/追剧数据
-            match fetcher.fetch_all_bilibili_bangumi(uid).await {
-                Ok(bangumi_data) => {
-                    all_data["bilibili"]["bangumi"] = json!(bangumi_data);
-                    tracing::info!(
-                        "✓ Bilibili bangumi data fetched: {} items",
-                        bangumi_data.len()
-                    );
+                // 获取追番/追剧数据
+                match fetcher.fetch_all_bilibili_bangumi(uid).await {
+                    Ok(bangumi_data) => {
+                        all_data["bilibili"]["bangumi"] = json!(bangumi_data);
+                        tracing::info!(
+                            "✓ Bilibili bangumi data fetched: {} items",
+                            bangumi_data.len()
+                        );
+                    }
+                    Err(e) => tracing::warn!("Bilibili bangumi fetch failed: {}", e),
                 }
-                Err(e) => tracing::warn!("Bilibili bangumi fetch failed: {}", e),
-            }
 
-            // 获取收藏夹
-            match fetcher.fetch_bilibili_favorites(uid).await {
-                Ok(favorites) => {
-                    all_data["bilibili"]["favorites"] = json!(favorites);
-                    tracing::info!("✓ Bilibili favorites fetched: {} items", favorites.len());
+                // 获取收藏夹
+                match fetcher.fetch_bilibili_favorites(uid).await {
+                    Ok(favorites) => {
+                        all_data["bilibili"]["favorites"] = json!(favorites);
+                        tracing::info!("✓ Bilibili favorites fetched: {} items", favorites.len());
+                    }
+                    Err(e) => tracing::warn!("Bilibili favorites fetch failed: {}", e),
                 }
-                Err(e) => tracing::warn!("Bilibili favorites fetch failed: {}", e),
-            }
 
-            // 保存Bilibili数据到数据库
-            if !all_data["bilibili"].is_null() {
-                if let Err(e) = metadata_service
-                    .save_platform_metadata(user_id, "bilibili", all_data["bilibili"].clone())
-                    .await
-                {
-                    tracing::error!("Failed to save Bilibili metadata to database: {}", e);
+                // 保存Bilibili数据到数据库
+                if !all_data["bilibili"].is_null() {
+                    if let Err(e) = metadata_service
+                        .save_platform_metadata(user_id, "bilibili", all_data["bilibili"].clone())
+                        .await
+                    {
+                        tracing::error!("Failed to save Bilibili metadata to database: {}", e);
+                    }
                 }
             }
         }
     }
 
     // 获取Steam数据（只保留游玩时间>=3小时的游戏）
-    if let (Ok(api_key), Ok(steam_id)) = (std::env::var("STEAM_API_KEY"), std::env::var("STEAM_ID"))
-    {
-        match fetcher.fetch_steam_user(&api_key, &steam_id).await {
-            Ok(user_data) => {
-                all_data["steam"]["user"] = json!(user_data);
-                tracing::info!("✓ Steam user data fetched");
+    if should_fetch("steam") {
+        if let (Some(api_key), Some(steam_id)) = (&config.steam_api_key, &config.steam_id) {
+            match fetcher.fetch_steam_user(api_key, steam_id).await {
+                Ok(user_data) => {
+                    all_data["steam"]["user"] = json!(user_data);
+                    tracing::info!("✓ Steam user data fetched");
+                }
+                Err(e) => tracing::warn!("Steam user fetch failed: {}", e),
             }
-            Err(e) => tracing::warn!("Steam user fetch failed: {}", e),
-        }
 
-        match fetcher.fetch_steam_games(&api_key, &steam_id).await {
-            Ok(games_data) => {
-                // 过滤：只保留游玩时间>=180分钟(3小时)的游戏
-                let filtered_games: Vec<_> = games_data
-                    .into_iter()
-                    .filter(|game| game.playtime_forever >= 180)
-                    .collect();
+            match fetcher.fetch_steam_games(api_key, steam_id).await {
+                Ok(games_data) => {
+                    // 过滤：只保留游玩时间>=180分钟(3小时)的游戏
+                    let filtered_games: Vec<_> = games_data
+                        .into_iter()
+                        .filter(|game| game.playtime_forever >= 180)
+                        .collect();
 
-                let total_count = filtered_games.len();
-                all_data["steam"]["games"] = json!(filtered_games);
-                tracing::info!(
-                    "✓ Steam games fetched: {} games (filtered >=3h)",
-                    total_count
-                );
+                    let total_count = filtered_games.len();
+                    all_data["steam"]["games"] = json!(filtered_games);
+                    tracing::info!(
+                        "✓ Steam games fetched: {} games (filtered >=3h)",
+                        total_count
+                    );
+                }
+                Err(e) => tracing::warn!("Steam games fetch failed: {}", e),
             }
-            Err(e) => tracing::warn!("Steam games fetch failed: {}", e),
-        }
 
-        // 保存Steam数据到数据库
-        if !all_data["steam"].is_null() {
-            if let Err(e) = metadata_service
-                .save_platform_metadata(user_id, "steam", all_data["steam"].clone())
-                .await
-            {
-                tracing::error!("Failed to save Steam metadata to database: {}", e);
+            // 保存Steam数据到数据库
+            if !all_data["steam"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "steam", all_data["steam"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save Steam metadata to database: {}", e);
+                }
             }
         }
     }
 
     // 获取网易云音乐数据
-    if let Ok(user_id_str) = std::env::var("NETEASE_USER_ID") {
-        if let Ok(netease_user_id) = user_id_str.parse::<i64>() {
-            match fetcher.fetch_netease_liked_songs(netease_user_id).await {
-                Ok(songs) => {
-                    all_data["netease"]["liked_songs"] = json!(songs);
-                    tracing::info!(
-                        "✓ Netease Cloud Music liked songs fetched: {} songs",
-                        songs.len()
-                    );
-                }
-                Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
-            }
+    if should_fetch("netease") {
+        tracing::info!("🎵 Should fetch netease: checking config...");
+        tracing::info!("🎵 Config netease_user_id: {:?}", config.netease_user_id);
 
-            // 保存网易云音乐数据到数据库
-            if !all_data["netease"].is_null() {
-                if let Err(e) = metadata_service
-                    .save_platform_metadata(user_id, "netease", all_data["netease"].clone())
-                    .await
-                {
-                    tracing::error!("Failed to save Netease metadata to database: {}", e);
+        if let Some(user_id_str) = &config.netease_user_id {
+            tracing::info!("🎵 Netease user_id found in config: {}", user_id_str);
+            if let Ok(netease_user_id) = user_id_str.parse::<i64>() {
+                tracing::info!("🎵 Parsed netease_user_id: {}", netease_user_id);
+                // 获取用户信息
+                match fetcher.fetch_netease_user(netease_user_id).await {
+                    Ok(user_data) => {
+                        // 提取 profile 字段（API 返回格式：{ "code": 200, "profile": {...} }）
+                        if let Some(profile) = user_data.get("profile") {
+                            all_data["netease"]["profile"] = profile.clone();
+                            tracing::info!("✓ Netease user data fetched");
+                        } else {
+                            // 如果没有 profile 字段，使用整个响应（兼容旧版本）
+                            all_data["netease"]["profile"] = user_data;
+                            tracing::warn!("⚠️ Netease API response missing 'profile' field, using full response");
+                        }
+                    }
+                    Err(e) => tracing::warn!("Netease user fetch failed: {}", e),
+                }
+
+                // 获取喜欢的歌曲
+                match fetcher.fetch_netease_liked_songs(netease_user_id).await {
+                    Ok(songs) => {
+                        all_data["netease"]["liked_songs"] = json!(songs);
+                        tracing::info!(
+                            "✓ Netease Cloud Music liked songs fetched: {} songs",
+                            songs.len()
+                        );
+                    }
+                    Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
+                }
+
+                // 保存网易云音乐数据到数据库
+                if !all_data["netease"].is_null() {
+                    if let Err(e) = metadata_service
+                        .save_platform_metadata(user_id, "netease", all_data["netease"].clone())
+                        .await
+                    {
+                        tracing::error!("Failed to save Netease metadata to database: {}", e);
+                    }
                 }
             }
         }
@@ -578,6 +688,11 @@ async fn fetch_fresh_platform_data(
 
     // 数据清洗：移除无用信息，保留核心5W1H信息
     clean_platform_data(&mut all_data);
+
+    // 更新智能过滤缓存
+    if let Err(e) = crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data) {
+        tracing::error!("Failed to update smart filter cache: {}", e);
+    }
 
     Ok(all_data)
 }
@@ -608,6 +723,7 @@ fn clean_platform_data(data: &mut Value) {
     // 清洗 GitHub 用户信息
     if let Some(user) = data["github"]["user"].as_object_mut() {
         let cleaned = json!({
+            "id": user.get("id"),
             "login": user.get("login"),
             "name": user.get("name"),
             "bio": user.get("bio"),
@@ -649,6 +765,78 @@ fn clean_platform_data(data: &mut Value) {
             "timecreated": user.get("timecreated"),
         });
         data["steam"]["user"] = cleaned;
+    }
+
+    // 清洗 Bilibili 数据 - 保留核心字段
+    if let Some(bilibili) = data.get_mut("bilibili") {
+        // 保留用户信息
+        if let Some(user) = bilibili.get("user").cloned() {
+            if let Some(obj) = bilibili.as_object_mut() {
+                obj.insert("user".to_string(), user);
+            }
+        }
+        // favorites 和 bangumi 保持不变，它们是核心数据
+    }
+
+    // 清洗网易云音乐数据 - 保留核心字段
+    if let Some(netease) = data.get_mut("netease") {
+        // 清洗 liked_songs 数组，只保留必要字段
+        if let Some(songs) = netease
+            .get("liked_songs")
+            .and_then(|s| s.as_array())
+            .cloned()
+        {
+            let cleaned_songs: Vec<Value> = songs
+                .iter()
+                .map(|song| {
+                    json!({
+                        "id": song.get("id"),
+                        "name": song.get("name"),
+                        "ar": song.get("ar"),  // 艺术家数组
+                        "artists": song.get("artists"),  // 备用艺术家字段
+                        "al": song.get("al").map(|al| {
+                            // 只保留专辑的关键信息
+                            json!({
+                                "id": al.get("id"),
+                                "name": al.get("name"),
+                                "picUrl": al.get("picUrl"),
+                            })
+                        }),
+                        "picUrl": song.get("picUrl"),  // 歌曲封面（顶级字段）
+                        "dt": song.get("dt"),  // 时长
+                    })
+                })
+                .collect();
+
+            if let Some(obj) = netease.as_object_mut() {
+                obj.insert("liked_songs".to_string(), json!(cleaned_songs));
+            }
+        }
+
+        // 清洗 profile 信息
+        if let Some(profile) = netease.get("profile").cloned() {
+            if let Some(profile_obj) = profile.as_object() {
+                let cleaned_profile = json!({
+                    "userId": profile_obj.get("userId"),
+                    "nickname": profile_obj.get("nickname"),
+                    "avatarUrl": profile_obj.get("avatarUrl"),
+                    "backgroundUrl": profile_obj.get("backgroundUrl"),
+                    "signature": profile_obj.get("signature"),
+                    "gender": profile_obj.get("gender"),
+                    "birthday": profile_obj.get("birthday"),
+                    "province": profile_obj.get("province"),
+                    "city": profile_obj.get("city"),
+                    "followeds": profile_obj.get("followeds"),
+                    "follows": profile_obj.get("follows"),
+                    "eventCount": profile_obj.get("eventCount"),
+                    "playlistCount": profile_obj.get("playlistCount"),
+                    "level": profile_obj.get("level"),
+                });
+                if let Some(obj) = netease.as_object_mut() {
+                    obj.insert("profile".to_string(), cleaned_profile);
+                }
+            }
+        }
     }
 
     tracing::info!("✓ Platform data cleaned (removed unnecessary fields)");
@@ -883,7 +1071,7 @@ pub async fn generate_report(
 ) -> (StatusCode, Json<Value>) {
     tracing::info!("Generating personal report (force={})...", query.force);
 
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
 
     // 检查缓存
     if let Some(cached_report) = get_cached_report(user_id, query.force) {
@@ -1181,7 +1369,7 @@ pub async fn generate_report(
     };
 
     // 缓存报告
-    cache_report(user_id, report.clone());
+    cache_report(&user_id.to_string(), report.clone());
 
     // 获取合并后的报告（包含历史all_cards）
     let final_report = get_cached_report(user_id, false).unwrap_or(report);
@@ -1247,7 +1435,7 @@ fn get_style_instruction(style: &str) -> String {
 
 /// 获取已保存的报告
 pub async fn get_report(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
 
     // 检查缓存（不强制刷新）
     if let Some(cached_report) = get_cached_report(user_id, false) {
@@ -1275,7 +1463,7 @@ pub async fn get_report(State(_db): State<DatabaseConnection>) -> (StatusCode, J
 
 /// 获取所有缓存的报告列表
 pub async fn list_reports(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
 
     let cache = REPORT_CACHE.lock().unwrap();
     let now = Utc::now();
@@ -1284,7 +1472,7 @@ pub async fn list_reports(State(_db): State<DatabaseConnection>) -> (StatusCode,
     let mut reports: Vec<Value> = cache
         .iter()
         .filter(|(key, (_, created_at))| {
-            key.starts_with(user_id) && now - *created_at < Duration::days(7)
+            key.starts_with(&user_id.to_string()) && now - *created_at < Duration::days(7)
         })
         .map(|(key, (report, created_at))| {
             json!({
@@ -1431,7 +1619,7 @@ pub async fn get_cache_debug_info(
 /// 从数据库或缓存中获取用户信息（支持多平台）
 /// 优先从数据库获取，若数据库无数据则从缓存获取
 pub async fn get_user_info(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
 
     // 创建元数据服务
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
@@ -1774,7 +1962,7 @@ pub async fn delete_card_from_report(
 }
 
 /// 将图片URL转换为代理URL（用于处理防盗链）
-fn proxy_image_url(url: &str) -> String {
+pub fn proxy_image_url(url: &str) -> String {
     // 检查是否需要代理（Bilibili图片）
     if url.contains("hdslb.com") || url.contains("bilibili.com") {
         format!("/api/proxy/image?url={}", urlencoding::encode(url))
@@ -1796,7 +1984,7 @@ pub struct LibraryItem {
 
 /// 获取资料库数据（游戏、视频、音乐）
 pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
 
     tracing::info!("📚 Fetching library data for user: {}", user_id);
 
@@ -1848,12 +2036,15 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                         ) {
                             // 根据season_type判断类型
                             // 1=番剧(动画), 2=电视剧, 3=纪录片, 4=国创, 5=电影
-                            let season_type = item.get("season_type").and_then(|s| s.as_i64()).unwrap_or(1);
+                            let season_type = item
+                                .get("season_type")
+                                .and_then(|s| s.as_i64())
+                                .unwrap_or(1);
                             let item_type = match season_type {
-                                1 | 4 => "anime",        // 番剧和国创归类为anime
-                                2 => "tv_series",        // 电视剧
-                                3 | 5 => "video",        // 纪录片和电影保持为video
-                                _ => "anime",            // 默认为anime
+                                1 | 4 => "anime", // 番剧和国创归类为anime
+                                2 => "tv_series", // 电视剧
+                                3 | 5 => "video", // 纪录片和电影保持为video
+                                _ => "anime",     // 默认为anime
                             };
 
                             // 创建包含链接信息的metadata
@@ -2028,7 +2219,10 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                         item.get("cover").and_then(|c| c.as_str()),
                     ) {
                         // 根据season_type判断类型
-                        let season_type = item.get("season_type").and_then(|s| s.as_i64()).unwrap_or(1);
+                        let season_type = item
+                            .get("season_type")
+                            .and_then(|s| s.as_i64())
+                            .unwrap_or(1);
                         let item_type = match season_type {
                             1 | 4 => "anime",
                             2 => "tv_series",
@@ -2186,7 +2380,7 @@ pub struct BatchUserInfoResponse {
 pub async fn get_batch_user_info(
     State(db): State<DatabaseConnection>,
 ) -> (StatusCode, Json<Value>) {
-    let user_id = "default_user"; // TODO: 从认证中获取真实用户ID
+    let user_id = 1; // TODO: 从认证中获取真实用户ID
 
     tracing::info!("📦 Fetching batch user info for: {}", user_id);
 

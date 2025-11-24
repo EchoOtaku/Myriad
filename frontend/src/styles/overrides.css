@@ -222,3 +222,20 @@ button:disabled {
     --border-color: rgba(255, 255, 255, 0.3);
   }
 }
+
+/* 全局透明无边框输入框样式 */
+.clean-input {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  appearance: none !important;
+}
+
+.clean-input:focus {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  --tw-ring-color: transparent !important;
+}

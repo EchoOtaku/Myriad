@@ -47,7 +47,7 @@ html.dark {
 
 /* 全局过渡 */
 html {
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   scroll-behavior: smooth;
   overflow-y: auto;
   overflow-x: hidden;
@@ -56,24 +56,33 @@ html {
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: 'Inter', sans-serif;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+#bg-container {
+  transition: background 0.5s ease-out;
+}
+
 /* Glass effect */
 .glass {
   background: rgba(255, 255, 255, 0.7);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+  transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html.dark .glass {
   background: rgba(26, 26, 26, 0.8);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
 }
@@ -93,11 +102,22 @@ html.dark .bg-grid-pattern {
 }
 
 html.dark #bg-container {
-  background: linear-gradient(to bottom, #0a0a0a, #1a1a1a);
+  background: linear-gradient(to bottom, #0a0a0a 0%, #121212 50%, #1a1a1a 100%);
+  transition: background 0.5s ease-out;
 }
 
 html.dark #bg-gradient {
-  background: linear-gradient(to bottom, transparent 45%, rgba(10, 10, 10, 0.6) 50%, rgba(10, 10, 10, 0.95) 100%) !important;
+  background: linear-gradient(
+    to bottom, 
+    transparent 0%, 
+    transparent 35%,
+    rgba(10, 10, 10, 0.3) 45%,
+    rgba(10, 10, 10, 0.5) 55%,
+    rgba(10, 10, 10, 0.75) 70%,
+    rgba(10, 10, 10, 0.9) 85%,
+    rgba(10, 10, 10, 0.95) 100%
+  ) !important;
+  transition: opacity 0.5s ease-out;
 }
 
 /* 彻底隐藏滚动条 */

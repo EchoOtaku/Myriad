@@ -70,11 +70,10 @@ export const routeComponents = {
  */
 export const componentLazy = {
   // 大型组件
-  ReportCards: lazyWithPreload(() => import('../components/ReportCards')),
   LibraryGrid: lazyWithPreload(() => import('../components/LibraryGrid')),
   ConfigForm: lazyWithPreload(() => import('../components/ConfigForm')),
   GlobalControlPanel: lazyWithPreload(() => import('../components/GlobalControlPanel')),
-  
+
   // 辅助组件
   SetupWizard: lazyWithPreload(() => import('../components/SetupWizard')),
 };

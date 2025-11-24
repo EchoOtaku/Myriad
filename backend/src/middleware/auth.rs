@@ -11,7 +11,7 @@ use serde_json::json;
 use std::env;
 
 /// JWT Claims structure (must match auth.rs)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,      // User ID
     pub username: String, // Username
@@ -26,8 +26,10 @@ pub async fn auth_middleware(req: Request, next: Next) -> Response {
     let headers = req.headers();
 
     match verify_jwt_token(headers) {
-        Ok(_claims) => {
-            // Token is valid, proceed to next handler
+        Ok(claims) => {
+            // Token is valid, inject claims into request extensions
+            let mut req = req;
+            req.extensions_mut().insert(claims);
             next.run(req).await
         }
         Err(error_response) => *error_response,
@@ -152,7 +154,6 @@ pub fn verify_jwt_token(headers: &HeaderMap) -> Result<Claims, Box<Response>> {
 
 /// Optional authentication - extracts claims if token is present, but doesn't fail if missing
 /// Useful for endpoints that behave differently for authenticated users but are also public
-#[allow(dead_code)]
 pub fn extract_optional_claims(headers: &HeaderMap) -> Option<Claims> {
     // 尝试从 Authorization header 或 Cookie 获取 token
     let token = headers

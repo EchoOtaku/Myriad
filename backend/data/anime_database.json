@@ -1,0 +1,514 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "title": "阿甘正传",
+      "category": "Movie",
+      "genres": [
+        "剧情",
+        "励志"
+      ],
+      "rating": 9.5,
+      "aliases": [
+        "Forrest Gump"
+      ]
+    },
+    {
+      "title": "西部世界",
+      "category": "TvSeries",
+      "genres": [
+        "科幻",
+        "悬疑",
+        "西部"
+      ],
+      "rating": 8.6,
+      "aliases": [
+        "Westworld"
+      ]
+    },
+    {
+      "title": "隐秘的角落",
+      "category": "TvSeries",
+      "genres": [
+        "悬疑",
+        "犯罪",
+        "心理"
+      ],
+      "rating": 8.9,
+      "aliases": []
+    },
+    {
+      "title": "怪奇物语",
+      "category": "TvSeries",
+      "genres": [
+        "科幻",
+        "悬疑",
+        "恐怖"
+      ],
+      "rating": 8.7,
+      "aliases": [
+        "Stranger Things"
+      ]
+    },
+    {
+      "title": "海贼王",
+      "category": "Anime",
+      "genres": [
+        "冒险",
+        "热血",
+        "战斗"
+      ],
+      "rating": 8.9,
+      "aliases": [
+        "One Piece"
+      ]
+    },
+    {
+      "title": "电锯人",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "黑暗"
+      ],
+      "rating": 8.7,
+      "aliases": [
+        "Chainsaw Man"
+      ]
+    },
+    {
+      "title": "星际穿越",
+      "category": "Movie",
+      "genres": [
+        "科幻",
+        "冒险",
+        "家庭"
+      ],
+      "rating": 9.3,
+      "aliases": [
+        "Interstellar"
+      ]
+    },
+    {
+      "title": "间谍过家家",
+      "category": "Anime",
+      "genres": [
+        "日常",
+        "喜剧",
+        "温馨"
+      ],
+      "rating": 9.0,
+      "aliases": [
+        "SPY×FAMILY"
+      ]
+    },
+    {
+      "title": "东京喰种",
+      "category": "Anime",
+      "genres": [
+        "黑暗",
+        "战斗",
+        "悬疑"
+      ],
+      "rating": 8.3,
+      "aliases": [
+        "Tokyo Ghoul"
+      ]
+    },
+    {
+      "title": "霸王别姬",
+      "category": "Movie",
+      "genres": [
+        "剧情",
+        "历史"
+      ],
+      "rating": 9.6,
+      "aliases": [
+        "Farewell My Concubine"
+      ]
+    },
+    {
+      "title": "泰坦尼克号",
+      "category": "Movie",
+      "genres": [
+        "爱情",
+        "灾难"
+      ],
+      "rating": 9.4,
+      "aliases": [
+        "Titanic"
+      ]
+    },
+    {
+      "title": "这个杀手不太冷",
+      "category": "Movie",
+      "genres": [
+        "动作",
+        "剧情"
+      ],
+      "rating": 9.4,
+      "aliases": [
+        "Léon"
+      ]
+    },
+    {
+      "title": "进击的巨人",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "悬疑",
+        "黑暗"
+      ],
+      "rating": 9.3,
+      "aliases": [
+        "Attack on Titan",
+        "Shingeki no Kyojin"
+      ]
+    },
+    {
+      "title": "肖申克的救赎",
+      "category": "Movie",
+      "genres": [
+        "剧情",
+        "励志"
+      ],
+      "rating": 9.7,
+      "aliases": [
+        "The Shawshank Redemption"
+      ]
+    },
+    {
+      "title": "纸牌屋",
+      "category": "TvSeries",
+      "genres": [
+        "政治",
+        "剧情"
+      ],
+      "rating": 8.8,
+      "aliases": [
+        "House of Cards"
+      ]
+    },
+    {
+      "title": "命运石之门",
+      "category": "Anime",
+      "genres": [
+        "科幻",
+        "悬疑",
+        "时空"
+      ],
+      "rating": 9.4,
+      "aliases": [
+        "Steins;Gate"
+      ]
+    },
+    {
+      "title": "无职转生",
+      "category": "Anime",
+      "genres": [
+        "奇幻",
+        "冒险",
+        "异世界"
+      ],
+      "rating": 8.7,
+      "aliases": [
+        "Mushoku Tensei"
+      ]
+    },
+    {
+      "title": "死神",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "超能力"
+      ],
+      "rating": 8.2,
+      "aliases": [
+        "Bleach"
+      ]
+    },
+    {
+      "title": "权力的游戏",
+      "category": "TvSeries",
+      "genres": [
+        "奇幻",
+        "史诗",
+        "战争"
+      ],
+      "rating": 9.2,
+      "aliases": [
+        "Game of Thrones"
+      ]
+    },
+    {
+      "title": "绝命毒师",
+      "category": "TvSeries",
+      "genres": [
+        "犯罪",
+        "剧情"
+      ],
+      "rating": 9.5,
+      "aliases": [
+        "Breaking Bad"
+      ]
+    },
+    {
+      "title": "咒术回战",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "超能力"
+      ],
+      "rating": 8.9,
+      "aliases": [
+        "Jujutsu Kaisen"
+      ]
+    },
+    {
+      "title": "盗梦空间",
+      "category": "Movie",
+      "genres": [
+        "科幻",
+        "悬疑",
+        "动作"
+      ],
+      "rating": 9.3,
+      "aliases": [
+        "Inception"
+      ]
+    },
+    {
+      "title": "辉夜大小姐想让我告白",
+      "category": "Anime",
+      "genres": [
+        "恋爱",
+        "喜剧",
+        "校园"
+      ],
+      "rating": 8.8,
+      "aliases": [
+        "Kaguya-sama"
+      ]
+    },
+    {
+      "title": "火影忍者",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "忍者"
+      ],
+      "rating": 8.7,
+      "aliases": [
+        "Naruto"
+      ]
+    },
+    {
+      "title": "使女的故事",
+      "category": "TvSeries",
+      "genres": [
+        "科幻",
+        "反乌托邦"
+      ],
+      "rating": 8.5,
+      "aliases": [
+        "The Handmaid's Tale"
+      ]
+    },
+    {
+      "title": "美丽人生",
+      "category": "Movie",
+      "genres": [
+        "剧情",
+        "战争",
+        "喜剧"
+      ],
+      "rating": 9.5,
+      "aliases": [
+        "Life Is Beautiful"
+      ]
+    },
+    {
+      "title": "钢之炼金术师",
+      "category": "Anime",
+      "genres": [
+        "冒险",
+        "奇幻",
+        "热血"
+      ],
+      "rating": 9.6,
+      "aliases": [
+        "Fullmetal Alchemist"
+      ]
+    },
+    {
+      "title": "Re:从零开始的异世界生活",
+      "category": "Anime",
+      "genres": [
+        "奇幻",
+        "轮回",
+        "黑暗"
+      ],
+      "rating": 8.6,
+      "aliases": [
+        "Re:Zero"
+      ]
+    },
+    {
+      "title": "我的英雄学院",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "超能力"
+      ],
+      "rating": 8.5,
+      "aliases": [
+        "My Hero Academia",
+        "Boku no Hero Academia"
+      ]
+    },
+    {
+      "title": "JOJO的奇妙冒险",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "奇幻"
+      ],
+      "rating": 8.9,
+      "aliases": [
+        "JoJo's Bizarre Adventure"
+      ]
+    },
+    {
+      "title": "紫罗兰永恒花园",
+      "category": "Anime",
+      "genres": [
+        "治愈",
+        "催泪",
+        "文艺"
+      ],
+      "rating": 9.1,
+      "aliases": [
+        "Violet Evergarden"
+      ]
+    },
+    {
+      "title": "开端",
+      "category": "TvSeries",
+      "genres": [
+        "悬疑",
+        "科幻",
+        "时空"
+      ],
+      "rating": 8.8,
+      "aliases": []
+    },
+    {
+      "title": "葬送的芙莉莲",
+      "category": "Anime",
+      "genres": [
+        "治愈",
+        "MADHouse",
+        "奇幻"
+      ],
+      "rating": 0.0,
+      "aliases": [
+        "葬送のフリーレン"
+      ]
+    },
+    {
+      "title": "黑镜",
+      "category": "TvSeries",
+      "genres": [
+        "科幻",
+        "悬疑",
+        "黑色"
+      ],
+      "rating": 8.9,
+      "aliases": [
+        "Black Mirror"
+      ]
+    },
+    {
+      "title": "一拳超人",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "喜剧"
+      ],
+      "rating": 9.0,
+      "aliases": [
+        "One Punch Man"
+      ]
+    },
+    {
+      "title": "狂飙",
+      "category": "TvSeries",
+      "genres": [
+        "犯罪",
+        "悬疑",
+        "社会"
+      ],
+      "rating": 9.1,
+      "aliases": []
+    },
+    {
+      "title": "千与千寻",
+      "category": "Movie",
+      "genres": [
+        "动画",
+        "奇幻",
+        "治愈"
+      ],
+      "rating": 9.4,
+      "aliases": [
+        "Spirited Away"
+      ]
+    },
+    {
+      "title": "鬼灭之刃",
+      "category": "Anime",
+      "genres": [
+        "热血",
+        "战斗",
+        "少年"
+      ],
+      "rating": 9.2,
+      "aliases": [
+        "Demon Slayer",
+        "Kimetsu no Yaiba"
+      ]
+    },
+    {
+      "title": "四月是你的谎言",
+      "category": "Anime",
+      "genres": [
+        "治愈",
+        "催泪",
+        "音乐"
+      ],
+      "rating": 8.9,
+      "aliases": [
+        "Your Lie in April"
+      ]
+    },
+    {
+      "title": "辛德勒的名单",
+      "category": "Movie",
+      "genres": [
+        "历史",
+        "战争",
+        "剧情"
+      ],
+      "rating": 9.5,
+      "aliases": [
+        "Schindler's List"
+      ]
+    }
+  ]
+}
