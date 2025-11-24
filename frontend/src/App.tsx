@@ -11,6 +11,7 @@ import { AppLayout } from './layouts/AppLayout';
 import { recordNavigation } from './router/navigationHistory';
 import RouteLoader from './components/RouteLoader';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import CustomScrollbar from './components/CustomScrollbar';
 import { preloadCriticalRoutes } from './utils/codeSplitting';
 import './styles/fonts.css';
@@ -180,19 +181,21 @@ export function App() {
   return (
     <BrowserRouter>
       <NotificationProvider>
-        <RouteLoader />
-        <CustomScrollbar />
-        <AppLayout>
-          <Suspense fallback={<LoadingFallback />}>
-            <AppRoutes />
-          </Suspense>
-        </AppLayout>
-        {/* 开发环境下显示合并的性能监控工具 */}
-        {import.meta.env.DEV && (
-          <Suspense fallback={null}>
-            {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
-          </Suspense>
-        )}
+        <MusicPlayerProvider>
+          <RouteLoader />
+          <CustomScrollbar />
+          <AppLayout>
+            <Suspense fallback={<LoadingFallback />}>
+              <AppRoutes />
+            </Suspense>
+          </AppLayout>
+          {/* 开发环境下显示合并的性能监控工具 */}
+          {import.meta.env.DEV && (
+            <Suspense fallback={null}>
+              {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+            </Suspense>
+          )}
+        </MusicPlayerProvider>
       </NotificationProvider>
     </BrowserRouter>
   );

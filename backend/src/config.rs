@@ -182,6 +182,10 @@ pub struct DynamicConfig {
     pub github_client_id: Option<String>,
     pub github_client_secret: Option<String>,
     pub github_redirect_url: String,
+
+    // 仪表盘配置
+    pub dashboard_layout: Option<String>,
+    pub dashboard_title: Option<String>,
 }
 
 impl Default for DynamicConfig {
@@ -238,6 +242,9 @@ impl Default for DynamicConfig {
             github_client_id: None,
             github_client_secret: None,
             github_redirect_url: "http://localhost:3000/api/auth/github/callback".to_string(),
+
+            dashboard_layout: None,
+            dashboard_title: None,
         }
     }
 }

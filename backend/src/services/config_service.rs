@@ -205,6 +205,21 @@ impl ConfigService {
             }
         }
 
+        // 仪表盘配置
+        if let Some(v) = map.get("dashboard_layout") {
+            // 如果是字符串直接使用，如果是对象/数组则转为字符串
+            if let Some(s) = v.as_str() {
+                config.dashboard_layout = Some(s.to_string());
+            } else {
+                config.dashboard_layout = Some(v.to_string());
+            }
+        }
+        if let Some(v) = map.get("dashboard_title") {
+            if let Some(s) = v.as_str() {
+                config.dashboard_title = Some(s.to_string());
+            }
+        }
+
         // 网站元数据配置
         if let Some(v) = map.get("site_title") {
             config.site_title = v.as_str().map(|s| s.to_string());

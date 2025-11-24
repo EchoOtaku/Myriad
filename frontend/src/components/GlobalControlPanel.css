@@ -1126,17 +1126,17 @@ html.dark .control-panel-overlay {
   box-shadow: 0 4px 16px color-mix(in srgb, var(--music-base-primary) 4%, rgba(0, 0, 0, 0.04));
   /* 只为必要的属性添加过渡，不使用 all 以避免影响 CSS 变量 */
   transition: 
-    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 颜色过渡状态 - 淡出效果 */
+/* 颜色过渡状态 - 淡出效果（优化：更快的响应速度） */
 .music-player-container.color-transitioning {
-  opacity: 0.7;
-  transform: scale(0.98);
+  opacity: 0.75;
+  transform: scale(0.99);
 }
 
 html.dark .music-player-container {
@@ -3639,4 +3639,22 @@ html.dark .login-close-btn:hover {
     top: 0.5rem;
     right: 0.5rem;
   }
+}
+
+/* ==========================================
+   音乐播放器小组件动画
+   ========================================== */
+
+@keyframes music-bar {
+  0%, 100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-music-bar {
+  animation: music-bar 0.8s ease-in-out infinite;
+  transform-origin: bottom;
 }

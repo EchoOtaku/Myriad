@@ -713,6 +713,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                 const platformColor = getPlatformColor(item.platform);
                                 const isVip = (item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4);
                                 const currentSongId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
+                                
+                                // Context 实时状态，无需额外检查
                                 const isCurrentSong = currentSong && currentSong.id === currentSongId;
                                 const isPlaying = isCurrentSong && globalIsPlaying;
                                 

@@ -1313,7 +1313,49 @@ pub async fn get_public_ui_config(State(db): State<DatabaseConnection>) -> (Stat
             db_config.as_ref().and_then(|c| c.music_playlist_id.clone()),
             "MUSIC_PLAYLIST_ID"
         ),
+        "dashboard_layout": db_config.as_ref().and_then(|c| c.dashboard_layout.clone()),
+        "dashboard_title": db_config.as_ref().and_then(|c| c.dashboard_title.clone()),
     });
 
     (StatusCode::OK, Json(ui_config))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DashboardConfigPayload {
+    pub layout: Option<Value>,
+    pub title: Option<String>,
+}
+
+pub async fn update_dashboard_config(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<DashboardConfigPayload>,
+) -> (StatusCode, Json<Value>) {
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    let mut updates = std::collections::HashMap::new();
+
+    if let Some(layout) = payload.layout {
+        updates.insert("dashboard_layout".to_string(), layout);
+    }
+
+    if let Some(title) = payload.title {
+        updates.insert("dashboard_title".to_string(), json!(title));
+    }
+
+    if let Err(e) = config_service.update_configs(updates).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": format!("Failed to update dashboard config: {}", e)
+            })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "message": "Dashboard configuration updated successfully"
+        })),
+    )
 }

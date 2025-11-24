@@ -2461,3 +2461,88 @@ pub async fn get_batch_user_info(
         })),
     )
 }
+
+/// 获取最近活动记录
+#[derive(Deserialize)]
+pub struct ActivityQuery {
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActivityItem {
+    pub id: i32,
+    pub platform_name: String,
+    pub changed_fields: Value,
+    pub change_date: String,
+    pub item_type: Option<String>,
+    pub item_title: Option<String>,
+}
+
+pub async fn get_recent_activities(
+    Query(params): Query<ActivityQuery>,
+    State(db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    use crate::models::entities::metadata_history;
+    use sea_orm::{EntityTrait, QueryOrder, QuerySelect};
+
+    let limit = params.limit.unwrap_or(10).min(50); // 最多50条
+
+    match metadata_history::Entity::find()
+        .order_by_desc(metadata_history::Column::ChangeDate)
+        .limit(limit)
+        .all(&db)
+        .await
+    {
+        Ok(records) => {
+            let activities: Vec<ActivityItem> = records
+                .into_iter()
+                .map(|record| {
+                    // 从 changed_fields 中提取信息
+                    let changed_fields = record.changed_fields.clone();
+                    let item_type = changed_fields
+                        .get("item_type")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let item_title = changed_fields
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .or_else(|| {
+                            changed_fields
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
+                        });
+
+                    ActivityItem {
+                        id: record.id,
+                        platform_name: record.platform_name,
+                        changed_fields,
+                        change_date: record.change_date.to_string(),
+                        item_type,
+                        item_title,
+                    }
+                })
+                .collect();
+
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "activities": activities,
+                    "count": activities.len()
+                })),
+            )
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch activities: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Failed to fetch activities: {}", e)
+                })),
+            )
+        }
+    }
+}

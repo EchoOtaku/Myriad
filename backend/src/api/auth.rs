@@ -629,6 +629,7 @@ pub async fn get_current_user(
         .try_get("", "avatar_url")
         .unwrap_or_else(|_| "https://github.com/ghost.png".to_string());
     let github_id: Option<i64> = user_row.try_get("", "github_id").ok();
+    let bio: Option<String> = user_row.try_get("", "bio").ok();
 
     tracing::info!("User info retrieved: {} (ID: {})", username, id);
 
@@ -640,6 +641,7 @@ pub async fn get_current_user(
         "is_admin": is_admin,
         "avatar_url": avatar_url,
         "github_id": github_id,
+        "bio": bio,
     })))
 }
 

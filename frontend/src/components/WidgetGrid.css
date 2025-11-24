@@ -1,0 +1,13 @@
+/* WidgetGrid 专用样式 */
+
+/* 16x4 网格布局 */
+.widget-grid-container {
+  aspect-ratio: 4 / 1;
+}
+
+/* 网格背景 */
+.widget-grid-background {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+}

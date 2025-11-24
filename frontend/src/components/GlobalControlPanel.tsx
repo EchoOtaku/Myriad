@@ -86,17 +86,20 @@ const GlobalControlPanel: React.FC = () => {
   const { wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper();
   
   // 音乐播放器状态
-  const [playlist, setPlaylist] = useState<Song[]>([]);
-  const [currentSongIndex, setCurrentSongIndex] = useState(0);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  // 尝试从全局状态恢复，避免页面切换时状态重置
+  const globalState = (window as any).__musicPlayerState;
+  
+  const [playlist, setPlaylist] = useState<Song[]>(globalState?.playlist || []);
+  const [currentSongIndex, setCurrentSongIndex] = useState(globalState?.currentSongIndex || 0);
+  const [currentSong, setCurrentSong] = useState<Song | null>(globalState?.currentSong || null);
+  const [isPlaying, setIsPlaying] = useState(false); // 播放状态不恢复，避免自动播放
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0); // 实际音频时长（从audio元素获取）
   const [volume, setVolume] = useState(0.7);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
-  const [musicEnabled, setMusicEnabled] = useState(false);
+  const [musicEnabled, setMusicEnabled] = useState(globalState?.isEnabled || false);
   const [musicSource, setMusicSource] = useState<MusicSource>('netease');
   const [playlistId, setPlaylistId] = useState('');
   const [musicError, setMusicError] = useState<string>('');
@@ -602,7 +605,8 @@ const GlobalControlPanel: React.FC = () => {
       preloadErrorCountRef.current = 0;
       preloadDisabledUntilRef.current = 0;
 
-      const response = await fetch(`${API_URL}/api/config/ui`);
+      // 添加时间戳防止缓存
+      const response = await fetch(`${API_URL}/api/config/ui?t=${Date.now()}`);
       const data = await response.json();
 
       const enabled = data.music_enabled === 'true';
@@ -617,6 +621,20 @@ const GlobalControlPanel: React.FC = () => {
       if (enabled && plistId) {
         loadPlaylist(source as MusicSource, plistId);
       }
+      
+      // 触发状态同步事件
+      window.dispatchEvent(new CustomEvent('music-player-state-change', {
+        detail: {
+          currentSong,
+          isEnabled: enabled,
+          isPlaying,
+          musicColor: musicColors?.primary || '#ef4444',
+          isTempPlay: tempPlayModeRef.current.enabled,
+          currentSongIndex,
+          playlistLength: playlist.length,
+          playlist: playlist,
+        },
+      }));
     } catch (error) {
       // 静默处理错误
     }
@@ -757,6 +775,20 @@ const GlobalControlPanel: React.FC = () => {
     setCurrentSongIndex(index);
     setAudioDuration(0); // 重置音频时长，等待新歌曲加载
 
+    // 立即触发一次状态更新，让UI先响应歌曲变化（解决封面更新延迟问题）
+    window.dispatchEvent(new CustomEvent('music-player-state-change', {
+      detail: {
+        currentSong: song,
+        isEnabled: musicEnabled,
+        isPlaying: false, // 暂时设为false，等待音频加载
+        musicColor: musicColors?.primary || '#ef4444', // 使用当前颜色或默认
+        isTempPlay: tempPlayModeRef.current.enabled,
+        currentSongIndex: index,
+        playlistLength: playlist.length,
+        playlist: playlist,
+      },
+    }));
+
     // 提取封面颜色 - 添加淡出淡入效果
     if (song.cover) {
       try {
@@ -875,8 +907,21 @@ const GlobalControlPanel: React.FC = () => {
 
     // 更新动态内容
     loadDynamicContents();
-    // ✅ 添加缺失的依赖项，避免闭包过时问题
-  }, [loadDynamicContents, playlist, preloadNextSong, playMode, excludeVipSongs, generateNextShuffleIndex]);
+    
+    // 立即触发状态更新事件
+    window.dispatchEvent(new CustomEvent('music-player-state-change', {
+      detail: {
+        currentSong: song,
+        isEnabled: musicEnabled,
+        isPlaying: autoPlay,
+        musicColor: musicColors?.primary || '#ef4444',
+        isTempPlay: tempPlayModeRef.current.enabled,
+        currentSongIndex: index,
+        playlistLength: playlist.length,
+        playlist: playlist,
+      },
+    }));
+  }, [loadDynamicContents, playlist, preloadNextSong, playMode, excludeVipSongs, generateNextShuffleIndex, musicEnabled, musicColors]);
 
   // 外部调用接口：播放单首歌曲（临时播放模式）
   const playSong = useCallback((song: Song) => {
@@ -981,6 +1026,20 @@ const GlobalControlPanel: React.FC = () => {
   useEffect(() => {
     loadMusicConfig();
     checkGithubOAuth();
+    
+    // 立即触发一次状态同步，确保页面切换后状态正确
+    window.dispatchEvent(new CustomEvent('music-player-state-change', {
+      detail: {
+        currentSong,
+        isEnabled: musicEnabled,
+        isPlaying,
+        musicColor: musicColors?.primary || '#ef4444',
+        isTempPlay: tempPlayModeRef.current.enabled,
+        currentSongIndex,
+        playlistLength: playlist.length,
+        playlist: playlist,
+      },
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 仅在组件挂载时运行一次
 
@@ -1421,10 +1480,10 @@ const GlobalControlPanel: React.FC = () => {
                 if (musicContainer) {
                   const tid2 = window.setTimeout(() => {
                     musicContainer.classList.remove('color-transitioning');
-                  }, 50);
+                  }, 30);
                   timeoutIdsRef.current.push(tid2);
                 }
-              }, 300);
+              }, 150);
               timeoutIdsRef.current.push(tid1);
             } catch (error) {
               setMusicColors(null);
@@ -1530,6 +1589,18 @@ const GlobalControlPanel: React.FC = () => {
       audioRef.current.pause();
       setIsPlaying(false);
       audioManager.setPlaybackState('paused');
+      window.dispatchEvent(new CustomEvent('music-player-state-change', {
+        detail: {
+          currentSong,
+          isEnabled: musicEnabled,
+          isPlaying: false,
+          musicColor: musicColors?.primary || '#ef4444',
+          isTempPlay: tempPlayModeRef.current.enabled,
+          currentSongIndex,
+          playlistLength: playlist.length,
+          playlist: playlist,
+        },
+      }));
     } else {
       // 实现自动重试机制
       const maxRetries = 3;
@@ -1540,7 +1611,19 @@ const GlobalControlPanel: React.FC = () => {
           await audioRef.current.play();
           setIsPlaying(true);
           audioManager.setPlaybackState('playing');
-          break; // 播放成功，退出循环
+          window.dispatchEvent(new CustomEvent('music-player-state-change', {
+            detail: {
+              currentSong,
+              isEnabled: musicEnabled,
+              isPlaying: true,
+              musicColor: musicColors?.primary || '#ef4444',
+              isTempPlay: tempPlayModeRef.current.enabled,
+              currentSongIndex,
+              playlistLength: playlist.length,
+              playlist: playlist,
+            },
+          }));
+          break;
         } catch (error) {
           retries++;
           console.warn(`播放失败，重试 ${retries}/${maxRetries}:`, error);
@@ -1881,6 +1964,7 @@ const GlobalControlPanel: React.FC = () => {
         const filtered = prev.filter(c => c.type !== 'music');
 
         return [
+
           {
             type: 'music' as const,
             icon: isPlaying ? '🎵' : '⏸️',
@@ -1939,6 +2023,29 @@ const GlobalControlPanel: React.FC = () => {
     };
   }, [isExpanded, handleTogglePanel]);
 
+  // 监听音乐状态同步请求（来自页面切换时的LibraryGrid等组件）
+  useEffect(() => {
+    const handleSyncRequest = () => {
+      // 立即发送当前音乐状态
+      window.dispatchEvent(new CustomEvent('music-player-state-change', {
+        detail: {
+          currentSong,
+          isEnabled: musicEnabled,
+          isPlaying,
+          musicColor: musicColors?.primary || '#ef4444',
+          isTempPlay: tempPlayModeRef.current.enabled,
+          currentSongIndex,
+          playlistLength: playlist.length,
+        },
+      }));
+    };
+
+    window.addEventListener('request-music-state-sync', handleSyncRequest);
+    return () => {
+      window.removeEventListener('request-music-state-sync', handleSyncRequest);
+    };
+  }, [currentSong, musicEnabled, isPlaying, musicColors, currentSongIndex, playlist.length]);
+
   // 发送音乐播放器状态变化事件
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('music-player-state-change', {
@@ -1946,11 +2053,13 @@ const GlobalControlPanel: React.FC = () => {
         currentSong,
         isEnabled: musicEnabled,
         isPlaying,
-        musicColor: musicColors?.primary || '#ef4444', // 发送封面提取的主色调
-        isTempPlay: tempPlayModeRef.current.enabled, // 是否为临时播放模式
+        musicColor: musicColors?.primary || '#ef4444',
+        isTempPlay: tempPlayModeRef.current.enabled,
+        currentSongIndex,
+        playlistLength: playlist.length,
       },
     }));
-  }, [currentSong, musicEnabled, isPlaying, musicColors]);
+  }, [currentSong, musicEnabled, isPlaying, musicColors, currentSongIndex, playlist.length]);
 
   // 监听停止临时播放事件
   useEffect(() => {
@@ -2191,6 +2300,7 @@ const GlobalControlPanel: React.FC = () => {
                             <div className="music-info-main">
                               <div className="music-album-cover-large">
                                 <img
+                                  key={currentSong.cover} // 添加 key 属性，强制 React 在封面变化时重新渲染 img 元素
                                   src={currentSong.cover || 'https://via.placeholder.com/70'}
                                   alt={currentSong.name}
                                   onError={(e) => {
@@ -2254,8 +2364,8 @@ const GlobalControlPanel: React.FC = () => {
                                     aria-label="查看歌词"
                                     title="歌词"
                                   >
-                                    <svg fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" clipRule="evenodd" />
+                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" />
                                     </svg>
                                   </button>
                                 )}
@@ -2349,9 +2459,8 @@ const GlobalControlPanel: React.FC = () => {
                                     aria-label="查看播放列表"
                                     title="列表"
                                   >
-                                    <svg fill="currentColor" viewBox="0 0 20 20">
-                                      <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                                      <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path fillRule="evenodd" d="M2.625 6.75a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0A.75.75 0 018.25 6h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75zM2.625 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zM7.5 12a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12A.75.75 0 017.5 12zm-4.875 5.25a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75z" clipRule="evenodd" />
                                     </svg>
                                   </button>
                                 )}
@@ -2454,7 +2563,7 @@ const GlobalControlPanel: React.FC = () => {
                             >
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
+                            </svg>
                             </button>
                             <div className="music-playlist-title">
                               播放列表 ({filteredPlaylist.length}/{playlist.length}首)
