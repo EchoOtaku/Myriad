@@ -70,6 +70,11 @@ pub async fn admin_middleware(req: Request, next: Next) -> Response {
                 "✅ Admin access granted to user: {} (is_admin=true)",
                 claims.username
             );
+
+            // ✅ 关键修复: 将 claims 注入到 request extensions 中
+            // 这样后续的 Extension(claims) 提取器才能正常工作
+            let mut req = req;
+            req.extensions_mut().insert(claims);
             next.run(req).await
         }
         Err(error_response) => *error_response,

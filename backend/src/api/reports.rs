@@ -105,11 +105,9 @@ pub async fn generate_platform_reports(
     Extension(claims): Extension<Claims>,
     Json(req): Json<GeneratePlatformReportsRequest>,
 ) -> Result<Json<Value>, StatusCode> {
-    tracing::info!(
-        "📊 Starting platform report generation for platforms: {:?}",
-        req.platforms
-    );
-    tracing::info!("👤 User: {} (ID: {})", claims.username, claims.sub);
+    tracing::info!("📊 [ENTRY] generate_platform_reports called");
+    tracing::info!("   Platforms: {:?}", req.platforms);
+    tracing::info!("   User: {} (ID: {})", claims.username, claims.sub);
 
     let user_id = claims.sub.parse::<i32>().map_err(|e| {
         tracing::error!("❌ Failed to parse user_id: {}", e);
