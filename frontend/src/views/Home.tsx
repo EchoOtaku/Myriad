@@ -321,9 +321,9 @@ export default function Home() {
   };
 
   return (
-    <AnimatedView className="h-screen overflow-hidden">
+    <AnimatedView className="h-screen overflow-y-auto lg:overflow-hidden">
       <div className="h-full flex flex-col pt-20 pb-6 px-3 xs:px-4 sm:px-6">
-        <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col gap-4 p-2 relative">
+        <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col gap-4 p-2 relative min-h-0">
           {/* 小组件网格区域 - 占满整个可用空间 */}
           <WidgetGrid
             widgets={widgets}

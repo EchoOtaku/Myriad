@@ -452,22 +452,22 @@ const MusicStatsWidget = memo(({ data }: any) => {
           ))}
         </div>
         <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-20">
-          <motion.div className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #ffebee, #ffcdd2)', color: '#d32f2f', boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)' }}
+          <motion.div className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
+            style={{ boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)' }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }} animate={{ scale: 1, opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
             <span className="text-[7px]">●</span><span>Lv.{level}</span>
           </motion.div>
-          <motion.div className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg"
-            style={{ background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.3)' }}
+          <motion.div className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-gray-800/90 border border-white/30 dark:border-gray-700/50"
+            style={{ backdropFilter: 'blur(10px)' }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }} animate={{ scale: 1, opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
             <div className="flex flex-col items-end">
-              <span className="text-lg font-black leading-none" style={{ color: '#1a1a1a' }}>{formatNumber(followerCount)}</span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold" style={{ color: '#4a4a4a', fontFamily: 'Georgia, serif' }}>Fans</span>
+              <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">{formatNumber(followerCount)}</span>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>Fans</span>
             </div>
             <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
             <div className="flex flex-col items-end">
-              <span className="text-lg font-black leading-none" style={{ color: '#1a1a1a' }}>{formatNumber(playlistCount)}</span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold" style={{ color: '#4a4a4a', fontFamily: 'Georgia, serif' }}>Lists</span>
+              <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">{formatNumber(playlistCount)}</span>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>Lists</span>
             </div>
           </motion.div>
         </div>
@@ -636,9 +636,13 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
         <div 
-          className="rounded-lg flex items-center gap-2 backdrop-blur-sm shadow-lg transition-all overflow-hidden"
+          className={`rounded-lg flex items-center gap-2 ${platformConfig.textColor} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
+            cardContent 
+              ? 'bg-white/95 dark:bg-gray-800/95' 
+              : ''
+          }`}
           style={{ 
-            background: cardContent ? 'rgba(255, 255, 255, 0.95)' : platformConfig.bgColor,
+            background: cardContent ? undefined : platformConfig.bgColor,
             border: `1px solid ${platformConfig.borderColor}`,
             padding: cardContent ? (platformId === 'netease' && cardContent.titles ? '4px 8px' : '0 8px') : '0 8px',
             height: cardContent ? (platformId === 'netease' && cardContent.titles ? 'auto' : '32px') : '32px'

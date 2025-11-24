@@ -3,9 +3,10 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaEdit, FaSave, FaTimes, FaPlus } from 'react-icons/fa';
+import React from 'react';
 import './WidgetGrid.css';
 
 // 小组件尺寸配置
@@ -30,6 +31,7 @@ export interface WidgetComponentProps {
 // 网格尺寸常量
 const GRID_WIDTH = 16;
 const GRID_HEIGHT = 4;
+// 移除 MOBILE_GRID_WIDTH，改为动态计算
 
 // 尺寸到宽高的映射
 const SIZE_TO_DIMENSIONS: Record<WidgetSize, { w: number; h: number }> = {
@@ -41,6 +43,116 @@ const SIZE_TO_DIMENSIONS: Record<WidgetSize, { w: number; h: number }> = {
   '4x2': { w: 4, h: 2 },
   '4x4': { w: 4, h: 4 },
 };
+
+// Memoized Widget Item Component
+const WidgetGridItem = React.memo(({ 
+  widget, 
+  widgetType, 
+  isEditMode, 
+  isHovered, 
+  onDragStart, 
+  onMouseEnter, 
+  onMouseLeave, 
+  onRemove,
+  gridWidth,
+  gridHeight,
+  cellWidth,
+  cellHeight
+}: {
+  widget: WidgetConfig;
+  widgetType: WidgetType;
+  isEditMode: boolean;
+  isHovered: boolean;
+  onDragStart: (e: React.MouseEvent, id: string) => void;
+  onMouseEnter: (id: string) => void;
+  onMouseLeave: () => void;
+  onRemove: (id: string) => void;
+  gridWidth?: number;
+  gridHeight?: number;
+  cellWidth?: number;
+  cellHeight?: number;
+}) => {
+  const dim = SIZE_TO_DIMENSIONS[widget.size];
+  const WidgetComponent = widgetType.component;
+  
+  // 使用传入的网格尺寸或默认值
+  const gw = gridWidth || GRID_WIDTH;
+  const gh = gridHeight || GRID_HEIGHT;
+
+  // 如果有像素级尺寸，优先使用
+  const style: React.CSSProperties = (cellWidth && cellHeight) ? {
+    left: widget.position.x * cellWidth,
+    top: widget.position.y * cellHeight,
+    width: dim.w * cellWidth,
+    height: dim.h * cellHeight,
+    zIndex: isHovered ? 20 : 10,
+    willChange: isEditMode ? 'transform, left, top' : 'auto'
+  } : {
+    left: `${(widget.position.x / gw) * 100}%`,
+    top: `${(widget.position.y / gh) * 100}%`,
+    width: `${(dim.w / gw) * 100}%`,
+    height: `${(dim.h / gh) * 100}%`,
+    zIndex: isHovered ? 20 : 10,
+    willChange: isEditMode ? 'transform, left, top' : 'auto'
+  };
+
+  return (
+    <motion.div
+      layoutId={widget.id}
+      className="absolute"
+      style={style}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ 
+        type: 'spring', 
+        stiffness: 400, 
+        damping: 30
+      }}
+    >
+      <div className="relative h-full w-full p-1 group">
+        <div
+          className={`h-full w-full rounded-lg overflow-hidden transition-all ${
+            isEditMode 
+              ? 'cursor-move ring-1 ring-transparent hover:ring-blue-400/50' 
+              : ''
+          } ${isHovered && isEditMode ? 'ring-blue-400/50 shadow-lg' : ''}`}
+          onMouseDown={(e) => onDragStart(e, widget.id)}
+          onMouseEnter={() => isEditMode && onMouseEnter(widget.id)}
+          onMouseLeave={onMouseLeave}
+        >
+          <WidgetComponent config={widget} isEditMode={isEditMode} />
+        </div>
+
+        {/* 删除按钮（编辑模式） */}
+        {isEditMode && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(widget.id);
+            }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
+            title="删除小组件"
+            aria-label="删除小组件"
+          >
+            <FaTimes size={10} />
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+}, (prev, next) => {
+  return (
+    prev.widget === next.widget &&
+    prev.isEditMode === next.isEditMode &&
+    prev.isHovered === next.isHovered &&
+    prev.widgetType === next.widgetType &&
+    prev.gridWidth === next.gridWidth &&
+    prev.gridHeight === next.gridHeight &&
+    prev.cellWidth === next.cellWidth &&
+    prev.cellHeight === next.cellHeight
+  );
+});
 
 // 可用小组件类型定义
 export interface WidgetType {
@@ -66,13 +178,15 @@ interface WidgetGridProps {
 function checkCollision(
   widget: WidgetConfig,
   allWidgets: WidgetConfig[],
+  gridWidth: number,
+  gridHeight: number,
   excludeId?: string
 ): boolean {
   const dim = SIZE_TO_DIMENSIONS[widget.size];
   const { x, y } = widget.position;
 
   // 检查是否超出边界
-  if (x < 0 || y < 0 || x + dim.w > GRID_WIDTH || y + dim.h > GRID_HEIGHT) {
+  if (x < 0 || y < 0 || x + dim.w > gridWidth || y + dim.h > gridHeight) {
     return true;
   }
 
@@ -105,6 +219,103 @@ export default function WidgetGrid({
   onToggleEditMode,
   children,
 }: WidgetGridProps) {
+  const [gridColumns, setGridColumns] = useState(GRID_WIDTH);
+  const isCompact = gridColumns < GRID_WIDTH; // 是否为紧凑模式（移动端/平板）
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // 响应式布局检测
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      if (width < 640) {
+        setGridColumns(4); // 手机
+      } else if (width < 1024) {
+        setGridColumns(8); // 平板
+      } else {
+        setGridColumns(16); // 桌面
+      }
+    };
+    
+    handleResize(); // 初始化
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 紧凑模式布局计算 (自动重排)
+  const compactLayout = useMemo(() => {
+    if (!isCompact) return null;
+
+    // 按原始位置排序 (y 优先, 然后 x)
+    const sortedWidgets = [...widgets].sort((a, b) => {
+      if (a.position.y === b.position.y) return a.position.x - b.position.x;
+      return a.position.y - b.position.y;
+    });
+
+    const occupied = new Set<string>();
+    const newWidgets: WidgetConfig[] = [];
+    let maxY = 0;
+
+    const isOccupied = (x: number, y: number, w: number, h: number) => {
+      for (let i = 0; i < w; i++) {
+        for (let j = 0; j < h; j++) {
+          if (occupied.has(`${x + i},${y + j}`)) return true;
+        }
+      }
+      return false;
+    };
+
+    const markOccupied = (x: number, y: number, w: number, h: number) => {
+      for (let i = 0; i < w; i++) {
+        for (let j = 0; j < h; j++) {
+          occupied.add(`${x + i},${y + j}`);
+        }
+      }
+    };
+
+    for (const widget of sortedWidgets) {
+      const dim = SIZE_TO_DIMENSIONS[widget.size];
+      // 限制宽度不超过当前网格列数
+      const w = Math.min(dim.w, gridColumns);
+      const h = dim.h;
+
+      // 寻找第一个可用位置
+      let x = 0;
+      let y = 0;
+      let placed = false;
+      
+      while (!placed) {
+        if (x + w <= gridColumns && !isOccupied(x, y, w, h)) {
+          markOccupied(x, y, w, h);
+          newWidgets.push({
+            ...widget,
+            position: { x, y },
+          });
+          maxY = Math.max(maxY, y + h);
+          placed = true;
+        } else {
+          x++;
+          if (x >= gridColumns) {
+            x = 0;
+            y++;
+          }
+        }
+        // 防止死循环
+        if (y > 100) break; 
+      }
+    }
+
+    return { widgets: newWidgets, height: Math.max(4, maxY) };
+  }, [widgets, isCompact, gridColumns]);
+
+  const currentWidgets = isCompact && compactLayout ? compactLayout.widgets : widgets;
+  const currentGridWidth = gridColumns;
+  const currentGridHeight = isCompact && compactLayout ? compactLayout.height : GRID_HEIGHT;
+
+  // 计算像素级单元格尺寸 (仅在紧凑模式下使用)
+  const cellWidth = isCompact && containerWidth ? containerWidth / gridColumns : undefined;
+  const cellHeight = cellWidth; // 正方形单元格
+  const totalPixelHeight = isCompact && cellHeight ? currentGridHeight * cellHeight : undefined;
+
   const [draggedWidget, setDraggedWidget] = useState<{
     type: 'existing' | 'new';
     widgetId?: string;
@@ -116,13 +327,41 @@ export default function WidgetGrid({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [hoveredWidgetId, setHoveredWidgetId] = useState<string | null>(null);
 
+  // RAF ref for drag handling
+  const rafRef = useRef<number | null>(null);
+
   // 计算网格单元格尺寸
   const gridRef = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       const rect = node.getBoundingClientRect();
       // 存储网格尺寸供拖拽计算使用
       (window as any).__widgetGridRect = rect;
+      
+      // 更新容器宽度
+      setContainerWidth(rect.width);
+      
+      // 使用 ResizeObserver 监听宽度变化
+      const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          setContainerWidth(entry.contentRect.width);
+        }
+      });
+      resizeObserver.observe(node);
+      
+      // 清理函数需要存储在 ref 中或者使用 useEffect
+      // 这里简化处理，因为 gridRef 可能会被多次调用
+      (node as any).__resizeObserver = resizeObserver;
     }
+  }, []);
+
+  // 清理 ResizeObserver
+  useEffect(() => {
+    return () => {
+      const node = document.querySelector('.widget-grid-container');
+      if (node && (node as any).__resizeObserver) {
+        (node as any).__resizeObserver.disconnect();
+      }
+    };
   }, []);
 
   // 开始拖拽现有小组件
@@ -172,56 +411,76 @@ export default function WidgetGrid({
     (e: MouseEvent) => {
       if (!draggedWidget) return;
 
-      const gridRect = (window as any).__widgetGridRect;
-      if (!gridRect) return;
-
-      // 计算单元格尺寸
-      const cellWidth = gridRect.width / GRID_WIDTH;
-      const cellHeight = gridRect.height / GRID_HEIGHT;
-
-      // 获取当前拖拽的小组件尺寸
-      let size: WidgetSize = '1x1';
-      if (draggedWidget.type === 'existing' && draggedWidget.widgetId) {
-        const widget = widgets.find((w) => w.id === draggedWidget.widgetId);
-        size = widget?.size || '1x1';
-      } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
-        const widgetType = availableWidgets.find(
-          (w) => w.id === draggedWidget.widgetTypeId
-        );
-        size = widgetType?.defaultSize || '1x1';
-      }
-      const dim = SIZE_TO_DIMENSIONS[size];
-
-      // 计算鼠标在网格中的位置
-      let mouseX = e.clientX - gridRect.left;
-      let mouseY = e.clientY - gridRect.top;
-
-      // 对于新小组件，以中心点为参考；对于现有小组件，使用拖拽偏移
-      if (draggedWidget.type === 'new') {
-        // 新小组件：鼠标位于小组件中心
-        mouseX -= (dim.w * cellWidth) / 2;
-        mouseY -= (dim.h * cellHeight) / 2;
-      } else if (draggedWidget.type === 'existing') {
-        // 现有小组件：保持拖拽时的相对位置
-        mouseX -= draggedWidget.offset.x;
-        mouseY -= draggedWidget.offset.y;
+      // Use requestAnimationFrame to throttle updates
+      if (rafRef.current) {
+        return;
       }
 
-      // 转换为网格坐标
-      let gridX = Math.floor(mouseX / cellWidth);
-      let gridY = Math.floor(mouseY / cellHeight);
+      rafRef.current = requestAnimationFrame(() => {
+        const gridRect = (window as any).__widgetGridRect;
+        if (!gridRect) {
+          rafRef.current = null;
+          return;
+        }
 
-      // 确保小组件不会超出边界（考虑小组件尺寸）
-      gridX = Math.max(0, Math.min(GRID_WIDTH - dim.w, gridX));
-      gridY = Math.max(0, Math.min(GRID_HEIGHT - dim.h, gridY));
+        // 计算单元格尺寸
+        const cellWidth = gridRect.width / currentGridWidth;
+        const cellHeight = gridRect.height / currentGridHeight;
 
-      setHoveredCell({ x: gridX, y: gridY });
+        // 获取当前拖拽的小组件尺寸
+        let size: WidgetSize = '1x1';
+        if (draggedWidget.type === 'existing' && draggedWidget.widgetId) {
+          const widget = widgets.find((w) => w.id === draggedWidget.widgetId);
+          size = widget?.size || '1x1';
+        } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
+          const widgetType = availableWidgets.find(
+            (w) => w.id === draggedWidget.widgetTypeId
+          );
+          size = widgetType?.defaultSize || '1x1';
+        }
+        const dim = SIZE_TO_DIMENSIONS[size];
+
+        // 计算鼠标在网格中的位置
+        let mouseX = e.clientX - gridRect.left;
+        let mouseY = e.clientY - gridRect.top;
+
+        // 对于新小组件，以中心点为参考；对于现有小组件，使用拖拽偏移
+        if (draggedWidget.type === 'new') {
+          // 新小组件：鼠标位于小组件中心
+          mouseX -= (dim.w * cellWidth) / 2;
+          mouseY -= (dim.h * cellHeight) / 2;
+        } else if (draggedWidget.type === 'existing') {
+          // 现有小组件：保持拖拽时的相对位置
+          mouseX -= draggedWidget.offset.x;
+          mouseY -= draggedWidget.offset.y;
+        }
+
+        // 转换为网格坐标
+        let gridX = Math.floor(mouseX / cellWidth);
+        let gridY = Math.floor(mouseY / cellHeight);
+
+        // 确保小组件不会超出边界（考虑小组件尺寸）
+        gridX = Math.max(0, Math.min(currentGridWidth - dim.w, gridX));
+        gridY = Math.max(0, Math.min(currentGridHeight - dim.h, gridY));
+
+        setHoveredCell((prev) => {
+          if (prev?.x === gridX && prev?.y === gridY) return prev;
+          return { x: gridX, y: gridY };
+        });
+        
+        rafRef.current = null;
+      });
     },
-    [draggedWidget, widgets, availableWidgets]
+    [draggedWidget, widgets, availableWidgets, currentGridWidth, currentGridHeight]
   );
 
   // 结束拖拽
   const handleDragEnd = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
     if (!draggedWidget || !hoveredCell) {
       setDraggedWidget(null);
       setHoveredCell(null);
@@ -239,7 +498,11 @@ export default function WidgetGrid({
       };
 
       // 检查碰撞
-      if (!checkCollision(newWidget, widgets, widget.id)) {
+      // 注意：在移动端模式下，我们可能需要禁用拖拽或者使用不同的碰撞检测逻辑
+      // 这里暂时保持原样，但使用 currentWidgets 进行检测可能不准确，因为 currentWidgets 是计算出来的
+      // 如果在移动端拖拽，我们应该更新原始 widgets 的顺序？这比较复杂。
+      // 建议：移动端禁用编辑模式
+      if (!checkCollision(newWidget, widgets, GRID_WIDTH, GRID_HEIGHT, widget.id)) {
         const updatedWidgets = widgets.map((w) =>
           w.id === widget.id ? newWidget : w
         );
@@ -272,7 +535,7 @@ export default function WidgetGrid({
       }
 
       // 检查碰撞
-      if (!checkCollision(newWidget, widgets)) {
+      if (!checkCollision(newWidget, widgets, GRID_WIDTH, GRID_HEIGHT)) {
         const newWidgets = [...widgets, newWidget];
         onWidgetsChange?.(newWidgets);
         saveToHistory(newWidgets);
@@ -333,6 +596,10 @@ export default function WidgetGrid({
       return () => {
         window.removeEventListener('mousemove', handleDragMove);
         window.removeEventListener('mouseup', handleDragEnd);
+        if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
       };
     }
   }, [draggedWidget, handleDragMove, handleDragEnd]);
@@ -388,17 +655,37 @@ export default function WidgetGrid({
     const hasCollision = checkCollision(
       testWidget,
       widgets,
+      GRID_WIDTH,
+      GRID_HEIGHT,
       draggedWidget.type === 'existing' ? draggedWidget.widgetId : undefined
     );
 
     return { position: hoveredCell, size: dim, hasCollision };
   }, [draggedWidget, hoveredCell, widgets, availableWidgets]);
 
+  // Memoize grid background
+  const gridBackground = useMemo(() => (
+    <div 
+      className="widget-grid-background absolute inset-0 pointer-events-none z-0"
+      style={{
+        gridTemplateColumns: `repeat(${currentGridWidth}, 1fr)`,
+        gridTemplateRows: `repeat(${currentGridHeight}, 1fr)`,
+      }}
+    >
+      {Array.from({ length: currentGridWidth * currentGridHeight }).map((_, i) => (
+        <div
+          key={i}
+          className="border border-gray-200 dark:border-gray-700 border-opacity-30"
+        />
+      ))}
+    </div>
+  ), [currentGridWidth, currentGridHeight]);
+
   return (
     <div className="h-full flex flex-col gap-2">
       {/* 编辑模式：小组件库（顶部悬浮） */}
       <AnimatePresence>
-        {isEditMode && (
+        {isEditMode && !isCompact && (
           <motion.div
             initial={{ y: '-100%' }}
             animate={{ y: 0 }}
@@ -524,29 +811,25 @@ export default function WidgetGrid({
       </AnimatePresence>
 
       {/* 网格区域 */}
-      <div className="relative w-full flex-1 flex flex-col justify-end min-h-0 pb-2">
+      <div className={`relative w-full flex-1 flex flex-col ${isCompact ? 'justify-start overflow-visible pb-20' : 'justify-end pb-2'} min-h-0`}>
         {/* 插入 children (InfoBar) */}
         {children}
 
         <div
           ref={gridRef}
-          className="widget-grid-container relative w-full rounded-xl overflow-hidden max-h-full"
+          className={`widget-grid-container relative w-full rounded-xl ${isCompact ? 'overflow-visible' : 'overflow-hidden'}`}
+          style={isCompact && totalPixelHeight ? {
+            height: totalPixelHeight,
+            // 移除 aspectRatio，使用固定高度
+          } : {
+            aspectRatio: `${currentGridWidth} / ${currentGridHeight}`,
+          }}
         >
           {/* 背景网格线（编辑模式） */}
-          {isEditMode && (
-            <div className="widget-grid-background absolute inset-0 pointer-events-none z-0">
-
-              {Array.from({ length: GRID_WIDTH * GRID_HEIGHT }).map((_, i) => (
-                <div
-                  key={i}
-                  className="border border-gray-200 dark:border-gray-700 border-opacity-30"
-                />
-              ))}
-            </div>
-          )}
+          {isEditMode && !isCompact && gridBackground}
 
         {/* 拖拽预览 */}
-        {dragPreview && (
+        {dragPreview && !isCompact && (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -556,10 +839,10 @@ export default function WidgetGrid({
                 : 'bg-green-500/20 border-green-500'
             }`}
             style={{
-              left: `${(dragPreview.position.x / GRID_WIDTH) * 100}%`,
-              top: `${(dragPreview.position.y / GRID_HEIGHT) * 100}%`,
-              width: `${(dragPreview.size.w / GRID_WIDTH) * 100}%`,
-              height: `${(dragPreview.size.h / GRID_HEIGHT) * 100}%`,
+              left: `${(dragPreview.position.x / currentGridWidth) * 100}%`,
+              top: `${(dragPreview.position.y / currentGridHeight) * 100}%`,
+              width: `${(dragPreview.size.w / currentGridWidth) * 100}%`,
+              height: `${(dragPreview.size.h / currentGridHeight) * 100}%`,
             }}
           >
             <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold">
@@ -572,64 +855,26 @@ export default function WidgetGrid({
 
         {/* 小组件 */}
         <div className="absolute inset-0 z-10">
-          {widgets.map((widget, index) => {
-            const dim = SIZE_TO_DIMENSIONS[widget.size];
+          {currentWidgets.map((widget, index) => {
             const widgetType = availableWidgets.find((w) => w.id === widget.type);
             if (!widgetType) return null;
 
-            const WidgetComponent = widgetType.component;
-
             return (
-              <motion.div
+              <WidgetGridItem
                 key={widget.id}
-                className="absolute"
-                style={{
-                  left: `${(widget.position.x / GRID_WIDTH) * 100}%`,
-                  top: `${(widget.position.y / GRID_HEIGHT) * 100}%`,
-                  width: `${(dim.w / GRID_WIDTH) * 100}%`,
-                  height: `${(dim.h / GRID_HEIGHT) * 100}%`,
-                }}
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                layout
-                transition={{ 
-                  type: 'spring', 
-                  stiffness: 300, 
-                  damping: 30,
-                  opacity: { duration: 0.4 },
-                  scale: { duration: 0.4 },
-                  y: { duration: 0.4 },
-                  delay: index * 0.05 
-                }}
-              >
-                <div className="relative h-full w-full p-1 group">
-                  <div
-                    className={`h-full w-full rounded-lg overflow-hidden transition-all ${
-                      isEditMode 
-                        ? 'cursor-move ring-1 ring-transparent hover:ring-blue-400/50' 
-                        : ''
-                    } ${hoveredWidgetId === widget.id && isEditMode ? 'ring-blue-400/50 shadow-lg' : ''}`}
-                    onMouseDown={(e) => handleWidgetDragStart(e, widget.id)}
-                    onMouseEnter={() => isEditMode && setHoveredWidgetId(widget.id)}
-                    onMouseLeave={() => setHoveredWidgetId(null)}
-                  >
-                    <WidgetComponent config={widget} isEditMode={isEditMode} />
-                  </div>
-
-                  {/* 删除按钮（编辑模式） */}
-                  {isEditMode && (
-                    <button
-                      onClick={() => handleRemoveWidget(widget.id)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
-                      title="删除小组件"
-                      aria-label="删除小组件"
-                    >
-                      <FaTimes size={10} />
-                    </button>
-                  )}
-                </div>
-              </motion.div>
+                widget={widget}
+                widgetType={widgetType}
+                isEditMode={isEditMode && !isCompact}
+                isHovered={hoveredWidgetId === widget.id}
+                onDragStart={handleWidgetDragStart}
+                onMouseEnter={setHoveredWidgetId}
+                onMouseLeave={() => setHoveredWidgetId(null)}
+                onRemove={handleRemoveWidget}
+                gridWidth={currentGridWidth}
+                gridHeight={currentGridHeight}
+                cellWidth={cellWidth}
+                cellHeight={cellHeight}
+              />
             );
           })}
         </div>

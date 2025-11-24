@@ -1006,10 +1006,8 @@ const MusicStatsWidget = memo(({ data }: { data?: {
         <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-20">
           {/* 等级标签 */}
           <motion.div
-            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg"
+            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
             style={{ 
-              background: 'linear-gradient(135deg, #ffebee, #ffcdd2)',
-              color: '#d32f2f',
               boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)'
             }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }}
@@ -1022,30 +1020,28 @@ const MusicStatsWidget = memo(({ data }: { data?: {
           
           {/* 粉丝和歌单统计 */}
           <motion.div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-gray-800/90 border border-white/30 dark:border-gray-700/50"
             style={{
-              background: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.3)'
+              backdropFilter: 'blur(10px)'
             }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }}
             animate={{ scale: 1, opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
           >
             <div className="flex flex-col items-end">
-              <span className="text-lg font-black leading-none" style={{ color: '#1a1a1a' }}>
+              <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(followerCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold" style={{ color: '#4a4a4a', fontFamily: 'Georgia, serif' }}>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
                 Fans
               </span>
             </div>
             <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
             <div className="flex flex-col items-end">
-              <span className="text-lg font-black leading-none" style={{ color: '#1a1a1a' }}>
+              <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(playlistCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold" style={{ color: '#4a4a4a', fontFamily: 'Georgia, serif' }}>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
                 Lists
               </span>
             </div>

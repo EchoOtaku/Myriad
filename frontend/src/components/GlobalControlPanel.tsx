@@ -2691,7 +2691,7 @@ const GlobalControlPanel: React.FC = () => {
                   {/* 主题切换 */}
                   <div className="control-item control-item-compact">
                     <div className="control-item-info">
-                      <div className="control-item-icon">
+                      <div className="control-item-icon icon-theme">
                         {isDark ? '🌙' : '☀️'}
                       </div>
                       <div>
@@ -2713,7 +2713,7 @@ const GlobalControlPanel: React.FC = () => {
                   {canRefreshWallpaper && (
                     <div className="control-item control-item-compact">
                       <div className="control-item-info">
-                        <div className="control-item-icon">
+                        <div className="control-item-icon icon-wallpaper">
                           🖼️
                         </div>
                         <div>
@@ -2728,6 +2728,33 @@ const GlobalControlPanel: React.FC = () => {
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 系统配置 - 仅管理员可见 */}
+                  {user?.is_admin && (
+                    <div className="control-item control-item-compact">
+                      <div className="control-item-info">
+                        <div className="control-item-icon icon-config">
+                          ⚙️
+                        </div>
+                        <div>
+                          <h4 className="control-item-title">配置</h4>
+                          <p className="control-item-desc">系统</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          handleClosePanel();
+                          navigate('/config');
+                        }}
+                        className="control-action-btn"
+                        aria-label="系统配置"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                         </svg>
                       </button>
                     </div>
