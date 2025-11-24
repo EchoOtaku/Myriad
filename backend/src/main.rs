@@ -147,10 +147,7 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/setup/status",
         "/api/setup/init-env",
         "/api/setup/update-env",
-        // ✅ P0 安全修复：移除 database-config 从白名单
-        // 原因：这个端点太危险，必须由函数内部的 CONFIG_MODE 检查保护
-        // 如果在白名单中，任何人都可以在 CONFIG_MODE 时修改数据库配置
-        // "/api/setup/database-config",  // ❌ 已移除 - 使用内部检查
+        "/api/setup/database-config", // ✅ 允许配置数据库（有内部认证检查）
         "/api/setup/init-database",
         "/api/setup/create-admin",
         "/api/system/status",
