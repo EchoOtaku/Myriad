@@ -1796,11 +1796,13 @@ pub async fn delete_platform_cache(
             }
         }
     } else {
+        // 修复：即使文件不存在也返回 200 OK (幂等性)
+        tracing::info!("ℹ️ Platform cache file not found, considering it deleted");
         (
-            StatusCode::NOT_FOUND,
+            StatusCode::OK,
             Json(json!({
-                "success": false,
-                "message": "Platform cache file not found"
+                "success": true,
+                "message": "Platform cache already deleted (file not found)"
             })),
         )
     }

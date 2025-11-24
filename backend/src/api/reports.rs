@@ -105,12 +105,32 @@ pub async fn generate_platform_reports(
     Extension(claims): Extension<Claims>,
     Json(req): Json<GeneratePlatformReportsRequest>,
 ) -> Result<Json<Value>, StatusCode> {
-    let user_id = claims
-        .sub
-        .parse::<i32>()
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    tracing::info!(
+        "📊 Starting platform report generation for platforms: {:?}",
+        req.platforms
+    );
+    tracing::info!("👤 User: {} (ID: {})", claims.username, claims.sub);
 
-    let platform_reports = generate_platform_reports_internal(&db, user_id, req.platforms).await;
+    let user_id = claims.sub.parse::<i32>().map_err(|e| {
+        tracing::error!("❌ Failed to parse user_id: {}", e);
+        StatusCode::UNAUTHORIZED
+    })?;
+
+    let platform_reports =
+        generate_platform_reports_internal(&db, user_id, req.platforms.clone()).await;
+
+    if platform_reports.is_empty() {
+        tracing::warn!(
+            "⚠️ No platform reports generated for platforms: {:?}",
+            req.platforms
+        );
+        return Ok(Json(json!({
+            "success": false,
+            "message": "未能生成报告。请确保已获取平台数据。",
+            "reports": [],
+            "token_estimate": 0
+        })));
+    }
 
     // Token优化：估算每个报告的大小
     let total_tokens: usize = platform_reports
@@ -119,7 +139,7 @@ pub async fn generate_platform_reports(
         .sum();
 
     tracing::info!(
-        "Generated {} platform reports, estimated tokens: {}",
+        "✅ Generated {} platform reports, estimated tokens: {}",
         platform_reports.len(),
         total_tokens
     );
@@ -141,21 +161,34 @@ async fn generate_platform_reports_internal(
 
     // 并行处理所有平台
     let futures = platforms.into_iter().map(|platform| async move {
+        tracing::info!("🔄 Processing platform: {}", platform);
+
         // 1. 获取平台数据 (自动处理缓存回退)
         let metadata = match get_platform_data(&platform).await {
-            Ok(data) => data,
+            Ok(data) => {
+                tracing::info!("✅ Loaded data for {}", platform);
+                data
+            }
             Err(e) => {
-                tracing::warn!("Skipping {}: {}", platform, e);
+                tracing::warn!("⚠️ Skipping {}: {}", platform, e);
                 return None;
             }
         };
 
         // 3. 基于元数据生成平台报告
+        tracing::debug!("🤖 Generating AI report for {}", platform);
         let (summary, ai_insights, mut card_visuals) =
             match generate_ai_report(&metadata, &platform).await {
-                Ok(res) => res,
+                Ok(res) => {
+                    tracing::info!("✅ AI report generated for {}", platform);
+                    res
+                }
                 Err(e) => {
-                    tracing::warn!("Failed to generate AI report for {}: {}", platform, e);
+                    tracing::warn!(
+                        "⚠️ Failed to generate AI report for {}: {}, using fallback",
+                        platform,
+                        e
+                    );
                     (
                         format!(
                             "{} 在 {} 平台上活跃",
@@ -356,11 +389,45 @@ async fn generate_platform_reports_internal(
     let results = join_all(futures).await;
     let platform_reports: Vec<PlatformReport> = results.into_iter().flatten().collect();
 
+    tracing::info!(
+        "🎯 Generated {} platform reports, starting database save...",
+        platform_reports.len()
+    );
+
     // 批量保存到数据库（先删除旧报告，再插入新报告）
     // 为了性能，这里还是串行保存，但生成过程是并行的
     for report in &platform_reports {
-        let report_json = serde_json::to_value(report).unwrap_or(json!({}));
-        let metadata_json = serde_json::to_value(&report.metadata).unwrap_or(json!({}));
+        tracing::debug!("💾 Serializing report for platform: {}", report.platform);
+
+        let report_json = match serde_json::to_value(report) {
+            Ok(json) => json,
+            Err(e) => {
+                tracing::error!(
+                    "❌ Failed to serialize report for {}: {}",
+                    report.platform,
+                    e
+                );
+                tracing::error!(
+                    "   Report data: summary={}, insights={}, card_visuals={}",
+                    report.summary,
+                    report.insights.len(),
+                    report.card_visuals
+                );
+                continue; // 跳过这个报告，继续处理其他的
+            }
+        };
+
+        let metadata_json = match serde_json::to_value(&report.metadata) {
+            Ok(json) => json,
+            Err(e) => {
+                tracing::error!(
+                    "❌ Failed to serialize metadata for {}: {}",
+                    report.platform,
+                    e
+                );
+                continue;
+            }
+        };
 
         // 先删除该用户该平台的所有旧报告
         let delete_result = platform_reports::Entity::delete_many()
@@ -371,14 +438,14 @@ async fn generate_platform_reports_internal(
 
         if let Err(e) = delete_result {
             tracing::warn!(
-                "Failed to delete old reports for {} (continuing): {}",
+                "⚠️ Failed to delete old reports for {} (continuing): {}",
                 report.platform,
                 e
             );
         } else if let Ok(result) = delete_result {
             if result.rows_affected > 0 {
                 tracing::info!(
-                    "Deleted {} old report(s) for platform {}",
+                    "🗑️ Deleted {} old report(s) for platform {}",
                     result.rows_affected,
                     report.platform
                 );
@@ -397,15 +464,24 @@ async fn generate_platform_reports_internal(
             ..Default::default()
         };
 
-        if let Err(e) = active_model.insert(db).await {
-            tracing::error!(
-                "Failed to save platform report for {}: {}",
-                report.platform,
-                e
-            );
+        match active_model.insert(db).await {
+            Ok(_) => {
+                tracing::info!("✅ Saved platform report for {}", report.platform);
+            }
+            Err(e) => {
+                tracing::error!(
+                    "❌ Failed to save platform report for {}: {}",
+                    report.platform,
+                    e
+                );
+            }
         }
     }
 
+    tracing::info!(
+        "✅ Database save completed for {} reports",
+        platform_reports.len()
+    );
     platform_reports
 }
 
