@@ -595,6 +595,93 @@ async fn get_raw_metadata_wrapper() -> Response {
     }
 }
 
+/// Wrapper for get_latest_report that gets DB from global state
+async fn get_latest_report_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            match api::reports::get_latest_report(axum::extract::State(db.clone()), headers).await {
+                Ok(json) => (StatusCode::OK, json).into_response(),
+                Err(status) => {
+                    (status, Json(json!({ "error": "Failed to get report" }))).into_response()
+                }
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，无法获取报告"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_comprehensive_reports_list that gets DB from global state
+async fn get_comprehensive_reports_list_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            match api::reports::get_comprehensive_reports_list(
+                axum::extract::State(db.clone()),
+                headers,
+            )
+            .await
+            {
+                Ok(json) => (StatusCode::OK, json).into_response(),
+                Err(status) => (
+                    status,
+                    Json(json!({ "error": "Failed to get comprehensive reports" })),
+                )
+                    .into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，无法获取综合报告列表"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_comprehensive_report_by_id that gets DB from global state
+async fn get_comprehensive_report_by_id_wrapper(
+    headers: axum::http::HeaderMap,
+    axum::extract::Path(report_id): axum::extract::Path<i32>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            match api::reports::get_comprehensive_report_by_id(
+                axum::extract::State(db.clone()),
+                headers,
+                axum::extract::Path(report_id),
+            )
+            .await
+            {
+                Ok(json) => (StatusCode::OK, json).into_response(),
+                Err(status) => (
+                    status,
+                    Json(json!({ "error": "Failed to get comprehensive report" })),
+                )
+                    .into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，无法获取综合报告详情"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Start unified server with all routes (middleware controls access based on mode)
 async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Build CORS layer with security-first configuration
@@ -773,15 +860,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::reports::generate_all_reports)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
-            .route("/api/reports/latest", get(api::reports::get_latest_report))
-            .route(
-                "/api/reports/comprehensive/list",
-                get(api::reports::get_comprehensive_reports_list),
-            )
-            .route(
-                "/api/reports/comprehensive/:id",
-                get(api::reports::get_comprehensive_report_by_id),
-            )
+            // Note: /api/reports/latest, /api/reports/comprehensive/list, /api/reports/comprehensive/:id
+            // are now registered above with wrappers in the main api_router
             .route(
                 "/api/reports/comprehensive/:id/delete",
                 delete(api::reports::delete_comprehensive_report)
@@ -883,6 +963,16 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/library", get(api::profile::get_library_data))
             // Recent activities route (公开访问 - 单用户系统)
             .route("/api/activities", get(api::profile::get_recent_activities))
+            // Reports routes (读取端点公开访问，支持未认证用户)
+            .route("/api/reports/latest", get(get_latest_report_wrapper))
+            .route(
+                "/api/reports/comprehensive/list",
+                get(get_comprehensive_reports_list_wrapper),
+            )
+            .route(
+                "/api/reports/comprehensive/:id",
+                get(get_comprehensive_report_by_id_wrapper),
+            )
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))
             // Client geo location route

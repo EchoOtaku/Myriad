@@ -274,7 +274,16 @@ fn load_platform_data_cache() -> Option<PlatformDataCache> {
     }
 }
 
-/// 保存平台数据缓存到磁盘
+/// 从临时文件加载歌曲数据（流式读取，避免大文件内存峰值）
+fn load_songs_from_temp_file(path: &str) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    use std::io::BufReader;
+    let file = std::fs::File::open(path)?;
+    let reader = BufReader::with_capacity(131072, file); // 128KB buffer
+    let songs: Vec<Value> = serde_json::from_reader(reader)?;
+    Ok(songs)
+}
+
+/// 保存平台数据缓存到磁盘（优化：支持大数据分块写入）
 fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     let cache = PlatformDataCache {
         data: data.clone(),
@@ -286,9 +295,24 @@ fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Erro
         fs::create_dir_all(parent)?;
     }
 
-    let content = serde_json::to_string_pretty(&cache)?;
-    fs::write(&path, content)?;
-    tracing::info!("💾 Platform data cache saved");
+    // 检查数据大小，如果太大则使用流式写入
+    let estimated_size = serde_json::to_string(data)?.len();
+    tracing::info!("📊 Platform data size: {} bytes", estimated_size);
+
+    if estimated_size > 5_000_000 {
+        // 超过5MB使用流式写入
+        tracing::info!("📦 Large data detected, using streaming write...");
+        use std::io::Write;
+        let file = std::fs::File::create(&path)?;
+        let mut writer = std::io::BufWriter::with_capacity(65536, file); // 64KB buffer
+        serde_json::to_writer(&mut writer, &cache)?;
+        writer.flush()?;
+        tracing::info!("💾 Platform data cache saved (streaming)");
+    } else {
+        let content = serde_json::to_string_pretty(&cache)?;
+        fs::write(&path, content)?;
+        tracing::info!("💾 Platform data cache saved");
+    }
     Ok(())
 }
 
@@ -661,14 +685,52 @@ async fn fetch_fresh_platform_data(
                     Err(e) => tracing::warn!("Netease user fetch failed: {}", e),
                 }
 
-                // 获取喜欢的歌曲
+                // 获取喜欢的歌曲（分批处理，避免内存占用过大）
+                tracing::info!("🎵 Fetching Netease liked songs...");
                 match fetcher.fetch_netease_liked_songs(netease_user_id).await {
                     Ok(songs) => {
-                        all_data["netease"]["liked_songs"] = json!(songs);
-                        tracing::info!(
-                            "✓ Netease Cloud Music liked songs fetched: {} songs",
-                            songs.len()
-                        );
+                        let total_songs = songs.len();
+                        tracing::info!("🎵 Total songs fetched: {}", total_songs);
+
+                        // 如果歌曲数量过多（>1000首），立即保存原始数据到临时文件，避免内存占用
+                        if total_songs > 1000 {
+                            tracing::info!(
+                                "📦 Large song collection detected ({}), using batch processing...",
+                                total_songs
+                            );
+
+                            // 保存到临时文件，释放内存
+                            let temp_path = PathBuf::from("./cache/netease_songs_temp.json");
+                            if let Some(parent) = temp_path.parent() {
+                                let _ = fs::create_dir_all(parent);
+                            }
+
+                            // 使用流式写入
+                            use std::io::Write;
+                            if let Ok(file) = std::fs::File::create(&temp_path) {
+                                let mut writer = std::io::BufWriter::with_capacity(131072, file); // 128KB buffer
+                                let _ = serde_json::to_writer(&mut writer, &songs);
+                                let _ = writer.flush();
+                                tracing::info!("💾 Saved {} songs to temp file", total_songs);
+                            }
+
+                            // 只在内存中保留精简版本（前100首用于预览 + 总数统计）
+                            let preview_songs: Vec<_> = songs.iter().take(100).cloned().collect();
+                            all_data["netease"]["liked_songs"] = json!(preview_songs);
+                            all_data["netease"]["total_songs"] = json!(total_songs);
+                            all_data["netease"]["songs_truncated"] = json!(true);
+                            all_data["netease"]["temp_file_path"] =
+                                json!(temp_path.to_string_lossy().to_string());
+
+                            tracing::info!("✓ Netease Cloud Music: {} songs (preview: 100, full data in temp file)", total_songs);
+                        } else {
+                            // 歌曲数量适中，正常保存
+                            all_data["netease"]["liked_songs"] = json!(songs);
+                            tracing::info!(
+                                "✓ Netease Cloud Music liked songs fetched: {} songs",
+                                total_songs
+                            );
+                        }
                     }
                     Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
                 }
@@ -778,7 +840,7 @@ fn clean_platform_data(data: &mut Value) {
         // favorites 和 bangumi 保持不变，它们是核心数据
     }
 
-    // 清洗网易云音乐数据 - 保留核心字段
+    // 清洗网易云音乐数据 - 保留核心字段（分批处理避免内存峰值）
     if let Some(netease) = data.get_mut("netease") {
         // 清洗 liked_songs 数组，只保留必要字段
         if let Some(songs) = netease
@@ -786,31 +848,71 @@ fn clean_platform_data(data: &mut Value) {
             .and_then(|s| s.as_array())
             .cloned()
         {
-            let cleaned_songs: Vec<Value> = songs
-                .iter()
-                .map(|song| {
-                    json!({
-                        "id": song.get("id"),
-                        "name": song.get("name"),
-                        "ar": song.get("ar"),  // 艺术家数组
-                        "artists": song.get("artists"),  // 备用艺术家字段
-                        "al": song.get("al").map(|al| {
-                            // 只保留专辑的关键信息
+            let total_songs = songs.len();
+            tracing::debug!("🧹 Cleaning {} netease songs...", total_songs);
+
+            let cleaned_songs: Vec<Value> = if total_songs > 2000 {
+                // 大量数据：分批处理，每批1000首
+                tracing::info!("📦 Large song collection, using batch cleaning...");
+                let batch_size = 1000;
+                let mut result = Vec::with_capacity(total_songs);
+
+                for (batch_idx, chunk) in songs.chunks(batch_size).enumerate() {
+                    if batch_idx % 2 == 0 {
+                        tracing::debug!("  Processing batch {}...", batch_idx + 1);
+                    }
+                    let batch_cleaned: Vec<Value> = chunk
+                        .iter()
+                        .map(|song| {
                             json!({
-                                "id": al.get("id"),
-                                "name": al.get("name"),
-                                "picUrl": al.get("picUrl"),
+                                "id": song.get("id"),
+                                "name": song.get("name"),
+                                "ar": song.get("ar"),
+                                "artists": song.get("artists"),
+                                "al": song.get("al").map(|al| {
+                                    json!({
+                                        "id": al.get("id"),
+                                        "name": al.get("name"),
+                                        "picUrl": al.get("picUrl"),
+                                    })
+                                }),
+                                "picUrl": song.get("picUrl"),
+                                "dt": song.get("dt"),
                             })
-                        }),
-                        "picUrl": song.get("picUrl"),  // 歌曲封面（顶级字段）
-                        "dt": song.get("dt"),  // 时长
+                        })
+                        .collect();
+                    result.extend(batch_cleaned);
+                }
+                tracing::info!("✅ Batch cleaning completed: {} songs", result.len());
+                result
+            } else {
+                // 适中数据量：一次性处理
+                songs
+                    .iter()
+                    .map(|song| {
+                        json!({
+                            "id": song.get("id"),
+                            "name": song.get("name"),
+                            "ar": song.get("ar"),
+                            "artists": song.get("artists"),
+                            "al": song.get("al").map(|al| {
+                                json!({
+                                    "id": al.get("id"),
+                                    "name": al.get("name"),
+                                    "picUrl": al.get("picUrl"),
+                                })
+                            }),
+                            "picUrl": song.get("picUrl"),
+                            "dt": song.get("dt"),
+                        })
                     })
-                })
-                .collect();
+                    .collect()
+            };
 
             if let Some(obj) = netease.as_object_mut() {
                 obj.insert("liked_songs".to_string(), json!(cleaned_songs));
             }
+            tracing::debug!("✅ Cleaned {} songs", cleaned_songs.len());
         }
 
         // 清洗 profile 信息
@@ -2114,55 +2216,101 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                 }
             }
 
-            // 处理网易云音乐数据
+            // 处理网易云音乐数据（支持从临时文件加载完整数据）
             if let Some(netease_data) = db_data.get("netease") {
-                if let Some(songs) = netease_data.get("liked_songs").and_then(|s| s.as_array()) {
-                    for song in songs {
-                        if let (Some(id), Some(name)) = (
-                            song.get("id").and_then(|i| i.as_i64()),
-                            song.get("name").and_then(|n| n.as_str()),
-                        ) {
-                            // 提取封面 - 支持多种字段格式
-                            let cover = song
-                                .get("al")
-                                .or_else(|| song.get("album"))
-                                .and_then(|al| {
-                                    al.get("picUrl")
-                                        .or_else(|| al.get("pic_url"))
-                                        .or_else(|| al.get("cover"))
-                                })
-                                .and_then(|p| p.as_str())
-                                .map(|s| s.to_string());
-
-                            // 规范化metadata确保包含所有必要字段
-                            let mut normalized_metadata = song.clone();
-                            if let Some(obj) = normalized_metadata.as_object_mut() {
-                                // 确保有ar字段（艺术家数组）
-                                if !obj.contains_key("ar") && !obj.contains_key("artists") {
-                                    obj.insert("ar".to_string(), json!([]));
-                                }
-                                // 确保有al字段（专辑信息）
-                                if !obj.contains_key("al") && !obj.contains_key("album") {
-                                    obj.insert("al".to_string(), json!({"name": "未知专辑"}));
-                                }
-                                // 确保有dt字段（时长毫秒）
-                                if !obj.contains_key("dt") && !obj.contains_key("duration") {
-                                    obj.insert("dt".to_string(), json!(0));
-                                }
+                // 检查是否有被截断的数据需要从临时文件加载
+                let songs_vec: Vec<Value> = if netease_data
+                    .get("songs_truncated")
+                    .and_then(|t| t.as_bool())
+                    .unwrap_or(false)
+                {
+                    // 数据被截断，从临时文件加载完整数据
+                    if let Some(temp_path) =
+                        netease_data.get("temp_file_path").and_then(|p| p.as_str())
+                    {
+                        tracing::info!("📂 Loading full song data from temp file: {}", temp_path);
+                        match load_songs_from_temp_file(temp_path) {
+                            Ok(songs) => {
+                                tracing::info!("✅ Loaded {} songs from temp file", songs.len());
+                                songs
                             }
-
-                            library_items.push(LibraryItem {
-                                id: format!("netease_song_{}", id),
-                                item_type: "music".to_string(),
-                                title: name.to_string(),
-                                cover,
-                                platform: "Netease".to_string(),
-                                metadata: normalized_metadata,
-                            });
+                            Err(e) => {
+                                tracing::error!(
+                                    "❌ Failed to load from temp file: {}, using preview data",
+                                    e
+                                );
+                                netease_data
+                                    .get("liked_songs")
+                                    .and_then(|s| s.as_array())
+                                    .cloned()
+                                    .unwrap_or_default()
+                            }
                         }
+                    } else {
+                        netease_data
+                            .get("liked_songs")
+                            .and_then(|s| s.as_array())
+                            .cloned()
+                            .unwrap_or_default()
                     }
-                    tracing::info!("✓ Loaded {} Netease songs", songs.len());
+                } else {
+                    // 正常数据，直接使用
+                    netease_data
+                        .get("liked_songs")
+                        .and_then(|s| s.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                };
+
+                tracing::info!(
+                    "🎵 Processing {} netease songs for library",
+                    songs_vec.len()
+                );
+                for song in &songs_vec {
+                    if let (Some(id), Some(name)) = (
+                        song.get("id").and_then(|i| i.as_i64()),
+                        song.get("name").and_then(|n| n.as_str()),
+                    ) {
+                        // 提取封面 - 支持多种字段格式
+                        let cover = song
+                            .get("al")
+                            .or_else(|| song.get("album"))
+                            .and_then(|al| {
+                                al.get("picUrl")
+                                    .or_else(|| al.get("pic_url"))
+                                    .or_else(|| al.get("cover"))
+                            })
+                            .and_then(|p| p.as_str())
+                            .map(|s| s.to_string());
+
+                        // 规范化metadata确保包含所有必要字段
+                        let mut normalized_metadata = song.clone();
+                        if let Some(obj) = normalized_metadata.as_object_mut() {
+                            // 确保有ar字段（艺术家数组）
+                            if !obj.contains_key("ar") && !obj.contains_key("artists") {
+                                obj.insert("ar".to_string(), json!([]));
+                            }
+                            // 确保有al字段（专辑信息）
+                            if !obj.contains_key("al") && !obj.contains_key("album") {
+                                obj.insert("al".to_string(), json!({"name": "未知专辑"}));
+                            }
+                            // 确保有dt字段（时长毫秒）
+                            if !obj.contains_key("dt") && !obj.contains_key("duration") {
+                                obj.insert("dt".to_string(), json!(0));
+                            }
+                        }
+
+                        library_items.push(LibraryItem {
+                            id: format!("netease_song_{}", id),
+                            item_type: "music".to_string(),
+                            title: name.to_string(),
+                            cover,
+                            platform: "Netease".to_string(),
+                            metadata: normalized_metadata,
+                        });
+                    }
                 }
+                tracing::info!("✓ Loaded {} Netease songs", songs_vec.len());
             }
         }
         Ok(_) => {
