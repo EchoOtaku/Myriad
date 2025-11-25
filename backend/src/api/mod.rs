@@ -5,6 +5,7 @@ pub mod analysis;
 pub mod auth;
 pub mod auth_local;
 pub mod bilibili;
+pub mod cache;      // ✅ 缓存管理 API
 pub mod config;
 pub mod persona;
 pub mod platforms;
@@ -15,6 +16,7 @@ pub mod reports;    // ✅ 双层报告系统API
 pub mod setup;
 pub mod steam;
 pub mod system;
+pub mod tasks;      // ✅ 后台任务管理 API
 
 pub async fn health() -> (StatusCode, Json<Value>) {
     use std::sync::atomic::Ordering;

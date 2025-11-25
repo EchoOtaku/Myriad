@@ -1,5 +1,6 @@
 // Service layer modules
 pub mod analyzer;
+pub mod background_processor; // ✅ 后台任务处理系统（异步处理、任务队列）
 pub mod bilibili_utils;    // ✅ Bilibili 工具函数（IP伪装、防封技术）
 pub mod config_service;
 pub mod content_databases; // ✅ 预置内容数据库（番剧/游戏/歌手）

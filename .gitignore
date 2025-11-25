@@ -130,3 +130,4 @@ nul
 .claude/settings.local.json
 /.claude
 backend/data/unknown_content_stats.json
+*.json

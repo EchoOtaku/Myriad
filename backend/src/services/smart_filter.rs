@@ -715,6 +715,149 @@ impl SmartFilter {
         // 粗略估算: 每4个字符 ≈ 1 token
         json_str.len() / 4
     }
+
+    /// 处理单个平台数据并保存到独立缓存文件
+    /// 优势：
+    /// - 只处理需要的平台
+    /// - 独立文件缓存，避免大文件读写
+    /// - 支持并发处理不同平台
+    pub fn process_and_save_single(
+        platform: &str,
+        platform_data: &Value,
+    ) -> Result<SmartFilteredData, Box<dyn std::error::Error>> {
+        tracing::info!("🔄 Processing single platform: {}", platform);
+
+        // 预处理数据（根据平台适配数据结构）
+        let process_data = Self::preprocess_platform_data(platform, platform_data)?;
+
+        // 过滤数据
+        let filtered_data = Self::filter(platform, &process_data)?;
+
+        // 保存到独立缓存文件
+        Self::save_platform_cache(platform, &filtered_data)?;
+
+        tracing::info!("✓ Processed and cached {}", platform);
+        Ok(filtered_data)
+    }
+
+    /// 预处理平台数据（适配数据结构）
+    fn preprocess_platform_data(
+        platform: &str,
+        data: &Value,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        let mut processed = data.clone();
+
+        match platform {
+            "bilibili" => {
+                // 适配: user -> user_info
+                if let Some(user) = data.get("user") {
+                    if let Some(obj) = processed.as_object_mut() {
+                        obj.insert("user_info".to_string(), user.clone());
+                    }
+                }
+
+                // 适配: favorites -> videos (提取所有视频)
+                if let Some(favorites) = data.get("favorites").and_then(|v| v.as_array()) {
+                    let mut all_videos = Vec::new();
+                    for fav in favorites {
+                        if let Some(vids) = fav.get("videos").and_then(|v| v.as_array()) {
+                            all_videos.extend_from_slice(vids);
+                        }
+                    }
+                    if let Some(obj) = processed.as_object_mut() {
+                        obj.insert("videos".to_string(), Value::Array(all_videos));
+                    }
+                }
+            }
+            "steam" => {
+                // 适配: user -> user_info
+                if let Some(user) = data.get("user") {
+                    if let Some(obj) = processed.as_object_mut() {
+                        obj.insert("user_info".to_string(), user.clone());
+                    }
+                }
+
+                // 适配: games -> owned_games.games
+                if let Some(games) = data.get("games") {
+                    if let Some(obj) = processed.as_object_mut() {
+                        obj.insert(
+                            "owned_games".to_string(),
+                            serde_json::json!({ "games": games }),
+                        );
+                        obj.insert(
+                            "recently_played".to_string(),
+                            serde_json::json!({ "games": games }),
+                        );
+                    }
+                }
+            }
+            "netease" => {
+                // 适配: liked_songs -> playlists[0].tracks 和 songs
+                if let Some(liked_songs) = data.get("liked_songs") {
+                    if let Some(obj) = processed.as_object_mut() {
+                        obj.insert(
+                            "playlists".to_string(),
+                            serde_json::json!([{ "tracks": liked_songs }]),
+                        );
+                        obj.insert("songs".to_string(), liked_songs.clone());
+                    }
+                }
+            }
+            "github" => {
+                // GitHub 数据通常不需要特殊预处理
+            }
+            _ => {}
+        }
+
+        Ok(processed)
+    }
+
+    /// 保存平台缓存到独立文件
+    fn save_platform_cache(
+        platform: &str,
+        data: &SmartFilteredData,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let cache_dir = Path::new("./cache/platforms");
+        fs::create_dir_all(cache_dir)?;
+
+        let cache_file = cache_dir.join(format!("{}_filtered.json", platform));
+        let json_str = serde_json::to_string_pretty(data)?;
+        fs::write(&cache_file, json_str)?;
+
+        tracing::debug!("Saved {} cache to {:?}", platform, cache_file);
+        Ok(())
+    }
+
+    /// 从独立缓存文件加载平台数据
+    pub fn load_platform_cache(platform: &str) -> Result<SmartFilteredData, Box<dyn std::error::Error>> {
+        let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
+
+        if !cache_file.exists() {
+            return Err(format!("Cache file not found for platform: {}", platform).into());
+        }
+
+        let content = fs::read_to_string(&cache_file)?;
+        let data: SmartFilteredData = serde_json::from_str(&content)?;
+
+        tracing::debug!("Loaded {} from cache", platform);
+        Ok(data)
+    }
+
+    /// 检查平台缓存是否存在
+    pub fn has_platform_cache(platform: &str) -> bool {
+        let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
+        cache_file.exists()
+    }
+
+    /// 清除平台缓存
+    pub fn clear_platform_cache(platform: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
+        if cache_file.exists() {
+            fs::remove_file(&cache_file)?;
+            tracing::info!("Cleared cache for {}", platform);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -917,6 +917,49 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::persona::delete_persona)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
+            // 后台任务管理 API - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/tasks",
+                post(api::tasks::submit_task)
+                    .get(api::tasks::list_tasks)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tasks/:task_id",
+                get(api::tasks::get_task_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tasks/platform/:platform",
+                get(api::tasks::get_platform_task)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // 缓存管理 API - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/cache/status",
+                get(api::cache::get_cache_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/cache/status/:platform",
+                get(api::cache::get_platform_cache_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/cache/:platform",
+                delete(api::cache::clear_platform_cache)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
+            .route(
+                "/api/cache/clear",
+                post(api::cache::clear_caches)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
+            .route(
+                "/api/cache/all",
+                delete(api::cache::clear_all_caches)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
+            )
             // Profile report routes (complex ones still conditional) - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/profile/fetch-all",

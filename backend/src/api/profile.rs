@@ -242,6 +242,63 @@ fn cache_report(user_id: &str, report: PersonalReport) {
 
 /// 从磁盘加载平台数据缓存
 fn load_platform_data_cache() -> Option<PlatformDataCache> {
+    // 优先从分平台数据目录加载
+    let raw_dir = PathBuf::from("./cache/raw");
+    if raw_dir.exists() {
+        let mut all_data = serde_json::Map::new();
+        let mut latest_time = std::time::SystemTime::UNIX_EPOCH;
+        let mut found_any = false;
+
+        if let Ok(entries) = fs::read_dir(&raw_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            if let Ok(json) = serde_json::from_str(&content) {
+                                all_data.insert(stem.to_string(), json);
+                                found_any = true;
+
+                                if let Ok(metadata) = fs::metadata(&path) {
+                                    if let Ok(modified) = metadata.modified() {
+                                        if modified > latest_time {
+                                            latest_time = modified;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if found_any {
+            let fetched_at: DateTime<Utc> = latest_time.into();
+            let age = Utc::now() - fetched_at;
+
+            if age < Duration::hours(PLATFORM_CACHE_HOURS) {
+                tracing::info!(
+                    "✓ Loaded platform data from split raw files (age: {}h)",
+                    age.num_hours()
+                );
+                return Some(PlatformDataCache {
+                    data: Value::Object(all_data),
+                    fetched_at,
+                });
+            } else {
+                tracing::info!(
+                    "⏰ Split platform data cache expired (age: {}h)",
+                    age.num_hours()
+                );
+                // 虽然过期，但如果没有其他数据源，也许可以考虑返回？
+                // 目前逻辑是过期就返回 None，触发重新获取
+                return None;
+            }
+        }
+    }
+
+    // 降级：尝试读取旧的单文件缓存（为了兼容性）
     let path = PathBuf::from(PLATFORM_CACHE_FILE);
     if !path.exists() {
         return None;
@@ -253,65 +310,69 @@ fn load_platform_data_cache() -> Option<PlatformDataCache> {
                 let age = Utc::now() - cache.fetched_at;
                 if age < Duration::hours(PLATFORM_CACHE_HOURS) {
                     tracing::info!(
-                        "✓ Loaded platform data from cache (age: {}h)",
+                        "✓ Loaded platform data from legacy cache (age: {}h)",
                         age.num_hours()
                     );
                     Some(cache)
                 } else {
-                    tracing::info!("⏰ Platform data cache expired (age: {}h)", age.num_hours());
+                    tracing::info!(
+                        "⏰ Legacy platform data cache expired (age: {}h)",
+                        age.num_hours()
+                    );
                     None
                 }
             }
             Err(e) => {
-                tracing::warn!("Failed to parse platform cache: {}", e);
+                tracing::warn!("Failed to parse legacy platform cache: {}", e);
                 None
             }
         },
         Err(e) => {
-            tracing::warn!("Failed to read platform cache: {}", e);
+            tracing::warn!("Failed to read legacy platform cache: {}", e);
             None
         }
     }
 }
 
-/// 从临时文件加载歌曲数据（流式读取，避免大文件内存峰值）
-fn load_songs_from_temp_file(path: &str) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    use std::io::BufReader;
-    let file = std::fs::File::open(path)?;
-    let reader = BufReader::with_capacity(131072, file); // 128KB buffer
-    let songs: Vec<Value> = serde_json::from_reader(reader)?;
-    Ok(songs)
-}
-
-/// 保存平台数据缓存到磁盘（优化：支持大数据分块写入）
+/// 保存平台数据缓存到磁盘（优化：只保存分平台数据，不再保存完整大文件）
 fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Error>> {
-    let cache = PlatformDataCache {
-        data: data.clone(),
-        fetched_at: Utc::now(),
-    };
-
-    let path = PathBuf::from(PLATFORM_CACHE_FILE);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+    // 保存分平台的原始数据
+    if let Err(e) = save_split_raw_data(data) {
+        tracing::warn!("Failed to save split raw data: {}", e);
+        return Err(e);
     }
 
-    // 检查数据大小，如果太大则使用流式写入
-    let estimated_size = serde_json::to_string(data)?.len();
-    tracing::info!("📊 Platform data size: {} bytes", estimated_size);
+    // 尝试删除旧的完整缓存文件（如果存在），以释放空间
+    let old_path = PathBuf::from(PLATFORM_CACHE_FILE);
+    if old_path.exists() {
+        if let Err(e) = fs::remove_file(&old_path) {
+            tracing::warn!("Failed to remove legacy cache file: {}", e);
+        } else {
+            tracing::info!("🗑️ Removed legacy platform_data.json");
+        }
+    }
 
-    if estimated_size > 5_000_000 {
-        // 超过5MB使用流式写入
-        tracing::info!("📦 Large data detected, using streaming write...");
-        use std::io::Write;
-        let file = std::fs::File::create(&path)?;
-        let mut writer = std::io::BufWriter::with_capacity(65536, file); // 64KB buffer
-        serde_json::to_writer(&mut writer, &cache)?;
-        writer.flush()?;
-        tracing::info!("💾 Platform data cache saved (streaming)");
-    } else {
-        let content = serde_json::to_string_pretty(&cache)?;
-        fs::write(&path, content)?;
-        tracing::info!("💾 Platform data cache saved");
+    Ok(())
+}
+
+/// 保存分平台的原始数据（避免读取大文件）
+fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
+    let raw_dir = PathBuf::from("./cache/raw");
+    if !raw_dir.exists() {
+        fs::create_dir_all(&raw_dir)?;
+    }
+
+    if let Some(obj) = all_data.as_object() {
+        for (platform, data) in obj {
+            // 保存所有平台的数据，不仅仅是主要平台
+            let file_path = raw_dir.join(format!("{}.json", platform));
+            let file = std::fs::File::create(&file_path)?;
+            let mut writer = std::io::BufWriter::with_capacity(262144, file);
+            serde_json::to_writer(&mut writer, data)?;
+            use std::io::Write;
+            writer.flush()?;
+            tracing::info!("💾 Saved raw data for {} to {:?}", platform, file_path);
+        }
     }
     Ok(())
 }
@@ -692,45 +753,12 @@ async fn fetch_fresh_platform_data(
                         let total_songs = songs.len();
                         tracing::info!("🎵 Total songs fetched: {}", total_songs);
 
-                        // 如果歌曲数量过多（>1000首），立即保存原始数据到临时文件，避免内存占用
-                        if total_songs > 1000 {
-                            tracing::info!(
-                                "📦 Large song collection detected ({}), using batch processing...",
-                                total_songs
-                            );
-
-                            // 保存到临时文件，释放内存
-                            let temp_path = PathBuf::from("./cache/netease_songs_temp.json");
-                            if let Some(parent) = temp_path.parent() {
-                                let _ = fs::create_dir_all(parent);
-                            }
-
-                            // 使用流式写入
-                            use std::io::Write;
-                            if let Ok(file) = std::fs::File::create(&temp_path) {
-                                let mut writer = std::io::BufWriter::with_capacity(131072, file); // 128KB buffer
-                                let _ = serde_json::to_writer(&mut writer, &songs);
-                                let _ = writer.flush();
-                                tracing::info!("💾 Saved {} songs to temp file", total_songs);
-                            }
-
-                            // 只在内存中保留精简版本（前100首用于预览 + 总数统计）
-                            let preview_songs: Vec<_> = songs.iter().take(100).cloned().collect();
-                            all_data["netease"]["liked_songs"] = json!(preview_songs);
-                            all_data["netease"]["total_songs"] = json!(total_songs);
-                            all_data["netease"]["songs_truncated"] = json!(true);
-                            all_data["netease"]["temp_file_path"] =
-                                json!(temp_path.to_string_lossy().to_string());
-
-                            tracing::info!("✓ Netease Cloud Music: {} songs (preview: 100, full data in temp file)", total_songs);
-                        } else {
-                            // 歌曲数量适中，正常保存
-                            all_data["netease"]["liked_songs"] = json!(songs);
-                            tracing::info!(
-                                "✓ Netease Cloud Music liked songs fetched: {} songs",
-                                total_songs
-                            );
-                        }
+                        // 直接保存完整歌曲列表
+                        all_data["netease"]["liked_songs"] = json!(songs);
+                        tracing::info!(
+                            "✓ Netease Cloud Music liked songs stored: {} songs",
+                            total_songs
+                        );
                     }
                     Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
                 }
@@ -851,63 +879,25 @@ fn clean_platform_data(data: &mut Value) {
             let total_songs = songs.len();
             tracing::debug!("🧹 Cleaning {} netease songs...", total_songs);
 
-            let cleaned_songs: Vec<Value> = if total_songs > 2000 {
-                // 大量数据：分批处理，每批1000首
-                tracing::info!("📦 Large song collection, using batch cleaning...");
-                let batch_size = 1000;
-                let mut result = Vec::with_capacity(total_songs);
-
-                for (batch_idx, chunk) in songs.chunks(batch_size).enumerate() {
-                    if batch_idx % 2 == 0 {
-                        tracing::debug!("  Processing batch {}...", batch_idx + 1);
-                    }
-                    let batch_cleaned: Vec<Value> = chunk
-                        .iter()
-                        .map(|song| {
-                            json!({
-                                "id": song.get("id"),
-                                "name": song.get("name"),
-                                "ar": song.get("ar"),
-                                "artists": song.get("artists"),
-                                "al": song.get("al").map(|al| {
-                                    json!({
-                                        "id": al.get("id"),
-                                        "name": al.get("name"),
-                                        "picUrl": al.get("picUrl"),
-                                    })
-                                }),
-                                "picUrl": song.get("picUrl"),
-                                "dt": song.get("dt"),
-                            })
-                        })
-                        .collect();
-                    result.extend(batch_cleaned);
-                }
-                tracing::info!("✅ Batch cleaning completed: {} songs", result.len());
-                result
-            } else {
-                // 适中数据量：一次性处理
-                songs
-                    .iter()
-                    .map(|song| {
+            // 使用预分配容量 + 迭代器链式操作，编译器会优化为单次遍历
+            let mut cleaned_songs = Vec::with_capacity(total_songs);
+            cleaned_songs.extend(songs.iter().map(|song| {
+                json!({
+                    "id": song.get("id"),
+                    "name": song.get("name"),
+                    "ar": song.get("ar"),
+                    "artists": song.get("artists"),
+                    "al": song.get("al").map(|al| {
                         json!({
-                            "id": song.get("id"),
-                            "name": song.get("name"),
-                            "ar": song.get("ar"),
-                            "artists": song.get("artists"),
-                            "al": song.get("al").map(|al| {
-                                json!({
-                                    "id": al.get("id"),
-                                    "name": al.get("name"),
-                                    "picUrl": al.get("picUrl"),
-                                })
-                            }),
-                            "picUrl": song.get("picUrl"),
-                            "dt": song.get("dt"),
+                            "id": al.get("id"),
+                            "name": al.get("name"),
+                            "picUrl": al.get("picUrl"),
                         })
-                    })
-                    .collect()
-            };
+                    }),
+                    "picUrl": song.get("picUrl"),
+                    "dt": song.get("dt"),
+                })
+            }));
 
             if let Some(obj) = netease.as_object_mut() {
                 obj.insert("liked_songs".to_string(), json!(cleaned_songs));
@@ -1872,39 +1862,54 @@ pub async fn delete_platform_cache(
 ) -> (StatusCode, Json<Value>) {
     tracing::info!("🗑️ Deleting platform data cache...");
 
-    let cache_path = PathBuf::from(PLATFORM_CACHE_FILE);
+    let mut success = true;
+    let mut messages = Vec::new();
 
+    // 1. 删除分平台数据
+    let raw_dir = PathBuf::from("./cache/raw");
+    if raw_dir.exists() {
+        match fs::remove_dir_all(&raw_dir) {
+            Ok(_) => {
+                messages.push("Split raw data deleted".to_string());
+            }
+            Err(e) => {
+                success = false;
+                messages.push(format!("Failed to delete split raw data: {}", e));
+                tracing::error!("❌ Failed to delete split raw data: {}", e);
+            }
+        }
+    }
+
+    // 2. 删除旧的完整缓存文件
+    let cache_path = PathBuf::from(PLATFORM_CACHE_FILE);
     if cache_path.exists() {
         match fs::remove_file(&cache_path) {
             Ok(_) => {
-                tracing::info!("✓ Platform cache deleted successfully");
-                (
-                    StatusCode::OK,
-                    Json(json!({
-                        "success": true,
-                        "message": "Platform cache deleted successfully"
-                    })),
-                )
+                messages.push("Legacy platform cache deleted".to_string());
             }
             Err(e) => {
-                tracing::error!("❌ Failed to delete cache: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "success": false,
-                        "message": format!("Failed to delete cache: {}", e)
-                    })),
-                )
+                // 如果分平台删除成功，这里失败也可以接受，不算完全失败
+                messages.push(format!("Failed to delete legacy cache: {}", e));
+                tracing::warn!("❌ Failed to delete legacy cache: {}", e);
             }
         }
-    } else {
-        // 修复：即使文件不存在也返回 200 OK (幂等性)
-        tracing::info!("ℹ️ Platform cache file not found, considering it deleted");
+    }
+
+    if success {
+        tracing::info!("✓ Platform cache deleted successfully");
         (
             StatusCode::OK,
             Json(json!({
                 "success": true,
-                "message": "Platform cache already deleted (file not found)"
+                "message": if messages.is_empty() { "Cache already empty".to_string() } else { messages.join(", ") }
+            })),
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": messages.join(", ")
             })),
         )
     }
@@ -2218,49 +2223,12 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
 
             // 处理网易云音乐数据（支持从临时文件加载完整数据）
             if let Some(netease_data) = db_data.get("netease") {
-                // 检查是否有被截断的数据需要从临时文件加载
-                let songs_vec: Vec<Value> = if netease_data
-                    .get("songs_truncated")
-                    .and_then(|t| t.as_bool())
-                    .unwrap_or(false)
-                {
-                    // 数据被截断，从临时文件加载完整数据
-                    if let Some(temp_path) =
-                        netease_data.get("temp_file_path").and_then(|p| p.as_str())
-                    {
-                        tracing::info!("📂 Loading full song data from temp file: {}", temp_path);
-                        match load_songs_from_temp_file(temp_path) {
-                            Ok(songs) => {
-                                tracing::info!("✅ Loaded {} songs from temp file", songs.len());
-                                songs
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "❌ Failed to load from temp file: {}, using preview data",
-                                    e
-                                );
-                                netease_data
-                                    .get("liked_songs")
-                                    .and_then(|s| s.as_array())
-                                    .cloned()
-                                    .unwrap_or_default()
-                            }
-                        }
-                    } else {
-                        netease_data
-                            .get("liked_songs")
-                            .and_then(|s| s.as_array())
-                            .cloned()
-                            .unwrap_or_default()
-                    }
-                } else {
-                    // 正常数据，直接使用
-                    netease_data
-                        .get("liked_songs")
-                        .and_then(|s| s.as_array())
-                        .cloned()
-                        .unwrap_or_default()
-                };
+                // 直接从 liked_songs 读取完整数据
+                let songs_vec: Vec<Value> = netease_data
+                    .get("liked_songs")
+                    .and_then(|s| s.as_array())
+                    .cloned()
+                    .unwrap_or_default();
 
                 tracing::info!(
                     "🎵 Processing {} netease songs for library",
