@@ -326,6 +326,7 @@ export default function WidgetGrid({
   const [widgetHistory, setWidgetHistory] = useState<WidgetConfig[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [hoveredWidgetId, setHoveredWidgetId] = useState<string | null>(null);
+  const [dragCursorPosition, setDragCursorPosition] = useState<{ x: number; y: number } | null>(null);
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null);
@@ -374,17 +375,14 @@ export default function WidgetGrid({
       const widget = widgets.find((w) => w.id === widgetId);
       if (!widget) return;
 
-      // 获取小组件容器的实际位置
-      const target = e.currentTarget as HTMLElement;
-      const rect = target.getBoundingClientRect();
-      
+      // 立即设置光标位置
+      setDragCursorPosition({ x: e.clientX, y: e.clientY });
+
+      // 设置拖拽状态
       setDraggedWidget({
         type: 'existing',
         widgetId,
-        offset: {
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        },
+        offset: { x: 0, y: 0 }, // offset 现在不再使用
       });
     },
     [isEditMode, widgets]
@@ -392,11 +390,18 @@ export default function WidgetGrid({
 
   // 开始拖拽新小组件
   const handleNewWidgetDragStart = useCallback(
-    (e: React.MouseEvent, widgetTypeId: string) => {
+    (e: React.MouseEvent | React.TouchEvent, widgetTypeId: string) => {
       e.stopPropagation();
       e.preventDefault();
-      
-      // 立即触发一次位置计算
+
+      // 获取初始位置
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+      // 立即设置光标位置
+      setDragCursorPosition({ x: clientX, y: clientY });
+
+      // 设置拖拽状态
       setDraggedWidget({
         type: 'new',
         widgetTypeId,
@@ -408,7 +413,7 @@ export default function WidgetGrid({
 
   // 拖拽移动
   const handleDragMove = useCallback(
-    (e: MouseEvent) => {
+    (e: MouseEvent | TouchEvent) => {
       if (!draggedWidget) return;
 
       // Use requestAnimationFrame to throttle updates
@@ -422,6 +427,13 @@ export default function WidgetGrid({
           rafRef.current = null;
           return;
         }
+
+        // 获取鼠标/触摸位置
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+        // 更新光标位置（用于渲染跟随光标的预览）
+        setDragCursorPosition({ x: clientX, y: clientY });
 
         // 计算单元格尺寸
         const cellWidth = gridRect.width / currentGridWidth;
@@ -441,19 +453,13 @@ export default function WidgetGrid({
         const dim = SIZE_TO_DIMENSIONS[size];
 
         // 计算鼠标在网格中的位置
-        let mouseX = e.clientX - gridRect.left;
-        let mouseY = e.clientY - gridRect.top;
+        let mouseX = clientX - gridRect.left;
+        let mouseY = clientY - gridRect.top;
 
-        // 对于新小组件，以中心点为参考；对于现有小组件，使用拖拽偏移
-        if (draggedWidget.type === 'new') {
-          // 新小组件：鼠标位于小组件中心
-          mouseX -= (dim.w * cellWidth) / 2;
-          mouseY -= (dim.h * cellHeight) / 2;
-        } else if (draggedWidget.type === 'existing') {
-          // 现有小组件：保持拖拽时的相对位置
-          mouseX -= draggedWidget.offset.x;
-          mouseY -= draggedWidget.offset.y;
-        }
+        // 所有小组件都以中心点为参考
+        // 减去小组件尺寸的一半，使光标位于中心
+        mouseX -= (dim.w * cellWidth) / 2;
+        mouseY -= (dim.h * cellHeight) / 2;
 
         // 转换为网格坐标
         let gridX = Math.floor(mouseX / cellWidth);
@@ -467,7 +473,7 @@ export default function WidgetGrid({
           if (prev?.x === gridX && prev?.y === gridY) return prev;
           return { x: gridX, y: gridY };
         });
-        
+
         rafRef.current = null;
       });
     },
@@ -484,6 +490,7 @@ export default function WidgetGrid({
     if (!draggedWidget || !hoveredCell) {
       setDraggedWidget(null);
       setHoveredCell(null);
+      setDragCursorPosition(null);
       return;
     }
 
@@ -544,6 +551,7 @@ export default function WidgetGrid({
 
     setDraggedWidget(null);
     setHoveredCell(null);
+    setDragCursorPosition(null);
   }, [draggedWidget, hoveredCell, widgets, availableWidgets, onWidgetsChange]);
 
   // 移除小组件
@@ -588,14 +596,24 @@ export default function WidgetGrid({
     setWidgetHistory(newHistory);
   }, [widgetHistory, historyIndex]);
 
-  // 注册拖拽事件
+  // 注册拖拽事件（鼠标和触屏）
   useEffect(() => {
     if (draggedWidget) {
-      window.addEventListener('mousemove', handleDragMove);
-      window.addEventListener('mouseup', handleDragEnd);
+      const moveHandler = handleDragMove as any;
+      const endHandler = handleDragEnd as any;
+
+      window.addEventListener('mousemove', moveHandler);
+      window.addEventListener('mouseup', endHandler);
+      window.addEventListener('touchmove', moveHandler, { passive: false });
+      window.addEventListener('touchend', endHandler);
+      window.addEventListener('touchcancel', endHandler);
+
       return () => {
-        window.removeEventListener('mousemove', handleDragMove);
-        window.removeEventListener('mouseup', handleDragEnd);
+        window.removeEventListener('mousemove', moveHandler);
+        window.removeEventListener('mouseup', endHandler);
+        window.removeEventListener('touchmove', moveHandler);
+        window.removeEventListener('touchend', endHandler);
+        window.removeEventListener('touchcancel', endHandler);
         if (rafRef.current) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
@@ -629,25 +647,43 @@ export default function WidgetGrid({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditMode, handleUndo, handleRedo, onToggleEditMode]);
 
-  // 预览拖拽位置
+  // 预览拖拽位置和组件信息
   const dragPreview = useMemo(() => {
     if (!draggedWidget || !hoveredCell) return null;
 
     let size: WidgetSize = '1x1';
+    let widgetType: WidgetType | undefined;
+    let widgetConfig: WidgetConfig | undefined;
+
     if (draggedWidget.type === 'existing' && draggedWidget.widgetId) {
       const widget = widgets.find((w) => w.id === draggedWidget.widgetId);
       size = widget?.size || '1x1';
+      widgetConfig = widget;
+      widgetType = availableWidgets.find((w) => w.id === widget?.type);
     } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
-      const widgetType = availableWidgets.find(
+      widgetType = availableWidgets.find(
         (w) => w.id === draggedWidget.widgetTypeId
       );
       size = widgetType?.defaultSize || '1x1';
+
+      // 创建预览配置
+      widgetConfig = {
+        id: 'drag-preview',
+        type: draggedWidget.widgetTypeId,
+        size,
+        position: hoveredCell,
+        config: draggedWidget.widgetTypeId.startsWith('platform-')
+          ? { platformId: draggedWidget.widgetTypeId.replace('platform-', '') }
+          : draggedWidget.widgetTypeId.startsWith('report-')
+          ? { platformId: draggedWidget.widgetTypeId.replace('report-', '') }
+          : undefined
+      };
     }
 
     const dim = SIZE_TO_DIMENSIONS[size];
     const testWidget: WidgetConfig = {
       id: 'preview',
-      type: '',
+      type: widgetConfig?.type || '',
       size,
       position: hoveredCell,
     };
@@ -660,7 +696,7 @@ export default function WidgetGrid({
       draggedWidget.type === 'existing' ? draggedWidget.widgetId : undefined
     );
 
-    return { position: hoveredCell, size: dim, hasCollision };
+    return { position: hoveredCell, size: dim, hasCollision, widgetType, widgetConfig };
   }, [draggedWidget, hoveredCell, widgets, availableWidgets]);
 
   // Memoize grid background
@@ -771,6 +807,7 @@ export default function WidgetGrid({
                       }}
                       draggable
                       onMouseDown={(e) => handleNewWidgetDragStart(e, widgetType.id)}
+                      onTouchStart={(e) => handleNewWidgetDragStart(e, widgetType.id)}
                       whileHover={{ scale: 1.05, zIndex: 10 }}
                       whileTap={{ scale: 0.95 }}
                       layout
@@ -795,7 +832,7 @@ export default function WidgetGrid({
                       <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
 
                       {/* 悬浮提示 */}
-                      <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-gray-700/50">
                         {widgetType.name}
                       </div>
                     </motion.div>
@@ -817,7 +854,7 @@ export default function WidgetGrid({
 
         <div
           ref={gridRef}
-          className={`widget-grid-container relative w-full rounded-xl ${isCompact ? 'overflow-visible' : 'overflow-hidden'}`}
+          className="widget-grid-container relative w-full rounded-xl"
           style={isCompact && totalPixelHeight ? {
             height: totalPixelHeight,
             // 移除 aspectRatio，使用固定高度
@@ -828,15 +865,16 @@ export default function WidgetGrid({
           {/* 背景网格线（编辑模式） */}
           {isEditMode && !isCompact && gridBackground}
 
-        {/* 拖拽预览 */}
+        {/* 拖拽位置指示器 - 网格中的目标位置预览 */}
         {dragPreview && !isCompact && (
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
+            initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className={`absolute z-20 rounded-xl border-2 transition-all pointer-events-none ${
+            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+            className={`absolute z-20 rounded-xl transition-all pointer-events-none ${
               dragPreview.hasCollision
-                ? 'bg-red-500/20 border-red-500'
-                : 'bg-green-500/20 border-green-500'
+                ? 'bg-red-500/10 ring-2 ring-red-500/50'
+                : 'bg-blue-500/10 ring-2 ring-blue-500/50'
             }`}
             style={{
               left: `${(dragPreview.position.x / currentGridWidth) * 100}%`,
@@ -845,10 +883,20 @@ export default function WidgetGrid({
               height: `${(dragPreview.size.h / currentGridHeight) * 100}%`,
             }}
           >
-            <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold">
-              <span className={dragPreview.hasCollision ? 'text-red-600' : 'text-green-600'}>
-                {dragPreview.hasCollision ? '位置冲突' : '可以放置'}
-              </span>
+            {/* 虚线边框动画 */}
+            <div className={`absolute inset-0 rounded-xl border-2 border-dashed animate-dash ${
+              dragPreview.hasCollision ? 'border-red-500/60' : 'border-blue-500/60'
+            }`} />
+
+            {/* 状态提示 */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className={`px-3 py-1 rounded-full text-xs font-bold shadow-lg backdrop-blur-sm ${
+                dragPreview.hasCollision
+                  ? 'bg-red-500/90 text-white'
+                  : 'bg-blue-500/90 text-white'
+              }`}>
+                {dragPreview.hasCollision ? '❌ 位置冲突' : '✓ 可以放置'}
+              </div>
             </div>
           </motion.div>
         )}
@@ -880,6 +928,62 @@ export default function WidgetGrid({
         </div>
         </div>
       </div>
+
+      {/* 跟随光标的真实小组件预览 */}
+      <AnimatePresence>
+        {draggedWidget && dragCursorPosition && dragPreview && dragPreview.widgetType && dragPreview.widgetConfig && (() => {
+          // 计算实际的网格单元格尺寸
+          const gridRect = (window as any).__widgetGridRect;
+          let cellWidth = 100;
+          let cellHeight = 100;
+
+          if (gridRect) {
+            cellWidth = gridRect.width / currentGridWidth;
+            cellHeight = gridRect.height / currentGridHeight;
+          }
+
+          // 计算预览的实际像素尺寸
+          const previewWidth = dragPreview.size.w * cellWidth;
+          const previewHeight = dragPreview.size.h * cellHeight;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="fixed pointer-events-none z-[9999]"
+              style={{
+                left: `${dragCursorPosition.x}px`,
+                top: `${dragCursorPosition.y}px`,
+              }}
+            >
+              {/* 小组件预览 - 中心对齐光标 */}
+              <div
+                className={`absolute rounded-xl shadow-2xl ring-2 transition-all ${
+                  dragPreview.hasCollision
+                    ? 'ring-red-500/70'
+                    : 'ring-blue-500/70'
+                }`}
+                style={{
+                  left: '50%',
+                  top: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: `${previewWidth}px`,
+                  height: `${previewHeight}px`,
+                  opacity: 0.95,
+                }}
+              >
+                <dragPreview.widgetType.component
+                  config={dragPreview.widgetConfig}
+                  isEditMode={false}
+                  isPreview={true}
+                />
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
     </div>
   );
 }

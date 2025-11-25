@@ -96,41 +96,22 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
 // 默认小组件布局
 const DEFAULT_WIDGETS: WidgetConfig[] = [
   {
-    id: 'default-stats',
-    type: 'quick-stats',
+    id: 'default-welcome',
+    type: 'welcome',
     size: '4x2',
     position: { x: 0, y: 0 },
-  },
-  {
-    id: 'default-activity',
-    type: 'recent-activity',
-    size: '4x2',
-    position: { x: 4, y: 0 },
   },
   {
     id: 'default-weather',
     type: 'weather',
     size: '2x2',
-    position: { x: 6, y: 0 },
+    position: { x: 4, y: 0 },
   },
   {
     id: 'default-quote',
     type: 'quote',
     size: '2x2',
-    position: { x: 8, y: 0 },
-  },
-  {
-    id: 'default-music-player',
-    type: 'music-player',
-    size: '2x2',
-    position: { x: 10, y: 0 },
-  },
-  {
-    id: 'default-report-bilibili',
-    type: 'report-bilibili',
-    size: '4x2',
-    position: { x: 0, y: 2 },
-    config: { platformId: 'bilibili' },
+    position: { x: 6, y: 0 },
   },
 ];
 
@@ -404,17 +385,17 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* 编辑按钮 - 仅管理员可见 */}
+                  {/* 编辑按钮 - 仅管理员可见，且仅在桌面端显示 */}
                   {userInfo?.is_admin && (
                     <>
-                      <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1" />
-                      
+                      <div className="hidden lg:block h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1" />
+
                       <button
                         onClick={() => setIsEditMode(!isEditMode)}
                         className={`
-                          px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all
-                          ${isEditMode 
-                            ? 'text-white shadow-md hover:opacity-90' 
+                          hidden lg:flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all
+                          ${isEditMode
+                            ? 'text-white shadow-md hover:opacity-90'
                             : 'bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10'
                           }
                         `}

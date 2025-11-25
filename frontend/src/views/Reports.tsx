@@ -10,22 +10,16 @@ import {
   FaGithub,
   FaMagic,
   FaChartPie,
-  FaLightbulb,
-  FaRobot,
   FaTimes,
-  FaCode,
-  FaMusic,
-  FaGamepad,
-  FaBrain,
-  FaHeart,
-  FaPalette,
-  FaRocket,
   FaSync,
   FaTrash,
   FaPlay,
-  FaPause
+  FaPause,
+  FaRobot
 } from 'react-icons/fa';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
+import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard';
+import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport';
 
 // 🚀 性能优化：防抖Hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -129,49 +123,6 @@ interface CrossPlatformReport {
   综合分析?: ComprehensiveAnalysis | null;
   created_at: string;
 }
-
-// 图标映射 - 性能优化：使用 memo 组件避免重复渲染
-const ThemeIcon = memo(({ iconImageUrl, iconPrompt, iconName }: {
-  iconImageUrl?: string;
-  iconPrompt?: string;
-  iconName?: string;
-}) => {
-  // 优先级1：直接使用icon_image_url（AI生成的图标）
-  if (iconImageUrl) {
-    return <img src={iconImageUrl} alt="theme icon" className="w-24 h-24 object-contain drop-shadow-2xl" />;
-  }
-
-  // 优先级2：如果有icon_prompt但没有URL，显示占位符（后续可接入图标生成服务）
-  if (iconPrompt) {
-    return (
-      <div className="w-20 h-20 flex items-center justify-center bg-white/20 rounded-lg text-2xl text-white/60" title={iconPrompt}>
-        🎨
-      </div>
-    );
-  }
-
-  // 优先级3：回退到预定义的React图标
-  switch (iconName) {
-    case 'FaRobot': return <FaRobot size={64} />;
-    case 'FaBrain': return <FaBrain size={64} />;
-    case 'FaHeart': return <FaHeart size={64} />;
-    case 'FaMusic': return <FaMusic size={64} />;
-    case 'FaCode': return <FaCode size={64} />;
-    case 'FaGamepad': return <FaGamepad size={64} />;
-    case 'FaPalette': return <FaPalette size={64} />;
-    case 'FaRocket': return <FaRocket size={64} />;
-    default: return <FaLightbulb size={64} />;
-  }
-});
-
-// 向后兼容的辅助函数
-const getThemeIcon = (
-  iconImageUrl?: string, 
-  iconPrompt?: string, 
-  iconName?: string
-): React.ReactNode => {
-  return <ThemeIcon iconImageUrl={iconImageUrl} iconPrompt={iconPrompt} iconName={iconName} />;
-};
 
 // 🚀 性能优化：平台配置常量（已在组件外部，避免重复创建）
 const PLATFORMS = [
@@ -1172,204 +1123,6 @@ const NeteaseWidget = memo(({
 
 
 // 🚀 性能优化：将综合报告卡片提取为独立的 memo 组件
-const ComprehensiveReportCard = memo(({ 
-  compReport,
-  index,
-  onOpen 
-}: { 
-  compReport: any;
-  index: number;
-  onOpen: (analysis: any, id: number, createdAt: string) => void;
-}) => {
-  if (!compReport.综合分析) return null;
-  
-  const analysis = compReport.综合分析;
-  const themeColor = analysis.theme_color || '#6366f1';
-
-  const handleClick = useCallback(() => {
-    onOpen(analysis, compReport.id, compReport.created_at);
-  }, [analysis, compReport.id, compReport.created_at, onOpen]);
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -20, scale: 0.95 }}
-      transition={{ 
-        duration: 0.4,
-        delay: index * 0.08,
-        ease: [0.4, 0, 0.2, 1]
-      }}
-    >
-      <motion.div
-        onClick={handleClick}
-        whileHover={{ y: -4, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        transition={{ duration: 0.2, ease: "easeOut" }} // 🚀 优化过渡
-        className="relative overflow-hidden rounded-2xl cursor-pointer glass flex-shrink-0 snap-center w-[280px] lg:w-full"
-        style={{ 
-          aspectRatio: '2 / 1',
-          willChange: 'transform' // 🚀 GPU加速
-        }}
-      >
-        <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl opacity-20" 
-             style={{ background: themeColor }} />
-        <div className="absolute -left-10 -bottom-10 w-32 h-32 rounded-full blur-2xl opacity-15" 
-             style={{ background: themeColor }} />
-
-        <div className="relative z-10 h-full flex items-center justify-between px-6 py-3">
-          {/* 左侧：图标区域 */}
-          <div className="flex-shrink-0 flex items-center justify-center">
-            {analysis.decorative_emojis && analysis.decorative_emojis.length > 0 && (
-              <>
-                {analysis.decorative_emojis.slice(0, 2).map((emoji: string, i: number) => {
-                  const positions = [
-                    { top: '20%', left: '2%' },
-                    { bottom: '20%', left: '2%' },
-                  ];
-                  const pos = positions[i % positions.length];
-
-                  return (
-                    <motion.span
-                      key={i}
-                      className="absolute text-2xl opacity-25"
-                      style={{ ...pos, willChange: 'transform, opacity' }} // 🚀 GPU加速
-                      animate={{
-                        y: [0, -8, 0],
-                        opacity: [0.2, 0.3, 0.2],
-                      }}
-                      transition={{
-                        duration: 4 + i * 0.3,
-                        repeat: Infinity,
-                        delay: i * 0.5,
-                        ease: "easeInOut"
-                      }}
-                    >
-                      {emoji}
-                    </motion.span>
-                  );
-                })}
-              </>
-            )}
-
-            {(analysis.icon_image_url || analysis.icon_prompt || analysis.theme_icon) && (
-              <div className="relative">
-                <motion.div
-                  className="absolute inset-0 rounded-xl blur-xl"
-                  style={{ 
-                    background: themeColor, 
-                    opacity: 0.25,
-                    willChange: 'transform' // 🚀 GPU加速
-                  }}
-                  animate={{
-                    scale: [1, 1.15, 1],
-                    opacity: [0.2, 0.35, 0.2]
-                  }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                />
-                <motion.div
-                  className="relative w-24 h-24 rounded-xl backdrop-blur-sm flex items-center justify-center shadow-2xl overflow-hidden"
-                  style={{ 
-                    background: 'var(--glass-bg)',
-                    border: `2px solid ${themeColor}30`,
-                    willChange: 'transform' // 🚀 GPU加速
-                  }}
-                  animate={{
-                    y: [0, -5, 0],
-                  }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  <div style={{ color: themeColor, fontSize: '56px' }}>
-                    {getThemeIcon(analysis.icon_image_url, analysis.icon_prompt, analysis.theme_icon)}
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </div>
-
-          {/* 右侧：文本信息区域 */}
-          <div className="flex-1 min-w-0 flex flex-col justify-center pl-5 pr-2">
-            <motion.h2
-              className="text-lg font-bold mb-1.5 truncate leading-tight"
-              style={{ color: themeColor }}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              {analysis.visual_style || '全平台综合报告'}
-            </motion.h2>
-
-            {analysis.card_subtitle && (
-              <motion.p
-                className="text-xs text-gray-600 dark:text-gray-400 mb-2 truncate leading-relaxed"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-              >
-                {analysis.card_subtitle}
-              </motion.p>
-            )}
-
-            {analysis.key_metric && (
-              <motion.div
-                className="flex items-center"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3 }}
-              >
-                <div 
-                  className="px-3 py-1.5 rounded-full backdrop-blur-sm font-medium text-xs truncate max-w-full"
-                  style={{ 
-                    background: `${themeColor}20`,
-                    color: themeColor,
-                    border: `1px solid ${themeColor}40`
-                  }}
-                >
-                  {analysis.key_metric}
-                </div>
-              </motion.div>
-            )}
-          </div>
-
-          {/* 右侧装饰emoji */}
-          {analysis.decorative_emojis && analysis.decorative_emojis.length > 2 && (
-            <>
-              {analysis.decorative_emojis.slice(2, 4).map((emoji: string, i: number) => {
-                const positions = [
-                  { top: '20%', right: '3%' },
-                  { bottom: '20%', right: '3%' },
-                ];
-                const pos = positions[i % positions.length];
-
-                return (
-                  <motion.span
-                    key={i + 2}
-                    className="absolute text-2xl opacity-25"
-                    style={{ ...pos, willChange: 'transform, opacity' }} // 🚀 GPU加速
-                    animate={{
-                      y: [0, -8, 0],
-                      opacity: [0.2, 0.3, 0.2],
-                    }}
-                    transition={{
-                      duration: 4 + i * 0.3,
-                      repeat: Infinity,
-                      delay: (i + 2) * 0.5,
-                      ease: "easeInOut"
-                    }}
-                  >
-                    {emoji}
-                  </motion.span>
-                );
-              })}
-            </>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-});
-
 export default function Reports() {
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
   const [report, setReport] = useState<CrossPlatformReport | null>(null);
@@ -2094,12 +1847,12 @@ export default function Reports() {
                 </div>
               </>
             )}
-            {activeTab === 'comprehensive' && comprehensiveReports.length > 0 && (
+            {activeTab === 'comprehensive' && (
               <>
                 {/* 综合报告标题 - 绝对定位在整个区域 */}
-                <div 
-                  className={`absolute left-2 text-8xl whitespace-nowrap pointer-events-none z-0 qwitcher-grypen-bold ${isStageMode ? 'hidden md:block' : ''}`} 
-                  style={{ 
+                <div
+                  className={`absolute left-2 text-8xl whitespace-nowrap pointer-events-none z-0 qwitcher-grypen-bold ${isStageMode ? 'hidden md:block' : ''}`}
+                  style={{
                     top: 'calc(25px - 1em)',
                     color: 'color-mix(in srgb, var(--color-accent) 70%, transparent)',
                     WebkitTextStroke: '0.5px color-mix(in srgb, var(--color-accent) 30%, transparent)'
@@ -2608,10 +2361,10 @@ export default function Reports() {
               </>
             )}
 
-            {activeTab === 'comprehensive' && comprehensiveReports.length > 0 && (
+            {activeTab === 'comprehensive' && (
               <>
                 {/* 综合报告提示条 */}
-                <motion.div 
+                <motion.div
                   className="h-[50px]"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -2747,7 +2500,7 @@ export default function Reports() {
                     )}
                   </motion.div>
                 </motion.div>
-                <motion.div 
+                <motion.div
                   className={`flex lg:grid lg:grid-cols-4 gap-4 overflow-x-auto lg:overflow-x-visible scrollbar-hide snap-x snap-mandatory lg:snap-none ${isStageMode ? 'hidden md:flex' : ''}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -2755,45 +2508,49 @@ export default function Reports() {
                   transition={{ duration: 0.3, delay: 0.1 }}
                 >
                 <AnimatePresence mode="popLayout">
-                {displayedComprehensiveReports.map((compReport: any, index: number) => (
-                  <ComprehensiveReportCard
-                    key={compReport.id}
-                    compReport={compReport}
-                    index={index}
-                    onOpen={(analysis: any, id: number, createdAt: string) => {
-                      // 打开综合报告的舞台模式
-                      // 从所有平台报告中提取 library_items
-                      const allLibraryItems: Array<{ title: string; cover?: string; type: string; platform?: string }> = [];
-                      
-                      if (report?.platform_reports) {
-                        report.platform_reports.forEach(platformReport => {
-                          const cardVisuals: any = platformReport.card_visuals;
-                          if (cardVisuals && typeof cardVisuals === 'object') {
-                            const items = cardVisuals.library_items;
-                            if (Array.isArray(items)) {
-                              items.forEach((item: any) => {
-                                allLibraryItems.push({
-                                  title: item.title,
-                                  cover: item.cover,
-                                  type: item.type || 'content',
-                                  platform: platformReport.platform,
+                {displayedComprehensiveReports.length > 0 ? (
+                  displayedComprehensiveReports.map((compReport: any, index: number) => (
+                    <ComprehensiveReportCard
+                      key={compReport.id}
+                      compReport={compReport}
+                      index={index}
+                      onOpen={(analysis: any, id: number, createdAt: string) => {
+                        // 打开综合报告的舞台模式
+                        // 从所有平台报告中提取 library_items
+                        const allLibraryItems: Array<{ title: string; cover?: string; type: string; platform?: string }> = [];
+
+                        if (report?.platform_reports) {
+                          report.platform_reports.forEach(platformReport => {
+                            const cardVisuals: any = platformReport.card_visuals;
+                            if (cardVisuals && typeof cardVisuals === 'object') {
+                              const items = cardVisuals.library_items;
+                              if (Array.isArray(items)) {
+                                items.forEach((item: any) => {
+                                  allLibraryItems.push({
+                                    title: item.title,
+                                    cover: item.cover,
+                                    type: item.type || 'content',
+                                    platform: platformReport.platform,
+                                  });
                                 });
-                              });
+                              }
                             }
-                          }
+                          });
+                        }
+
+                        setStageReportData({
+                          type: 'comprehensive',
+                          综合分析: analysis,
+                          library_items: allLibraryItems,
+                          title: analysis.visual_style || '全平台综合报告',
                         });
-                      }
-                      
-                      setStageReportData({
-                        type: 'comprehensive',
-                        综合分析: analysis,
-                        library_items: allLibraryItems,
-                        title: analysis.visual_style || '全平台综合报告',
-                      });
-                      setIsStageMode(true);
-                    }}
-                  />
-                ))}
+                        setIsStageMode(true);
+                      }}
+                    />
+                  ))
+                ) : (
+                  <EmptyComprehensiveReport isAdmin={isAdmin} />
+                )}
                 </AnimatePresence>
                 </motion.div>
               </>

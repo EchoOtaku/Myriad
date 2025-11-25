@@ -21,6 +21,7 @@
 /backend/cache/*.tmp
 /backend/cache/*.cache
 !/backend/cache/README.md
+/backend/data/
 *.cache
 .cache/
 tmp/
@@ -128,3 +129,4 @@ test-results/
 nul
 .claude/settings.local.json
 /.claude
+backend/data/unknown_content_stats.json
