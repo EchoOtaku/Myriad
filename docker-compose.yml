@@ -49,6 +49,18 @@
 #   示例: RUST_LOG=debug
 #   说明: 日志级别 (trace, debug, info, warn, error)
 #
+# CSP_CONNECT_SRC='self' https:
+#   示例: CSP_CONNECT_SRC='self' https://hirari.jp http://localhost:3000
+#   说明: Content Security Policy 的 connect-src 指令，控制前端可以连接的API域名
+#   重要: 如果后端API和前端不在同一域名，必须配置此项（包括协议和端口）
+#   格式: 多个域名用空格分隔，记得加引号
+#
+# ENVIRONMENT=production
+#   示例: ENVIRONMENT=development
+#   说明: 运行环境模式，影响CSP策略和安全配置
+#   - production: 启用严格的CSP和安全头
+#   - development: 放宽CSP限制，支持热重载
+#
 # 注意：应用配置（AI、平台集成、主题等）已迁移至数据库
 #      请通过 Web UI 的设置页面进行配置管理
 #
@@ -143,6 +155,15 @@ services:
 
       # CORS - IMPORTANT: Set your domain in production
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4321}
+
+      # CSP - Content Security Policy for connect-src directive
+      # 允许前端连接到后端API的域名（包括协议和端口）
+      # 示例: CSP_CONNECT_SRC='self' https://hirari.jp http://localhost:3000
+      # 生产环境必须配置！留空则使用默认值 'self' https:
+      CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-'self' https:}
+
+      # Environment mode (development/production) - 影响CSP策略和安全配置
+      ENVIRONMENT: ${ENVIRONMENT:-production}
 
       # Optional: Frontend and Base URLs for OAuth callbacks
       FRONTEND_URL: ${FRONTEND_URL:-}

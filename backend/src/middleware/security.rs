@@ -11,50 +11,58 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
 
     let csp = if is_production {
+        // PRODUCTION: Get allowed API origins from env (fallback to default)
+        let allowed_api_origins =
+            env::var("CSP_CONNECT_SRC").unwrap_or_else(|_| "'self' https:".to_string());
+
         // PRODUCTION: Strict CSP for executable content, relaxed for assets
-        concat!(
-            "default-src 'self'; ",
-            "script-src 'self'; ", // STRICT: No unsafe-inline/unsafe-eval
-            "style-src 'self' 'unsafe-inline' https:; ", // Allow external stylesheets and inline
-            "img-src * data: blob:; ", // RELAXED: Allow all image sources
-            "font-src 'self' data: https: blob:; ", // RELAXED: Allow external fonts
-            "media-src 'self' https: blob:; ", // RELAXED: Allow external media
-            "connect-src 'self' https:; ", // Allow external API calls
-            "object-src 'none'; ", // STRICT: No plugins
-            "base-uri 'self'; ",   // STRICT: Prevent base tag injection
-            "form-action 'self'; ", // STRICT: Forms to same origin only
-            "frame-ancestors 'none'; ", // STRICT: Prevent clickjacking
-            "frame-src 'none'; ",  // STRICT: No iframes
-            "worker-src 'self' blob:; ", // Allow service workers
-            "manifest-src 'self'; ", // PWA manifest
-            "upgrade-insecure-requests; "  // Force HTTPS
+        format!(
+            "default-src 'self'; \
+            script-src 'self'; \
+            style-src 'self' 'unsafe-inline' https:; \
+            img-src * data: blob:; \
+            font-src 'self' data: https: blob:; \
+            media-src 'self' https: blob:; \
+            connect-src {}; \
+            object-src 'none'; \
+            base-uri 'self'; \
+            form-action 'self'; \
+            frame-ancestors 'none'; \
+            frame-src 'none'; \
+            worker-src 'self' blob:; \
+            manifest-src 'self'; \
+            upgrade-insecure-requests; ",
+            allowed_api_origins
         )
     } else {
         // DEVELOPMENT: Relaxed CSP for hot reload and dev tools
-        concat!(
-            "default-src 'self'; ",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; ", // Dev tools need eval
-            "style-src 'self' 'unsafe-inline' https:; ",
-            "img-src * data: blob:; ",
-            "font-src 'self' data: https: blob:; ",
-            "media-src 'self' https: blob:; ",
-            "connect-src 'self' ws: wss: https:; ", // WebSocket for HMR
-            "object-src 'none'; ",
-            "base-uri 'self'; ",
-            "worker-src 'self' blob:; "
-        )
+        "default-src 'self'; \
+            script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
+            style-src 'self' 'unsafe-inline' https:; \
+            img-src * data: blob:; \
+            font-src 'self' data: https: blob:; \
+            media-src 'self' https: blob:; \
+            connect-src 'self' ws: wss: https: http:; \
+            object-src 'none'; \
+            base-uri 'self'; \
+            worker-src 'self' blob:; "
+            .to_string()
     };
 
     if is_production || env::var("ENABLE_CSP_DEV").unwrap_or_default() == "true" {
-        headers.insert(header::CONTENT_SECURITY_POLICY, csp.parse().unwrap());
-        tracing::debug!(
-            "CSP enabled: {}",
-            if is_production {
-                "production"
-            } else {
-                "development"
-            }
-        );
+        if let Ok(header_value) = csp.parse() {
+            headers.insert(header::CONTENT_SECURITY_POLICY, header_value);
+            tracing::debug!(
+                "CSP enabled: {}",
+                if is_production {
+                    "production"
+                } else {
+                    "development"
+                }
+            );
+        } else {
+            tracing::error!("Failed to parse CSP header value");
+        }
     } else {
         tracing::debug!("CSP disabled in development mode (set ENABLE_CSP_DEV=true to enable)");
     }
