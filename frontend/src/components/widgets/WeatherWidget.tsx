@@ -7,6 +7,7 @@ import { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { getWeatherInfo, WeatherData } from '../../utils/smartWidgets';
 import { WidgetConfig } from '../WidgetGrid';
+import { useWidgetSize } from '../../hooks/useWidgetSize';
 
 // 缓存配置
 const CACHE_KEY = 'weather_data_cache';
@@ -19,6 +20,7 @@ export interface WeatherWidgetProps {
 }
 
 export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWidgetProps) => {
+  const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -121,7 +123,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   }
 
   return (
-    <div className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 动态背景光效 - 呼吸效果 */}
       <motion.div 
         className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
@@ -138,10 +140,11 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
       />
       
       {/* 主内容区：2x2紧凑布局 */}
-      <div className="absolute inset-0 flex flex-col p-3">
+      <div className="absolute inset-0 flex flex-col p-3" style={{ padding: `${12 * scale}px` }}>
         {/* 顶部：图标 - 轻微摆动 */}
         <motion.div 
           className="text-3xl mb-1"
+          style={{ fontSize: `${30 * fontScale}px` }}
           initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
           animate={{ 
             scale: 1, 
@@ -165,6 +168,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         <div className="flex-1 flex flex-col justify-center">
           <motion.div 
             className="flex items-baseline gap-2 mb-1"
+            style={{ gap: `${8 * scale}px`, marginBottom: `${4 * scale}px` }}
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ 
@@ -173,11 +177,15 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
               ease: [0.34, 1.56, 0.64, 1]
             }}
           >
-            <span className="text-4xl font-black text-gray-800 dark:text-gray-100 leading-none">
+            <span 
+              className="text-4xl font-black text-gray-800 dark:text-gray-100 leading-none"
+              style={{ fontSize: `${36 * fontScale}px` }}
+            >
               {weatherData.temperature}
             </span>
             <motion.span 
               className="text-base text-gray-600 dark:text-gray-400 font-medium"
+              style={{ fontSize: `${16 * fontScale}px` }}
               initial={{ opacity: 0 }}
               animate={{ opacity: [0.6, 1, 0.6] }}
               transition={{
@@ -191,6 +199,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
           </motion.div>
           <motion.div 
             className="text-xs text-gray-600 dark:text-gray-400 mb-2"
+            style={{ fontSize: `${12 * fontScale}px`, marginBottom: `${8 * scale}px` }}
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ 
@@ -207,6 +216,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         {(weatherData.humidity !== undefined || weatherData.windSpeed !== undefined) && (
           <motion.div 
             className="flex items-center gap-2 text-[10px]"
+            style={{ gap: `${8 * scale}px`, fontSize: `${10 * fontScale}px` }}
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.3 }}

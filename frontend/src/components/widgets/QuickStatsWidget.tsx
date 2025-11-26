@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { API_URL } from '../../config';
+import { useWidgetSize } from '../../hooks/useWidgetSize';
 
 // 缓存配置
 const CACHE_KEY = 'library_stats_cache';
@@ -22,13 +23,13 @@ interface LibraryStats {
 }
 
 // 统计卡片组件 - 避免重复渲染
-const StatCard = memo(({ cat, value, loading }: { cat: any; value: number; loading: boolean; index: number }) => {
+const StatCard = memo(({ cat, value, loading, scale = 1, fontScale = 1 }: { cat: any; value: number; loading: boolean; index: number; scale?: number; fontScale?: number }) => {
   const renderIcon = useCallback((type: string) => {
-    const iconClass = "w-5 h-5";
+    const style = { width: `${20 * scale}px`, height: `${20 * scale}px` };
     switch (type) {
       case 'game':
         return (
-          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <svg className="w-5 h-5" style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <rect x="2" y="6" width="20" height="12" rx="3" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 12h4m-2-2v4" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 11h.01M17 13h.01" />
@@ -36,47 +37,63 @@ const StatCard = memo(({ cat, value, loading }: { cat: any; value: number; loadi
         );
       case 'video':
         return (
-          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <svg className="w-5 h-5" style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
         );
       case 'music':
         return (
-          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <svg className="w-5 h-5" style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
           </svg>
         );
       case 'anime':
         return (
-          <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" style={style} fill="currentColor" viewBox="0 0 24 24">
             <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize="18" fontWeight="bold">あ</text>
           </svg>
         );
       case 'tv_series':
         return (
-          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <svg className="w-5 h-5" style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" />
           </svg>
         );
       default:
         return null;
     }
-  }, []);
+  }, [scale]);
 
   return (
-    <div className="flex flex-col items-center justify-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm rounded-lg p-1.5 relative overflow-hidden">
+    <div 
+      className="flex flex-col items-center justify-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm rounded-lg relative overflow-hidden p-1.5"
+      style={{ padding: `${6 * scale}px` }}
+    >
       <div 
-        className="absolute top-0 right-0 w-6 h-6 rounded-full blur-xl opacity-20"
-        style={{ background: cat.color }}
+        className="absolute top-0 right-0 rounded-full blur-xl opacity-20 w-6 h-6"
+        style={{ 
+          background: cat.color,
+          width: `${24 * scale}px`,
+          height: `${24 * scale}px`
+        }}
       />
-      <div className="relative z-10 flex flex-col items-center gap-0.5">
+      <div 
+        className="relative z-10 flex flex-col items-center gap-0.5"
+        style={{ gap: `${2 * scale}px` }}
+      >
         <div className="text-gray-700 dark:text-white/60">
           {renderIcon(cat.key)}
         </div>
-        <span className="text-base font-black text-gray-800 dark:text-gray-200 leading-none">
+        <span 
+          className="text-base font-black text-gray-800 dark:text-gray-200 leading-none"
+          style={{ fontSize: `${16 * fontScale}px` }}
+        >
           {loading ? '-' : value}
         </span>
-        <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">
+        <span 
+          className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold"
+          style={{ fontSize: `${7 * fontScale}px` }}
+        >
           {cat.label}
         </span>
       </div>
@@ -87,6 +104,7 @@ const StatCard = memo(({ cat, value, loading }: { cat: any; value: number; loadi
 StatCard.displayName = 'StatCard';
 
 export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
+  const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const [stats, setStats] = useState<LibraryStats>({
     total: 0,
     game: 0,
@@ -201,28 +219,38 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
   ], []);
 
   return (
-    <div className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 背景装饰 */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       
       {/* 主内容 */}
-      <div className="relative h-full flex flex-col p-3">
+      <div className="relative h-full flex flex-col p-3" style={{ padding: `${12 * scale}px` }}>
         {/* 顶部：标题 + 总数 */}
-        <div className="flex items-start justify-between mb-2 ml-1.5">
+        <div className="flex items-start justify-between mb-2 ml-1.5" style={{ marginBottom: `${8 * scale}px`, marginLeft: `${6 * scale}px` }}>
           <div>
-            <h3 className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5">
+            <h3 
+              className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5"
+              style={{ fontSize: `${12 * fontScale}px`, marginBottom: `${2 * scale}px` }}
+            >
               内容总览
             </h3>
             <motion.div 
               className="flex items-baseline gap-1"
+              style={{ gap: `${4 * scale}px` }}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.1 }}
             >
-              <span className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none">
+              <span 
+                className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
+                style={{ fontSize: `${30 * fontScale}px` }}
+              >
                 {loading ? '---' : stats.total}
               </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-bold mb-0.5">
+              <span 
+                className="text-xs text-gray-500 dark:text-gray-400 font-bold mb-0.5"
+                style={{ fontSize: `${12 * fontScale}px`, marginBottom: `${2 * scale}px` }}
+              >
                 ITEMS
               </span>
             </motion.div>
@@ -230,7 +258,7 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
         </div>
 
         {/* 分类统计 */}
-        <div className="flex-1 grid grid-cols-5 gap-1.5">
+        <div className="flex-1 grid grid-cols-5 gap-1.5" style={{ gap: `${6 * scale}px` }}>
           {categories.map((cat, index) => (
             <motion.div
               key={cat.key}
@@ -238,7 +266,7 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
               animate={{ y: 0, opacity: 1 }}
               transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
             >
-              <StatCard cat={cat} value={(stats as any)[cat.key]} loading={loading} index={index} />
+              <StatCard cat={cat} value={(stats as any)[cat.key]} loading={loading} index={index} scale={scale} fontScale={fontScale} />
             </motion.div>
           ))}
         </div>

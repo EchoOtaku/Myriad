@@ -7,6 +7,7 @@ import { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
+import { useWidgetSize } from '../../hooks/useWidgetSize';
 
 interface NavigationGuide {
   title: string;
@@ -38,6 +39,8 @@ const navigationGuides: NavigationGuide[] = [
 ];
 
 export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
+  // 如果是预览模式，强制 scale 为 1，因为外部容器已经进行了缩放
+  const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const navigate = useNavigate();
   const [currentGuideIndex, setCurrentGuideIndex] = useState(0);
   const [greeting, setGreeting] = useState('');
@@ -104,7 +107,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   }, []);
 
   return (
-    <div className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 背景装饰 */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       <motion.div 
@@ -122,7 +125,13 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
       />
 
       {/* 主内容 - 左右布局 */}
-      <div className="relative h-full flex flex-row p-4 gap-5">
+      <div 
+        className="relative h-full flex flex-row"
+        style={{ 
+          padding: `${16 * scale}px`, 
+          gap: `${20 * scale}px` 
+        }}
+      >
         {/* 左侧：固定问候区 (35%) */}
         <div className="flex flex-col justify-between" style={{ width: '35%' }}>
           <motion.div
@@ -130,11 +139,17 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
             animate={{ x: 0, opacity: 1 }}
             transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            <div className="text-3xl mb-2">👋</div>
-            <h2 className="text-3xl font-black text-gray-800 dark:text-gray-100 mb-1.5 leading-none">
+            <div className="text-3xl mb-2" style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${8 * scale}px` }}>👋</div>
+            <h2 
+              className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none mb-1.5"
+              style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${6 * scale}px` }}
+            >
               {greeting}
             </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p 
+              className="text-xs text-gray-500 dark:text-gray-400"
+              style={{ fontSize: `${12 * fontScale}px` }}
+            >
               {formattedDate}
             </p>
           </motion.div>
@@ -142,6 +157,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
           {/* 轮播指示器 */}
           <motion.div 
             className="flex gap-2"
+            style={{ gap: `${8 * scale}px` }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
@@ -151,10 +167,11 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                 key={index}
                 className="h-1 rounded-full"
                 style={{ 
-                  backgroundColor: index === currentGuideIndex ? 'var(--color-primary)' : '#d1d5db'
+                  backgroundColor: index === currentGuideIndex ? 'var(--color-primary)' : '#d1d5db',
+                  height: `${4 * scale}px`
                 }}
                 animate={{
-                  width: index === currentGuideIndex ? 28 : 8,
+                  width: index === currentGuideIndex ? 28 * scale : 8 * scale,
                   opacity: index === currentGuideIndex ? 1 : 0.4,
                 }}
                 transition={{ duration: 0.3 }}
@@ -175,11 +192,18 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
               onClick={handleGuideClick}
               className="absolute inset-0 cursor-pointer"
             >
-              <div className="relative h-full w-full rounded-xl bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm p-4 hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden">
+              <div 
+                className="relative h-full w-full rounded-xl bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden p-4"
+                style={{ padding: `${16 * scale}px` }}
+              >
                 {/* 顶部：图标 + 标题 */}
-                <div className="relative flex items-start gap-3 mb-3">
+                <div 
+                  className="relative flex items-start gap-3 mb-3"
+                  style={{ gap: `${12 * scale}px`, marginBottom: `${12 * scale}px` }}
+                >
                   <motion.div
                     className="w-10 h-10 flex-shrink-0 text-gray-700 dark:text-white/60"
+                    style={{ width: `${40 * scale}px`, height: `${40 * scale}px` }}
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     transition={{ duration: 0.4, delay: 0.1 }}
@@ -188,17 +212,23 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                   </motion.div>
 
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-black mb-0.5 leading-tight text-gray-800 dark:text-gray-100">
+                    <h3 
+                      className="text-lg font-black mb-0.5 leading-tight text-gray-800 dark:text-gray-100"
+                      style={{ fontSize: `${18 * fontScale}px`, marginBottom: `${2 * scale}px` }}
+                    >
                       {currentGuide.title}
                     </h3>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                    <p 
+                      className="text-[10px] text-gray-500 dark:text-gray-400"
+                      style={{ fontSize: `${10 * fontScale}px` }}
+                    >
                       {currentGuide.description}
                     </p>
                   </div>
                 </div>
 
                 {/* 功能特性 */}
-                <div className="relative space-y-1.5 mb-3">
+                <div className="relative space-y-1.5 mb-3" style={{ marginBottom: `${12 * scale}px` }}>
                   {currentGuide.features.map((feature, index) => (
                     <motion.div
                       key={index}
@@ -206,8 +236,20 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: 0.15 + index * 0.08 }}
                       className="flex items-start gap-2 text-[10px] text-gray-600 dark:text-gray-400"
+                      style={{ 
+                        gap: `${8 * scale}px`, 
+                        fontSize: `${10 * fontScale}px`,
+                        marginBottom: `${6 * scale}px`
+                      }}
                     >
-                      <div className="w-1 h-1 rounded-full mt-1 flex-shrink-0 bg-gray-400 dark:bg-white/30" />
+                      <div 
+                        className="w-1 h-1 rounded-full mt-1 flex-shrink-0 bg-gray-400 dark:bg-white/30" 
+                        style={{ 
+                          width: `${4 * scale}px`, 
+                          height: `${4 * scale}px`,
+                          marginTop: `${4 * scale}px`
+                        }}
+                      />
                       <span>{feature}</span>
                     </motion.div>
                   ))}
@@ -216,13 +258,18 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                 {/* 前往按钮 */}
                 <motion.div 
                   className="relative flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-700 dark:text-white/60"
+                  style={{ 
+                    gap: `${4 * scale}px`,
+                    fontSize: `${10 * fontScale}px`
+                  }}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.4, delay: 0.4 }}
                 >
                   <span>前往</span>
                   <motion.svg 
-                    className="w-3 h-3" 
+                    className="w-3 h-3"
+                    style={{ width: `${12 * scale}px`, height: `${12 * scale}px` }}
                     fill="currentColor" 
                     viewBox="0 0 20 20"
                     animate={{ x: [0, 3, 0] }}
