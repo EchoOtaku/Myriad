@@ -1058,14 +1058,26 @@ fn clean_platform_data(data: &mut Value) {
                         if let Some(v) = artists {
                             obj.insert("artists".to_string(), v);
                         }
-                        if let Some(al_val) = al {
-                            // 清洗专辑信息
-                            let cleaned_al = json!({
-                                "id": al_val.get("id"),
-                                "name": al_val.get("name"),
-                                "picUrl": al_val.get("picUrl"),
-                            });
-                            obj.insert("al".to_string(), cleaned_al);
+                        if let Some(mut al_val) = al {
+                            // 清洗专辑信息 - 原地修改避免额外分配
+                            if let Some(al_obj) = al_val.as_object_mut() {
+                                let id = al_obj.get("id").cloned();
+                                let name = al_obj.get("name").cloned();
+                                let pic_url = al_obj.get("picUrl").cloned();
+
+                                al_obj.clear();
+
+                                if let Some(v) = id {
+                                    al_obj.insert("id".to_string(), v);
+                                }
+                                if let Some(v) = name {
+                                    al_obj.insert("name".to_string(), v);
+                                }
+                                if let Some(v) = pic_url {
+                                    al_obj.insert("picUrl".to_string(), v);
+                                }
+                            }
+                            obj.insert("al".to_string(), al_val);
                         }
                         if let Some(v) = pic_url {
                             obj.insert("picUrl".to_string(), v);

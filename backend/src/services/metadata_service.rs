@@ -352,7 +352,12 @@ impl MetadataService {
     }
 
     /// 记录元数据变化历史
-    /// 🚀 优化：对超大数据进行截断，避免保存完整的大数据集导致 OOM
+    /// 🚀 彻底优化：历史记录只保存变化字段列表和摘要，不保存完整数据
+    ///
+    /// 设计理念：
+    /// - metadata_history 用于记录"什么字段变化了"，而不是"完整的数据是什么"
+    /// - 完整数据已经保存在 platform_metadata 表中，通过 metadata_id 关联
+    /// - 对于超大数据集(如1919首歌曲)，只保存统计摘要，避免OOM和数据库膨胀
     async fn record_metadata_change(
         &self,
         metadata_id: i32,
@@ -362,50 +367,171 @@ impl MetadataService {
         old_data: Option<Value>,
         new_data: Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 🚀 内存保护：检查数据大小，对超大数据进行截断
-        const MAX_DATA_SIZE: usize = 256_000; // 256KB 限制
+        // 🚀 彻底方案：默认不保存完整数据，只保存变化摘要
+        const MAX_SUMMARY_SIZE: usize = 50_000; // 50KB 摘要限制(远小于原来的256KB)
 
-        let new_data_str = serde_json::to_string(&new_data)?;
-        let new_data_size = new_data_str.len();
+        let now = Utc::now().naive_utc();
 
-        tracing::debug!("📊 Metadata size: {} bytes", new_data_size);
+        // 🚀 智能摘要策略：
+        // 1. 对于小数据(<50KB)：保存完整数据
+        // 2. 对于大数据(>=50KB)：只保存变化摘要，不保存完整JSON
+        let new_data_size = Self::estimate_json_size(&new_data);
 
-        // 如果数据过大，创建摘要版本
-        let (new_data_to_save, old_data_to_save) = if new_data_size > MAX_DATA_SIZE {
-            tracing::warn!(
-                "⚠️ Metadata too large ({} bytes), creating summary version",
+        let (new_data_to_save, old_data_to_save) = if new_data_size >= MAX_SUMMARY_SIZE {
+            tracing::info!(
+                "📊 Large metadata detected ({} bytes), saving change summary only",
                 new_data_size
             );
 
-            // 创建数据摘要
-            let new_summary = Self::create_data_summary(&new_data, platform_name);
-            let old_summary = old_data
-                .as_ref()
-                .map(|d| Self::create_data_summary(d, platform_name));
+            // 创建轻量级摘要(只包含变化统计)
+            let new_summary = Self::create_change_summary(&new_data, platform_name, &changed_fields);
+            let old_summary = old_data.as_ref().map(|d| {
+                Self::create_change_summary(d, platform_name, &changed_fields)
+            });
 
-            (new_summary, old_summary)
+            (Some(new_summary), old_summary)
         } else {
-            (new_data, old_data)
+            // 小数据集：保存完整数据用于详细对比
+            (Some(new_data), old_data)
         };
 
-        let now = Utc::now().naive_utc();
         let history = metadata_history::ActiveModel {
             metadata_id: Set(Some(metadata_id)),
             user_id: Set(user_id),
             platform_name: Set(platform_name.to_string()),
             changed_fields: Set(json!(changed_fields)),
             old_data: Set(old_data_to_save),
-            new_data: Set(Some(new_data_to_save)),
+            new_data: Set(new_data_to_save),
             change_date: Set(now),
             ..Default::default()
         };
 
         history.insert(&self.db).await?;
-        tracing::info!("✅ Metadata change history recorded");
+        tracing::info!("✅ Metadata change history recorded (summary mode: {})", new_data_size >= MAX_SUMMARY_SIZE);
         Ok(())
     }
 
+    /// 估算 JSON 数据的大小（不进行实际序列化，避免OOM）
+    /// 采用递归深度优先遍历，计算结构大小
+    fn estimate_json_size(value: &Value) -> usize {
+        const MAX_DEPTH: usize = 50;
+        Self::estimate_json_size_recursive(value, 0, MAX_DEPTH)
+    }
+
+    /// 递归估算 JSON 大小
+    fn estimate_json_size_recursive(value: &Value, depth: usize, max_depth: usize) -> usize {
+        if depth > max_depth {
+            return 100; // 深度过大，返回固定估值
+        }
+
+        match value {
+            Value::Null => 4,  // "null"
+            Value::Bool(_) => 5,  // "true" or "false"
+            Value::Number(n) => n.to_string().len(),
+            Value::String(s) => s.len() + 2,  // 包含引号
+            Value::Array(arr) => {
+                let mut size = 2;  // []
+                for (i, item) in arr.iter().enumerate() {
+                    if i > 0 {
+                        size += 1;  // 逗号
+                    }
+                    // 🚀 优化：对超大数组(>100元素)进行采样估算，避免遍历全部
+                    if i < 100 {
+                        size += Self::estimate_json_size_recursive(item, depth + 1, max_depth);
+                    } else {
+                        // 采样前100个元素的平均大小，推断剩余元素
+                        let sample_avg = size / 100;
+                        size += sample_avg * (arr.len() - 100);
+                        break;
+                    }
+                }
+                size
+            }
+            Value::Object(map) => {
+                let mut size = 2;  // {}
+                for (i, (key, val)) in map.iter().enumerate() {
+                    if i > 0 {
+                        size += 1;  // 逗号
+                    }
+                    size += key.len() + 3;  // "key":
+                    size += Self::estimate_json_size_recursive(val, depth + 1, max_depth);
+                }
+                size
+            }
+        }
+    }
+
+    /// 创建轻量级变化摘要（只包含统计信息，不包含完整数据）
+    /// 🚀 这是最彻底的方案：只记录"变化了什么"，而不是"数据是什么"
+    fn create_change_summary(data: &Value, platform_name: &str, changed_fields: &[String]) -> Value {
+        match platform_name {
+            "netease" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "profile_exists": data.get("profile").is_some(),
+                    "liked_songs_count": data.get("liked_songs")
+                        .and_then(|s| s.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            "steam" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "games_count": data.get("games")
+                        .and_then(|g| g.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            "bilibili" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "videos_count": data.get("videos")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "bangumi_count": data.get("bangumi")
+                        .and_then(|b| b.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            "github" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "repos_count": data.get("repos")
+                        .and_then(|r| r.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            _ => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+        }
+    }
+
     /// 创建数据摘要（用于超大数据集）
+    /// 注意：这个函数已被 create_change_summary 取代，保留用于向后兼容
+    #[allow(dead_code)]
     fn create_data_summary(data: &Value, platform_name: &str) -> Value {
         match platform_name {
             "netease" => {
@@ -421,13 +547,14 @@ impl MetadataService {
 
                 if let Some(liked_songs) = data.get("liked_songs").and_then(|s| s.as_array()) {
                     let total_count = liked_songs.len();
-                    // 只保存前10首作为样本
-                    let sample_songs: Vec<_> = liked_songs.iter().take(10).cloned().collect();
+                    // 🚀 优化：只保存前5首作为样本,减少克隆开销
+                    let sample_songs: Vec<_> = liked_songs.iter().take(5).cloned().collect();
 
                     summary["liked_songs_summary"] = json!({
                         "total_count": total_count,
                         "sample_songs": sample_songs,
-                        "_truncated": total_count > 10
+                        "_truncated": total_count > 5,
+                        "_note": "Only showing first 5 songs for memory efficiency"
                     });
                 }
 
