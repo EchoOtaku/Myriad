@@ -789,84 +789,228 @@ async fn fetch_fresh_platform_data(
 }
 
 /// 清洗平台数据，只保留核心信息（符合5W1H原则）
+/// 🚀 优化：原地修改减少内存峰值，添加数据量限制
 fn clean_platform_data(data: &mut Value) {
-    // 清洗 GitHub 仓库数据
+    // 🚀 内存保护：各平台最大数据量限制
+    const MAX_GITHUB_REPOS: usize = 200;
+    const MAX_STEAM_GAMES: usize = 500;
+    const MAX_BILIBILI_VIDEOS: usize = 100;
+    const MAX_BILIBILI_BANGUMI: usize = 100;
+    const MAX_SONGS_TO_CLEAN: usize = 5000;
+
+    // 清洗 GitHub 仓库数据 - 原地修改
     if let Some(repos) = data["github"]["repos"].as_array_mut() {
+        // 🚀 限制仓库数量
+        if repos.len() > MAX_GITHUB_REPOS {
+            tracing::warn!(
+                "⚠️ Truncating GitHub repos from {} to {}",
+                repos.len(),
+                MAX_GITHUB_REPOS
+            );
+            repos.truncate(MAX_GITHUB_REPOS);
+        }
+
         for repo in repos.iter_mut() {
             if let Some(obj) = repo.as_object_mut() {
-                // 只保留核心信息
-                let cleaned = json!({
-                    "name": obj.get("name"),
-                    "description": obj.get("description"),
-                    "language": obj.get("language"),
-                    "stargazers_count": obj.get("stargazers_count"),
-                    "forks_count": obj.get("forks_count"),
-                    "created_at": obj.get("created_at"),
-                    "updated_at": obj.get("updated_at"),
-                    "topics": obj.get("topics"),
-                    "html_url": obj.get("html_url"),
-                });
-                *repo = cleaned;
+                // 保留的字段
+                let name = obj.get("name").cloned();
+                let description = obj.get("description").cloned();
+                let language = obj.get("language").cloned();
+                let stargazers_count = obj.get("stargazers_count").cloned();
+                let forks_count = obj.get("forks_count").cloned();
+                let created_at = obj.get("created_at").cloned();
+                let updated_at = obj.get("updated_at").cloned();
+                let topics = obj.get("topics").cloned();
+                let html_url = obj.get("html_url").cloned();
+
+                // 清空对象并只保留必要字段
+                obj.clear();
+
+                if let Some(v) = name {
+                    obj.insert("name".to_string(), v);
+                }
+                if let Some(v) = description {
+                    obj.insert("description".to_string(), v);
+                }
+                if let Some(v) = language {
+                    obj.insert("language".to_string(), v);
+                }
+                if let Some(v) = stargazers_count {
+                    obj.insert("stargazers_count".to_string(), v);
+                }
+                if let Some(v) = forks_count {
+                    obj.insert("forks_count".to_string(), v);
+                }
+                if let Some(v) = created_at {
+                    obj.insert("created_at".to_string(), v);
+                }
+                if let Some(v) = updated_at {
+                    obj.insert("updated_at".to_string(), v);
+                }
+                if let Some(v) = topics {
+                    obj.insert("topics".to_string(), v);
+                }
+                if let Some(v) = html_url {
+                    obj.insert("html_url".to_string(), v);
+                }
             }
         }
     }
 
-    // 清洗 GitHub 用户信息
+    // 清洗 GitHub 用户信息 - 原地修改
     if let Some(user) = data["github"]["user"].as_object_mut() {
-        let cleaned = json!({
-            "id": user.get("id"),
-            "login": user.get("login"),
-            "name": user.get("name"),
-            "bio": user.get("bio"),
-            "avatar_url": user.get("avatar_url"),
-            "company": user.get("company"),
-            "location": user.get("location"),
-            "public_repos": user.get("public_repos"),
-            "followers": user.get("followers"),
-            "following": user.get("following"),
-            "created_at": user.get("created_at"),
-        });
-        data["github"]["user"] = cleaned;
+        let id = user.get("id").cloned();
+        let login = user.get("login").cloned();
+        let name = user.get("name").cloned();
+        let bio = user.get("bio").cloned();
+        let avatar_url = user.get("avatar_url").cloned();
+        let company = user.get("company").cloned();
+        let location = user.get("location").cloned();
+        let public_repos = user.get("public_repos").cloned();
+        let followers = user.get("followers").cloned();
+        let following = user.get("following").cloned();
+        let created_at = user.get("created_at").cloned();
+
+        user.clear();
+
+        if let Some(v) = id {
+            user.insert("id".to_string(), v);
+        }
+        if let Some(v) = login {
+            user.insert("login".to_string(), v);
+        }
+        if let Some(v) = name {
+            user.insert("name".to_string(), v);
+        }
+        if let Some(v) = bio {
+            user.insert("bio".to_string(), v);
+        }
+        if let Some(v) = avatar_url {
+            user.insert("avatar_url".to_string(), v);
+        }
+        if let Some(v) = company {
+            user.insert("company".to_string(), v);
+        }
+        if let Some(v) = location {
+            user.insert("location".to_string(), v);
+        }
+        if let Some(v) = public_repos {
+            user.insert("public_repos".to_string(), v);
+        }
+        if let Some(v) = followers {
+            user.insert("followers".to_string(), v);
+        }
+        if let Some(v) = following {
+            user.insert("following".to_string(), v);
+        }
+        if let Some(v) = created_at {
+            user.insert("created_at".to_string(), v);
+        }
     }
 
-    // 清洗 Steam 游戏数据
+    // 清洗 Steam 游戏数据 - 原地修改
     if let Some(games) = data["steam"]["games"].as_array_mut() {
+        // 🚀 限制游戏数量
+        if games.len() > MAX_STEAM_GAMES {
+            tracing::warn!(
+                "⚠️ Truncating Steam games from {} to {}",
+                games.len(),
+                MAX_STEAM_GAMES
+            );
+            games.truncate(MAX_STEAM_GAMES);
+        }
+
         for game in games.iter_mut() {
             if let Some(obj) = game.as_object_mut() {
-                // 只保留核心信息
-                let cleaned = json!({
-                    "appid": obj.get("appid"),
-                    "name": obj.get("name"),
-                    "playtime_forever": obj.get("playtime_forever"),
-                    "playtime_2weeks": obj.get("playtime_2weeks"),
-                });
-                *game = cleaned;
+                let appid = obj.get("appid").cloned();
+                let name = obj.get("name").cloned();
+                let playtime_forever = obj.get("playtime_forever").cloned();
+                let playtime_2weeks = obj.get("playtime_2weeks").cloned();
+
+                obj.clear();
+
+                if let Some(v) = appid {
+                    obj.insert("appid".to_string(), v);
+                }
+                if let Some(v) = name {
+                    obj.insert("name".to_string(), v);
+                }
+                if let Some(v) = playtime_forever {
+                    obj.insert("playtime_forever".to_string(), v);
+                }
+                if let Some(v) = playtime_2weeks {
+                    obj.insert("playtime_2weeks".to_string(), v);
+                }
             }
         }
     }
 
-    // 清洗 Steam 用户信息
+    // 清洗 Steam 用户信息 - 原地修改
     if let Some(user) = data["steam"]["user"].as_object_mut() {
-        let cleaned = json!({
-            "steamid": user.get("steamid"),
-            "personaname": user.get("personaname"),
-            "avatar": user.get("avatar"),
-            "avatarfull": user.get("avatarfull"),
-            "profileurl": user.get("profileurl"),
-            "timecreated": user.get("timecreated"),
-        });
-        data["steam"]["user"] = cleaned;
+        let steamid = user.get("steamid").cloned();
+        let personaname = user.get("personaname").cloned();
+        let avatar = user.get("avatar").cloned();
+        let avatarfull = user.get("avatarfull").cloned();
+        let profileurl = user.get("profileurl").cloned();
+        let timecreated = user.get("timecreated").cloned();
+
+        user.clear();
+
+        if let Some(v) = steamid {
+            user.insert("steamid".to_string(), v);
+        }
+        if let Some(v) = personaname {
+            user.insert("personaname".to_string(), v);
+        }
+        if let Some(v) = avatar {
+            user.insert("avatar".to_string(), v);
+        }
+        if let Some(v) = avatarfull {
+            user.insert("avatarfull".to_string(), v);
+        }
+        if let Some(v) = profileurl {
+            user.insert("profileurl".to_string(), v);
+        }
+        if let Some(v) = timecreated {
+            user.insert("timecreated".to_string(), v);
+        }
     }
 
-    // 清洗 Bilibili 数据 - 保留核心字段
+    // 清洗 Bilibili 数据 - 原地修改，添加数量限制
     if let Some(bilibili) = data.get_mut("bilibili") {
-        // 保留用户信息
-        if let Some(user) = bilibili.get("user").cloned() {
-            if let Some(obj) = bilibili.as_object_mut() {
-                obj.insert("user".to_string(), user);
+        // 清洗收藏夹视频
+        if let Some(favorites) = bilibili.get_mut("favorites") {
+            if let Some(fav_array) = favorites.as_array_mut() {
+                for fav in fav_array.iter_mut() {
+                    if let Some(videos) = fav.get_mut("videos") {
+                        if let Some(videos_array) = videos.as_array_mut() {
+                            if videos_array.len() > MAX_BILIBILI_VIDEOS {
+                                tracing::debug!(
+                                    "⚠️ Truncating Bilibili videos from {} to {}",
+                                    videos_array.len(),
+                                    MAX_BILIBILI_VIDEOS
+                                );
+                                videos_array.truncate(MAX_BILIBILI_VIDEOS);
+                            }
+                        }
+                    }
+                }
             }
         }
-        // favorites 和 bangumi 保持不变，它们是核心数据
+
+        // 清洗追番数据
+        if let Some(bangumi) = bilibili.get_mut("bangumi") {
+            if let Some(bangumi_array) = bangumi.as_array_mut() {
+                if bangumi_array.len() > MAX_BILIBILI_BANGUMI {
+                    tracing::debug!(
+                        "⚠️ Truncating Bilibili bangumi from {} to {}",
+                        bangumi_array.len(),
+                        MAX_BILIBILI_BANGUMI
+                    );
+                    bangumi_array.truncate(MAX_BILIBILI_BANGUMI);
+                }
+            }
+        }
     }
 
     // 清洗网易云音乐数据 - 保留核心字段（优化内存使用）
@@ -878,7 +1022,6 @@ fn clean_platform_data(data: &mut Value) {
                 tracing::debug!("🧹 Cleaning {} netease songs in-place...", total_songs);
 
                 // 🚀 限制歌曲数量，避免处理过多数据
-                const MAX_SONGS_TO_CLEAN: usize = 5000;
                 if songs_array.len() > MAX_SONGS_TO_CLEAN {
                     tracing::warn!(
                         "⚠️ Truncating songs from {} to {} to prevent memory issues",

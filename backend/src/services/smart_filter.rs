@@ -120,39 +120,56 @@ pub struct UnknownContent {
 pub struct SmartFilter;
 
 impl SmartFilter {
-    /// 处理所有平台数据并保存到缓存文件
+    /// 处理所有平台数据并分别保存到各平台缓存文件
+    /// 🚀 优化：分平台保存，减少不必要的克隆，添加数据量限制
     pub fn process_and_save_all(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
-        let mut all_filtered_data = std::collections::HashMap::new();
+        // 🚀 数据量限制常量
+        const MAX_VIDEOS_FOR_FILTER: usize = 200;
+        const MAX_SONGS_FOR_FILTER: usize = 3000;
+
+        let cache_dir = Path::new("cache/platforms");
+        fs::create_dir_all(cache_dir)?;
+
+        let mut processed_count = 0;
 
         // 1. Process Bilibili
         if let Some(bilibili_data) = all_data.get("bilibili") {
-            let mut process_data = bilibili_data.clone();
+            let mut process_data = serde_json::Map::new();
 
             // 适配数据结构: user -> user_info
             if let Some(user) = bilibili_data.get("user") {
-                if let Some(obj) = process_data.as_object_mut() {
-                    obj.insert("user_info".to_string(), user.clone());
-                }
+                process_data.insert("user_info".to_string(), user.clone());
             }
 
-            // 适配数据结构: favorites -> videos (提取所有视频)
+            // 适配数据结构: favorites -> videos (提取所有视频，添加数量限制)
             if let Some(favorites) = bilibili_data.get("favorites").and_then(|v| v.as_array()) {
                 let mut all_videos = Vec::new();
-                for fav in favorites {
+                'outer: for fav in favorites {
                     if let Some(vids) = fav.get("videos").and_then(|v| v.as_array()) {
                         for v in vids {
+                            if all_videos.len() >= MAX_VIDEOS_FOR_FILTER {
+                                tracing::debug!(
+                                    "🚀 Limiting videos to {} for filter",
+                                    MAX_VIDEOS_FOR_FILTER
+                                );
+                                break 'outer;
+                            }
                             all_videos.push(v.clone());
                         }
                     }
                 }
-                if let Some(obj) = process_data.as_object_mut() {
-                    obj.insert("videos".to_string(), Value::Array(all_videos));
-                }
+                process_data.insert("videos".to_string(), Value::Array(all_videos));
             }
 
-            match SmartFilter::filter("bilibili", &process_data) {
+            // 直接传递 bangumi
+            if let Some(bangumi) = bilibili_data.get("bangumi") {
+                process_data.insert("bangumi".to_string(), bangumi.clone());
+            }
+
+            match SmartFilter::filter("bilibili", &Value::Object(process_data)) {
                 Ok(result) => {
-                    all_filtered_data.insert("bilibili".to_string(), result);
+                    Self::save_platform_cache_atomic("bilibili", &result)?;
+                    processed_count += 1;
                 }
                 Err(e) => tracing::warn!("Bilibili filter failed: {}", e),
             }
@@ -160,33 +177,29 @@ impl SmartFilter {
 
         // 2. Process Steam
         if let Some(steam_data) = all_data.get("steam") {
-            let mut process_data = steam_data.clone();
+            let mut process_data = serde_json::Map::new();
 
             // 适配数据结构: user -> user_info
             if let Some(user) = steam_data.get("user") {
-                if let Some(obj) = process_data.as_object_mut() {
-                    obj.insert("user_info".to_string(), user.clone());
-                }
+                process_data.insert("user_info".to_string(), user.clone());
             }
 
             // 适配数据结构: games -> owned_games.games
             if let Some(games) = steam_data.get("games") {
-                if let Some(obj) = process_data.as_object_mut() {
-                    obj.insert(
-                        "owned_games".to_string(),
-                        serde_json::json!({ "games": games }),
-                    );
-                    // 同时也作为最近游玩的游戏（因为我们只获取了活跃游戏）
-                    obj.insert(
-                        "recently_played".to_string(),
-                        serde_json::json!({ "games": games }),
-                    );
-                }
+                process_data.insert(
+                    "owned_games".to_string(),
+                    serde_json::json!({ "games": games }),
+                );
+                process_data.insert(
+                    "recently_played".to_string(),
+                    serde_json::json!({ "games": games }),
+                );
             }
 
-            match SmartFilter::filter("steam", &process_data) {
+            match SmartFilter::filter("steam", &Value::Object(process_data)) {
                 Ok(result) => {
-                    all_filtered_data.insert("steam".to_string(), result);
+                    Self::save_platform_cache_atomic("steam", &result)?;
+                    processed_count += 1;
                 }
                 Err(e) => tracing::warn!("Steam filter failed: {}", e),
             }
@@ -194,33 +207,51 @@ impl SmartFilter {
 
         // 3. Process Netease
         if let Some(netease_data) = all_data.get("netease") {
-            let mut process_data = netease_data.clone();
+            let mut process_data = serde_json::Map::new();
 
-            // 适配数据结构: liked_songs -> playlists[0].tracks 和 songs（用于资料库提取）
+            // 适配数据结构: liked_songs -> playlists[0].tracks（添加数量限制）
             if let Some(liked_songs) = netease_data.get("liked_songs") {
-                if let Some(obj) = process_data.as_object_mut() {
-                    // 为过滤器创建 playlists 结构
-                    obj.insert(
-                        "playlists".to_string(),
-                        serde_json::json!([
-                            { "tracks": liked_songs }
-                        ]),
-                    );
-                    // 同时保留 songs 字段用于资料库提取（封面、艺术家等）
-                    obj.insert("songs".to_string(), liked_songs.clone());
-                }
+                // 🚀 限制歌曲数量避免内存问题
+                let limited_songs = if let Some(songs_array) = liked_songs.as_array() {
+                    if songs_array.len() > MAX_SONGS_FOR_FILTER {
+                        tracing::debug!(
+                            "🚀 Limiting songs from {} to {} for filter",
+                            songs_array.len(),
+                            MAX_SONGS_FOR_FILTER
+                        );
+                        Value::Array(
+                            songs_array
+                                .iter()
+                                .take(MAX_SONGS_FOR_FILTER)
+                                .cloned()
+                                .collect(),
+                        )
+                    } else {
+                        liked_songs.clone()
+                    }
+                } else {
+                    liked_songs.clone()
+                };
+
+                process_data.insert(
+                    "playlists".to_string(),
+                    serde_json::json!([{ "tracks": limited_songs }]),
+                );
+                process_data.insert("songs".to_string(), limited_songs);
             }
 
-            // 适配数据结构: profile 字段已经在 fetcher 中正确设置，无需额外处理
+            // 传递 profile
+            if let Some(profile) = netease_data.get("profile") {
+                process_data.insert("profile".to_string(), profile.clone());
+            }
 
-            match SmartFilter::filter("netease", &process_data) {
+            match SmartFilter::filter("netease", &Value::Object(process_data)) {
                 Ok(result) => {
-                    all_filtered_data.insert("netease".to_string(), result);
+                    Self::save_platform_cache_atomic("netease", &result)?;
+                    processed_count += 1;
                 }
                 Err(e) => {
                     tracing::warn!("Netease filter failed: {}", e);
-                    // 打印更详细的错误信息用于调试
-                    tracing::debug!("Netease data structure: {:?}", process_data);
                 }
             }
         }
@@ -230,38 +261,48 @@ impl SmartFilter {
             // GitHub 结构基本一致 (user, repos)
             match SmartFilter::filter("github", github_data) {
                 Ok(result) => {
-                    all_filtered_data.insert("github".to_string(), result);
+                    Self::save_platform_cache_atomic("github", &result)?;
+                    processed_count += 1;
                 }
                 Err(e) => tracing::warn!("GitHub filter failed: {}", e),
             }
         }
 
-        // 🚀 优化：使用流式写入和临时文件，避免内存峰值和写入中断
-        let output_path = Path::new("cache/smart_filtered_data.json");
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        // 使用临时文件写入，然后原子性重命名
-        let temp_path = output_path.with_extension("json.tmp");
-
-        {
-            let file = fs::File::create(&temp_path)?;
-            let writer = std::io::BufWriter::with_capacity(262144, file); // 256KB buffer
-            serde_json::to_writer_pretty(writer, &all_filtered_data)?;
-        }
-
-        // 原子性重命名
-        fs::rename(&temp_path, output_path).or_else(|_| {
-            // 如果重命名失败（跨设备），尝试复制
-            fs::copy(&temp_path, output_path)?;
-            fs::remove_file(&temp_path)
-        })?;
-
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
 
-        tracing::info!("✓ Smart filtered data saved to {:?}", output_path);
+        tracing::info!(
+            "✓ Smart filtered data saved to {} platform files in cache/platforms/",
+            processed_count
+        );
+        Ok(())
+    }
+
+    /// 🚀 原子性保存平台缓存（使用临时文件+重命名）
+    fn save_platform_cache_atomic(
+        platform: &str,
+        data: &SmartFilteredData,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let cache_dir = Path::new("cache/platforms");
+        fs::create_dir_all(cache_dir)?;
+
+        let cache_file = cache_dir.join(format!("{}_filtered.json", platform));
+        let temp_file = cache_dir.join(format!("{}_filtered.json.tmp", platform));
+
+        // 使用 BufWriter 提高写入效率
+        {
+            let file = fs::File::create(&temp_file)?;
+            let writer = std::io::BufWriter::with_capacity(65536, file); // 64KB buffer
+            serde_json::to_writer_pretty(writer, data)?;
+        }
+
+        // 原子性重命名
+        fs::rename(&temp_file, &cache_file).or_else(|_| {
+            fs::copy(&temp_file, &cache_file)?;
+            fs::remove_file(&temp_file)
+        })?;
+
+        tracing::debug!("✓ Saved {} filtered cache", platform);
         Ok(())
     }
 
@@ -825,27 +866,19 @@ impl SmartFilter {
         Ok(processed)
     }
 
-    /// 保存平台缓存到独立文件
+    /// 保存平台缓存到独立文件（使用原子写入）
     fn save_platform_cache(
         platform: &str,
         data: &SmartFilteredData,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let cache_dir = Path::new("./cache/platforms");
-        fs::create_dir_all(cache_dir)?;
-
-        let cache_file = cache_dir.join(format!("{}_filtered.json", platform));
-        let json_str = serde_json::to_string_pretty(data)?;
-        fs::write(&cache_file, json_str)?;
-
-        tracing::debug!("Saved {} cache to {:?}", platform, cache_file);
-        Ok(())
+        Self::save_platform_cache_atomic(platform, data)
     }
 
     /// 从独立缓存文件加载平台数据
     pub fn load_platform_cache(
         platform: &str,
     ) -> Result<SmartFilteredData, Box<dyn std::error::Error>> {
-        let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
+        let cache_file = Path::new("cache/platforms").join(format!("{}_filtered.json", platform));
 
         if !cache_file.exists() {
             return Err(format!("Cache file not found for platform: {}", platform).into());
@@ -860,13 +893,13 @@ impl SmartFilter {
 
     /// 检查平台缓存是否存在
     pub fn has_platform_cache(platform: &str) -> bool {
-        let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
+        let cache_file = Path::new("cache/platforms").join(format!("{}_filtered.json", platform));
         cache_file.exists()
     }
 
     /// 清除平台缓存
     pub fn clear_platform_cache(platform: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
+        let cache_file = Path::new("cache/platforms").join(format!("{}_filtered.json", platform));
         if cache_file.exists() {
             fs::remove_file(&cache_file)?;
             tracing::info!("Cleared cache for {}", platform);
@@ -918,133 +951,29 @@ mod tests {
 
         let data = Value::Object(all_data);
 
-        let mut all_filtered_data = std::collections::HashMap::new();
+        // 使用 process_and_save_all，它会分平台保存
+        match SmartFilter::process_and_save_all(&data) {
+            Ok(_) => println!("Successfully processed and saved all platform data"),
+            Err(e) => println!("Failed to process platform data: {}", e),
+        }
 
-        // 1. Process Bilibili
-        if let Some(bilibili_data) = data.get("bilibili") {
-            println!("Processing Bilibili data...");
-            let mut test_data = bilibili_data.clone();
-
-            // Patch user_info if missing
-            if test_data.get("user_info").is_none() {
-                if let Some(obj) = test_data.as_object_mut() {
-                    obj.insert(
-                        "user_info".to_string(),
-                        serde_json::json!({
-                            "name": "TestUser",
-                            "mid": 123456,
-                            "level": 6,
-                            "follower": 100,
-                            "following": 20
-                        }),
-                    );
-                }
-            }
-
-            // Patch videos from favorites if missing
-            if test_data.get("videos").is_none() {
-                if let Some(favs) = test_data.get("favorites").and_then(|v| v.as_array()) {
-                    let mut all_videos = Vec::new();
-                    for fav in favs {
-                        if let Some(vids) = fav.get("videos").and_then(|v| v.as_array()) {
-                            for v in vids {
-                                all_videos.push(v.clone());
-                            }
-                        }
-                    }
-                    if let Some(obj) = test_data.as_object_mut() {
-                        obj.insert("videos".to_string(), Value::Array(all_videos));
+        // 验证分平台文件是否已创建
+        let platforms_dir = Path::new("cache/platforms");
+        if platforms_dir.exists() {
+            println!("Platform filtered files:");
+            if let Ok(entries) = fs::read_dir(platforms_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.ends_with("_filtered.json"))
+                        .unwrap_or(false)
+                    {
+                        println!("  - {:?}", path.file_name().unwrap());
                     }
                 }
             }
-
-            match SmartFilter::filter("bilibili", &test_data) {
-                Ok(result) => {
-                    all_filtered_data.insert("bilibili".to_string(), result);
-                }
-                Err(e) => println!("Bilibili filter failed: {}", e),
-            }
         }
-
-        // 2. Process Steam
-        if let Some(steam_data) = data.get("steam") {
-            println!("Processing Steam data...");
-            let mut test_data = steam_data.clone();
-            if test_data.get("user_info").is_none() {
-                if let Some(obj) = test_data.as_object_mut() {
-                    obj.insert(
-                        "user_info".to_string(),
-                        serde_json::json!({
-                            "personaname": "SteamUser",
-                            "steamid": "123456789"
-                        }),
-                    );
-                }
-            }
-
-            match SmartFilter::filter("steam", &test_data) {
-                Ok(result) => {
-                    all_filtered_data.insert("steam".to_string(), result);
-                }
-                Err(e) => println!("Steam filter failed: {}", e),
-            }
-        }
-
-        // 3. Process Netease
-        if let Some(netease_data) = data.get("netease") {
-            println!("Processing Netease data...");
-            let mut test_data = netease_data.clone();
-            if test_data.get("profile").is_none() {
-                if let Some(obj) = test_data.as_object_mut() {
-                    obj.insert(
-                        "profile".to_string(),
-                        serde_json::json!({
-                            "nickname": "MusicUser",
-                            "userId": 1001,
-                            "level": 8
-                        }),
-                    );
-                }
-            }
-
-            if test_data.get("playlists").is_none() {
-                let liked_songs = test_data.get("liked_songs").cloned();
-                if let Some(liked) = liked_songs {
-                    if let Some(obj) = test_data.as_object_mut() {
-                        obj.insert(
-                            "playlists".to_string(),
-                            serde_json::json!([
-                                { "tracks": liked }
-                            ]),
-                        );
-                    }
-                }
-            }
-
-            match SmartFilter::filter("netease", &test_data) {
-                Ok(result) => {
-                    all_filtered_data.insert("netease".to_string(), result);
-                }
-                Err(e) => println!("Netease filter failed: {}", e),
-            }
-        }
-
-        // 4. Process GitHub
-        if let Some(github_data) = data.get("github") {
-            println!("Processing GitHub data...");
-            match SmartFilter::filter("github", github_data) {
-                Ok(result) => {
-                    all_filtered_data.insert("github".to_string(), result);
-                }
-                Err(e) => println!("GitHub filter failed: {}", e),
-            }
-        }
-
-        // Save complete filtered data to file
-        let output_path = Path::new("cache/smart_filtered_data.json");
-        let json_output =
-            serde_json::to_string_pretty(&all_filtered_data).expect("Failed to serialize output");
-        fs::write(output_path, json_output).expect("Failed to write output file");
-        println!("Successfully generated filtered data at {:?}", output_path);
     }
 }
