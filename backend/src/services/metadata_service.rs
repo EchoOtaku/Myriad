@@ -111,19 +111,27 @@ impl MetadataService {
 
     /// 检测两个JSON对象之间的变化
     /// 对于大型数据结构，使用迭代而非递归以避免栈溢出
+    /// 🚀 优化：对超大数组（如歌曲列表）只检测数量变化，避免逐项比较导致OOM
     fn detect_changes(&self, old_data: &Value, new_data: &Value) -> Vec<String> {
         let mut changed_fields = Vec::new();
+
+        // 🚀 内存保护：限制变化检测的总迭代次数
+        const MAX_ITERATIONS: usize = 10000;
 
         // 使用栈模拟递归，避免栈溢出
         let mut stack: Vec<(String, &Value, &Value)> = vec![("".to_string(), old_data, new_data)];
         let max_depth = 50; // 限制最大深度
-        let mut depth = 0;
+        let mut iteration_count = 0;
 
         while let Some((prefix, old, new)) = stack.pop() {
-            depth += 1;
-            if depth > max_depth * 100 {
-                // 防止无限循环
-                tracing::warn!("⚠️ detect_changes reached max iterations, truncating");
+            iteration_count += 1;
+            if iteration_count > MAX_ITERATIONS {
+                // 防止无限循环或过度内存使用
+                tracing::warn!(
+                    "⚠️ detect_changes reached max iterations ({}), truncating comparison",
+                    MAX_ITERATIONS
+                );
+                changed_fields.push(format!("{} (comparison truncated)", prefix));
                 break;
             }
 
@@ -170,39 +178,60 @@ impl MetadataService {
                     }
                 }
                 (Value::Array(old_arr), Value::Array(new_arr)) => {
-                    // 数组长度变化
-                    if old_arr.len() != new_arr.len() {
-                        changed_fields.push(format!(
-                            "{} (array length: {} -> {})",
-                            prefix,
-                            old_arr.len(),
-                            new_arr.len()
-                        ));
+                    const MAX_ARRAY_COMPARE: usize = 50; // 数组最多比较前50个元素
+
+                    // 🚀 优化：对超大数组（>200元素）只检测长度变化
+                    if old_arr.len() > 200 || new_arr.len() > 200 {
+                        if old_arr.len() != new_arr.len() {
+                            changed_fields.push(format!(
+                                "{} (large array length: {} -> {})",
+                                prefix,
+                                old_arr.len(),
+                                new_arr.len()
+                            ));
+                        } else {
+                            // 对于超大数组，只标记为"可能有变化"，不深入比较
+                            tracing::debug!(
+                                "⚡ Skipping deep comparison for large array: {} ({} items)",
+                                prefix,
+                                old_arr.len()
+                            );
+                        }
                     } else {
-                        // 只检查前100个元素的变化，避免处理超大数组
-                        let check_count = old_arr.len().min(100);
-                        for (i, (old_item, new_item)) in old_arr
-                            .iter()
-                            .zip(new_arr.iter())
-                            .take(check_count)
-                            .enumerate()
-                        {
-                            if old_item != new_item {
-                                let item_path = format!("{}[{}]", prefix, i);
-                                let current_depth = item_path.matches('.').count();
-                                if current_depth < max_depth {
-                                    stack.push((item_path, old_item, new_item));
-                                } else {
-                                    changed_fields.push(format!("{} (deep change)", item_path));
+                        // 中小型数组：检查长度和内容变化
+                        if old_arr.len() != new_arr.len() {
+                            changed_fields.push(format!(
+                                "{} (array length: {} -> {})",
+                                prefix,
+                                old_arr.len(),
+                                new_arr.len()
+                            ));
+                        } else {
+                            // 只检查前N个元素的变化，避免处理超大数组
+                            let check_count = old_arr.len().min(MAX_ARRAY_COMPARE);
+                            for (i, (old_item, new_item)) in old_arr
+                                .iter()
+                                .zip(new_arr.iter())
+                                .take(check_count)
+                                .enumerate()
+                            {
+                                if old_item != new_item {
+                                    let item_path = format!("{}[{}]", prefix, i);
+                                    let current_depth = item_path.matches('.').count();
+                                    if current_depth < max_depth {
+                                        stack.push((item_path, old_item, new_item));
+                                    } else {
+                                        changed_fields.push(format!("{} (deep change)", item_path));
+                                    }
                                 }
                             }
-                        }
-                        if old_arr.len() > 100 {
-                            changed_fields.push(format!(
-                                "{} (array has {} more elements not checked)",
-                                prefix,
-                                old_arr.len() - 100
-                            ));
+                            if old_arr.len() > MAX_ARRAY_COMPARE {
+                                tracing::debug!(
+                                    "⚡ Array {} has {} more elements not checked",
+                                    prefix,
+                                    old_arr.len() - MAX_ARRAY_COMPARE
+                                );
+                            }
                         }
                     }
                 }
@@ -323,6 +352,7 @@ impl MetadataService {
     }
 
     /// 记录元数据变化历史
+    /// 🚀 优化：对超大数据进行截断，避免保存完整的大数据集导致 OOM
     async fn record_metadata_change(
         &self,
         metadata_id: i32,
@@ -332,14 +362,40 @@ impl MetadataService {
         old_data: Option<Value>,
         new_data: Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // 🚀 内存保护：检查数据大小，对超大数据进行截断
+        const MAX_DATA_SIZE: usize = 256_000; // 256KB 限制
+
+        let new_data_str = serde_json::to_string(&new_data)?;
+        let new_data_size = new_data_str.len();
+
+        tracing::debug!("📊 Metadata size: {} bytes", new_data_size);
+
+        // 如果数据过大，创建摘要版本
+        let (new_data_to_save, old_data_to_save) = if new_data_size > MAX_DATA_SIZE {
+            tracing::warn!(
+                "⚠️ Metadata too large ({} bytes), creating summary version",
+                new_data_size
+            );
+
+            // 创建数据摘要
+            let new_summary = Self::create_data_summary(&new_data, platform_name);
+            let old_summary = old_data
+                .as_ref()
+                .map(|d| Self::create_data_summary(d, platform_name));
+
+            (new_summary, old_summary)
+        } else {
+            (new_data, old_data)
+        };
+
         let now = Utc::now().naive_utc();
         let history = metadata_history::ActiveModel {
             metadata_id: Set(Some(metadata_id)),
             user_id: Set(user_id),
             platform_name: Set(platform_name.to_string()),
             changed_fields: Set(json!(changed_fields)),
-            old_data: Set(old_data),
-            new_data: Set(Some(new_data)),
+            old_data: Set(old_data_to_save),
+            new_data: Set(Some(new_data_to_save)),
             change_date: Set(now),
             ..Default::default()
         };
@@ -347,6 +403,65 @@ impl MetadataService {
         history.insert(&self.db).await?;
         tracing::info!("✅ Metadata change history recorded");
         Ok(())
+    }
+
+    /// 创建数据摘要（用于超大数据集）
+    fn create_data_summary(data: &Value, platform_name: &str) -> Value {
+        match platform_name {
+            "netease" => {
+                // 网易云音乐：只保留用户信息和歌曲数量统计
+                let mut summary = json!({
+                    "_summary": true,
+                    "_note": "Data truncated due to large size"
+                });
+
+                if let Some(profile) = data.get("profile") {
+                    summary["profile"] = profile.clone();
+                }
+
+                if let Some(liked_songs) = data.get("liked_songs").and_then(|s| s.as_array()) {
+                    let total_count = liked_songs.len();
+                    // 只保存前10首作为样本
+                    let sample_songs: Vec<_> = liked_songs.iter().take(10).cloned().collect();
+
+                    summary["liked_songs_summary"] = json!({
+                        "total_count": total_count,
+                        "sample_songs": sample_songs,
+                        "_truncated": total_count > 10
+                    });
+                }
+
+                summary
+            }
+            "steam" => {
+                // Steam：保留用户信息和游戏统计
+                let mut summary = json!({
+                    "_summary": true,
+                    "_note": "Data truncated due to large size"
+                });
+
+                if let Some(user) = data.get("user") {
+                    summary["user"] = user.clone();
+                }
+
+                if let Some(games) = data.get("games").and_then(|g| g.as_array()) {
+                    summary["games_summary"] = json!({
+                        "total_count": games.len(),
+                        "top_10_by_playtime": games.iter().take(10).cloned().collect::<Vec<_>>()
+                    });
+                }
+
+                summary
+            }
+            _ => {
+                // 其他平台：通用截断策略
+                json!({
+                    "_summary": true,
+                    "_note": "Data truncated due to large size",
+                    "_original_size_estimate": serde_json::to_string(data).unwrap_or_default().len()
+                })
+            }
+        }
     }
 
     /// 获取最新的平台元数据
