@@ -44,7 +44,7 @@ const AlbumCover = memo(({
         ease: [0.34, 1.56, 0.64, 1]
       }}
     >
-      <div className="w-12 h-12 rounded-lg overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-gray-700/50 backdrop-blur-sm">
+      <div className="w-12 h-12 rounded-lg overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm">
         <img
           key={cover} // 关键：使用 key 强制更新
           src={cover || 'https://via.placeholder.com/48?text=♪'}
@@ -270,7 +270,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
         >
           <button
             onClick={handleTogglePlay}
-            className="w-8 h-8 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-md flex items-center justify-center hover:scale-110 transition-transform"
+            className="w-8 h-8 rounded-full bg-white/80 dark:bg-black/80 backdrop-blur-sm shadow-md flex items-center justify-center hover:scale-110 transition-transform"
             style={{ color: themeColor }}
             aria-label={isPlaying ? '暂停' : '播放'}
           >

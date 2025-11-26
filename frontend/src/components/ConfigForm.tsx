@@ -148,12 +148,10 @@ const ModernConfigForm: React.FC = () => {
     { id: 'platforms', label: '数据平台', icon: '🌐', section: 'platforms' },
     { id: 'data', label: '数据管理', icon: '💾', section: 'data' },
     { id: 'ai', label: 'AI配置', icon: '🤖', section: 'ai' },
-    { id: 'report', label: '报告生成', icon: '📊', section: 'report' },
     { id: 'persona', label: '虚拟人设', icon: '🎭', section: 'persona' },
     { id: 'ui', label: 'UI界面', icon: '🎨', section: 'ui' },
     { id: 'music', label: '音乐播放器', icon: '🎵', section: 'music' },
     { id: 'oauth', label: 'OAuth登录', icon: '🔐', section: 'oauth' },
-    { id: 'pet', label: '宠物吉祥物', icon: '🐱', section: 'pet' },
   ], []);
 
   // 搜索功能
@@ -180,15 +178,6 @@ const ModernConfigForm: React.FC = () => {
       title: 'AI配置',
       description: 'AI模型和API密钥配置',
       keywords: ['ai', 'gemini', 'openai', 'api', '模型', '智能']
-    });
-    
-    // 报告配置
-    items.push({
-      type: 'section',
-      section: 'report',
-      title: '报告生成配置',
-      description: '设置报告话题风格和生成选项',
-      keywords: ['报告', 'report', '话题', '风格', '生成']
     });
     
     // 虚拟人设
@@ -225,15 +214,6 @@ const ModernConfigForm: React.FC = () => {
       title: '音乐播放器',
       description: '配置歌单播放',
       keywords: ['音乐', 'music', '歌单', '播放器', '网易云', 'qq音乐']
-    });
-
-    // 宠物配置
-    items.push({
-      type: 'section',
-      section: 'pet',
-      title: '宠物吉祥物',
-      description: '可爱的行走角色',
-      keywords: ['宠物', 'pet', '吉祥物', '角色']
     });
 
     return items;
@@ -381,13 +361,6 @@ const ModernConfigForm: React.FC = () => {
             value: field.key === 'model' ? 'gemini-pro' : '',
           })),
         },
-        report_config: {
-          ...data.report_config,
-          config_fields: data.report_config.config_fields.map((field: any) => ({
-            ...field,
-            value: field.key === 'topic_style' ? 'balanced' : field.value,
-          })),
-        },
         persona_config: {
           ...data.persona_config,
           config_fields: data.persona_config.config_fields.map((field: any) => {
@@ -406,8 +379,6 @@ const ModernConfigForm: React.FC = () => {
             let defaultValue = '';
             if (field.key === 'wallpaper_url') defaultValue = 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809';
             else if (field.key === 'wallpaper_blur') defaultValue = '3';
-            else if (field.key === 'pet_enabled') defaultValue = 'true';
-            else if (field.key === 'pet_image_url') defaultValue = 'https://api.fuukei.org/myriad/frontend/public/furina.png';
             return { ...field, value: defaultValue };
           }),
         },
@@ -546,14 +517,14 @@ const ModernConfigForm: React.FC = () => {
   }, [config]);
 
   const updateConfigField = React.useCallback((
-    section: 'ai' | 'report' | 'persona' | 'ui',
+    section: 'ai' | 'persona' | 'ui',
     fieldKey: string,
     value: string,
     providerFieldKey?: string
   ) => {
     if (!config) return;
 
-    const sectionKey = `${section}_config` as 'ai_config' | 'report_config' | 'persona_config' | 'ui_config';
+    const sectionKey = `${section}_config` as 'ai_config' | 'persona_config' | 'ui_config';
     const sectionConfig = config[sectionKey];
     const newFields = [...sectionConfig.config_fields];
     const field = newFields.find(f => f.key === fieldKey);
@@ -611,9 +582,6 @@ const ModernConfigForm: React.FC = () => {
     updateConfigField('ai', fieldKey, value, 'provider');
   }, [updateConfigField]);
 
-  const updateReportFieldValue = React.useCallback((fieldKey: string, value: string) => {
-    updateConfigField('report', fieldKey, value);
-  }, [updateConfigField]);
 
   const updatePersonaFieldValue = React.useCallback((fieldKey: string, value: string) => {
     updateConfigField('persona', fieldKey, value, 'persona_image_provider');
@@ -961,73 +929,7 @@ const ModernConfigForm: React.FC = () => {
             </div>
           )}
 
-          {/* 报告配置 */}
-          {activeSection === 'report' && (
-            <div className="config-section">
-              <div className="section-header">
-                <div className="section-header-left">
-                  <span className="section-icon icon-report">📊</span>
-                  <div>
-                    <h2 className="section-title">报告生成配置</h2>
-                    <p className="section-description">设置报告话题风格和生成选项</p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="config-form">
-                {config.report_config.config_fields.map((field) => (
-                  <div key={field.key} className="config-field">
-                    <label htmlFor={`report-${field.key}`} className="field-label">
-                      {field.label}
-                      {field.required && <span className="required">*</span>}
-                    </label>
-                    {field.field_type === 'select' && field.key === 'topic_style' ? (
-                      <>
-                        <select
-                          id={`report-${field.key}`}
-                          value={field.value.startsWith('custom:') ? 'custom' : field.value}
-                          onChange={(e) => {
-                            if (e.target.value === 'custom') {
-                              updateReportFieldValue(field.key, 'custom:');
-                            } else {
-                              updateReportFieldValue(field.key, e.target.value);
-                            }
-                          }}
-                          className="field-select"
-                        >
-                          <option value="balanced">平衡 - 兼具深度与趣味</option>
-                          <option value="playful">活泼 - 轻松有趣游戏化</option>
-                          <option value="professional">专业 - 数据驱动严谨</option>
-                          <option value="artistic">文艺 - 诗意隐喻感性</option>
-                          <option value="experimental">实验 - 前卫大胆新奇</option>
-                          <option value="custom">🎨 自定义风格...</option>
-                        </select>
-                        {field.value.startsWith('custom:') && (
-                          <textarea
-                            id={`report-${field.key}-custom`}
-                            value={field.value.replace('custom:', '')}
-                            onChange={(e) => updateReportFieldValue(field.key, `custom:${e.target.value}`)}
-                            placeholder="例如：科幻未来风格，使用太空、AI、机器人等元素..."
-                            rows={3}
-                            className="field-input custom-textarea"
-                          />
-                        )}
-                      </>
-                    ) : (
-                      <input
-                        id={`report-${field.key}`}
-                        type={field.field_type}
-                        value={field.value}
-                        onChange={(e) => updateReportFieldValue(field.key, e.target.value)}
-                        placeholder={field.placeholder}
-                        className="field-input"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* 虚拟人设配置 */}
           {activeSection === 'persona' && (
@@ -1470,66 +1372,7 @@ const ModernConfigForm: React.FC = () => {
             </div>
           )}
 
-          {/* 宠物配置 */}
-          {activeSection === 'pet' && (
-            <div className="config-section">
-              <div className="section-header">
-                <div className="section-header-left">
-                  <span className="section-icon icon-pet">🐱</span>
-                  <div>
-                    <h2 className="section-title">宠物吉祥物</h2>
-                    <p className="section-description">可爱的行走角色</p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="config-form">
-                <div className="ai-status-card">
-                  <div className="status-info">
-                    <p className="status-label">启用宠物</p>
-                    <p className="status-sublabel">在报告信息卡上显示行走的宠物角色</p>
-                  </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={config.ui_config.config_fields.find(f => f.key === 'pet_enabled')?.value === 'true'}
-                      onChange={(e) => updateUiFieldValue('pet_enabled', e.target.checked.toString())}
-                      aria-label="Enable Pet Mascot"
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                <div className="config-field">
-                  <label htmlFor="pet-image-url" className="field-label">宠物图片 URL</label>
-                  <input
-                    id="pet-image-url"
-                    type="text"
-                    value={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value || ''}
-                    onChange={(e) => updateUiFieldValue('pet_image_url', e.target.value)}
-                    placeholder="宠物角色图片的URL"
-                    className="field-input"
-                  />
-                </div>
-
-                {config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value && (
-                  <div className="info-card">
-                    <p className="info-title">预览</p>
-                    <div className="pet-preview-container">
-                      <img
-                        src={config.ui_config.config_fields.find(f => f.key === 'pet_image_url')?.value}
-                        alt="Pet preview"
-                        className="pet-preview-image"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       )}
 

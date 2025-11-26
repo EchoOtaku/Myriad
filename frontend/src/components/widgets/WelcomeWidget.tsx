@@ -106,7 +106,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   return (
     <div className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 背景装饰 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       <motion.div 
         className="absolute -right-16 -top-16 w-48 h-48 rounded-full blur-3xl"
         style={{ background: 'var(--color-primary)' }}
@@ -175,11 +175,11 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
               onClick={handleGuideClick}
               className="absolute inset-0 cursor-pointer"
             >
-              <div className="relative h-full w-full rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm p-4 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all hover:scale-[1.02] shadow-lg overflow-hidden">
+              <div className="relative h-full w-full rounded-xl bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm p-4 hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden">
                 {/* 顶部：图标 + 标题 */}
                 <div className="relative flex items-start gap-3 mb-3">
                   <motion.div
-                    className="w-10 h-10 flex-shrink-0 text-gray-700 dark:text-gray-300"
+                    className="w-10 h-10 flex-shrink-0 text-gray-700 dark:text-white/60"
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     transition={{ duration: 0.4, delay: 0.1 }}
@@ -207,7 +207,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                       transition={{ duration: 0.3, delay: 0.15 + index * 0.08 }}
                       className="flex items-start gap-2 text-[10px] text-gray-600 dark:text-gray-400"
                     >
-                      <div className="w-1 h-1 rounded-full mt-1 flex-shrink-0 bg-gray-400 dark:bg-gray-600" />
+                      <div className="w-1 h-1 rounded-full mt-1 flex-shrink-0 bg-gray-400 dark:bg-white/30" />
                       <span>{feature}</span>
                     </motion.div>
                   ))}
@@ -215,7 +215,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
 
                 {/* 前往按钮 */}
                 <motion.div 
-                  className="relative flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300"
+                  className="relative flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-700 dark:text-white/60"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.4, delay: 0.4 }}

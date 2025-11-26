@@ -64,13 +64,13 @@ const StatCard = memo(({ cat, value, loading }: { cat: any; value: number; loadi
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-lg p-1.5 relative overflow-hidden">
+    <div className="flex flex-col items-center justify-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm rounded-lg p-1.5 relative overflow-hidden">
       <div 
         className="absolute top-0 right-0 w-6 h-6 rounded-full blur-xl opacity-20"
         style={{ background: cat.color }}
       />
       <div className="relative z-10 flex flex-col items-center gap-0.5">
-        <div className="text-gray-700 dark:text-gray-300">
+        <div className="text-gray-700 dark:text-white/60">
           {renderIcon(cat.key)}
         </div>
         <span className="text-base font-black text-gray-800 dark:text-gray-200 leading-none">
@@ -203,7 +203,7 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
   return (
     <div className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 背景装饰 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       
       {/* 主内容 */}
       <div className="relative h-full flex flex-col p-3">

@@ -280,7 +280,7 @@ const BilibiliWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             {/* 封面图片背景 */}
             <div className="absolute inset-0">
               <img 
@@ -319,7 +319,7 @@ const SteamStatsWidget = memo(({ data }: { data?: {
     <div className="relative h-full w-full overflow-hidden">
       {/* 背景：对角分割设计 */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-gray-800/30 dark:to-transparent" 
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent" 
              style={{ clipPath: 'polygon(0 0, 70% 0, 45% 100%, 0 100%)' }} />
       </div>
       
@@ -349,8 +349,8 @@ const SteamStatsWidget = memo(({ data }: { data?: {
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.5 }}
         >
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-gray-200/90 backdrop-blur-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-800 animate-pulse" />
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-white/90 backdrop-blur-sm">
+            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-black/60 animate-pulse" />
             <span className="text-[10px] font-bold text-gray-100 dark:text-gray-900 uppercase tracking-wide">{type}</span>
           </div>
         </motion.div>
@@ -437,7 +437,7 @@ const SteamWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             {/* 封面图片背景 */}
             <div className="absolute inset-0">
               <img 
@@ -564,7 +564,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* 背景渐变 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       
       {/* 主要内容区域 - 垂直布局 */}
       <div className="relative h-full flex flex-col p-2 justify-between">
@@ -657,7 +657,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
                 <span className="text-[7px] font-mono text-gray-500 dark:text-gray-400">{lang.percentage}%</span>
               </div>
               {/* 进度条 */}
-              <div className="h-[3px] w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-[3px] w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
                 <motion.div 
                   className="h-full rounded-full"
                   style={{ backgroundColor: getLanguageColor(lang.name) }}
@@ -733,9 +733,9 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
           className="h-full w-full p-1.5"
         >
           {currentItem ? (
-            <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+            <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
               {/* 仓库信息展示 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-gray-700 dark:to-gray-800">
+              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
                 <div className="absolute inset-0 flex flex-col p-2.5 pb-[20%]">
                   {/* 顶部：Stars和Forks统计 */}
                   <div className="flex items-center gap-2.5 mb-2">
@@ -971,7 +971,7 @@ const MusicStatsWidget = memo(({ data }: { data?: {
           
           {/* 粉丝和歌单统计 */}
           <motion.div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-gray-800/90 border border-white/30 dark:border-gray-700/50"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-black/90 border border-white/30 dark:border-white/10"
             style={{
               backdropFilter: 'blur(10px)'
             }}
@@ -983,11 +983,11 @@ const MusicStatsWidget = memo(({ data }: { data?: {
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(followerCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
+              <div className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
                 Fans
-              </span>
+              </div>
             </div>
-            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+            <div className="w-px h-5 bg-gray-300 dark:bg-white/20" />
             <div className="flex flex-col items-end">
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(playlistCount)}
@@ -1100,7 +1100,7 @@ const NeteaseWidget = memo(({
           <div className="h-full w-full flex gap-1.5">
             {currentItems.map((item, idx) => (
               <div key={idx} className="flex-1 h-full">
-                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
                   {/* 封面图片背景 */}
                   <div className="absolute inset-0">
                     <img 
@@ -1729,7 +1729,7 @@ export default function Reports() {
         onRefresh={refreshStageReport}
         playAllMode={playAllMode}
       />
-      <div className="h-full flex flex-col pt-20 pb-6 px-3 xs:px-4 sm:px-6">
+      <div className="h-full flex flex-col pt-20 pb-24 md:pb-6 px-3 xs:px-4 sm:px-6">
         <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col gap-4 p-2">
           {/* 上半部分：报告详情展示区域 (60%) - 保持占位但条件显示内容 */}
           <div className="h-[60%] rounded-2xl relative overflow-hidden">
@@ -1831,7 +1831,7 @@ export default function Reports() {
           </div>
 
           {/* 下半部分：卡片列表区域 (40%) - 固定高度 */}
-          <div className={`h-[40%] flex flex-col gap-3 relative ${isStageMode ? 'justify-end pb-16 md:pb-0 md:justify-start' : ''}`}>
+          <div className={`h-[40%] flex flex-col gap-3 relative ${isStageMode ? 'justify-end md:justify-start' : ''}`}>
             {activeTab === 'platform' && (
               <>
                 {/* 平台报告标题 - 绝对定位在整个区域 */}
@@ -1867,7 +1867,7 @@ export default function Reports() {
               <>
                 {/* 平台报告提示条 */}
                 <motion.div 
-                  className="h-[50px]"
+                  className={`h-[50px] ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
@@ -2058,7 +2058,7 @@ export default function Reports() {
                           <div 
                             className={`h-8 rounded-lg flex items-center gap-2 ${platform.text} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
                               cardContents[platform.id] 
-                                ? 'bg-white/95 dark:bg-gray-800/95' 
+                                ? 'bg-white/95 dark:bg-black/95' 
                                 : ''
                             }`}
                             style={{ 
@@ -2135,7 +2135,7 @@ export default function Reports() {
                           <div 
                             className={`h-8 rounded-lg flex items-center gap-2 ${platform.text} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
                               cardContents[platform.id] 
-                                ? 'bg-white/95 dark:bg-gray-800/95' 
+                                ? 'bg-white/95 dark:bg-black/95' 
                                 : ''
                             }`}
                             style={{ 
@@ -2203,7 +2203,7 @@ export default function Reports() {
                           <div 
                             className={`h-8 rounded-lg flex items-center gap-2 ${platform.text} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
                               cardContents[platform.id] 
-                                ? 'bg-white/95 dark:bg-gray-800/95' 
+                                ? 'bg-white/95 dark:bg-black/95' 
                                 : ''
                             }`}
                             style={{ 
@@ -2282,7 +2282,7 @@ export default function Reports() {
                           <div 
                             className={`rounded-lg flex items-center gap-2 ${platform.text} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
                               cardContents[platform.id] 
-                                ? 'bg-white/95 dark:bg-gray-800/95' 
+                                ? 'bg-white/95 dark:bg-black/95' 
                                 : ''
                             }`}
                             style={{ 
@@ -2365,7 +2365,7 @@ export default function Reports() {
               <>
                 {/* 综合报告提示条 */}
                 <motion.div
-                  className="h-[50px]"
+                  className={`h-[50px] ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}

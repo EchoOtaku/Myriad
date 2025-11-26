@@ -95,7 +95,7 @@ const BilibiliWidget = memo(({ data, showOverview, onContentChange }: any) => {
         </motion.div>
       ) : (
         <motion.div key={`lib-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0">
               <img src={getBilibiliProxyUrl(currentItem.cover, currentItem.title)} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
@@ -120,7 +120,7 @@ const SteamStatsWidget = memo(({ data }: any) => {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-gray-800/30 dark:to-transparent" style={{ clipPath: 'polygon(0 0, 70% 0, 45% 100%, 0 100%)' } as React.CSSProperties} />
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent" style={{ clipPath: 'polygon(0 0, 70% 0, 45% 100%, 0 100%)' } as React.CSSProperties} />
       </div>
       <motion.div className="absolute top-2 left-4 z-10" initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, delay: 0.1 }}>
         <div className="flex items-start gap-1">
@@ -128,9 +128,9 @@ const SteamStatsWidget = memo(({ data }: any) => {
           <span className="text-xs text-gray-500 dark:text-gray-400 font-bold mt-1">/100</span>
         </div>
         <motion.div className="mt-2" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.5, delay: 0.5 }}>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-gray-200/90 backdrop-blur-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-800 animate-pulse" />
-            <span className="text-[10px] font-bold text-gray-100 dark:text-gray-900 uppercase tracking-wide">{type}</span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-white/90 backdrop-blur-sm">
+            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-black/60 animate-pulse" />
+            <span className="text-[10px] font-bold text-gray-100 dark:text-black uppercase tracking-wide">{type}</span>
           </div>
         </motion.div>
       </motion.div>
@@ -171,7 +171,7 @@ const SteamWidget = memo(({ data, showOverview, onContentChange }: any) => {
         </motion.div>
       ) : (
         <motion.div key={`lib-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0">
               <img src={currentItem.cover || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentItem.title)}&size=400&background=1b2838&color=fff`} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
@@ -245,7 +245,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
   
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       <div className="relative h-full flex flex-col p-2 justify-between">
         <div className="space-y-2">
           <div className="flex items-start justify-between">
@@ -290,7 +290,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
                 <span className="text-[8px] font-bold text-gray-700 dark:text-gray-300">{lang.name}</span>
                 <span className="text-[7px] font-mono text-gray-500 dark:text-gray-400">{lang.percentage}%</span>
               </div>
-              <div className="h-[3px] w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-[3px] w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
                 <motion.div className="h-full rounded-full" style={{ backgroundColor: getLanguageColor(lang.name) }}
                   initial={{ width: 0 }} animate={{ width: `${lang.percentage}%` }} transition={{ duration: 0.8, delay: 0.6 + i * 0.1, ease: "easeOut" }} />
               </div>
@@ -322,8 +322,8 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
         </motion.div>
       ) : (
         <motion.div key={`lib-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
-            <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-gray-700 dark:to-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+            <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
               <div className="absolute inset-0 flex flex-col p-2.5 pb-[20%]">
                 <div className="flex items-center gap-2.5 mb-2">
                   {currentItem.stars !== undefined && (
@@ -457,14 +457,14 @@ const MusicStatsWidget = memo(({ data }: any) => {
             initial={{ scale: 0.8, opacity: 0, x: 20 }} animate={{ scale: 1, opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
             <span className="text-[7px]">●</span><span>Lv.{level}</span>
           </motion.div>
-          <motion.div className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-gray-800/90 border border-white/30 dark:border-gray-700/50"
+          <motion.div className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-black/90 border border-white/30 dark:border-white/10"
             style={{ backdropFilter: 'blur(10px)' }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }} animate={{ scale: 1, opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
             <div className="flex flex-col items-end">
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">{formatNumber(followerCount)}</span>
               <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>Fans</span>
             </div>
-            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+            <div className="w-px h-5 bg-gray-300 dark:bg-white/20" />
             <div className="flex flex-col items-end">
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">{formatNumber(playlistCount)}</span>
               <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>Lists</span>
@@ -523,7 +523,7 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange }: any) => {
           <div className="h-full w-full flex gap-1.5">
             {currentItems.map((item: any, idx: number) => (
               <div key={idx} className="flex-1 h-full">
-                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
                   <div className="absolute inset-0">
                     <img src={item.cover || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=200&background=e60026&color=fff`} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
                   </div>
@@ -638,7 +638,7 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
         <div 
           className={`rounded-lg flex items-center gap-2 ${platformConfig.textColor} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
             cardContent 
-              ? 'bg-white/95 dark:bg-gray-800/95' 
+              ? 'bg-white/95 dark:bg-black/95' 
               : ''
           }`}
           style={{ 
@@ -667,21 +667,9 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
                     ))}
                   </div>
                 ) : (
-                  <>
-                    <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate">
-                      {cardContent.title}
-                    </span>
-                    {cardContent.type && (
-                      <span 
-                        className="px-1.5 py-0.5 rounded text-[8px] font-bold"
-                        style={{ backgroundColor: platformConfig.bgColor, color: platformConfig.color }}
-                      >
-                        {platformId === 'bilibili' 
-                          ? (cardContent.type === 'anime' ? '追番' : cardContent.type === 'tv_series' ? '追剧' : '视频')
-                          : cardContent.type}
-                      </span>
-                    )}
-                  </>
+                  <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate">
+                    {cardContent.title}
+                  </span>
                 )}
               </motion.div>
             )}

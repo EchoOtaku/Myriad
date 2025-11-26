@@ -357,7 +357,7 @@ export default function Home() {
                 >
                   {userInfo ? (
                     <>
-                      <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
+                      <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-white/10">
                         <img 
                           src={userInfo.avatar} 
                           alt={userInfo.name}
@@ -377,10 +377,10 @@ export default function Home() {
                     </>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                      <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/5 animate-pulse" />
                       <div className="flex flex-col gap-1">
-                        <div className="w-20 h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                        <div className="w-32 h-2 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                        <div className="w-20 h-3 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
+                        <div className="w-32 h-2 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
                       </div>
                     </div>
                   )}
@@ -388,7 +388,7 @@ export default function Home() {
                   {/* 编辑按钮 - 仅管理员可见，且仅在桌面端显示 */}
                   {userInfo?.is_admin && (
                     <>
-                      <div className="hidden lg:block h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1" />
+                      <div className="hidden lg:block h-6 w-px bg-gray-200 dark:bg-white/10 mx-1" />
 
                       <button
                         onClick={() => setIsEditMode(!isEditMode)}

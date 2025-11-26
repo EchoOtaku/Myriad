@@ -944,17 +944,16 @@ pub async fn get_comprehensive_report_by_id(
 /// 辅助函数：从缓存获取平台数据
 /// 辅助函数：从缓存获取平台数据（重构版 - 单平台处理）
 async fn get_platform_data(platform: &str) -> Result<SmartFilteredData, String> {
-    use std::fs;
-    use std::path::PathBuf;
-    use tokio::sync::Mutex;
-    use std::sync::Arc;
     use once_cell::sync::Lazy;
     use std::collections::HashMap;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
     // 每个平台独立的处理锁
     type PlatformLocks = Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>;
-    static PLATFORM_LOCKS: Lazy<PlatformLocks> =
-        Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+    static PLATFORM_LOCKS: Lazy<PlatformLocks> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
     // 1. 尝试从独立平台缓存加载
     if let Ok(cached_data) = SmartFilter::load_platform_cache(platform) {
@@ -2063,21 +2062,21 @@ async fn extract_bilibili_user_stats(
     use std::fs;
     use std::path::PathBuf;
 
-    // 从原始平台数据中读取用户信息
-    let raw_cache_path = PathBuf::from("./cache/platform_data.json");
+    // 先尝试从原始B站缓存文件中读取
+    let raw_cache_path = PathBuf::from("./cache/raw/bilibili.json");
 
     if !raw_cache_path.exists() {
-        return Err("Platform data cache not found".to_string());
+        return Err("Bilibili raw cache not found".to_string());
     }
 
     let content = fs::read_to_string(&raw_cache_path)
-        .map_err(|e| format!("Failed to read platform data: {}", e))?;
+        .map_err(|e| format!("Failed to read bilibili cache: {}", e))?;
 
     let raw_json: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse platform data: {}", e))?;
+        .map_err(|e| format!("Failed to parse bilibili cache: {}", e))?;
 
-    // 尝试从 /data/bilibili/user_info 获取用户信息
-    let user_info = raw_json.pointer("/data/bilibili/user_info");
+    // 从 user_info 获取用户信息
+    let user_info = raw_json.get("user_info");
 
     if let Some(user_info) = user_info {
         // 提取统计数据
@@ -2091,7 +2090,7 @@ async fn extract_bilibili_user_stats(
             following_count,
         })
     } else {
-        Err("Bilibili user_info not found in platform data".to_string())
+        Err("Bilibili user_info not found in raw cache".to_string())
     }
 }
 
@@ -2102,46 +2101,34 @@ async fn extract_netease_user_stats(
     use std::fs;
     use std::path::PathBuf;
 
-    // 从原始平台数据中读取用户信息
-    let raw_cache_path = PathBuf::from("./cache/platform_data.json");
+    // 先尝试从原始网易云缓存文件中读取
+    let raw_cache_path = PathBuf::from("./cache/raw/netease.json");
 
     if !raw_cache_path.exists() {
-        return Err("Platform data cache not found".to_string());
+        return Err("Netease raw cache not found".to_string());
     }
 
     let content = fs::read_to_string(&raw_cache_path)
-        .map_err(|e| format!("Failed to read platform data: {}", e))?;
+        .map_err(|e| format!("Failed to read netease cache: {}", e))?;
 
     let raw_json: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse platform data: {}", e))?;
+        .map_err(|e| format!("Failed to parse netease cache: {}", e))?;
 
-    // 尝试从多个路径获取用户信息
-    let profile = raw_json
-        .pointer("/data/netease/profile")
-        .or_else(|| raw_json.pointer("/data/netease/user"));
+    // 从 profile 获取用户信息
+    let profile = raw_json.get("profile");
 
     if let Some(profile) = profile {
         // 提取统计数据
         let follower_count = profile.get("followeds").cloned().unwrap_or(json!(0));
 
-        // 歌单数可能来自 profile 或单独统计
-        let playlist_count = profile
-            .get("playlistCount")
-            .cloned()
-            .or_else(|| {
-                // 如果没有直接的计数，尝试从 playlists 数组获取
-                raw_json
-                    .pointer("/data/netease/playlists")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| json!(arr.len()))
-            })
-            .unwrap_or(json!(0));
+        // 歌单数从 profile 中获取
+        let playlist_count = profile.get("playlistCount").cloned().unwrap_or(json!(0));
 
         Ok(NeteaseUserStats {
             follower_count,
             playlist_count,
         })
     } else {
-        Err("Netease profile not found in platform data".to_string())
+        Err("Netease profile not found in raw cache".to_string())
     }
 }

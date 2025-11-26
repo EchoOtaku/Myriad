@@ -711,7 +711,7 @@ export default function WidgetGrid({
       {Array.from({ length: currentGridWidth * currentGridHeight }).map((_, i) => (
         <div
           key={i}
-          className="border border-gray-200 dark:border-gray-700 border-opacity-30"
+          className="border border-gray-200 dark:border-white/5 border-opacity-30"
         />
       ))}
     </div>
@@ -727,18 +727,18 @@ export default function WidgetGrid({
             animate={{ y: 0 }}
             exit={{ y: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-700/50 shadow-2xl"
+            className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-2xl"
           >
             <div className="w-full max-w-[1920px] mx-auto">
               {/* 控制栏 */}
-              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-gray-700/30">
+              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
                     <span className="text-lg">📦</span>
                     <span className="font-bold">小组件库</span>
                   </div>
                   
-                  <div className="h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2" />
+                  <div className="h-5 w-px bg-gray-300 dark:bg-white/10 mx-2" />
                   
                   <div className="flex items-center gap-1">
                     <button
@@ -763,7 +763,7 @@ export default function WidgetGrid({
               
               {/* 组件列表 - 横向滚动 */}
               <div 
-                className="flex items-center gap-6 p-6 overflow-x-auto overflow-y-hidden scrollbar-hide min-h-[160px]"
+                className="flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-[160px]"
                 onWheel={(e) => {
                   if (e.deltaY !== 0) {
                     e.currentTarget.scrollLeft += e.deltaY;
