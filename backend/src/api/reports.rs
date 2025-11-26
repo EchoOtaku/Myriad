@@ -2017,6 +2017,22 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
             }
         }
 
+        // 兜底：如果仍然没有收集到可展示的歌曲（例如原始缓存缺失或结构差异），
+        // 使用智能过滤结果中的 recent_songs 构建基础的 library_items（无封面时前端会自动回退头像）。
+        if library_items.is_empty() {
+            for song in &analysis.recent_songs {
+                library_items.push(json!({
+                    "title": song.title,
+                    "cover": "",
+                    "artist": song.artist,
+                    "type": "music"
+                }));
+                if library_items.len() >= 10 {
+                    break;
+                }
+            }
+        }
+
         // 去重（虽然上面已经检查过，但再确保一次）
         let mut seen_titles = std::collections::HashSet::new();
         library_items.retain(|item: &Value| {

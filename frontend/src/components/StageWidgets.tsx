@@ -830,12 +830,6 @@ export const NeteaseWidget = memo(({
     }
   }, [showOverview, libraryItems.length]);
 
-  useEffect(() => {
-    if (showOverview && libraryItems.length > 0) {
-       setCurrentItemIndex(prev => (prev + 2) % libraryItems.length);
-    }
-  }, [showOverview, libraryItems.length]);
-
   const currentItems = [
     libraryItems[currentItemIndex],
     libraryItems[(currentItemIndex + 1) % libraryItems.length]

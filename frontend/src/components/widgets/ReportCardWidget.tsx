@@ -495,10 +495,13 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange }: any) => {
   
   const libraryItems = useMemo(() => processedData?.library_items || [], [processedData?.library_items]);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
-  
+
   useEffect(() => {
-    if (showOverview && libraryItems.length > 0) {
-      setCurrentItemIndex(prev => (prev + 2) % libraryItems.length);
+    if (!showOverview && libraryItems.length > 0) {
+       const timer = setInterval(() => {
+         setCurrentItemIndex(prev => (prev + 2) % libraryItems.length);
+       }, 5000);
+       return () => clearInterval(timer);
     }
   }, [showOverview, libraryItems.length]);
   
