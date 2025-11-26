@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import AnimatedView from '../components/AnimatedView';
 import Toast from '../components/Toast';
 import { ButtonSpinner } from '../components/Spinner';
@@ -251,7 +252,7 @@ export default function DataManagement() {
         <button
           type="button"
           onClick={() => navigate('/config')}
-          className="back-to-config-button"
+          className="btn-base btn-secondary back-to-config-button"
           title="返回配置页"
           aria-label="返回配置页"
         >
@@ -280,126 +281,137 @@ export default function DataManagement() {
 
         {/* 平台数据管理 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {PLATFORMS.map((platform) => {
+          {PLATFORMS.map((platform, index) => {
             const status = platformStatuses.find(s => s.platform_id === platform.id);
             const cache = cacheStatuses.find(c => c.platform === platform.id);
             const IconComponent = platform.icon;
             const isProcessing = processingPlatform === platform.id;
 
             return (
-              <div key={platform.id} className="config-section" style={{ marginBottom: 0 }}>
+              <motion.div 
+                key={platform.id} 
+                className="config-section" 
+                style={{ marginBottom: 0 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 + index * 0.08, duration: 0.3 }}
+              >
                 {/* 平台标题 */}
-                <div className="section-header" style={{ marginBottom: '1rem' }}>
+                <div className="section-header" style={{ marginBottom: '0.75rem' }}>
                   <div className="section-header-left">
-                    <IconComponent 
-                      style={{ 
-                        color: platform.color,
-                        fontSize: '1.5rem',
-                        flexShrink: 0
-                      }}
-                    />
+                    <div style={{ 
+                      width: '2.5rem',
+                      height: '2.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <IconComponent 
+                        style={{ 
+                          color: '#1f2937',
+                          fontSize: '1.75rem'
+                        }}
+                        className="dark:text-gray-100"
+                      />
+                    </div>
                     <div>
-                      <h3 className="card-header" style={{ 
+                      <h3 style={{ 
                         fontSize: '1rem',
                         fontWeight: 600,
-                        marginBottom: '0.125rem'
-                      }}>
+                        marginBottom: 0,
+                        color: '#1f2937'
+                      }} className="dark:text-gray-100">
                         {platform.name}
                       </h3>
-                      <p style={{ 
-                        fontSize: '0.75rem',
-                        color: '#6b7280'
-                      }} className="dark:text-gray-400">
-                        {platform.id}
-                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* 原始数据状态 */}
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <h4 className="text-gray-900 dark:text-gray-100" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>原始数据</h4>
+                {/* 原始数据 - 横向布局 */}
+                <div className="config-field-row" style={{ marginBottom: '0.5rem' }}>
+                  <div className="field-label-inline" style={{ flex: 1, minWidth: 0 }}>
+                    <span>原始数据</span>
+                    {status?.has_raw_data ? (
+                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>
+                        {formatBytes(status.raw_data_size)} · {formatDateTime(status.raw_fetched_at)}
+                      </span>
+                    ) : (
+                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>暂无数据</span>
+                    )}
+                  </div>
+                  <div className="field-control">
                     <button
                       type="button"
                       onClick={() => refreshSinglePlatform(platform.id, platform.name)}
                       disabled={refreshingPlatform === platform.id || statusLoading}
-                      className="config-icon-button button-success"
+                      className="btn-base btn-sm btn-secondary"
                       title="刷新数据"
-                      style={{ padding: '0.375rem' }}
+                      style={{ minWidth: '4rem' }}
                     >
                       {refreshingPlatform === platform.id ? (
-                        <ButtonSpinner size="sm" />
+                        <>
+                          <ButtonSpinner size="sm" />
+                          <span>刷新中</span>
+                        </>
                       ) : (
-                        <FaSyncAlt style={{ width: '0.875rem', height: '0.875rem' }} />
+                        <>
+                          <FaSyncAlt />
+                          <span>刷新</span>
+                        </>
                       )}
                     </button>
                   </div>
-                  
-                  {status?.has_raw_data ? (
-                    <div className="text-gray-600 dark:text-gray-400" style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>大小</span>
-                        <span style={{ fontFamily: 'monospace' }}>{formatBytes(status.raw_data_size)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>更新</span>
-                        <span>{formatDateTime(status.raw_fetched_at)}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 dark:text-gray-500" style={{ fontSize: '0.75rem' }}>暂无数据</p>
-                  )}
                 </div>
 
-                {/* 智能过滤缓存状态 */}
-                <div className="border-t border-gray-200 dark:border-gray-700" style={{ paddingTop: '0.75rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <h4 className="text-gray-900 dark:text-gray-100" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>智能过滤</h4>
-                    <div style={{ display: 'flex', gap: '0.375rem' }}>
+                {/* 智能过滤 - 横向布局 */}
+                <div className="config-field-row" style={{ marginBottom: 0 }}>
+                  <div className="field-label-inline" style={{ flex: 1, minWidth: 0 }}>
+                    <span>智能过滤</span>
+                    {cache ? (
+                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>
+                        {formatBytes(cache.size_bytes || 0)} · {formatDateTime(cache.modified_at || null)}
+                      </span>
+                    ) : (
+                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>暂无缓存</span>
+                    )}
+                  </div>
+                  <div className="field-control" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleProcessPlatform(platform.id, platform.name)}
+                      disabled={isProcessing || !status?.has_raw_data || statusLoading}
+                      className="btn-base btn-sm btn-primary"
+                      title="处理数据"
+                      style={{ minWidth: '4rem' }}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <ButtonSpinner size="sm" />
+                          <span>处理中</span>
+                        </>
+                      ) : (
+                        '处理'
+                      )}
+                    </button>
+                    {cache && (
                       <button
                         type="button"
-                        onClick={() => handleProcessPlatform(platform.id, platform.name)}
-                        disabled={isProcessing || !status?.has_raw_data || statusLoading}
-                        className="test-button-inline"
-                        title="处理数据"
-                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                        onClick={() => handleClearCache(platform.id, platform.name)}
+                        disabled={statusLoading}
+                        className="btn-base btn-sm btn-danger"
+                        title="清除缓存"
+                        style={{ minWidth: '4rem' }}
                       >
-                        {isProcessing ? '处理中' : '处理'}
+                        <svg style={{ width: '0.875rem', height: '0.875rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>清除</span>
                       </button>
-                      {cache && (
-                        <button
-                          type="button"
-                          onClick={() => handleClearCache(platform.id, platform.name)}
-                          disabled={statusLoading}
-                          className="config-icon-button button-danger"
-                          title="清除缓存"
-                          style={{ padding: '0.375rem' }}
-                        >
-                          <svg style={{ width: '0.875rem', height: '0.875rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
-
-                  {cache ? (
-                    <div className="text-gray-600 dark:text-gray-400" style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>大小</span>
-                        <span style={{ fontFamily: 'monospace' }}>{formatBytes(cache.size_bytes || 0)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>更新</span>
-                        <span>{formatDateTime(cache.modified_at || null)}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 dark:text-gray-500" style={{ fontSize: '0.75rem' }}>暂无缓存</p>
-                  )}
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>

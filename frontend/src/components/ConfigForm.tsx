@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
 import Toast from './Toast';
 import { ButtonSpinner } from './Spinner';
 import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
+import { SiNeteasecloudmusic } from 'react-icons/si';
 import { fetchJson } from '../utils/apiHelper';
 import { fetchConfig } from '../lib/api';
 import { useDebounce } from '../hooks/useDebounce';
@@ -614,12 +616,23 @@ const ModernConfigForm: React.FC = () => {
   }
 
   return (
-    <div className="modern-config-container">
+    <motion.div 
+      className="modern-config-container"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+    >
       {/* 消息提示 */}
       {message && <Toast message={message} />}
 
       {/* 配置导航卡片 */}
-      <div className="config-nav-card">
+      <motion.div 
+        className="config-nav-card"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.3 }}
+      >
         <div className="config-nav-header">
           <div className="nav-header-left">
             <span className="nav-icon">🛠️</span>
@@ -631,7 +644,7 @@ const ModernConfigForm: React.FC = () => {
           <div className="nav-header-actions">
             <button
               onClick={handleReset}
-              className="nav-action-button reset-button"
+              className="btn-base btn-danger nav-action-button reset-button"
               aria-label="重置配置"
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
@@ -641,7 +654,7 @@ const ModernConfigForm: React.FC = () => {
             </button>
             <button
               onClick={handleSave}
-              className="nav-action-button save-button"
+              className="btn-base btn-primary nav-action-button save-button"
               aria-label="保存配置"
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
@@ -752,7 +765,7 @@ const ModernConfigForm: React.FC = () => {
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* 配置内容区域 */}
       {!searchQuery && (
@@ -772,7 +785,15 @@ const ModernConfigForm: React.FC = () => {
 
               <div className="platforms-grid">
                 {config.platforms.map((platform, index) => (
-                  <div key={platform.name} className="platform-card">
+                  <motion.div 
+                    key={platform.name} 
+                    className="platform-card"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 + index * 0.05, duration: 0.3 }}
+                    onClick={() => setPlatformModalOpen(platform.name)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="platform-header">
                       <div className="platform-info">
                         <div className="platform-icon-wrapper">
@@ -781,15 +802,29 @@ const ModernConfigForm: React.FC = () => {
                         <div className="platform-details">
                           <div className="platform-title-row">
                             <h3 className="platform-name">{platform.name}</h3>
-                            <span className={`status-badge ${platform.enabled && platform.has_token ? 'configured' : 'unconfigured'}`}>
-                              {platform.enabled && platform.has_token ? '✓ 已配置' : '⚠ 未配置'}
+                            <span className={`status-badge ${(() => {
+                              // GitHub只需要username即可，token是可选的
+                              if (platform.name.toLowerCase() === 'github') {
+                                const usernameField = platform.config_fields.find(f => f.key === 'username');
+                                return platform.enabled && usernameField?.value ? 'configured' : 'unconfigured';
+                              }
+                              // 其他平台需要token
+                              return platform.enabled && platform.has_token ? 'configured' : 'unconfigured';
+                            })()}`}>
+                              {(() => {
+                                if (platform.name.toLowerCase() === 'github') {
+                                  const usernameField = platform.config_fields.find(f => f.key === 'username');
+                                  return platform.enabled && usernameField?.value ? '✓ 已配置' : '⚠ 未配置';
+                                }
+                                return platform.enabled && platform.has_token ? '✓ 已配置' : '⚠ 未配置';
+                              })()}
                             </span>
                           </div>
                           <p className="platform-desc">{platform.description}</p>
                         </div>
                       </div>
                       <div className="platform-actions">
-                        <label className="toggle-switch">
+                        <label className="toggle-switch" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={platform.enabled}
@@ -798,20 +833,9 @@ const ModernConfigForm: React.FC = () => {
                           />
                           <span className="toggle-slider"></span>
                         </label>
-
-                    <button
-                      onClick={() => setPlatformModalOpen(platform.name)}
-                      className="config-icon-button"
-                      aria-label="配置"
-                    >
-                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </button>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -819,7 +843,12 @@ const ModernConfigForm: React.FC = () => {
 
           {/* AI配置 */}
           {activeSection === 'ai' && (
-            <div className="config-section">
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="section-header">
                 <div className="section-header-left">
                   <span className="section-icon icon-ai">🤖</span>
@@ -831,61 +860,50 @@ const ModernConfigForm: React.FC = () => {
               </div>
 
               <div className="config-form">
+                {/* 功能介绍 */}
                 <div className="info-card">
-                  <p className="info-title">AI 服务配置说明</p>
+                  <p className="info-title">💡 AI 服务配置说明</p>
                   <p className="info-text">
                     支持 Google Gemini 和 OpenAI 兼容格式的 API。<br/>
-                    <strong>Google Gemini</strong>: 免费额度，适合个人使用。获取 API Key: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a><br/>
+                    <strong>Google Gemini</strong>: 免费额度，适合个人使用。<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">获取 API Key</a><br/>
                     <strong>OpenAI 兼容</strong>: 支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）
                   </p>
                 </div>
 
-                <div className="ai-status-card">
-                  <div className="status-info">
-                    <p className="status-label">Provider: {config.ai_config.provider}</p>
-                    <p className="status-sublabel">Model: {config.ai_config.model}</p>
+                {/* Provider选择和状态 - 横向布局 */}
+                <div className="config-field-row">
+                  <div className="field-label-inline">
+                    <span>AI Provider <span className="required">*</span></span>
+                    <span className="field-hint">选择 AI 服务提供商后，下方会显示对应的配置项</span>
                   </div>
-                  <span className={`status-badge ${config.ai_config.enabled ? 'configured' : 'unconfigured'}`}>
-                    {config.ai_config.enabled ? '✓ 已配置' : '✗ 未配置'}
-                  </span>
+                  <div className="field-control" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div className="provider-selector">
+                      {(() => {
+                        const providerField = config.ai_config.config_fields.find(f => f.key === 'provider');
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => updateAiFieldValue('provider', 'gemini')}
+                              className={`provider-option ${providerField?.value === 'gemini' ? 'active' : ''}`}
+                            >
+                              <span className="provider-icon">🤖</span>
+                              <span className="provider-name">Gemini</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateAiFieldValue('provider', 'openai')}
+                              className={`provider-option ${providerField?.value === 'openai' ? 'active' : ''}`}
+                            >
+                              <span className="provider-icon">✨</span>
+                              <span className="provider-name">OpenAI</span>
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
-
-                {(() => {
-                  const providerField = config.ai_config.config_fields.find(f => f.key === 'provider');
-                  if (providerField) {
-                    return (
-                      <div className="config-field">
-                        <label className="field-label">
-                          {providerField.label}
-                          {providerField.required && <span className="required">*</span>}
-                        </label>
-                        <div className="provider-selector">
-                          <button
-                            type="button"
-                            onClick={() => updateAiFieldValue('provider', 'gemini')}
-                            className={`provider-option ${
-                              providerField.value === 'gemini' ? 'active' : ''
-                            }`}
-                          >
-                            <span className="provider-icon">🤖</span>
-                            <span className="provider-name">Google Gemini</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateAiFieldValue('provider', 'openai')}
-                            className={`provider-option ${
-                              providerField.value === 'openai' ? 'active' : ''
-                            }`}
-                          >
-                            <span className="provider-icon">✨</span>
-                            <span className="provider-name">OpenAI 兼容</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
 
                 {(() => {
                   const currentProvider = config.ai_config.config_fields.find(f => f.key === 'provider')?.value || 'gemini';
@@ -926,14 +944,17 @@ const ModernConfigForm: React.FC = () => {
                     ));
                 })()}
               </div>
-            </div>
+            </motion.div>
           )}
-
-
 
           {/* 虚拟人设配置 */}
           {activeSection === 'persona' && (
-            <div className="config-section">
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="section-header">
                 <div className="section-header-left">
                   <span className="section-icon icon-persona">🎭</span>
@@ -954,56 +975,63 @@ const ModernConfigForm: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="ai-status-card">
-                  <div className="status-info">
-                    <p className="status-label">启用虚拟人设</p>
-                    <p className="status-sublabel">根据个人数据生成虚拟人物设定</p>
+                {/* 开关和Provider选择 - 横向布局 */}
+                <div className="config-field-row">
+                  <div className="field-label-inline">
+                    <span>启用虚拟人设</span>
+                    <span className="field-hint">根据个人数据生成虚拟人物设定</span>
                   </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={config.persona_config.config_fields.find(f => f.key === 'persona_image_enabled')?.value === 'true'}
-                      onChange={(e) => updatePersonaFieldValue('persona_image_enabled', e.target.checked.toString())}
-                      aria-label="Enable Virtual Persona"
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
+                  <div className="field-control">
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={config.persona_config.config_fields.find(f => f.key === 'persona_image_enabled')?.value === 'true'}
+                        onChange={(e) => updatePersonaFieldValue('persona_image_enabled', e.target.checked.toString())}
+                        aria-label="Enable Virtual Persona"
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
                 </div>
 
-                <div className="config-field">
-                  <label className="field-label">图片生成服务</label>
-                  <div className="provider-selector">
-                    <button
-                      type="button"
-                      onClick={() => updatePersonaFieldValue('persona_image_provider', 'pollinations')}
-                      className={`provider-option ${
-                        config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'pollinations'
-                          ? 'active'
-                          : ''
-                      }`}
-                    >
-                      <span className="provider-icon">🆓</span>
-                      <span className="provider-name">Pollinations AI</span>
-                      <span className="provider-badge">免费</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updatePersonaFieldValue('persona_image_provider', 'imaginepro')}
-                      className={`provider-option ${
-                        config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'imaginepro'
-                          ? 'active'
-                          : ''
-                      }`}
-                    >
-                      <span className="provider-icon">✨</span>
-                      <span className="provider-name">ImaginePro</span>
-                      <span className="provider-badge">Midjourney</span>
-                    </button>
+                <div className="config-field-row">
+                  <div className="field-label-inline">
+                    <span>图片生成服务</span>
+                  </div>
+                  <div className="field-control">
+                    <div className="provider-selector">
+                      <button
+                        type="button"
+                        onClick={() => updatePersonaFieldValue('persona_image_provider', 'pollinations')}
+                        className={`provider-option ${
+                          config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'pollinations'
+                            ? 'active'
+                            : ''
+                        }`}
+                      >
+                        <span className="provider-icon">🆓</span>
+                        <span className="provider-name">Pollinations</span>
+                        <span className="provider-badge">免费</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updatePersonaFieldValue('persona_image_provider', 'imaginepro')}
+                        className={`provider-option ${
+                          config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'imaginepro'
+                            ? 'active'
+                            : ''
+                        }`}
+                      >
+                        <span className="provider-icon">✨</span>
+                        <span className="provider-name">ImaginePro</span>
+                        <span className="provider-badge">MJ</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 {config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'pollinations' && (
-                  <>
+                  <div className="config-compact-group">
                     <div className="config-field">
                       <label htmlFor="persona-model" className="field-label">AI 模型</label>
                       <select
@@ -1018,36 +1046,33 @@ const ModernConfigForm: React.FC = () => {
                         <option value="flux-3d">Flux 3D (3D风格)</option>
                       </select>
                     </div>
-
-                    <div className="dimension-grid">
-                      <div className="config-field">
-                        <label htmlFor="persona-width" className="field-label">宽度 (px)</label>
-                        <input
-                          id="persona-width"
-                          type="number"
-                          min="256"
-                          max="1024"
-                          step="64"
-                          value={config.persona_config.config_fields.find(f => f.key === 'persona_image_width')?.value || '512'}
-                          onChange={(e) => updatePersonaFieldValue('persona_image_width', e.target.value)}
-                          className="field-input"
-                        />
-                      </div>
-                      <div className="config-field">
-                        <label htmlFor="persona-height" className="field-label">高度 (px)</label>
-                        <input
-                          id="persona-height"
-                          type="number"
-                          min="256"
-                          max="1024"
-                          step="64"
-                          value={config.persona_config.config_fields.find(f => f.key === 'persona_image_height')?.value || '768'}
-                          onChange={(e) => updatePersonaFieldValue('persona_image_height', e.target.value)}
-                          className="field-input"
-                        />
-                      </div>
+                    <div className="config-field">
+                      <label htmlFor="persona-width" className="field-label">宽度 (px)</label>
+                      <input
+                        id="persona-width"
+                        type="number"
+                        min="256"
+                        max="1024"
+                        step="64"
+                        value={config.persona_config.config_fields.find(f => f.key === 'persona_image_width')?.value || '512'}
+                        onChange={(e) => updatePersonaFieldValue('persona_image_width', e.target.value)}
+                        className="field-input"
+                      />
                     </div>
-                  </>
+                    <div className="config-field">
+                      <label htmlFor="persona-height" className="field-label">高度 (px)</label>
+                      <input
+                        id="persona-height"
+                        type="number"
+                        min="256"
+                        max="1024"
+                        step="64"
+                        value={config.persona_config.config_fields.find(f => f.key === 'persona_image_height')?.value || '768'}
+                        onChange={(e) => updatePersonaFieldValue('persona_image_height', e.target.value)}
+                        className="field-input"
+                      />
+                    </div>
+                  </div>
                 )}
 
                 {config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'imaginepro' && (
@@ -1062,7 +1087,6 @@ const ModernConfigForm: React.FC = () => {
                         value={config.persona_config.config_fields.find(f => f.key === 'imaginepro_api_key')?.value || ''}
                         onChange={(e) => updatePersonaFieldValue('imaginepro_api_key', e.target.value)}
                         onFocus={(e) => {
-                          // 🔒 如果是掩码值，自动选中全部内容，用户输入会直接替换
                           const isMasked = e.target.value === '••••••••' || e.target.value === '********';
                           if (isMasked) {
                             e.target.select();
@@ -1073,7 +1097,7 @@ const ModernConfigForm: React.FC = () => {
                       />
                     </div>
 
-                    <div className="dimension-grid">
+                    <div className="config-compact-group">
                       <div className="config-field">
                         <label htmlFor="persona-width-mj" className="field-label">宽度 (px)</label>
                         <input
@@ -1104,12 +1128,17 @@ const ModernConfigForm: React.FC = () => {
                   </>
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* UI配置 */}
           {activeSection === 'ui' && (
-            <div className="config-section">
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="section-header">
                 <div className="section-header-left">
                   <span className="section-icon icon-ui">🎨</span>
@@ -1178,12 +1207,17 @@ const ModernConfigForm: React.FC = () => {
                     ))}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* OAuth配置 */}
           {activeSection === 'oauth' && (
-            <div className="config-section">
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="section-header">
                 <div className="section-header-left">
                   <span className="section-icon icon-oauth">🔐</span>
@@ -1252,12 +1286,17 @@ const ModernConfigForm: React.FC = () => {
                   />
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* 音乐播放器配置 */}
           {activeSection === 'music' && (
-            <div className="config-section">
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="section-header">
                 <div className="section-header-left">
                   <span className="section-icon icon-music">🎵</span>
@@ -1272,58 +1311,63 @@ const ModernConfigForm: React.FC = () => {
                 <div className="info-card">
                   <p className="info-title">音乐播放器说明</p>
                   <p className="info-text">
-                    在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐<br/>
-                    播放有歌词的歌曲时，收缩状态下会自动显示实时歌词
+                    在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐。播放有歌词的歌曲时，收缩状态下会自动显示实时歌词。
                   </p>
                   <p className="info-text warning-text">
-                    ⚠️ 注意：网易云音乐API有地理位置限制，海外IP可能无法播放部分歌曲。<br/>
-                    建议海外用户使用QQ音乐，或确保使用国内可访问的歌单。
+                    ⚠️ 注意：网易云音乐API有地理位置限制，海外IP可能无法播放部分歌曲。建议海外用户使用QQ音乐。
                   </p>
                 </div>
 
-                <div className="ai-status-card">
-                  <div className="status-info">
-                    <p className="status-label">启用音乐播放器</p>
-                    <p className="status-sublabel">在控制岛中显示音乐播放器</p>
+                {/* 开关和平台选择 - 横向布局 */}
+                <div className="config-field-row">
+                  <div className="field-label-inline">
+                    <span>启用音乐播放器</span>
+                    <span className="field-hint">在控制岛中显示音乐播放器</span>
                   </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={config.ui_config.config_fields.find(f => f.key === 'music_enabled')?.value === 'true'}
-                      onChange={(e) => updateUiFieldValue('music_enabled', e.target.checked.toString())}
-                      aria-label="Enable Music Player"
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
+                  <div className="field-control">
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={config.ui_config.config_fields.find(f => f.key === 'music_enabled')?.value === 'true'}
+                        onChange={(e) => updateUiFieldValue('music_enabled', e.target.checked.toString())}
+                        aria-label="Enable Music Player"
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
                 </div>
 
-                <div className="config-field">
-                  <label className="field-label">音乐平台</label>
-                  <div className="provider-selector">
-                    <button
-                      type="button"
-                      onClick={() => updateUiFieldValue('music_source', 'netease')}
-                      className={`provider-option ${
-                        config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
-                          ? 'active'
-                          : ''
-                      }`}
-                    >
-                      <span className="provider-icon">🎵</span>
-                      <span className="provider-name">网易云音乐</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateUiFieldValue('music_source', 'qq')}
-                      className={`provider-option ${
-                        config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'qq'
-                          ? 'active'
-                          : ''
-                      }`}
-                    >
-                      <span className="provider-icon">🎧</span>
-                      <span className="provider-name">QQ音乐</span>
-                    </button>
+                <div className="config-field-row">
+                  <div className="field-label-inline">
+                    <span>音乐平台</span>
+                  </div>
+                  <div className="field-control">
+                    <div className="provider-selector">
+                      <button
+                        type="button"
+                        onClick={() => updateUiFieldValue('music_source', 'netease')}
+                        className={`provider-option ${
+                          config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
+                            ? 'active'
+                            : ''
+                        }`}
+                      >
+                        <span className="provider-icon"><SiNeteasecloudmusic /></span>
+                        <span className="provider-name">网易云</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateUiFieldValue('music_source', 'qq')}
+                        className={`provider-option ${
+                          config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'qq'
+                            ? 'active'
+                            : ''
+                        }`}
+                      >
+                        <span className="provider-icon">🎧</span>
+                        <span className="provider-name">QQ音乐</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1361,7 +1405,7 @@ const ModernConfigForm: React.FC = () => {
                       setMessage('✓ 音乐缓存已清空，下次加载时将重新获取数据');
                       setTimeout(() => setMessage(''), 3000);
                     }}
-                    className="test-button"
+                    className="btn-base btn-secondary"
                     style={{ width: 'auto' }}
                   >
                     <span>🗑️</span>
@@ -1369,7 +1413,7 @@ const ModernConfigForm: React.FC = () => {
                   </button>
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
 
@@ -1428,30 +1472,12 @@ const ModernConfigForm: React.FC = () => {
                     />
                   </div>
                 ))}
-
-                <button
-                  onClick={() => handleTest(platform.name)}
-                  disabled={testing === platform.name}
-                  className="test-button"
-                >
-                  {testing === platform.name ? (
-                    <>
-                      <ButtonSpinner />
-                      <span>测试中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>🔍</span>
-                      <span>测试连接</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
           </div>
         );
       })()}
-    </div>
+    </motion.div>
   );
 };
 

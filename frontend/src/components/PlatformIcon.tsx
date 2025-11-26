@@ -1,6 +1,6 @@
 import React from 'react';
-import { FaGithub, FaSteam, FaMusic } from 'react-icons/fa';
-import { SiBilibili } from 'react-icons/si';
+import { FaGithub, FaSteam } from 'react-icons/fa';
+import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { FaXTwitter } from 'react-icons/fa6';
 
 interface PlatformIconProps {
@@ -26,7 +26,8 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(({ platform, classN
             return <FaXTwitter className={className} style={style} />;
         case 'netease music':
         case 'netease':
-            return <FaMusic className={className} style={style || { color: '#d33a31' }} />;
+        case '网易云音乐':
+            return <SiNeteasecloudmusic className={className} style={style} />;
         default:
             {/* @ts-ignore - Style prop needs to be passed through */}
             return <span className={className} style={style}>?</span>;
