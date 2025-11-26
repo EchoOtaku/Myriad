@@ -98,7 +98,12 @@ impl AiAnalyzer {
         model: String,
         base_url: Option<String>,
     ) -> Self {
-        let client = Client::new();
+        // 创建带超时的 HTTP 客户端，防止 AI 请求卡住
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(120)) // 2分钟超时
+            .connect_timeout(std::time::Duration::from_secs(30)) // 连接超时30秒
+            .build()
+            .unwrap_or_else(|_| Client::new());
         Self {
             client,
             provider,

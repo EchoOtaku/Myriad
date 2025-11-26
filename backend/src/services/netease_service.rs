@@ -13,6 +13,11 @@ use super::netease_utils::{
     convert_http_to_https, generate_device_id, get_random_china_ip, get_random_user_agent,
 };
 
+// 🚀 内存保护：限制单个歌单最大处理数量（避免 OOM）
+const MAX_TRACKS_LIMIT: usize = 5000;
+// 🚀 内存保护：限制缓存最大条目数
+const MAX_CACHE_ENTRIES: usize = 50;
+
 // 缓存结构
 pub struct CacheEntry {
     pub data: Value,
@@ -170,197 +175,166 @@ impl NeteaseService {
                     let loaded_tracks = tracks_array.len();
                     let mut vip_count = 0;
 
-                    // 为已加载的歌曲添加 VIP 标记
+                    // 为已加载的歌曲添加 VIP 标记 - 使用安全的方式避免 panic
                     for track in tracks_array.iter_mut() {
-                        if let Some(fee) = track.get("fee").and_then(|f| f.as_i64()) {
-                            let is_vip = fee == 1 || fee == 4;
-                            track
-                                .as_object_mut()
-                                .unwrap()
-                                .insert("isVip".to_string(), json!(is_vip));
+                        // 先获取 fee 值，再进行可变借用
+                        let fee = track.get("fee").and_then(|f| f.as_i64()).unwrap_or(0);
+                        let is_vip = fee == 1 || fee == 4;
+                        if let Some(obj) = track.as_object_mut() {
+                            obj.insert("isVip".to_string(), json!(is_vip));
                             if is_vip {
                                 vip_count += 1;
                             }
-                        } else {
-                            track
-                                .as_object_mut()
-                                .unwrap()
-                                .insert("isVip".to_string(), json!(false));
                         }
                     }
 
-                    // 处理大歌单（超过1000首）- 使用并发批量获取
+                    // 处理大歌单（超过1000首）- 使用串行批量获取
+                    // 🚀 优化：改为串行处理，减少内存峰值和 OOM 风险
                     if track_count > loaded_tracks && loaded_tracks >= 1000 {
+                        // 🚀 内存保护：限制最大获取数量，避免 OOM
+                        let effective_track_count = std::cmp::min(track_count, MAX_TRACKS_LIMIT);
+                        
                         tracing::info!(
-                            "🎵 Large playlist detected ({}/{}), fetching remaining songs with concurrent batches...",
+                            "🎵 Large playlist detected ({}/{}, capped at {}), fetching remaining songs...",
                             loaded_tracks,
-                            track_count
+                            track_count,
+                            effective_track_count
                         );
 
                         if let Some(track_ids_array) = track_ids {
-                            let mut all_tracks = tracks_array.clone();
-                            let batch_size = 200; // 增大批次大小减少请求次数
-                            let remaining_count = track_ids_array.len() - loaded_tracks;
+                            // 🚀 改进：不再克隆 tracks_array，直接收集新歌曲
+                            let batch_size = 200; // 批次大小
+                            let target_count = std::cmp::min(track_ids_array.len(), effective_track_count);
+                            let remaining_count = target_count.saturating_sub(loaded_tracks);
 
                             tracing::info!(
-                                "📦 Need to fetch {} more songs in batches of {}",
+                                "📦 Need to fetch {} more songs in batches of {} (target: {})",
                                 remaining_count,
-                                batch_size
+                                batch_size,
+                                target_count
                             );
 
-                            // 准备所有批次的ID
-                            let mut batches = Vec::new();
+                            // 收集新歌曲
+                            let mut new_tracks: Vec<Value> = Vec::with_capacity(
+                                std::cmp::min(remaining_count, 2000) // 预分配最多 2000 首的空间
+                            );
                             let mut offset = loaded_tracks;
+                            let mut failed_batches = 0;
+                            let max_failures = 3;
+                            let mut batch_num = 0;
+                            let total_batches = remaining_count.div_ceil(batch_size);
 
-                            while offset < track_ids_array.len() {
-                                let end_idx =
-                                    std::cmp::min(offset + batch_size, track_ids_array.len());
+                            while offset < target_count && failed_batches < max_failures {
+                                let end_idx = std::cmp::min(offset + batch_size, target_count);
                                 let batch_ids: Vec<i64> = track_ids_array[offset..end_idx]
                                     .iter()
                                     .filter_map(|id_obj| id_obj.get("id").and_then(|v| v.as_i64()))
                                     .collect();
 
-                                if !batch_ids.is_empty() {
-                                    batches.push((offset, batch_ids));
-                                }
-                                offset = end_idx;
-                            }
-
-                            // 并发获取批次（每次并发3个批次，避免过度并发触发反爬）
-                            let concurrent_limit = 3;
-                            let total_batches = batches.len();
-
-                            for (batch_idx, batch_chunk) in
-                                batches.chunks(concurrent_limit).enumerate()
-                            {
-                                let mut tasks = Vec::new();
-
-                                for (_, batch_ids) in batch_chunk {
-                                    let ids_str = batch_ids
-                                        .iter()
-                                        .map(|id| id.to_string())
-                                        .collect::<Vec<_>>()
-                                        .join(",");
-                                    let client = self.client.clone();
-                                    let device_id = device_id.clone();
-                                    let ts = timestamp;
-                                    let forwarded_for = forwarded_for.clone();
-                                    let client_ip = client_ip.clone();
-
-                                    // 添加随机延迟避免同时发送
-                                    let delay =
-                                        ((batch_idx * 100) as u64) + (rand::random::<u64>() % 100);
-
-                                    let task = tokio::spawn(async move {
-                                        tokio::time::sleep(Duration::from_millis(delay)).await;
-
-                                        let track_url = format!(
-                                            "https://music.163.com/api/song/detail?ids=[{}]",
-                                            ids_str
-                                        );
-
-                                        // 添加超时控制
-                                        let request = client
-                                            .get(&track_url)
-                                            .header("Referer", "https://music.163.com/")
-                                            .header("Origin", "https://music.163.com")
-                                            .header("Accept", "*/*")
-                                            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
-                                            .header("Connection", "keep-alive")
-                                            .header(
-                                                "Cookie",
-                                                format!(
-                                                    "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
-                                                    device_id,
-                                                    ts,
-                                                    rand::random::<u16>() % 10000
-                                                ),
-                                            )
-                                            .header("X-Forwarded-For", forwarded_for.clone())
-                                            .header("X-Real-IP", client_ip.clone())
-                                            .timeout(Duration::from_secs(10));
-
-                                        match request.send().await {
-                                            Ok(resp) => match resp.json::<Value>().await {
-                                                Ok(batch_data) => Ok(batch_data),
-                                                Err(e) => {
-                                                    tracing::warn!(
-                                                        "Failed to parse batch response: {}",
-                                                        e
-                                                    );
-                                                    Err(())
-                                                }
-                                            },
-                                            Err(e) => {
-                                                tracing::warn!("Failed to fetch batch: {}", e);
-                                                Err(())
-                                            }
-                                        }
-                                    });
-
-                                    tasks.push(task);
+                                if batch_ids.is_empty() {
+                                    offset = end_idx;
+                                    continue;
                                 }
 
-                                // 等待当前批次的所有任务完成
-                                let results = futures::future::join_all(tasks).await;
+                                // 🚀 添加延迟，减轻服务器压力
+                                let delay = 150 + (rand::random::<u64>() % 150);
+                                tokio::time::sleep(Duration::from_millis(delay)).await;
 
-                                // 处理结果
-                                for result in results {
-                                    if let Ok(Ok(batch_data)) = result {
-                                        if let Some(code) =
-                                            batch_data.get("code").and_then(|c| c.as_i64())
-                                        {
-                                            if code != 200 {
-                                                tracing::warn!(
-                                                    "⚠️ Batch request returned error code: {}",
-                                                    code
-                                                );
-                                                continue;
-                                            }
-                                        }
+                                let ids_str = batch_ids
+                                    .iter()
+                                    .map(|id| id.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(",");
 
-                                        if let Some(songs) =
-                                            batch_data.get("songs").and_then(|s| s.as_array())
-                                        {
-                                            for mut song in songs.clone() {
-                                                if let Some(fee) =
-                                                    song.get("fee").and_then(|f| f.as_i64())
-                                                {
-                                                    let is_vip = fee == 1 || fee == 4;
-                                                    song.as_object_mut()
-                                                        .unwrap()
-                                                        .insert("isVip".to_string(), json!(is_vip));
-                                                    if is_vip {
-                                                        vip_count += 1;
+                                let track_url = format!(
+                                    "https://music.163.com/api/song/detail?ids=[{}]",
+                                    ids_str
+                                );
+
+                                // 串行请求，减少并发内存压力
+                                match self.client
+                                    .get(&track_url)
+                                    .header("Referer", "https://music.163.com/")
+                                    .header("Origin", "https://music.163.com")
+                                    .header("Accept", "*/*")
+                                    .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+                                    .header("Connection", "keep-alive")
+                                    .header(
+                                        "Cookie",
+                                        format!(
+                                            "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
+                                            device_id,
+                                            timestamp,
+                                            rand::random::<u16>() % 10000
+                                        ),
+                                    )
+                                    .header("X-Forwarded-For", forwarded_for.clone())
+                                    .header("X-Real-IP", client_ip.clone())
+                                    .timeout(Duration::from_secs(15))
+                                    .send()
+                                    .await
+                                {
+                                    Ok(resp) => {
+                                        match resp.json::<Value>().await {
+                                            Ok(batch_data) => {
+                                                if batch_data.get("code").and_then(|c| c.as_i64()) == Some(200) {
+                                                    if let Some(songs) = batch_data.get("songs").and_then(|s| s.as_array()) {
+                                                        for song in songs {
+                                                            // 🚀 只提取必要字段，减少内存
+                                                            let fee = song.get("fee").and_then(|f| f.as_i64()).unwrap_or(0);
+                                                            let is_vip = fee == 1 || fee == 4;
+                                                            if is_vip {
+                                                                vip_count += 1;
+                                                            }
+                                                            
+                                                            // 克隆并添加 isVip 标记
+                                                            let mut song_data = song.clone();
+                                                            if let Some(obj) = song_data.as_object_mut() {
+                                                                obj.insert("isVip".to_string(), json!(is_vip));
+                                                            }
+                                                            new_tracks.push(song_data);
+                                                        }
                                                     }
                                                 } else {
-                                                    song.as_object_mut()
-                                                        .unwrap()
-                                                        .insert("isVip".to_string(), json!(false));
+                                                    tracing::warn!("⚠️ Batch {} returned error code", batch_num + 1);
+                                                    failed_batches += 1;
                                                 }
-                                                all_tracks.push(song);
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!("⚠️ Failed to parse batch {}: {}", batch_num + 1, e);
+                                                failed_batches += 1;
                                             }
                                         }
                                     }
+                                    Err(e) => {
+                                        tracing::warn!("⚠️ Failed to fetch batch {}: {}", batch_num + 1, e);
+                                        failed_batches += 1;
+                                    }
                                 }
 
-                                // 批次完成日志
-                                let progress = (batch_idx + 1) * concurrent_limit;
-                                tracing::info!(
-                                    "✓ Completed batch group {}/{} - Total songs collected: {}/{}",
-                                    std::cmp::min(progress, total_batches),
-                                    total_batches,
-                                    all_tracks.len(),
-                                    track_ids_array.len()
-                                );
+                                batch_num += 1;
+                                offset = end_idx;
+
+                                // 进度日志（每5个批次打印一次）
+                                if batch_num % 5 == 0 || batch_num == total_batches {
+                                    tracing::info!(
+                                        "✓ Progress: {}/{} batches, {} new songs collected",
+                                        batch_num,
+                                        total_batches,
+                                        new_tracks.len()
+                                    );
+                                }
                             }
 
-                            *tracks_array = all_tracks;
+                            // 将新歌曲追加到原数组
+                            tracks_array.extend(new_tracks);
+                            
                             tracing::info!(
-                                "✅ Playlist {} 完整加载: {} 首歌曲，{} 首VIP",
+                                "✅ Playlist {} 完整加载: {} 首歌曲，{} 首VIP (失败批次: {})",
                                 playlist_id,
                                 tracks_array.len(),
-                                vip_count
+                                vip_count,
+                                failed_batches
                             );
                         }
                     } else {
@@ -375,9 +349,29 @@ impl NeteaseService {
             }
         }
 
-        // 存入缓存
+        // 🚀 存入缓存（添加缓存清理和内存保护）
         {
             let mut cache = MUSIC_CACHE.write().await;
+            
+            // 缓存清理：如果缓存条目过多，删除过期条目
+            if cache.len() >= MAX_CACHE_ENTRIES {
+                let now = Instant::now();
+                cache.retain(|_, entry| entry.expires_at > now);
+                
+                // 如果仍然过多，删除最旧的条目
+                if cache.len() >= MAX_CACHE_ENTRIES {
+                    // 找到最旧的条目并删除
+                    if let Some(oldest_key) = cache
+                        .iter()
+                        .min_by_key(|(_, entry)| entry.expires_at)
+                        .map(|(key, _)| key.clone())
+                    {
+                        cache.remove(&oldest_key);
+                        tracing::debug!("🧹 Removed oldest cache entry: {}", oldest_key);
+                    }
+                }
+            }
+            
             cache.insert(
                 cache_key,
                 CacheEntry {

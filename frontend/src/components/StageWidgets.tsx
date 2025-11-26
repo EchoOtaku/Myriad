@@ -122,9 +122,9 @@ export const BilibiliWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0">
-              <img 
+              <img
                 src={getBilibiliProxyUrl(currentItem.cover, currentItem.title)}
                 alt={currentItem.title}
                 className="w-full h-full object-cover"
@@ -158,7 +158,7 @@ export const SteamStatsWidget = memo(({ data }: { data?: {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-gray-800/30 dark:to-transparent" 
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent"
              style={{ clipPath: 'polygon(0 0, 70% 0, 45% 100%, 0 100%)' }} />
       </div>
       
@@ -180,15 +180,15 @@ export const SteamStatsWidget = memo(({ data }: { data?: {
           <span className="text-xs text-gray-500 dark:text-gray-400 font-bold mt-1">/100</span>
         </div>
         
-        <motion.div 
+        <motion.div
           className="mt-2"
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.5 }}
         >
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-gray-200/90 backdrop-blur-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-800 animate-pulse" />
-            <span className="text-[10px] font-bold text-gray-100 dark:text-gray-900 uppercase tracking-wide">{type}</span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-white/90 backdrop-blur-sm">
+            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-black/60 animate-pulse" />
+            <span className="text-[10px] font-bold text-gray-100 dark:text-black uppercase tracking-wide">{type}</span>
           </div>
         </motion.div>
       </motion.div>
@@ -281,9 +281,9 @@ export const SteamWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0">
-              <img 
+              <img
                 src={currentItem.cover || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentItem.title)}&size=400&background=1b2838&color=fff`}
                 alt={currentItem.title}
                 className="w-full h-full object-cover"
@@ -369,7 +369,7 @@ export const GithubStatsWidget = memo(({ data }: { data?: {
   
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       <div className="relative h-full flex flex-col p-2 justify-between">
         <div className="space-y-2">
           <div className="flex items-start justify-between">
@@ -446,8 +446,8 @@ export const GithubStatsWidget = memo(({ data }: { data?: {
                 <span className="text-[8px] font-bold text-gray-700 dark:text-gray-300">{lang.name}</span>
                 <span className="text-[7px] font-mono text-gray-500 dark:text-gray-400">{lang.percentage}%</span>
               </div>
-              <div className="h-[3px] w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <motion.div 
+              <div className="h-[3px] w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
+                <motion.div
                   className="h-full rounded-full"
                   style={{ backgroundColor: getLanguageColor(lang.name) }}
                   initial={{ width: 0 }}
@@ -533,8 +533,8 @@ export const GithubWidget = memo(({ data, onContentChange, showOverview }: {
           className="h-full w-full p-1.5"
         >
           {currentItem ? (
-            <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
-              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-gray-700 dark:to-gray-800">
+            <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
                 <div className="absolute inset-0 flex flex-col p-2.5 pb-[20%]">
                   <div className="flex items-center gap-2.5 mb-2">
                     {currentItem.stars !== undefined && (
@@ -730,12 +730,8 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
         
         <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-20">
           <motion.div
-            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg"
-            style={{ 
-              background: 'linear-gradient(135deg, #ffebee, #ffcdd2)',
-              color: '#d32f2f',
-              boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)'
-            }}
+            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
+            style={{ boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)' }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }}
             animate={{ scale: 1, opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: 0.1 }}
@@ -743,32 +739,28 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
             <span className="text-[7px]">●</span>
             <span>Lv.{level}</span>
           </motion.div>
-          
-          <motion.div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg"
-            style={{
-              background: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.3)'
-            }}
+
+          <motion.div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-black/90 border border-white/30 dark:border-white/10"
+            style={{ backdropFilter: 'blur(10px)' }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }}
             animate={{ scale: 1, opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
           >
             <div className="flex flex-col items-end">
-              <span className="text-lg font-black leading-none" style={{ color: '#1a1a1a' }}>
+              <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(followerCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold" style={{ color: '#4a4a4a', fontFamily: 'Georgia, serif' }}>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
                 Fans
               </span>
             </div>
-            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+            <div className="w-px h-5 bg-gray-300 dark:bg-white/20" />
             <div className="flex flex-col items-end">
-              <span className="text-lg font-black leading-none" style={{ color: '#1a1a1a' }}>
+              <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(playlistCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold" style={{ color: '#4a4a4a', fontFamily: 'Georgia, serif' }}>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
                 Lists
               </span>
             </div>
@@ -871,9 +863,9 @@ export const NeteaseWidget = memo(({
           <div className="h-full w-full flex gap-1.5">
             {currentItems.map((item, idx) => (
               <div key={idx} className="flex-1 h-full">
-                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800">
+                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
                   <div className="absolute inset-0">
-                    <img 
+                    <img
                       src={item.cover || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.title)}&size=200&background=e60026&color=fff`}
                       alt={item.title}
                       className="w-full h-full object-cover"

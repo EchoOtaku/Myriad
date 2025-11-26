@@ -240,10 +240,10 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
         transition={{ duration: 0.5 }}
         className="w-full h-full"
       >
-        <div className="relative w-full h-full rounded-xl overflow-hidden shadow-2xl bg-white dark:bg-gray-800">
+        <div className="relative w-full h-full rounded-xl overflow-hidden shadow-2xl bg-white dark:bg-black/90">
           <div className="absolute inset-0">
             {currentItem.cover ? (
-              <img 
+              <img
                 src={currentItem.cover}
                 alt={currentItem.title}
                 className="w-full h-full object-cover"
@@ -252,8 +252,8 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600">
                 <span className="text-6xl">
-                  {currentItem.type === 'game' ? '🎮' : 
-                   currentItem.type === 'video' || currentItem.type === 'anime' || currentItem.type === 'tv_series' ? '📺' : 
+                  {currentItem.type === 'game' ? '🎮' :
+                   currentItem.type === 'video' || currentItem.type === 'anime' || currentItem.type === 'tv_series' ? '📺' :
                    currentItem.type === 'music' ? '🎵' : '📚'}
                 </span>
               </div>

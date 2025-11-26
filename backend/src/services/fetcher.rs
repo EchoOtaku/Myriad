@@ -370,8 +370,9 @@ impl PlatformFetcher {
     pub async fn fetch_all_bilibili_bangumi(&self, uid: i64) -> Result<Vec<BilibiliBangumi>> {
         let mut all_bangumi = Vec::new();
 
-        // 1: 番剧(动画), 2: 电影, 3: 纪录片, 4: 国创, 5: 电视剧
-        for bangumi_type in [1, 2, 3, 4, 5] {
+        // 1: 番剧(动画), 2: 电影
+        // 移除 3: 纪录片, 4: 国创, 5: 电视剧 以减少请求数量
+        for bangumi_type in [1, 2] {
             match self.fetch_bilibili_bangumi(uid, bangumi_type).await {
                 Ok(mut items) => all_bangumi.append(&mut items),
                 Err(e) => tracing::warn!(

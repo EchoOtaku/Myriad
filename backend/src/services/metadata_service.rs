@@ -110,38 +110,151 @@ impl MetadataService {
     }
 
     /// 检测两个JSON对象之间的变化
+    /// 对于大型数据结构，使用迭代而非递归以避免栈溢出
     fn detect_changes(&self, old_data: &Value, new_data: &Value) -> Vec<String> {
         let mut changed_fields = Vec::new();
-        Self::compare_json("", old_data, new_data, &mut changed_fields);
+
+        // 使用栈模拟递归，避免栈溢出
+        let mut stack: Vec<(String, &Value, &Value)> = vec![("".to_string(), old_data, new_data)];
+        let max_depth = 50; // 限制最大深度
+        let mut depth = 0;
+
+        while let Some((prefix, old, new)) = stack.pop() {
+            depth += 1;
+            if depth > max_depth * 100 {
+                // 防止无限循环
+                tracing::warn!("⚠️ detect_changes reached max iterations, truncating");
+                break;
+            }
+
+            match (old, new) {
+                (Value::Object(old_map), Value::Object(new_map)) => {
+                    // 检查新增和修改的字段
+                    for (key, new_val) in new_map {
+                        let field_path = if prefix.is_empty() {
+                            key.clone()
+                        } else {
+                            format!("{}.{}", prefix, key)
+                        };
+
+                        match old_map.get(key) {
+                            Some(old_val) => {
+                                if old_val != new_val {
+                                    // 限制递归深度
+                                    let current_depth = field_path.matches('.').count();
+                                    if current_depth < max_depth {
+                                        stack.push((field_path, old_val, new_val));
+                                    } else {
+                                        changed_fields
+                                            .push(format!("{} (deep change)", field_path));
+                                    }
+                                }
+                            }
+                            None => {
+                                // 新增字段
+                                changed_fields.push(field_path);
+                            }
+                        }
+                    }
+
+                    // 检查删除的字段
+                    for key in old_map.keys() {
+                        if !new_map.contains_key(key) {
+                            let field_path = if prefix.is_empty() {
+                                key.clone()
+                            } else {
+                                format!("{}.{}", prefix, key)
+                            };
+                            changed_fields.push(format!("{} (deleted)", field_path));
+                        }
+                    }
+                }
+                (Value::Array(old_arr), Value::Array(new_arr)) => {
+                    // 数组长度变化
+                    if old_arr.len() != new_arr.len() {
+                        changed_fields.push(format!(
+                            "{} (array length: {} -> {})",
+                            prefix,
+                            old_arr.len(),
+                            new_arr.len()
+                        ));
+                    } else {
+                        // 只检查前100个元素的变化，避免处理超大数组
+                        let check_count = old_arr.len().min(100);
+                        for (i, (old_item, new_item)) in old_arr
+                            .iter()
+                            .zip(new_arr.iter())
+                            .take(check_count)
+                            .enumerate()
+                        {
+                            if old_item != new_item {
+                                let item_path = format!("{}[{}]", prefix, i);
+                                let current_depth = item_path.matches('.').count();
+                                if current_depth < max_depth {
+                                    stack.push((item_path, old_item, new_item));
+                                } else {
+                                    changed_fields.push(format!("{} (deep change)", item_path));
+                                }
+                            }
+                        }
+                        if old_arr.len() > 100 {
+                            changed_fields.push(format!(
+                                "{} (array has {} more elements not checked)",
+                                prefix,
+                                old_arr.len() - 100
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    // 基本类型变化
+                    if old != new && !prefix.is_empty() {
+                        changed_fields.push(prefix);
+                    }
+                }
+            }
+        }
+
         changed_fields
     }
 
-    /// 递归比较JSON对象并记录变化的字段路径
-    fn compare_json(prefix: &str, old: &Value, new: &Value, changes: &mut Vec<String>) {
+    /// 递归比较JSON对象并记录变化的字段路径（已弃用，保留用于向后兼容）
+    #[allow(dead_code)]
+    fn compare_json_recursive(prefix: &str, old: &Value, new: &Value, changes: &mut Vec<String>) {
+        Self::compare_json(prefix, old, new, changes, 0);
+    }
+
+    /// 递归比较JSON对象（带深度限制）
+    #[allow(dead_code)]
+    fn compare_json(
+        prefix: &str,
+        old: &Value,
+        new: &Value,
+        changes: &mut Vec<String>,
+        depth: usize,
+    ) {
+        const MAX_DEPTH: usize = 30;
+        if depth > MAX_DEPTH {
+            changes.push(format!("{} (deep change, depth > {})", prefix, MAX_DEPTH));
+            return;
+        }
+
         match (old, new) {
             (Value::Object(old_map), Value::Object(new_map)) => {
-                // 检查新增和修改的字段
                 for (key, new_val) in new_map {
                     let field_path = if prefix.is_empty() {
                         key.clone()
                     } else {
                         format!("{}.{}", prefix, key)
                     };
-
                     match old_map.get(key) {
-                        Some(old_val) => {
-                            if old_val != new_val {
-                                Self::compare_json(&field_path, old_val, new_val, changes);
-                            }
+                        Some(old_val) if old_val != new_val => {
+                            Self::compare_json(&field_path, old_val, new_val, changes, depth + 1);
                         }
-                        None => {
-                            // 新增字段
-                            changes.push(field_path);
-                        }
+                        None => changes.push(field_path),
+                        _ => {}
                     }
                 }
-
-                // 检查删除的字段
                 for key in old_map.keys() {
                     if !new_map.contains_key(key) {
                         let field_path = if prefix.is_empty() {
@@ -154,25 +267,26 @@ impl MetadataService {
                 }
             }
             (Value::Array(old_arr), Value::Array(new_arr)) => {
-                // 数组长度或内容变化
                 if old_arr.len() != new_arr.len() {
                     changes.push(format!("{} (array length changed)", prefix));
                 } else {
-                    for (i, (old_item, new_item)) in old_arr.iter().zip(new_arr.iter()).enumerate()
+                    for (i, (old_item, new_item)) in
+                        old_arr.iter().zip(new_arr.iter()).enumerate().take(50)
                     {
-                        let item_path = format!("{}[{}]", prefix, i);
                         if old_item != new_item {
-                            Self::compare_json(&item_path, old_item, new_item, changes);
+                            Self::compare_json(
+                                &format!("{}[{}]", prefix, i),
+                                old_item,
+                                new_item,
+                                changes,
+                                depth + 1,
+                            );
                         }
                     }
                 }
             }
-            _ => {
-                // 基本类型变化
-                if old != new {
-                    changes.push(prefix.to_string());
-                }
-            }
+            _ if old != new => changes.push(prefix.to_string()),
+            _ => {}
         }
     }
 

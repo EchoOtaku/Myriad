@@ -215,69 +215,12 @@ async fn process_platform_task(task_id: String, platform: String) {
         }
     }
 
-    // 如果分平台数据读取失败，回退到读取大文件（兼容旧逻辑）
+    // 如果分平台数据读取失败，报错
     if platform_data_value.is_none() {
-        tracing::info!(
-            "⚠️ Split raw data not found or invalid, falling back to platform_data.json"
-        );
-
-        // 1. 检查原始数据文件
-        let raw_cache_path = PathBuf::from("./cache/platform_data.json");
-        if !raw_cache_path.exists() {
-            let error = format!("Raw data file not found: {:?}", raw_cache_path);
-            tracing::error!("❌ {}", error);
-            BACKGROUND_PROCESSOR.fail_task(task_id, error).await;
-            return;
-        }
-
-        // 2. 读取原始数据
-        BACKGROUND_PROCESSOR
-            .update_task(task_id, TaskStatus::Processing, 20.0, None)
-            .await;
-
-        let content = match fs::read_to_string(&raw_cache_path) {
-            Ok(c) => c,
-            Err(e) => {
-                let error = format!("Failed to read raw data: {}", e);
-                tracing::error!("❌ {}", error);
-                BACKGROUND_PROCESSOR.fail_task(task_id, error).await;
-                return;
-            }
-        };
-
-        // 3. 解析 JSON
-        BACKGROUND_PROCESSOR
-            .update_task(task_id, TaskStatus::Processing, 40.0, None)
-            .await;
-
-        let raw_json: Value = match serde_json::from_str(&content) {
-            Ok(j) => j,
-            Err(e) => {
-                let error = format!("Failed to parse JSON: {}", e);
-                tracing::error!("❌ {}", error);
-                BACKGROUND_PROCESSOR.fail_task(task_id, error).await;
-                return;
-            }
-        };
-
-        // 4. 提取平台数据
-        let all_data = if let Some(d) = raw_json.get("data") {
-            d
-        } else {
-            &raw_json
-        };
-
-        match all_data.get(platform) {
-            Some(data) => {
-                platform_data_value = Some(data.clone());
-            }
-            None => {
-                let error = format!("Platform {} not found in raw data", platform);
-                tracing::error!("❌ {}", error);
-                BACKGROUND_PROCESSOR.fail_task(task_id, error).await;
-                return;
-            }
-        };
+        let error = format!("Raw data file not found for platform: {}", platform);
+        tracing::error!("❌ {}", error);
+        BACKGROUND_PROCESSOR.fail_task(task_id, error).await;
+        return;
     }
 
     let platform_data = platform_data_value.unwrap();

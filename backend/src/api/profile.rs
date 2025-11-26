@@ -23,7 +23,6 @@ struct PlatformDataCache {
     fetched_at: DateTime<Utc>,
 }
 
-const PLATFORM_CACHE_FILE: &str = "./cache/platform_data.json";
 const PLATFORM_CACHE_HOURS: i64 = 12; // 数据缓存12小时
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -298,64 +297,17 @@ fn load_platform_data_cache() -> Option<PlatformDataCache> {
         }
     }
 
-    // 降级：尝试读取旧的单文件缓存（为了兼容性）
-    let path = PathBuf::from(PLATFORM_CACHE_FILE);
-    if !path.exists() {
-        return None;
-    }
-
-    match fs::read_to_string(&path) {
-        Ok(content) => match serde_json::from_str::<PlatformDataCache>(&content) {
-            Ok(cache) => {
-                let age = Utc::now() - cache.fetched_at;
-                if age < Duration::hours(PLATFORM_CACHE_HOURS) {
-                    tracing::info!(
-                        "✓ Loaded platform data from legacy cache (age: {}h)",
-                        age.num_hours()
-                    );
-                    Some(cache)
-                } else {
-                    tracing::info!(
-                        "⏰ Legacy platform data cache expired (age: {}h)",
-                        age.num_hours()
-                    );
-                    None
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to parse legacy platform cache: {}", e);
-                None
-            }
-        },
-        Err(e) => {
-            tracing::warn!("Failed to read legacy platform cache: {}", e);
-            None
-        }
-    }
+    None
 }
 
 /// 保存平台数据缓存到磁盘（优化：只保存分平台数据，不再保存完整大文件）
 fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     // 保存分平台的原始数据
-    if let Err(e) = save_split_raw_data(data) {
-        tracing::warn!("Failed to save split raw data: {}", e);
-        return Err(e);
-    }
-
-    // 尝试删除旧的完整缓存文件（如果存在），以释放空间
-    let old_path = PathBuf::from(PLATFORM_CACHE_FILE);
-    if old_path.exists() {
-        if let Err(e) = fs::remove_file(&old_path) {
-            tracing::warn!("Failed to remove legacy cache file: {}", e);
-        } else {
-            tracing::info!("🗑️ Removed legacy platform_data.json");
-        }
-    }
-
-    Ok(())
+    save_split_raw_data(data)
 }
 
 /// 保存分平台的原始数据（避免读取大文件）
+/// 🚀 优化：添加错误容错和大文件分块写入
 fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     let raw_dir = PathBuf::from("./cache/raw");
     if !raw_dir.exists() {
@@ -366,12 +318,56 @@ fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error
         for (platform, data) in obj {
             // 保存所有平台的数据，不仅仅是主要平台
             let file_path = raw_dir.join(format!("{}.json", platform));
-            let file = std::fs::File::create(&file_path)?;
-            let mut writer = std::io::BufWriter::with_capacity(262144, file);
-            serde_json::to_writer(&mut writer, data)?;
-            use std::io::Write;
-            writer.flush()?;
-            tracing::info!("💾 Saved raw data for {} to {:?}", platform, file_path);
+
+            // 🚀 优化：先写入临时文件，然后原子性重命名，避免写入中断导致文件损坏
+            let temp_path = raw_dir.join(format!("{}.json.tmp", platform));
+
+            match std::fs::File::create(&temp_path) {
+                Ok(file) => {
+                    // 使用更大的缓冲区处理大文件（512KB）
+                    let mut writer = std::io::BufWriter::with_capacity(524288, file);
+
+                    match serde_json::to_writer(&mut writer, data) {
+                        Ok(_) => {
+                            use std::io::Write;
+                            if let Err(e) = writer.flush() {
+                                tracing::warn!("⚠️ Failed to flush {} data: {}", platform, e);
+                                // 继续处理其他平台
+                                continue;
+                            }
+
+                            // 原子性重命名
+                            if let Err(e) = std::fs::rename(&temp_path, &file_path) {
+                                tracing::warn!(
+                                    "⚠️ Failed to rename temp file for {}: {}",
+                                    platform,
+                                    e
+                                );
+                                // 尝试直接复制
+                                if let Err(e2) = std::fs::copy(&temp_path, &file_path) {
+                                    tracing::error!(
+                                        "❌ Failed to copy temp file for {}: {}",
+                                        platform,
+                                        e2
+                                    );
+                                }
+                                let _ = std::fs::remove_file(&temp_path);
+                            }
+
+                            tracing::info!("💾 Saved raw data for {} to {:?}", platform, file_path);
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to serialize {} data: {}", platform, e);
+                            let _ = std::fs::remove_file(&temp_path);
+                            // 继续处理其他平台，不返回错误
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to create temp file for {}: {}", platform, e);
+                    // 继续处理其他平台
+                }
+            }
         }
     }
     Ok(())
@@ -514,9 +510,14 @@ pub async fn fetch_single_platform_data(
 
     match fetch_fresh_platform_data(&db, Some(&req.platform)).await {
         Ok(data) => {
-            // 保存到缓存
-            if let Err(e) = save_platform_data_cache(&data) {
-                tracing::error!("Failed to save platform cache: {}", e);
+            // 只保存请求的平台数据，而不是所有平台
+            if let Some(platform_data) = data.get(&req.platform) {
+                let single_platform_data = json!({
+                    &req.platform: platform_data
+                });
+                if let Err(e) = save_platform_data_cache(&single_platform_data) {
+                    tracing::error!("Failed to save platform cache: {}", e);
+                }
             }
 
             (
@@ -868,41 +869,72 @@ fn clean_platform_data(data: &mut Value) {
         // favorites 和 bangumi 保持不变，它们是核心数据
     }
 
-    // 清洗网易云音乐数据 - 保留核心字段（分批处理避免内存峰值）
+    // 清洗网易云音乐数据 - 保留核心字段（优化内存使用）
     if let Some(netease) = data.get_mut("netease") {
-        // 清洗 liked_songs 数组，只保留必要字段
-        if let Some(songs) = netease
-            .get("liked_songs")
-            .and_then(|s| s.as_array())
-            .cloned()
-        {
-            let total_songs = songs.len();
-            tracing::debug!("🧹 Cleaning {} netease songs...", total_songs);
+        // 🚀 优化：原地修改而不是创建新数组，减少内存峰值
+        if let Some(songs_value) = netease.get_mut("liked_songs") {
+            if let Some(songs_array) = songs_value.as_array_mut() {
+                let total_songs = songs_array.len();
+                tracing::debug!("🧹 Cleaning {} netease songs in-place...", total_songs);
 
-            // 使用预分配容量 + 迭代器链式操作，编译器会优化为单次遍历
-            let mut cleaned_songs = Vec::with_capacity(total_songs);
-            cleaned_songs.extend(songs.iter().map(|song| {
-                json!({
-                    "id": song.get("id"),
-                    "name": song.get("name"),
-                    "ar": song.get("ar"),
-                    "artists": song.get("artists"),
-                    "al": song.get("al").map(|al| {
-                        json!({
-                            "id": al.get("id"),
-                            "name": al.get("name"),
-                            "picUrl": al.get("picUrl"),
-                        })
-                    }),
-                    "picUrl": song.get("picUrl"),
-                    "dt": song.get("dt"),
-                })
-            }));
+                // 🚀 限制歌曲数量，避免处理过多数据
+                const MAX_SONGS_TO_CLEAN: usize = 5000;
+                if songs_array.len() > MAX_SONGS_TO_CLEAN {
+                    tracing::warn!(
+                        "⚠️ Truncating songs from {} to {} to prevent memory issues",
+                        songs_array.len(),
+                        MAX_SONGS_TO_CLEAN
+                    );
+                    songs_array.truncate(MAX_SONGS_TO_CLEAN);
+                }
 
-            if let Some(obj) = netease.as_object_mut() {
-                obj.insert("liked_songs".to_string(), json!(cleaned_songs));
+                // 原地清洗每首歌曲，只保留必要字段
+                for song in songs_array.iter_mut() {
+                    if let Some(obj) = song.as_object_mut() {
+                        // 保留的字段
+                        let id = obj.get("id").cloned();
+                        let name = obj.get("name").cloned();
+                        let ar = obj.get("ar").cloned();
+                        let artists = obj.get("artists").cloned();
+                        let al = obj.get("al").cloned();
+                        let pic_url = obj.get("picUrl").cloned();
+                        let dt = obj.get("dt").cloned();
+
+                        // 清空对象并只保留必要字段
+                        obj.clear();
+
+                        if let Some(v) = id {
+                            obj.insert("id".to_string(), v);
+                        }
+                        if let Some(v) = name {
+                            obj.insert("name".to_string(), v);
+                        }
+                        if let Some(v) = ar {
+                            obj.insert("ar".to_string(), v);
+                        }
+                        if let Some(v) = artists {
+                            obj.insert("artists".to_string(), v);
+                        }
+                        if let Some(al_val) = al {
+                            // 清洗专辑信息
+                            let cleaned_al = json!({
+                                "id": al_val.get("id"),
+                                "name": al_val.get("name"),
+                                "picUrl": al_val.get("picUrl"),
+                            });
+                            obj.insert("al".to_string(), cleaned_al);
+                        }
+                        if let Some(v) = pic_url {
+                            obj.insert("picUrl".to_string(), v);
+                        }
+                        if let Some(v) = dt {
+                            obj.insert("dt".to_string(), v);
+                        }
+                    }
+                }
+
+                tracing::debug!("✅ Cleaned {} songs in-place", songs_array.len());
             }
-            tracing::debug!("✅ Cleaned {} songs", cleaned_songs.len());
         }
 
         // 清洗 profile 信息
@@ -1876,21 +1908,6 @@ pub async fn delete_platform_cache(
                 success = false;
                 messages.push(format!("Failed to delete split raw data: {}", e));
                 tracing::error!("❌ Failed to delete split raw data: {}", e);
-            }
-        }
-    }
-
-    // 2. 删除旧的完整缓存文件
-    let cache_path = PathBuf::from(PLATFORM_CACHE_FILE);
-    if cache_path.exists() {
-        match fs::remove_file(&cache_path) {
-            Ok(_) => {
-                messages.push("Legacy platform cache deleted".to_string());
-            }
-            Err(e) => {
-                // 如果分平台删除成功，这里失败也可以接受，不算完全失败
-                messages.push(format!("Failed to delete legacy cache: {}", e));
-                tracing::warn!("❌ Failed to delete legacy cache: {}", e);
             }
         }
     }

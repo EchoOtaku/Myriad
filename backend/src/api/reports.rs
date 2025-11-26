@@ -980,8 +980,8 @@ async fn get_platform_data(platform: &str) -> Result<SmartFilteredData, String> 
         return Ok(cached_data);
     }
 
-    // 4. 从原始数据文件读取该平台数据
-    let raw_cache_path = PathBuf::from("./cache/platform_data.json");
+    // 4. 从平台特定的raw文件读取数据
+    let raw_cache_path = PathBuf::from(format!("./cache/raw/{}.json", platform));
     if !raw_cache_path.exists() {
         return Err(format!("Raw data file not found: {:?}", raw_cache_path));
     }
@@ -989,21 +989,10 @@ async fn get_platform_data(platform: &str) -> Result<SmartFilteredData, String> 
     tracing::info!("⚙️  Processing {} from raw data...", platform);
 
     let content = fs::read_to_string(&raw_cache_path).map_err(|e| e.to_string())?;
-    let raw_json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-
-    // 提取该平台的数据
-    let all_data = if let Some(d) = raw_json.get("data") {
-        d
-    } else {
-        &raw_json
-    };
-
-    let platform_data = all_data
-        .get(platform)
-        .ok_or_else(|| format!("Platform {} not found in raw data", platform))?;
+    let platform_data: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     // 5. 处理并缓存该平台数据（只处理单个平台！）
-    let filtered_data = SmartFilter::process_and_save_single(platform, platform_data)
+    let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
         .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
 
     tracing::info!("✓ Successfully processed and cached {}", platform);
@@ -1607,8 +1596,8 @@ async fn extract_bilibili_library_items(
     {
         println!("✅ Bilibili analysis found!");
 
-        // 读取原始平台数据以获取封面信息
-        let raw_cache_path = PathBuf::from("./cache/platform_data.json");
+        // 读取B站原始数据以获取封面信息
+        let raw_cache_path = PathBuf::from("./cache/raw/bilibili.json");
         let mut bangumi_map: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
 
@@ -1616,10 +1605,7 @@ async fn extract_bilibili_library_items(
             if let Ok(content) = fs::read_to_string(&raw_cache_path) {
                 if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
                     // 提取 bangumi 数据构建标题->封面映射
-                    if let Some(bangumi_array) = raw_json
-                        .pointer("/data/bilibili/bangumi")
-                        .and_then(|v| v.as_array())
-                    {
+                    if let Some(bangumi_array) = raw_json.get("bangumi").and_then(|v| v.as_array()) {
                         for item in bangumi_array {
                             if let (Some(title), Some(cover)) = (
                                 item.get("title").and_then(|v| v.as_str()),
@@ -1674,10 +1660,7 @@ async fn extract_bilibili_library_items(
             if let Ok(content) = fs::read_to_string(&raw_cache_path) {
                 if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
                     // 从收藏夹中提取视频信息
-                    if let Some(favorites) = raw_json
-                        .pointer("/data/bilibili/favorites")
-                        .and_then(|f| f.as_array())
-                    {
+                    if let Some(favorites) = raw_json.get("favorites").and_then(|f| f.as_array()) {
                         println!("  - Found {} favorite folders", favorites.len());
                         for fav_folder in favorites {
                             if let Some(videos) =
@@ -1767,8 +1750,8 @@ async fn extract_steam_library_items(metadata: &SmartFilteredData) -> Result<Vec
     {
         println!("✅ Steam analysis found!");
 
-        // 读取原始平台数据以获取游戏封面信息
-        let raw_cache_path = PathBuf::from("./cache/platform_data.json");
+        // 读取Steam原始数据以获取游戏封面信息
+        let raw_cache_path = PathBuf::from("./cache/raw/steam.json");
         let mut game_map: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
 
@@ -1776,10 +1759,7 @@ async fn extract_steam_library_items(metadata: &SmartFilteredData) -> Result<Vec
             if let Ok(content) = fs::read_to_string(&raw_cache_path) {
                 if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
                     // 提取 games 数据构建名称->封面映射
-                    if let Some(games_array) = raw_json
-                        .pointer("/data/steam/games")
-                        .and_then(|v| v.as_array())
-                    {
+                    if let Some(games_array) = raw_json.get("games").and_then(|v| v.as_array()) {
                         for item in games_array {
                             if let (Some(name), Some(appid)) = (
                                 item.get("name").and_then(|v| v.as_str()),
@@ -1902,53 +1882,32 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
     {
         println!("✅ Netease analysis found!");
 
-        // 读取原始平台数据以获取歌曲封面信息
-        let raw_cache_path = PathBuf::from("./cache/platform_data.json");
+        // 读取原始网易云缓存文件以获取歌曲封面信息
+        let raw_cache_path = PathBuf::from("./cache/raw/netease.json");
         let mut song_map: std::collections::HashMap<String, (String, String)> =
             std::collections::HashMap::new();
 
         if raw_cache_path.exists() {
             if let Ok(content) = fs::read_to_string(&raw_cache_path) {
                 if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
-                    // 尝试多个可能的路径提取歌曲数据
-                    let songs_array = raw_json
-                        .pointer("/data/netease/songs")
-                        .and_then(|v| v.as_array())
-                        .or_else(|| {
-                            // 备用路径：liked_songs（这是fetcher实际保存的字段）
-                            raw_json
-                                .pointer("/data/netease/liked_songs")
-                                .and_then(|v| v.as_array())
-                        });
+                    // 从 liked_songs 字段提取歌曲数据
+                    let songs_array = raw_json.get("liked_songs").and_then(|v| v.as_array());
 
                     if let Some(songs_array) = songs_array {
                         for item in songs_array {
                             if let (Some(name), cover, artists) = (
                                 item.get("name").and_then(|v| v.as_str()),
-                                item.get("picUrl")
+                                item.get("al")
+                                    .and_then(|al| al.get("picUrl"))
                                     .and_then(|v| v.as_str())
-                                    .or_else(|| {
-                                        item.get("al")
-                                            .and_then(|al| al.get("picUrl"))
-                                            .and_then(|v| v.as_str())
-                                    })
+                                    .or_else(|| item.get("picUrl").and_then(|v| v.as_str()))
                                     .unwrap_or(""),
-                                item.get("ar") // 标准字段
+                                item.get("ar")
                                     .and_then(|v| v.as_array())
                                     .and_then(|arr| {
                                         arr.first()
                                             .and_then(|a| a.get("name"))
                                             .and_then(|n| n.as_str())
-                                    })
-                                    .or_else(|| {
-                                        // 备用字段：artists
-                                        item.get("artists").and_then(|v| v.as_array()).and_then(
-                                            |arr| {
-                                                arr.first()
-                                                    .and_then(|a| a.get("name"))
-                                                    .and_then(|n| n.as_str())
-                                            },
-                                        )
                                     })
                                     .unwrap_or("未知艺术家"),
                             ) {
@@ -1961,60 +1920,164 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
                                 );
                             }
                         }
-                        println!("  - Loaded {} song covers from raw data", song_map.len());
+                        println!("  - 从 cache/raw/netease.json 加载了 {} 首歌曲", song_map.len());
+
+                        // 打印前3个song_map条目作为样本
+                        let sample: Vec<_> = song_map.iter().take(3).collect();
+                        if !sample.is_empty() {
+                            println!("  - song_map样本(前3个):");
+                            for (song_title, (_, artist)) in sample {
+                                println!("    '{}'  by  '{}'", song_title, artist);
+                            }
+                        }
                     } else {
-                        println!("  ⚠️ No songs found in /data/netease/songs or /data/netease/liked_songs");
+                        println!("  ⚠️ cache/raw/netease.json 中没有找到 liked_songs 字段");
                     }
+                } else {
+                    println!("  ⚠️ 无法解析 cache/raw/netease.json");
                 }
+            } else {
+                println!("  ⚠️ 无法读取 cache/raw/netease.json");
             }
+        } else {
+            println!("  ⚠️ cache/raw/netease.json 不存在");
         }
 
         // 从artist_analysis的favorite_artists中提取歌曲
-        for artist_name in &analysis.artist_analysis.favorite_artists {
-            // 在song_map中查找该艺术家的歌曲
-            for (song_name, (cover, song_artist)) in &song_map {
-                if song_artist == artist_name {
-                    library_items.push(json!({
-                        "title": song_name,
-                        "cover": cover,
-                        "artist": artist_name,
-                        "type": "music"
-                    }));
+        // 优化：限制每个艺术家最多2首歌，确保歌曲多样性
+        const MAX_SONGS_PER_ARTIST: usize = 2;
 
-                    if library_items.len() >= 10 {
-                        break;
-                    }
-                }
+        // 如果song_map为空(缓存文件不存在),从recent_songs构建基础map
+        if song_map.is_empty() {
+            println!("  ⚠️ song_map为空,从recent_songs构建基础map");
+            for song in &analysis.recent_songs {
+                song_map.insert(
+                    song.title.clone(),
+                    (String::new(), song.artist.clone()), // 封面为空
+                );
             }
-            if library_items.len() >= 10 {
-                break;
-            }
+            println!("  - 从recent_songs构建了{}首歌曲的map", song_map.len());
         }
 
-        // 如果favorite_artists提取的不够，从song_map中随机补充
-        if library_items.len() < 10 {
-            for (song_name, (cover, artist)) in song_map.iter().take(10) {
-                if library_items.len() >= 10 {
-                    break;
-                }
+        println!("  - 开始从 {} 位喜爱艺术家中筛选歌曲...", analysis.artist_analysis.favorite_artists.len());
+        println!("  - song_map大小: {}", song_map.len());
+        println!("  - 喜爱艺术家列表: {:?}", analysis.artist_analysis.favorite_artists);
 
-                // 检查是否已经添加过
-                let already_added = library_items.iter().any(|item| {
+        for artist_name in &analysis.artist_analysis.favorite_artists {
+            let mut artist_song_count = 0;
+            println!("  - 正在处理艺术家: '{}'", artist_name);
+
+            // 在song_map中查找该艺术家的歌曲
+            for (song_name, (cover, song_artist)) in &song_map {
+                // 检查是否已经添加过这首歌
+                let already_added = library_items.iter().any(|item: &Value| {
                     item.get("title")
                         .and_then(|v| v.as_str())
                         .map(|t| t == song_name)
                         .unwrap_or(false)
                 });
 
-                if !already_added {
+                if already_added {
+                    continue;
+                }
+
+                // 跳过未知艺术家
+                if song_artist == "未知艺术家" {
+                    continue;
+                }
+
+                // 使用包含关系匹配，因为艺术家名可能格式不完全一致
+                // 例如："YOASOBI" vs "YOASOBI/幾田りら"
+                let matches = song_artist.contains(artist_name) || artist_name.contains(song_artist);
+
+                if matches {
+                    println!("    ✓ 匹配成功! '{}' (目标) vs '{}' (歌曲艺术家) -> 歌曲: {}", artist_name, song_artist, song_name);
+
                     library_items.push(json!({
                         "title": song_name,
                         "cover": cover,
-                        "artist": artist,
+                        "artist": song_artist,  // 使用原始艺术家名
                         "type": "music"
                     }));
+
+                    artist_song_count += 1;
+
+                    // 达到该艺术家的歌曲上限，切换到下一个艺术家
+                    if artist_song_count >= MAX_SONGS_PER_ARTIST {
+                        println!("    → {} 已达到上限({}/{}首)，切换下一位艺术家", artist_name, artist_song_count, MAX_SONGS_PER_ARTIST);
+                        break;
+                    }
+
+                    // 达到总体上限
+                    if library_items.len() >= 10 {
+                        break;
+                    }
                 }
             }
+
+            if library_items.len() >= 10 {
+                break;
+            }
+        }
+
+        println!("  - 从喜爱艺术家筛选完成: {}/10 首", library_items.len());
+
+        // 如果favorite_artists提取的不够，从song_map中补充
+        // 优化：也限制每个艺术家最多2首歌，确保补充阶段也保持多样性
+        if library_items.len() < 10 {
+            println!("  - 开始从所有歌曲中补充({}/10)...", library_items.len());
+            use std::collections::HashMap;
+            let mut artist_count_map: HashMap<String, usize> = HashMap::new();
+
+            // 统计已添加歌曲的艺术家计数
+            for item in &library_items {
+                if let Some(artist_name) = item.get("artist").and_then(|v| v.as_str()) {
+                    *artist_count_map.entry(artist_name.to_string()).or_insert(0) += 1;
+                }
+            }
+
+            // 从song_map中补充，避免单个艺术家过多
+            for (song_name, (cover, artist)) in song_map.iter() {
+                if library_items.len() >= 10 {
+                    break;
+                }
+
+                // 跳过未知艺术家
+                if artist == "未知艺术家" {
+                    continue;
+                }
+
+                // 检查是否已经添加过这首歌
+                let already_added = library_items.iter().any(|item: &Value| {
+                    item.get("title")
+                        .and_then(|v| v.as_str())
+                        .map(|t| t == song_name)
+                        .unwrap_or(false)
+                });
+
+                if already_added {
+                    continue;
+                }
+
+                // 检查该艺术家是否已达上限
+                let current_count = artist_count_map.get(artist.as_str()).unwrap_or(&0);
+                if *current_count >= MAX_SONGS_PER_ARTIST {
+                    continue;
+                }
+
+                println!("    + 补充: {} - {}", artist, song_name);
+
+                library_items.push(json!({
+                    "title": song_name,
+                    "cover": cover,
+                    "artist": artist,
+                    "type": "music"
+                }));
+
+                *artist_count_map.entry(artist.to_string()).or_insert(0) += 1;
+            }
+
+            println!("  - 补充完成: {}/10 首", library_items.len());
         }
 
         // 兜底：如果仍然没有收集到可展示的歌曲（例如原始缓存缺失或结构差异），

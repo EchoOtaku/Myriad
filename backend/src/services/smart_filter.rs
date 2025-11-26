@@ -236,14 +236,27 @@ impl SmartFilter {
             }
         }
 
-        // Save to file
+        // 🚀 优化：使用流式写入和临时文件，避免内存峰值和写入中断
         let output_path = Path::new("cache/smart_filtered_data.json");
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        let json_output = serde_json::to_string_pretty(&all_filtered_data)?;
-        fs::write(output_path, json_output)?;
+        // 使用临时文件写入，然后原子性重命名
+        let temp_path = output_path.with_extension("json.tmp");
+
+        {
+            let file = fs::File::create(&temp_path)?;
+            let writer = std::io::BufWriter::with_capacity(262144, file); // 256KB buffer
+            serde_json::to_writer_pretty(writer, &all_filtered_data)?;
+        }
+
+        // 原子性重命名
+        fs::rename(&temp_path, output_path).or_else(|_| {
+            // 如果重命名失败（跨设备），尝试复制
+            fs::copy(&temp_path, output_path)?;
+            fs::remove_file(&temp_path)
+        })?;
 
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
@@ -829,7 +842,9 @@ impl SmartFilter {
     }
 
     /// 从独立缓存文件加载平台数据
-    pub fn load_platform_cache(platform: &str) -> Result<SmartFilteredData, Box<dyn std::error::Error>> {
+    pub fn load_platform_cache(
+        platform: &str,
+    ) -> Result<SmartFilteredData, Box<dyn std::error::Error>> {
         let cache_file = Path::new("./cache/platforms").join(format!("{}_filtered.json", platform));
 
         if !cache_file.exists() {
@@ -868,20 +883,40 @@ mod tests {
 
     #[test]
     fn test_smart_filter_integration() {
-        // Read the actual platform_data.json file
-        let file_path = Path::new("cache/platform_data.json");
-        if !file_path.exists() {
+        // Read from the new split raw data files
+        let raw_dir = Path::new("cache/raw");
+        if !raw_dir.exists() {
             println!(
-                "Skipping test: platform_data.json not found at {:?}",
-                file_path
+                "Skipping test: cache/raw directory not found at {:?}",
+                raw_dir
             );
             return;
         }
 
-        let file_content =
-            fs::read_to_string(file_path).expect("Failed to read platform_data.json");
-        let json_data: Value = serde_json::from_str(&file_content).expect("Failed to parse JSON");
-        let data = json_data.get("data").expect("Missing 'data' field in JSON");
+        let mut all_data = serde_json::Map::new();
+
+        // Load all platform files
+        if let Ok(entries) = fs::read_dir(raw_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Some(platform_name) = path.file_stem().and_then(|s| s.to_str()) {
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            if let Ok(json) = serde_json::from_str(&content) {
+                                all_data.insert(platform_name.to_string(), json);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if all_data.is_empty() {
+            println!("Skipping test: No platform data files found in cache/raw");
+            return;
+        }
+
+        let data = Value::Object(all_data);
 
         let mut all_filtered_data = std::collections::HashMap::new();
 
