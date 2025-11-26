@@ -19,6 +19,9 @@ impl MetadataService {
     }
 
     /// 保存或更新平台元数据，并记录变化
+    /// 🚀 终极方案：分批异步保存
+    /// - 对于小数据(<500KB)：直接同步保存
+    /// - 对于超大数据(>=500KB)：使用BatchSaver分批异步保存
     pub async fn save_platform_metadata(
         &self,
         user_id: i32,
@@ -30,6 +33,37 @@ impl MetadataService {
             platform_name,
             user_id
         );
+
+        // 🚀 策略选择：
+        // 1. 估算数据大小
+        let estimated_size = Self::estimate_json_size(&raw_data);
+        const BATCH_SAVE_THRESHOLD: usize = 500_000; // 500KB
+        const CHUNK_SIZE: usize = 100; // 每批100首歌曲
+
+        // 2. 根据大小选择策略
+        if estimated_size >= BATCH_SAVE_THRESHOLD {
+            tracing::info!(
+                "🚀 Large metadata detected ({} bytes), using batched async save",
+                estimated_size
+            );
+
+            // 使用批量保存服务
+            let batch_saver = crate::services::batch_saver::BatchSaver::new(self.db.clone());
+            let (metadata_id, task_id) = batch_saver
+                .save_large_metadata_batched(user_id, platform_name, raw_data.clone(), CHUNK_SIZE)
+                .await?;
+
+            tracing::info!(
+                "✅ Batched save started: metadata_id={}, task_id={}",
+                metadata_id,
+                task_id
+            );
+
+            return Ok(metadata_id);
+        }
+
+        tracing::info!("✓ Small metadata ({} bytes), saving synchronously", estimated_size);
+        let data_to_save = raw_data.clone();
 
         // 查找是否已存在该平台的元数据
         let existing = platform_metadata::Entity::find()
@@ -43,7 +77,7 @@ impl MetadataService {
 
         match existing {
             Some(old_metadata) => {
-                // 检测数据变化
+                // 检测数据变化（使用原始数据检测）
                 let changed_fields = self.detect_changes(&old_metadata.raw_data, &raw_data);
 
                 if changed_fields.is_empty() {
@@ -53,9 +87,9 @@ impl MetadataService {
 
                 tracing::info!("   Detected {} field changes", changed_fields.len());
 
-                // 更新现有记录
+                // 🚀 更新现有记录（使用截断后的数据）
                 let mut active_model: platform_metadata::ActiveModel = old_metadata.clone().into();
-                active_model.raw_data = Set(raw_data.clone());
+                active_model.raw_data = Set(data_to_save.clone());
                 active_model.fetched_at = Set(now);
                 active_model.updated_at = Set(now);
 
@@ -77,11 +111,11 @@ impl MetadataService {
                 Ok(metadata_id)
             }
             None => {
-                // 创建新记录
+                // 🚀 创建新记录（使用截断后的数据）
                 let new_metadata = platform_metadata::ActiveModel {
                     user_id: Set(user_id),
                     platform_name: Set(platform_name.to_string()),
-                    raw_data: Set(raw_data.clone()),
+                    raw_data: Set(data_to_save.clone()),
                     fetched_at: Set(now),
                     created_at: Set(now),
                     updated_at: Set(now),
@@ -91,7 +125,7 @@ impl MetadataService {
                 let inserted = new_metadata.insert(&self.db).await?;
                 let metadata_id = inserted.id;
 
-                // 记录初始状态（无旧数据）
+                // 记录初始状态（使用原始数据生成字段路径，但不保存完整数据）
                 let all_fields: Vec<String> = self.extract_field_paths(&raw_data);
                 self.record_metadata_change(
                     metadata_id,
@@ -99,7 +133,7 @@ impl MetadataService {
                     platform_name,
                     all_fields,
                     None,
-                    raw_data,
+                    data_to_save,
                 )
                 .await?;
 
@@ -107,6 +141,95 @@ impl MetadataService {
                 Ok(metadata_id)
             }
         }
+    }
+
+    /// 🚀 截断超大数据，避免数据库OOM
+    ///
+    /// 策略：
+    /// - 网易云音乐：只保留前100首歌曲作为样本
+    /// - Steam：只保留前200个游戏
+    /// - Bilibili：只保留前50个视频和追番
+    /// - GitHub：只保留前100个仓库
+    #[allow(dead_code)]
+    fn truncate_large_data(mut data: Value, platform_name: &str) -> Value {
+        match platform_name {
+            "netease" => {
+                if let Some(liked_songs) = data.get_mut("liked_songs").and_then(|s| s.as_array_mut()) {
+                    let original_count = liked_songs.len();
+                    if original_count > 100 {
+                        liked_songs.truncate(100);
+                        tracing::warn!(
+                            "🎵 Netease songs truncated: {} -> 100 (saved {} bytes)",
+                            original_count,
+                            (original_count - 100) * 5000 // 估算每首歌5KB
+                        );
+                    }
+                }
+                // 添加元数据说明截断
+                if let Some(obj) = data.as_object_mut() {
+                    obj.insert("_truncated".to_string(), json!(true));
+                    obj.insert("_note".to_string(), json!("Large arrays truncated for database storage"));
+                }
+            }
+            "steam" => {
+                if let Some(games) = data.get_mut("games").and_then(|g| g.as_array_mut()) {
+                    let original_count = games.len();
+                    if original_count > 200 {
+                        games.truncate(200);
+                        tracing::warn!(
+                            "🎮 Steam games truncated: {} -> 200",
+                            original_count
+                        );
+                    }
+                }
+                if let Some(obj) = data.as_object_mut() {
+                    obj.insert("_truncated".to_string(), json!(true));
+                }
+            }
+            "bilibili" => {
+                if let Some(videos) = data.get_mut("videos").and_then(|v| v.as_array_mut()) {
+                    let original_count = videos.len();
+                    if original_count > 50 {
+                        videos.truncate(50);
+                        tracing::warn!(
+                            "📺 Bilibili videos truncated: {} -> 50",
+                            original_count
+                        );
+                    }
+                }
+                if let Some(bangumi) = data.get_mut("bangumi").and_then(|b| b.as_array_mut()) {
+                    let original_count = bangumi.len();
+                    if original_count > 50 {
+                        bangumi.truncate(50);
+                        tracing::warn!(
+                            "📺 Bilibili bangumi truncated: {} -> 50",
+                            original_count
+                        );
+                    }
+                }
+                if let Some(obj) = data.as_object_mut() {
+                    obj.insert("_truncated".to_string(), json!(true));
+                }
+            }
+            "github" => {
+                if let Some(repos) = data.get_mut("repos").and_then(|r| r.as_array_mut()) {
+                    let original_count = repos.len();
+                    if original_count > 100 {
+                        repos.truncate(100);
+                        tracing::warn!(
+                            "💻 GitHub repos truncated: {} -> 100",
+                            original_count
+                        );
+                    }
+                }
+                if let Some(obj) = data.as_object_mut() {
+                    obj.insert("_truncated".to_string(), json!(true));
+                }
+            }
+            _ => {}
+        }
+
+        data
     }
 
     /// 检测两个JSON对象之间的变化

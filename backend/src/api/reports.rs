@@ -158,20 +158,24 @@ async fn generate_platform_reports_internal(
     use futures::future::join_all;
 
     // 并行处理所有平台
-    let futures = platforms.into_iter().map(|platform| async move {
-        tracing::info!("🔄 Processing platform: {}", platform);
+    let db_clone = db.clone();
+    let futures = platforms.into_iter().map(move |platform| {
+        let db_for_task = db_clone.clone();
+        async move {
+            tracing::info!("🔄 Processing platform: {}", platform);
 
-        // 1. 获取平台数据 (自动处理缓存回退)
-        let metadata = match get_platform_data(&platform).await {
-            Ok(data) => {
-                tracing::info!("✅ Loaded data for {}", platform);
-                data
-            }
-            Err(e) => {
-                tracing::warn!("⚠️ Skipping {}: {}", platform, e);
-                return None;
-            }
-        };
+            // 1. 获取平台数据 (自动处理缓存回退，支持数据库分片数据)
+            let metadata = match get_platform_data(&platform, &db_for_task, user_id).await {
+                Ok(data) => {
+                    tracing::info!("✅ Loaded data for {}", platform);
+                    data
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️ Skipping {}: {}", platform, e);
+                    return None;
+                }
+            };
+
 
         // 3. 基于元数据生成平台报告
         tracing::debug!("🤖 Generating AI report for {}", platform);
@@ -382,6 +386,7 @@ async fn generate_platform_reports_internal(
         };
 
         Some(report)
+        }
     });
 
     let results = join_all(futures).await;
@@ -942,8 +947,12 @@ pub async fn get_comprehensive_report_by_id(
 }
 
 /// 辅助函数：从缓存获取平台数据
-/// 辅助函数：从缓存获取平台数据（重构版 - 单平台处理）
-async fn get_platform_data(platform: &str) -> Result<SmartFilteredData, String> {
+/// 辅助函数：从缓存获取平台数据（重构版 - 单平台处理，支持数据库分片数据）
+async fn get_platform_data(
+    platform: &str,
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<SmartFilteredData, String> {
     use once_cell::sync::Lazy;
     use std::collections::HashMap;
     use std::fs;
@@ -980,7 +989,21 @@ async fn get_platform_data(platform: &str) -> Result<SmartFilteredData, String> 
         return Ok(cached_data);
     }
 
-    // 4. 从平台特定的raw文件读取数据
+    // 4. 🚀 NEW: 尝试从数据库读取数据（支持分片数据）
+    let batch_saver = crate::services::batch_saver::BatchSaver::new(db.clone());
+
+    if let Ok(Some(platform_data)) = batch_saver.load_chunked_metadata(user_id, platform).await {
+        tracing::info!("✓ Loaded {} from database (with chunked data support)", platform);
+
+        // 处理并缓存该平台数据
+        let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
+            .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
+
+        tracing::info!("✓ Successfully processed and cached {} from database", platform);
+        return Ok(filtered_data);
+    }
+
+    // 5. FALLBACK: 从平台特定的raw文件读取数据
     let raw_cache_path = PathBuf::from(format!("./cache/raw/{}.json", platform));
     if !raw_cache_path.exists() {
         return Err(format!("Raw data file not found: {:?}", raw_cache_path));
@@ -991,7 +1014,7 @@ async fn get_platform_data(platform: &str) -> Result<SmartFilteredData, String> 
     let content = fs::read_to_string(&raw_cache_path).map_err(|e| e.to_string())?;
     let platform_data: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-    // 5. 处理并缓存该平台数据（只处理单个平台！）
+    // 6. 处理并缓存该平台数据（只处理单个平台！）
     let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
         .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
 
