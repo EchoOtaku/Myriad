@@ -1,9 +1,12 @@
-/**
- * 智能控制面板内容工具
- * 提供天气、问候语、一言等动态内容
- */
-
 import { API_URL } from '../config';
+
+export interface ForecastDay {
+  date: string;
+  maxTemp: number;
+  minTemp: number;
+  weather: string;
+  icon: string;
+}
 
 export interface WeatherData {
   city: string;
@@ -14,54 +17,8 @@ export interface WeatherData {
   humidity?: number;
   windSpeed?: number;
   feelsLike?: number;
-}
-
-export interface QuoteData {
-  text: string;
-  author?: string;
-}
-
-export interface GreetingData {
-  text: string;
-  icon: string;
-  time: string;
-}
-
-/**
- * 获取时间段问候语
- */
-export function getGreeting(username?: string): GreetingData {
-  const hour = new Date().getHours();
-  const time = new Date().toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-
-  let text = '';
-  let icon = '';
-
-  if (hour >= 5 && hour < 12) {
-    icon = '🌅';
-    text = '早上好';
-  } else if (hour >= 12 && hour < 14) {
-    icon = '☀️';
-    text = '中午好';
-  } else if (hour >= 14 && hour < 18) {
-    icon = '🌤️';
-    text = '下午好';
-  } else if (hour >= 18 && hour < 22) {
-    icon = '🌆';
-    text = '晚上好';
-  } else {
-    icon = '🌙';
-    text = '夜深了';
-  }
-
-  if (username) {
-    text += `，${username}`;
-  }
-
-  return { text, icon, time };
+  aqi?: number;
+  forecast?: ForecastDay[];
 }
 
 /**
@@ -196,6 +153,8 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
   const cached = localStorage.getItem(cacheKey);
   const cacheTime = localStorage.getItem(cacheTimeKey);
 
+  // 暂时禁用缓存
+  /*
   if (cached && cacheTime) {
     const cacheAge = Date.now() - parseInt(cacheTime);
     // 天气数据缓存30分钟（天气会变化）
@@ -203,15 +162,21 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
       return JSON.parse(cached);
     }
   }
+  */
 
   // 缓存失效或不存在，重新获取
 
   try {
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature,wind_speed_10m&timezone=auto`;
+    // 1. 获取天气数据
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
     
-    const weatherResponse = await fetch(weatherUrl, {
-      signal: AbortSignal.timeout(10000)
-    });
+    // 2. 获取空气质量数据
+    const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${location.latitude}&longitude=${location.longitude}&current=us_aqi`;
+
+    const [weatherResponse, aqiResponse] = await Promise.all([
+      fetch(weatherUrl, { signal: AbortSignal.timeout(10000) }),
+      fetch(aqiUrl, { signal: AbortSignal.timeout(10000) }).catch(() => null) // AQI 失败不影响天气
+    ]);
 
     if (!weatherResponse.ok) {
       return null;
@@ -219,9 +184,38 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
 
     const weatherData = await weatherResponse.json();
     const current = weatherData.current;
+    const daily = weatherData.daily;
+
+    // 处理 AQI 数据
+    let aqi = undefined;
+    if (aqiResponse && aqiResponse.ok) {
+      try {
+        const aqiData = await aqiResponse.json();
+        if (aqiData.current && aqiData.current.us_aqi) {
+          aqi = aqiData.current.us_aqi;
+        }
+      } catch (e) {
+        // 忽略 AQI 解析错误
+      }
+    }
 
     if (!current) {
       return null;
+    }
+
+    // 处理预报数据
+    const forecast: ForecastDay[] = [];
+    if (daily && daily.time && daily.time.length > 0) {
+      // 获取未来3天的数据 (跳过今天)
+      for (let i = 1; i < Math.min(daily.time.length, 4); i++) {
+        forecast.push({
+          date: daily.time[i],
+          maxTemp: Math.round(daily.temperature_2m_max[i]),
+          minTemp: Math.round(daily.temperature_2m_min[i]),
+          weather: getWeatherTextFromWMO(daily.weather_code[i]),
+          icon: getWeatherIconFromWMO(daily.weather_code[i])
+        });
+      }
     }
 
     const result: WeatherData = {
@@ -231,7 +225,9 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
       icon: getWeatherIconFromWMO(current.weather_code),
       humidity: current.relative_humidity_2m,
       windSpeed: current.wind_speed_10m,
-      feelsLike: Math.round(current.apparent_temperature)
+      feelsLike: Math.round(current.apparent_temperature),
+      aqi: aqi,
+      forecast: forecast
     };
 
     // 缓存结果
@@ -390,67 +386,6 @@ async function getGeolocation(): Promise<{ latitude: number; longitude: number; 
 }
 
 /**
- * 获取一言警句
- */
-export async function getRandomQuote(): Promise<QuoteData | null> {
-  try {
-    // 从 localStorage 读取缓存
-    const cachedQuote = localStorage.getItem('quote_cache');
-    const cacheTime = localStorage.getItem('quote_cache_time');
-
-    if (cachedQuote && cacheTime) {
-      const cacheAge = Date.now() - parseInt(cacheTime);
-      // 缓存 10 分钟
-      if (cacheAge < 10 * 60 * 1000) {
-        return JSON.parse(cachedQuote);
-      }
-    }
-
-    // 使用后端代理访问一言 API（解决 CORS 问题）
-    const response = await fetch(`${API_URL}/api/proxy/hitokoto`, {
-      signal: AbortSignal.timeout(10000)
-    });
-
-    if (!response.ok) throw new Error('Hitokoto API failed');
-
-    const data = await response.json();
-
-    const quoteData: QuoteData = {
-      text: data.hitokoto,
-      author: data.from
-    };
-
-    // 缓存结果
-    localStorage.setItem('quote_cache', JSON.stringify(quoteData));
-    localStorage.setItem('quote_cache_time', Date.now().toString());
-
-    return quoteData;
-  } catch (error) {
-    console.warn('Failed to fetch quote:', error);
-    // 返回本地备用句子
-    return getLocalQuote();
-  }
-}
-
-/**
- * 本地备用句子库
- */
-function getLocalQuote(): QuoteData {
-  const quotes = [
-    { text: '代码如诗，优雅至上', author: '程序员格言' },
-    { text: '简洁是可靠的前提', author: 'Edsger Dijkstra' },
-    { text: '过早优化是万恶之源', author: 'Donald Knuth' },
-    { text: '任何可以被编写成 JavaScript 的程序，最终都会被编写成 JavaScript', author: 'Atwood 定律' },
-    { text: '好的代码本身就是最好的文档', author: 'Steve McConnell' },
-    { text: '先让它运行起来，再让它变得更好', author: 'Kent Beck' },
-    { text: '代码是写给人看的，顺便让机器执行', author: 'Harold Abelson' },
-    { text: '测试不能证明程序没有 bug，只能证明 bug 的存在', author: 'Edsger Dijkstra' }
-  ];
-
-  return quotes[Math.floor(Math.random() * quotes.length)];
-}
-
-/**
  * WMO 天气代码转文字（World Meteorological Organization）
  * Open-Meteo 使用 WMO 标准代码
  */
@@ -525,15 +460,4 @@ function getWeatherIconFromWMO(code: number): string {
   };
 
   return iconMap[code] || '🌤️';
-}
-
-/**
- * 获取主题状态信息
- */
-export function getThemeInfo(): { text: string; icon: string } {
-  const isDark = document.documentElement.classList.contains('dark');
-  return {
-    text: isDark ? '深色模式' : '浅色模式',
-    icon: isDark ? '🌙' : '☀️'
-  };
 }

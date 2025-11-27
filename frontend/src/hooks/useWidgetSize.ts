@@ -17,7 +17,7 @@
  * {isCompact && <CompactContent />}
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { WidgetSize } from '../components/WidgetGrid';
 
 // 标准尺寸映射 (像素值基于假设的标准单元格大小)
@@ -30,7 +30,7 @@ const STANDARD_DIMENSIONS: Record<WidgetSize, { width: number; height: number }>
   '1x2': { width: 80, height: 160 },
   '2x2': { width: 160, height: 160 },
   '2x4': { width: 160, height: 320 },
-  '4x2': { width: 320, height: 160 },
+  '4x2': { width: 340, height: 160 }, // 稍微增加标准宽度，使缩放比例略微减小，防止溢出
   '4x4': { width: 320, height: 320 },
 };
 
@@ -62,12 +62,31 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
     const rect = elementRef.current.getBoundingClientRect();
     // 如果宽度为0 (可能是隐藏或未渲染)，不更新状态以避免闪烁
     if (rect.width > 0) {
-      setSize({
-        width: rect.width,
-        height: rect.height,
+      setSize(prev => {
+        // 只有当尺寸真正变化时才更新状态，避免不必要的重渲染
+        if (Math.abs(prev.width - rect.width) < 1 && Math.abs(prev.height - rect.height) < 1) {
+          return prev;
+        }
+        return {
+          width: rect.width,
+          height: rect.height,
+        };
       });
     }
   }, []);
+
+  // 监听 widgetSize 变化，强制重新测量
+  // 使用 useLayoutEffect 确保在浏览器绘制前更新，减少闪烁
+  useLayoutEffect(() => {
+    // 立即测量一次
+    measureElement();
+    
+    // 仅保留一个延时检查，作为 ResizeObserver 的兜底
+    // 确保动画结束后尺寸是正确的
+    const timer = setTimeout(measureElement, 300);
+
+    return () => clearTimeout(timer);
+  }, [measureElement, widgetSize]);
 
   // Ref callback
   const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -76,8 +95,11 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
       measureElement();
 
       // 使用 ResizeObserver 监听尺寸变化
+      // 使用 requestAnimationFrame 优化性能，避免在一帧内多次触发重绘
       const resizeObserver = new ResizeObserver(() => {
-        measureElement();
+        window.requestAnimationFrame(() => {
+          measureElement();
+        });
       });
       resizeObserver.observe(node);
 

@@ -27,6 +27,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '👋',
     component: WelcomeWidget,
+    supportedSizes: ['4x2'],
   },
   {
     id: 'quick-stats',
@@ -34,6 +35,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '📊',
     component: QuickStatsWidget,
+    supportedSizes: ['4x2'],
   },
   {
     id: 'recent-activity',
@@ -41,6 +43,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '🕐',
     component: RecentActivityWidget,
+    supportedSizes: ['4x2'],
   },
   {
     id: 'weather',
@@ -48,6 +51,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '2x2',
     icon: '🌤️',
     component: WeatherWidget,
+    supportedSizes: ['2x2', '4x2'],
   },
   {
     id: 'quote',
@@ -55,6 +59,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '2x2',
     icon: '💭',
     component: QuoteWidget,
+    supportedSizes: ['2x2', '4x2'],
   },
   {
     id: 'music-player',
@@ -62,6 +67,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '2x2',
     icon: '🎵',
     component: MusicPlayerWidget,
+    supportedSizes: ['2x2', '4x2'],
   },
   {
     id: 'report-bilibili',
@@ -69,6 +75,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '📊',
     component: ReportCardWidget,
+    supportedSizes: ['4x2'],
   },
   {
     id: 'report-steam',
@@ -76,6 +83,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '🎮',
     component: ReportCardWidget,
+    supportedSizes: ['4x2'],
   },
   {
     id: 'report-github',
@@ -83,6 +91,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '💻',
     component: ReportCardWidget,
+    supportedSizes: ['4x2'],
   },
   {
     id: 'report-netease',
@@ -90,6 +99,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '🎵',
     component: ReportCardWidget,
+    supportedSizes: ['4x2'],
   },
 ];
 

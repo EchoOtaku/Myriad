@@ -1,0 +1,67 @@
+import { API_URL } from '../config';
+
+export interface QuoteData {
+  text: string;
+  author?: string;
+}
+
+/**
+ * 获取一言警句
+ */
+export async function getRandomQuote(): Promise<QuoteData | null> {
+  try {
+    // 从 localStorage 读取缓存
+    const cachedQuote = localStorage.getItem('quote_cache');
+    const cacheTime = localStorage.getItem('quote_cache_time');
+
+    if (cachedQuote && cacheTime) {
+      const cacheAge = Date.now() - parseInt(cacheTime);
+      // 缓存 10 分钟
+      if (cacheAge < 10 * 60 * 1000) {
+        return JSON.parse(cachedQuote);
+      }
+    }
+
+    // 使用后端代理访问一言 API（解决 CORS 问题）
+    const response = await fetch(`${API_URL}/api/proxy/hitokoto`, {
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!response.ok) throw new Error('Hitokoto API failed');
+
+    const data = await response.json();
+
+    const quoteData: QuoteData = {
+      text: data.hitokoto,
+      author: data.from
+    };
+
+    // 缓存结果
+    localStorage.setItem('quote_cache', JSON.stringify(quoteData));
+    localStorage.setItem('quote_cache_time', Date.now().toString());
+
+    return quoteData;
+  } catch (error) {
+    console.warn('Failed to fetch quote:', error);
+    // 返回本地备用句子
+    return getLocalQuote();
+  }
+}
+
+/**
+ * 本地备用句子库
+ */
+function getLocalQuote(): QuoteData {
+  const quotes = [
+    { text: '代码如诗，优雅至上', author: '程序员格言' },
+    { text: '简洁是可靠的前提', author: 'Edsger Dijkstra' },
+    { text: '过早优化是万恶之源', author: 'Donald Knuth' },
+    { text: '任何可以被编写成 JavaScript 的程序，最终都会被编写成 JavaScript', author: 'Atwood 定律' },
+    { text: '好的代码本身就是最好的文档', author: 'Steve McConnell' },
+    { text: '先让它运行起来，再让它变得更好', author: 'Kent Beck' },
+    { text: '代码是写给人看的，顺便让机器执行', author: 'Harold Abelson' },
+    { text: '测试不能证明程序没有 bug，只能证明 bug 的存在', author: 'Edsger Dijkstra' }
+  ];
+
+  return quotes[Math.floor(Math.random() * quotes.length)];
+}

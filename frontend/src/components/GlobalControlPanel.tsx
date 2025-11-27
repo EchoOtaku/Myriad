@@ -12,7 +12,7 @@ import {
   WeatherData,
   QuoteData,
   GreetingData
-} from '../utils/smartWidgets';
+} from '../utils/dynamicContent';
 import {
   Song,
   LyricLine,

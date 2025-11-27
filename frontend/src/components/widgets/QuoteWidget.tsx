@@ -5,8 +5,9 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { getRandomQuote, QuoteData } from '../../utils/smartWidgets';
+import { getRandomQuote, QuoteData } from '../../utils/dynamicContent';
 import { WidgetConfig } from '../WidgetGrid';
+import { useWidgetSize } from '../../hooks/useWidgetSize';
 
 export interface QuoteWidgetProps {
   config: WidgetConfig;
@@ -15,6 +16,7 @@ export interface QuoteWidgetProps {
 }
 
 export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps) {
+  const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [themeColor, setThemeColor] = useState('#a855f7');
@@ -80,8 +82,50 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
     );
   }
 
+  // 4x2 宽版布局 - 上下结构重构
+  if (config.size === '4x2') {
+    return (
+      <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass flex flex-col p-5">
+        {/* 背景装饰 */}
+        <motion.div 
+          className="absolute -left-10 -bottom-10 w-40 h-40 rounded-full blur-3xl opacity-20"
+          style={{ background: themeColor }}
+        />
+        <div className="absolute top-2 left-4 text-8xl opacity-[0.08] font-serif text-gray-500 leading-none select-none pointer-events-none">"</div>
+        
+        {/* 上半部分：引言内容 (占据主要空间) */}
+        <div className="flex-1 flex items-center justify-center relative z-10 w-full min-h-0 overflow-hidden">
+          <motion.p 
+            className="text-lg font-medium text-gray-800 dark:text-gray-100 leading-relaxed font-serif italic text-center w-full line-clamp-2 transition-all duration-300 ease-out"
+            style={{ fontSize: `${18 * fontScale}px`, textShadow: '0 2px 10px rgba(0,0,0,0.05)' }}
+            initial={{ scale: 0.95, opacity: 0, y: 5 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {quoteData.text}
+          </motion.p>
+        </div>
+        
+        {/* 下半部分：作者信息 (底部右侧) */}
+        {quoteData.author && (
+          <motion.div 
+            className="flex-shrink-0 flex items-center justify-end gap-3 pt-3 mt-1 border-t border-gray-200/10 dark:border-white/5 w-full"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="h-px w-16 bg-gradient-to-r from-transparent to-gray-400/40"></div>
+            <span className="text-sm text-gray-500 dark:text-gray-400 font-medium tracking-widest uppercase opacity-80 truncate max-w-[60%]" style={{ fontSize: `${12 * fontScale}px` }}>
+              {quoteData.author}
+            </span>
+          </motion.div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 背景光效 - 呼吸效果 */}
       <motion.div 
         className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
@@ -98,7 +142,7 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
       />
       
       {/* 主内容区：2x2紧凑布局 */}
-      <div className="absolute inset-0 flex flex-col p-3">
+      <div className="absolute inset-0 flex flex-col p-3" style={{ padding: `${12 * scale}px` }}>
         {/* 顶部：图标 */}
         <motion.div 
           className="mb-1"
@@ -115,7 +159,7 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
         >
           <svg 
             className="w-6 h-6" 
-            style={{ color: themeColor }}
+            style={{ color: themeColor, width: `${24 * scale}px`, height: `${24 * scale}px` }}
             fill="currentColor" 
             viewBox="0 0 24 24"
           >
@@ -127,6 +171,7 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
         <div className="flex-1 flex flex-col justify-center min-h-0">
           <motion.p 
             className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed line-clamp-3"
+            style={{ fontSize: `${14 * fontScale}px`, lineHeight: 1.6 }}
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ 
@@ -143,6 +188,7 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
         {quoteData.author && (
           <motion.div 
             className="text-[10px] text-gray-500 dark:text-gray-500 text-right"
+            style={{ fontSize: `${10 * fontScale}px` }}
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.3 }}

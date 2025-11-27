@@ -5,7 +5,7 @@
 
 import { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { getWeatherInfo, WeatherData } from '../../utils/smartWidgets';
+import { getWeatherInfo, WeatherData } from '../../utils/dynamicContent';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 
@@ -122,6 +122,122 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     );
   }
 
+  // 4x2 宽版布局 - 左右结构重构 (左3/5 右2/5)
+  if (config.size === '4x2') {
+    return (
+      <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+        {/* 动态背景光效 */}
+        <motion.div 
+          className="absolute -right-8 -top-8 w-48 h-48 rounded-full blur-3xl"
+          style={{ background: themeColor }}
+          animate={{ opacity: [0.1, 0.2, 0.1], scale: [1, 1.1, 1] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        />
+        
+        <div className="absolute inset-0 flex flex-row px-4 py-3" style={{ padding: `${12 * scale}px` }}>
+          {/* 左侧：主要信息 (60%) */}
+          <div className="w-[60%] flex flex-col justify-between pr-2 border-r border-gray-200/10 dark:border-white/10">
+            {/* 顶部：城市 */}
+            <div className="flex justify-between items-start">
+               <div className="font-bold text-gray-700 dark:text-gray-200 truncate" style={{ fontSize: `${16 * fontScale}px` }}>
+                 {weatherData.city}
+               </div>
+            </div>
+
+            {/* 中部：温度和图标 */}
+            <div className="flex items-center gap-3 my-auto">
+              <motion.div 
+                className="text-4xl drop-shadow-md flex-shrink-0"
+                style={{ fontSize: `${42 * fontScale}px` }}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+              >
+                {weatherData.icon}
+              </motion.div>
+              
+              <div className="flex flex-col justify-center min-w-0">
+                <div className="flex items-baseline gap-2 overflow-hidden">
+                  <span className="font-black text-gray-800 dark:text-gray-100 leading-none tracking-tight truncate" style={{ fontSize: `${36 * fontScale}px` }}>
+                    {weatherData.temperature}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-base text-gray-600 dark:text-gray-400 font-medium truncate" style={{ fontSize: `${14 * fontScale}px` }}>
+                    {weatherData.weather}
+                  </span>
+                  {weatherData.feelsLike !== undefined && (
+                    <span className="text-xs text-gray-500 dark:text-gray-500" style={{ fontSize: `${12 * fontScale}px` }}>
+                      体感 {weatherData.feelsLike}°
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 底部：详细信息 (一行排列) */}
+            <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 overflow-hidden whitespace-nowrap" style={{ fontSize: `${10 * fontScale}px` }}>
+              {weatherData.humidity !== undefined && (
+                <div className="flex items-center gap-1" title="湿度">
+                  <span>💧</span>
+                  <span>{weatherData.humidity}%</span>
+                </div>
+              )}
+              {weatherData.windSpeed !== undefined && (
+                <div className="flex items-center gap-1" title="风速">
+                  <span>🍃</span>
+                  <span>{Math.round(weatherData.windSpeed)}km/h</span>
+                </div>
+              )}
+              {weatherData.aqi !== undefined && (
+                <div className="flex items-center gap-1" title="空气质量">
+                  <span>{
+                    weatherData.aqi <= 50 ? '🌿' : 
+                    weatherData.aqi <= 100 ? '🌫️' : 
+                    '😷'
+                  }</span>
+                  <span className={
+                    weatherData.aqi <= 50 ? 'text-green-500' :
+                    weatherData.aqi <= 100 ? 'text-yellow-500' :
+                    weatherData.aqi <= 150 ? 'text-orange-500' :
+                    'text-red-500'
+                  }>AQI {weatherData.aqi}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右侧：未来天气预报 (40%) */}
+          <div className="w-[40%] pl-2 flex flex-col justify-between gap-1 h-full">
+            {weatherData.forecast ? (
+              weatherData.forecast.slice(0, 3).map((day, i) => (
+                <motion.div 
+                  key={day.date}
+                  className="flex-1 flex items-center justify-between px-2 rounded-lg hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 * i }}
+                >
+                  <div className="text-xs text-gray-500 dark:text-gray-400 w-8" style={{ fontSize: `${11 * fontScale}px` }}>
+                    {new Date(day.date).toLocaleDateString('zh-CN', { weekday: 'short' })}
+                  </div>
+                  <div className="flex-shrink-0 leading-none mx-1" style={{ fontSize: `${16 * fontScale}px` }}>{day.icon}</div>
+                  <div className="flex items-center gap-1 justify-end flex-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-100" style={{ fontSize: `${12 * fontScale}px` }}>{day.maxTemp}°</span>
+                    <span className="text-gray-400 dark:text-gray-500 text-[10px]" style={{ fontSize: `${10 * fontScale}px` }}>{day.minTemp}°</span>
+                  </div>
+                </motion.div>
+              ))
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                更新中...
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
       {/* 动态背景光效 - 呼吸效果 */}
@@ -222,13 +338,13 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             transition={{ duration: 0.4, delay: 0.3 }}
           >
             {weatherData.humidity !== undefined && (
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5" title="湿度">
                 <span>💧</span>
                 <span className="text-gray-600 dark:text-gray-400">{weatherData.humidity}%</span>
               </div>
             )}
             {weatherData.windSpeed !== undefined && (
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5" title="风速">
                 <span>🍃</span>
                 <span className="text-gray-600 dark:text-gray-400">{Math.round(weatherData.windSpeed)}km/h</span>
               </div>

@@ -1,5 +1,5 @@
 import { useReducer, useCallback } from 'react';
-import { WeatherData, QuoteData } from '../utils/smartWidgets';
+import { WeatherData, QuoteData } from '../utils/dynamicContent';
 
 /**
  * 动态内容类型

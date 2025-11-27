@@ -54,6 +54,7 @@ const WidgetGridItem = React.memo(({
   onMouseEnter, 
   onMouseLeave, 
   onRemove,
+  onResizeStart,
   gridWidth,
   gridHeight,
   cellWidth,
@@ -67,6 +68,7 @@ const WidgetGridItem = React.memo(({
   onMouseEnter: (id: string) => void;
   onMouseLeave: () => void;
   onRemove: (id: string) => void;
+  onResizeStart: (e: React.MouseEvent, id: string) => void;
   gridWidth?: number;
   gridHeight?: number;
   cellWidth?: number;
@@ -95,6 +97,9 @@ const WidgetGridItem = React.memo(({
     zIndex: isHovered ? 20 : 10,
     willChange: isEditMode ? 'transform, left, top' : 'auto'
   };
+
+  // 检查是否支持调整大小
+  const canResize = !widgetType.supportedSizes || widgetType.supportedSizes.length > 1;
 
   return (
     <motion.div
@@ -126,17 +131,30 @@ const WidgetGridItem = React.memo(({
 
         {/* 删除按钮（编辑模式） */}
         {isEditMode && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove(widget.id);
-            }}
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
-            title="删除小组件"
-            aria-label="删除小组件"
-          >
-            <FaTimes size={10} />
-          </button>
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(widget.id);
+              }}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
+              title="删除小组件"
+              aria-label="删除小组件"
+            >
+              <FaTimes size={10} />
+            </button>
+
+            {/* 调整大小手柄 - 明显的倒L型设计 */}
+            {canResize && (
+              <div
+                className="absolute bottom-0 right-0 w-12 h-12 cursor-se-resize z-50 flex items-end justify-end p-2 transition-transform hover:scale-110 active:scale-95 group/resize"
+                onMouseDown={(e) => onResizeStart(e, widget.id)}
+              >
+                 {/* L 型条 - 适配主题色 */}
+                 <div className="w-6 h-6 border-b-[8px] border-r-[8px] rounded-br-2xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)]" />
+              </div>
+            )}
+          </>
         )}
       </div>
     </motion.div>
@@ -161,6 +179,7 @@ export interface WidgetType {
   defaultSize: WidgetSize;
   icon: string;
   component: React.ComponentType<WidgetComponentProps>;
+  supportedSizes?: WidgetSize[]; // 支持的尺寸列表，如果未定义则支持所有尺寸
 }
 
 interface WidgetGridProps {
@@ -322,6 +341,11 @@ export default function WidgetGrid({
     widgetTypeId?: string;
     offset: { x: number; y: number };
   } | null>(null);
+  const [resizingWidget, setResizingWidget] = useState<{
+    widgetId: string;
+    startPos: { x: number; y: number };
+    startSize: WidgetSize;
+  } | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   const [widgetHistory, setWidgetHistory] = useState<WidgetConfig[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -330,6 +354,19 @@ export default function WidgetGrid({
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null);
+
+  // 保存到历史记录
+  const saveToHistory = useCallback((newWidgets: WidgetConfig[]) => {
+    const newHistory = widgetHistory.slice(0, historyIndex + 1);
+    newHistory.push(newWidgets);
+    // 限制历史记录数量为20
+    if (newHistory.length > 20) {
+      newHistory.shift();
+    } else {
+      setHistoryIndex(historyIndex + 1);
+    }
+    setWidgetHistory(newHistory);
+  }, [widgetHistory, historyIndex]);
 
   // 计算网格单元格尺寸
   const gridRef = useCallback((node: HTMLDivElement | null) => {
@@ -410,6 +447,113 @@ export default function WidgetGrid({
     },
     []
   );
+
+  // 开始调整大小
+  const handleResizeStart = useCallback((e: React.MouseEvent, widgetId: string) => {
+    if (!isEditMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const widget = widgets.find((w) => w.id === widgetId);
+    if (!widget) return;
+
+    setResizingWidget({
+      widgetId,
+      startPos: { x: e.clientX, y: e.clientY },
+      startSize: widget.size,
+    });
+  }, [isEditMode, widgets]);
+
+  // 调整大小移动
+  const handleResizeMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!resizingWidget) return;
+
+    if (rafRef.current) return;
+
+    rafRef.current = requestAnimationFrame(() => {
+      const gridRect = (window as any).__widgetGridRect;
+      if (!gridRect) {
+        rafRef.current = null;
+        return;
+      }
+
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+      const cellWidth = gridRect.width / currentGridWidth;
+      const cellHeight = gridRect.height / currentGridHeight;
+
+      const widget = widgets.find(w => w.id === resizingWidget.widgetId);
+      if (!widget) {
+        rafRef.current = null;
+        return;
+      }
+
+      // Calculate new dimensions based on mouse position relative to widget top-left
+      const widgetLeft = widget.position.x * cellWidth + gridRect.left;
+      const widgetTop = widget.position.y * cellHeight + gridRect.top;
+      
+      const newWidthPx = clientX - widgetLeft;
+      const newHeightPx = clientY - widgetTop;
+
+      // Convert to grid units (float)
+      const rawW = newWidthPx / cellWidth;
+      const rawH = newHeightPx / cellHeight;
+
+      // Find closest valid size
+      let bestSize = widget.size;
+      let minDistance = Infinity;
+      
+      // 获取该组件类型支持的尺寸列表
+      const widgetType = availableWidgets.find(w => w.id === widget.type);
+      
+      // 如果找不到组件类型定义，或者没有定义 supportedSizes，则不允许调整大小（锁定当前尺寸）
+      // 这是一个安全措施，防止意外拉伸到不支持的尺寸
+      if (!widgetType) {
+          rafRef.current = null;
+          return;
+      }
+
+      const supportedSizes = widgetType.supportedSizes || Object.keys(SIZE_TO_DIMENSIONS) as WidgetSize[];
+      
+      // 过滤出有效的尺寸
+      const validSizes = supportedSizes.filter(size => SIZE_TO_DIMENSIONS[size]);
+
+      for (const size of validSizes) {
+          const dim = SIZE_TO_DIMENSIONS[size];
+          // Calculate Euclidean distance in grid units
+          const dist = Math.pow(dim.w - rawW, 2) + Math.pow(dim.h - rawH, 2);
+          
+          if (dist < minDistance) {
+              minDistance = dist;
+              bestSize = size;
+          }
+      }
+
+      if (bestSize !== widget.size) {
+         const newWidget = { ...widget, size: bestSize };
+         // Check collision excluding itself
+         if (!checkCollision(newWidget, widgets, GRID_WIDTH, GRID_HEIGHT, widget.id)) {
+             const updatedWidgets = widgets.map(w => w.id === widget.id ? newWidget : w);
+             onWidgetsChange?.(updatedWidgets);
+         }
+      }
+
+      rafRef.current = null;
+    });
+  }, [resizingWidget, widgets, currentGridWidth, currentGridHeight, onWidgetsChange, availableWidgets]);
+
+  // 结束调整大小
+  const handleResizeEnd = useCallback(() => {
+      if (resizingWidget) {
+          saveToHistory(widgets);
+          setResizingWidget(null);
+      }
+      if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+      }
+  }, [resizingWidget, widgets, saveToHistory]);
 
   // 拖拽移动
   const handleDragMove = useCallback(
@@ -583,19 +727,6 @@ export default function WidgetGrid({
     }
   }, [historyIndex, widgetHistory, onWidgetsChange]);
 
-  // 保存到历史记录
-  const saveToHistory = useCallback((newWidgets: WidgetConfig[]) => {
-    const newHistory = widgetHistory.slice(0, historyIndex + 1);
-    newHistory.push(newWidgets);
-    // 限制历史记录数量为20
-    if (newHistory.length > 20) {
-      newHistory.shift();
-    } else {
-      setHistoryIndex(historyIndex + 1);
-    }
-    setWidgetHistory(newHistory);
-  }, [widgetHistory, historyIndex]);
-
   // 注册拖拽事件（鼠标和触屏）
   useEffect(() => {
     if (draggedWidget) {
@@ -621,6 +752,32 @@ export default function WidgetGrid({
       };
     }
   }, [draggedWidget, handleDragMove, handleDragEnd]);
+
+  // 注册调整大小事件
+  useEffect(() => {
+    if (resizingWidget) {
+      const moveHandler = handleResizeMove as any;
+      const endHandler = handleResizeEnd as any;
+
+      window.addEventListener('mousemove', moveHandler);
+      window.addEventListener('mouseup', endHandler);
+      window.addEventListener('touchmove', moveHandler, { passive: false });
+      window.addEventListener('touchend', endHandler);
+      window.addEventListener('touchcancel', endHandler);
+
+      return () => {
+        window.removeEventListener('mousemove', moveHandler);
+        window.removeEventListener('mouseup', endHandler);
+        window.removeEventListener('touchmove', moveHandler);
+        window.removeEventListener('touchend', endHandler);
+        window.removeEventListener('touchcancel', endHandler);
+        if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+      };
+    }
+  }, [resizingWidget, handleResizeMove, handleResizeEnd]);
 
   // 键盘快捷键支持（编辑模式）
   useEffect(() => {
@@ -918,6 +1075,7 @@ export default function WidgetGrid({
                 onMouseEnter={setHoveredWidgetId}
                 onMouseLeave={() => setHoveredWidgetId(null)}
                 onRemove={handleRemoveWidget}
+                onResizeStart={handleResizeStart}
                 gridWidth={currentGridWidth}
                 gridHeight={currentGridHeight}
                 cellWidth={cellWidth}
