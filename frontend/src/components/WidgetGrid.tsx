@@ -4,13 +4,14 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaEdit, FaSave, FaTimes, FaPlus } from 'react-icons/fa';
 import React from 'react';
 import './WidgetGrid.css';
 
 // 小组件尺寸配置
-export type WidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '2x4' | '4x2' | '4x4';
+export type WidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '2x4' | '4x1' | '4x2' | '4x4';
 
 // 小组件配置接口
 export interface WidgetConfig {
@@ -40,6 +41,7 @@ const SIZE_TO_DIMENSIONS: Record<WidgetSize, { w: number; h: number }> = {
   '1x2': { w: 1, h: 2 },
   '2x2': { w: 2, h: 2 },
   '2x4': { w: 2, h: 4 },
+  '4x1': { w: 4, h: 1 },
   '4x2': { w: 4, h: 2 },
   '4x4': { w: 4, h: 4 },
 };
@@ -68,7 +70,7 @@ const WidgetGridItem = React.memo(({
   onMouseEnter: (id: string) => void;
   onMouseLeave: () => void;
   onRemove: (id: string) => void;
-  onResizeStart: (e: React.MouseEvent, id: string) => void;
+  onResizeStart: (e: React.MouseEvent, id: string, direction?: 'se' | 's') => void;
   gridWidth?: number;
   gridHeight?: number;
   cellWidth?: number;
@@ -103,8 +105,7 @@ const WidgetGridItem = React.memo(({
 
   return (
     <motion.div
-      layoutId={widget.id}
-      className="absolute"
+      className="absolute transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
       style={style}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -117,7 +118,7 @@ const WidgetGridItem = React.memo(({
     >
       <div className="relative h-full w-full p-1 group">
         <div
-          className={`h-full w-full rounded-lg overflow-hidden transition-all ${
+          className={`h-full w-full rounded-xl overflow-hidden transition-all ${
             isEditMode 
               ? 'cursor-move ring-1 ring-transparent hover:ring-blue-400/50' 
               : ''
@@ -148,12 +149,14 @@ const WidgetGridItem = React.memo(({
             {canResize && (
               <div
                 className="absolute bottom-0 right-0 w-12 h-12 cursor-se-resize z-50 flex items-end justify-end p-2 transition-transform hover:scale-110 active:scale-95 group/resize"
-                onMouseDown={(e) => onResizeStart(e, widget.id)}
+                onMouseDown={(e) => onResizeStart(e, widget.id, 'se')}
               >
                  {/* L 型条 - 适配主题色 */}
-                 <div className="w-6 h-6 border-b-[8px] border-r-[8px] rounded-br-2xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)]" />
+                 <div className="w-6 h-6 border-b-[8px] border-r-[8px] rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)]" />
               </div>
             )}
+
+
           </>
         )}
       </div>
@@ -189,6 +192,17 @@ interface WidgetGridProps {
   isEditMode: boolean;
   onToggleEditMode: (isEdit: boolean) => void;
   children?: React.ReactNode;
+  customGridColumns?: number; // Optional prop to override responsive grid columns
+  customGridRows?: number; // Optional prop to override default grid rows
+  libraryContainerClassName?: string;
+  libraryContentClassName?: string;
+  libraryStyle?: React.CSSProperties;
+  libraryAnimation?: {
+    initial: any;
+    animate: any;
+    exit: any;
+  };
+  autoHeight?: boolean;
 }
 
 /**
@@ -237,13 +251,38 @@ export default function WidgetGrid({
   isEditMode,
   onToggleEditMode,
   children,
+  customGridColumns,
+  customGridRows,
+  libraryContainerClassName,
+  libraryContentClassName,
+  libraryStyle,
+  libraryAnimation,
+  autoHeight,
 }: WidgetGridProps) {
-  const [gridColumns, setGridColumns] = useState(GRID_WIDTH);
-  const isCompact = gridColumns < GRID_WIDTH; // 是否为紧凑模式（移动端/平板）
+  const [gridColumns, setGridColumns] = useState(customGridColumns || GRID_WIDTH);
+  // Only enable compact mode (auto-layout) if we are in responsive mode (no custom columns) AND width is small
+  const isCompact = !customGridColumns && gridColumns < GRID_WIDTH; 
   const [containerWidth, setContainerWidth] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // 计算内容高度 (用于 autoHeight)
+  const contentHeight = useMemo(() => {
+    if (!autoHeight) return 0;
+    let maxY = 0;
+    widgets.forEach(w => {
+       const dim = SIZE_TO_DIMENSIONS[w.size];
+       maxY = Math.max(maxY, w.position.y + dim.h);
+    });
+    return maxY;
+  }, [widgets, autoHeight]);
 
   // 响应式布局检测
   useEffect(() => {
+    if (customGridColumns) {
+      setGridColumns(customGridColumns);
+      return;
+    }
+
     const handleResize = () => {
       const width = window.innerWidth;
       if (width < 640) {
@@ -328,7 +367,9 @@ export default function WidgetGrid({
 
   const currentWidgets = isCompact && compactLayout ? compactLayout.widgets : widgets;
   const currentGridWidth = gridColumns;
-  const currentGridHeight = isCompact && compactLayout ? compactLayout.height : GRID_HEIGHT;
+  const currentGridHeight = isCompact && compactLayout 
+    ? compactLayout.height 
+    : (autoHeight ? Math.max(customGridRows || 0, contentHeight) : (customGridRows || GRID_HEIGHT));
 
   // 计算像素级单元格尺寸 (仅在紧凑模式下使用)
   const cellWidth = isCompact && containerWidth ? containerWidth / gridColumns : undefined;
@@ -345,6 +386,7 @@ export default function WidgetGrid({
     widgetId: string;
     startPos: { x: number; y: number };
     startSize: WidgetSize;
+    direction?: 'se' | 's';
   } | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   const [widgetHistory, setWidgetHistory] = useState<WidgetConfig[][]>([]);
@@ -370,10 +412,9 @@ export default function WidgetGrid({
 
   // 计算网格单元格尺寸
   const gridRef = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
     if (node) {
       const rect = node.getBoundingClientRect();
-      // 存储网格尺寸供拖拽计算使用
-      (window as any).__widgetGridRect = rect;
       
       // 更新容器宽度
       setContainerWidth(rect.width);
@@ -449,7 +490,7 @@ export default function WidgetGrid({
   );
 
   // 开始调整大小
-  const handleResizeStart = useCallback((e: React.MouseEvent, widgetId: string) => {
+  const handleResizeStart = useCallback((e: React.MouseEvent, widgetId: string, direction: 'se' | 's' = 'se') => {
     if (!isEditMode) return;
     e.stopPropagation();
     e.preventDefault();
@@ -461,6 +502,7 @@ export default function WidgetGrid({
       widgetId,
       startPos: { x: e.clientX, y: e.clientY },
       startSize: widget.size,
+      direction,
     });
   }, [isEditMode, widgets]);
 
@@ -471,7 +513,7 @@ export default function WidgetGrid({
     if (rafRef.current) return;
 
     rafRef.current = requestAnimationFrame(() => {
-      const gridRect = (window as any).__widgetGridRect;
+      const gridRect = containerRef.current?.getBoundingClientRect();
       if (!gridRect) {
         rafRef.current = null;
         return;
@@ -497,8 +539,13 @@ export default function WidgetGrid({
       const newHeightPx = clientY - widgetTop;
 
       // Convert to grid units (float)
-      const rawW = newWidthPx / cellWidth;
-      const rawH = newHeightPx / cellHeight;
+      let rawW = newWidthPx / cellWidth;
+      let rawH = newHeightPx / cellHeight;
+
+      // 如果是底部调整，锁定宽度
+      if (resizingWidget.direction === 's') {
+        rawW = SIZE_TO_DIMENSIONS[widget.size].w;
+      }
 
       // Find closest valid size
       let bestSize = widget.size;
@@ -521,6 +568,12 @@ export default function WidgetGrid({
 
       for (const size of validSizes) {
           const dim = SIZE_TO_DIMENSIONS[size];
+          
+          // 如果是底部调整，只考虑宽度相同的尺寸
+          if (resizingWidget.direction === 's' && dim.w !== SIZE_TO_DIMENSIONS[widget.size].w) {
+            continue;
+          }
+
           // Calculate Euclidean distance in grid units
           const dist = Math.pow(dim.w - rawW, 2) + Math.pow(dim.h - rawH, 2);
           
@@ -533,7 +586,7 @@ export default function WidgetGrid({
       if (bestSize !== widget.size) {
          const newWidget = { ...widget, size: bestSize };
          // Check collision excluding itself
-         if (!checkCollision(newWidget, widgets, GRID_WIDTH, GRID_HEIGHT, widget.id)) {
+         if (!checkCollision(newWidget, widgets, currentGridWidth, currentGridHeight, widget.id)) {
              const updatedWidgets = widgets.map(w => w.id === widget.id ? newWidget : w);
              onWidgetsChange?.(updatedWidgets);
          }
@@ -566,7 +619,9 @@ export default function WidgetGrid({
       }
 
       rafRef.current = requestAnimationFrame(() => {
-        const gridRect = (window as any).__widgetGridRect;
+        // 实时获取 gridRect，以支持滚动容器内的拖拽
+        const gridRect = containerRef.current?.getBoundingClientRect();
+        
         if (!gridRect) {
           rafRef.current = null;
           return;
@@ -653,7 +708,7 @@ export default function WidgetGrid({
       // 这里暂时保持原样，但使用 currentWidgets 进行检测可能不准确，因为 currentWidgets 是计算出来的
       // 如果在移动端拖拽，我们应该更新原始 widgets 的顺序？这比较复杂。
       // 建议：移动端禁用编辑模式
-      if (!checkCollision(newWidget, widgets, GRID_WIDTH, GRID_HEIGHT, widget.id)) {
+      if (!checkCollision(newWidget, widgets, currentGridWidth, currentGridHeight, widget.id)) {
         const updatedWidgets = widgets.map((w) =>
           w.id === widget.id ? newWidget : w
         );
@@ -686,7 +741,7 @@ export default function WidgetGrid({
       }
 
       // 检查碰撞
-      if (!checkCollision(newWidget, widgets, GRID_WIDTH, GRID_HEIGHT)) {
+      if (!checkCollision(newWidget, widgets, currentGridWidth, currentGridHeight)) {
         const newWidgets = [...widgets, newWidget];
         onWidgetsChange?.(newWidgets);
         saveToHistory(newWidgets);
@@ -848,8 +903,8 @@ export default function WidgetGrid({
     const hasCollision = checkCollision(
       testWidget,
       widgets,
-      GRID_WIDTH,
-      GRID_HEIGHT,
+      currentGridWidth,
+      currentGridHeight,
       draggedWidget.type === 'existing' ? draggedWidget.widgetId : undefined
     );
 
@@ -874,144 +929,157 @@ export default function WidgetGrid({
     </div>
   ), [currentGridWidth, currentGridHeight]);
 
+  // 小组件库内容
+  const libraryContent = (
+    <motion.div
+      initial={libraryAnimation?.initial || { y: '-100%' }}
+      animate={libraryAnimation?.animate || { y: 0 }}
+      exit={libraryAnimation?.exit || { y: '-100%' }}
+      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+      className={libraryContainerClassName || "fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-2xl"}
+      style={libraryStyle}
+    >
+      <div className="w-full max-w-[1920px] mx-auto">
+        {/* 控制栏 */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
+              <span className="text-lg">📦</span>
+              <span className="font-bold">小组件库</span>
+            </div>
+            
+            <div className="h-5 w-px bg-gray-300 dark:bg-white/10 mx-2" />
+            
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleUndo}
+                disabled={historyIndex <= 0}
+                className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="撤销 (Ctrl+Z)"
+              >
+                <span className="text-sm font-bold">↶ 撤销</span>
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={historyIndex >= widgetHistory.length - 1}
+                className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="重做 (Ctrl+Shift+Z)"
+              >
+                <span className="text-sm font-bold">↷ 重做</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {/* 组件列表 - 横向滚动 */}
+        <div 
+          className={libraryContentClassName || "flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-[160px]"}
+          onWheel={(e) => {
+            if (!libraryContentClassName && e.deltaY !== 0) {
+              e.currentTarget.scrollLeft += e.deltaY;
+            }
+          }}
+        >
+          {availableWidgets.map((widgetType) => {
+            const WidgetComponent = widgetType.component;
+            const dim = SIZE_TO_DIMENSIONS[widgetType.defaultSize];
+            
+            // 预览缩放比例
+            const scale = 0.65;
+            // 模拟的标准单元格大小 (px)
+            const baseSize = 90; 
+            
+            // 实际渲染尺寸
+            const renderWidth = dim.w * baseSize;
+            const renderHeight = dim.h * baseSize;
+            
+            // 占位尺寸 (缩小后)
+            const wrapperWidth = renderWidth * scale;
+            const wrapperHeight = renderHeight * scale;
+
+            // 构造预览配置
+            const previewConfig: WidgetConfig = {
+              id: `preview-${widgetType.id}`,
+              type: widgetType.id,
+              size: widgetType.defaultSize,
+              position: { x: 0, y: 0 },
+              config: widgetType.id.startsWith('platform-') ? { platformId: widgetType.id.replace('platform-', '') } : 
+                      widgetType.id.startsWith('report-') ? { platformId: widgetType.id.replace('report-', '') } : undefined
+            };
+
+            return (
+              <motion.div
+                key={widgetType.id}
+                className="relative group cursor-move flex-shrink-0"
+                style={{ 
+                  width: wrapperWidth, 
+                  height: wrapperHeight 
+                }}
+                draggable
+                onMouseDown={(e) => handleNewWidgetDragStart(e, widgetType.id)}
+                onTouchStart={(e) => handleNewWidgetDragStart(e, widgetType.id)}
+                whileHover={{ scale: 1.05, zIndex: 10 }}
+                whileTap={{ scale: 0.95 }}
+                layout
+              >
+                {/* 缩放容器 */}
+                <div 
+                  className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+                  style={{
+                    width: renderWidth,
+                    height: renderHeight,
+                    transform: `scale(${scale})`,
+                  }}
+                >
+                  <WidgetComponent 
+                    config={previewConfig}
+                    isEditMode={true}
+                    isPreview={true}
+                  />
+                </div>
+
+                {/* 遮罩层 - 用于拖拽交互和高亮 */}
+                <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
+
+                {/* 悬浮提示 */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+                  {widgetType.name}
+                </div>
+              </motion.div>
+            );
+          })}
+          
+          {/* 占位符，确保最后一个元素右侧有间距 */}
+          <div className="w-2 flex-shrink-0" />
+        </div>
+      </div>
+    </motion.div>
+  );
+
   return (
     <div className="h-full flex flex-col gap-2">
       {/* 编辑模式：小组件库（顶部悬浮） */}
-      <AnimatePresence>
-        {isEditMode && !isCompact && (
-          <motion.div
-            initial={{ y: '-100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '-100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-2xl"
-          >
-            <div className="w-full max-w-[1920px] mx-auto">
-              {/* 控制栏 */}
-              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
-                    <span className="text-lg">📦</span>
-                    <span className="font-bold">小组件库</span>
-                  </div>
-                  
-                  <div className="h-5 w-px bg-gray-300 dark:bg-white/10 mx-2" />
-                  
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={handleUndo}
-                      disabled={historyIndex <= 0}
-                      className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                      title="撤销 (Ctrl+Z)"
-                    >
-                      <span className="text-sm font-bold">↶ 撤销</span>
-                    </button>
-                    <button
-                      onClick={handleRedo}
-                      disabled={historyIndex >= widgetHistory.length - 1}
-                      className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                      title="重做 (Ctrl+Shift+Z)"
-                    >
-                      <span className="text-sm font-bold">↷ 重做</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              {/* 组件列表 - 横向滚动 */}
-              <div 
-                className="flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-[160px]"
-                onWheel={(e) => {
-                  if (e.deltaY !== 0) {
-                    e.currentTarget.scrollLeft += e.deltaY;
-                  }
-                }}
-              >
-                {availableWidgets.map((widgetType) => {
-                  const WidgetComponent = widgetType.component;
-                  const dim = SIZE_TO_DIMENSIONS[widgetType.defaultSize];
-                  
-                  // 预览缩放比例
-                  const scale = 0.65;
-                  // 模拟的标准单元格大小 (px)
-                  const baseSize = 90; 
-                  
-                  // 实际渲染尺寸
-                  const renderWidth = dim.w * baseSize;
-                  const renderHeight = dim.h * baseSize;
-                  
-                  // 占位尺寸 (缩小后)
-                  const wrapperWidth = renderWidth * scale;
-                  const wrapperHeight = renderHeight * scale;
-
-                  // 构造预览配置
-                  const previewConfig: WidgetConfig = {
-                    id: `preview-${widgetType.id}`,
-                    type: widgetType.id,
-                    size: widgetType.defaultSize,
-                    position: { x: 0, y: 0 },
-                    config: widgetType.id.startsWith('platform-') ? { platformId: widgetType.id.replace('platform-', '') } : 
-                            widgetType.id.startsWith('report-') ? { platformId: widgetType.id.replace('report-', '') } : undefined
-                  };
-
-                  return (
-                    <motion.div
-                      key={widgetType.id}
-                      className="relative group cursor-move flex-shrink-0"
-                      style={{ 
-                        width: wrapperWidth, 
-                        height: wrapperHeight 
-                      }}
-                      draggable
-                      onMouseDown={(e) => handleNewWidgetDragStart(e, widgetType.id)}
-                      onTouchStart={(e) => handleNewWidgetDragStart(e, widgetType.id)}
-                      whileHover={{ scale: 1.05, zIndex: 10 }}
-                      whileTap={{ scale: 0.95 }}
-                      layout
-                    >
-                      {/* 缩放容器 */}
-                      <div 
-                        className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
-                        style={{
-                          width: renderWidth,
-                          height: renderHeight,
-                          transform: `scale(${scale})`,
-                        }}
-                      >
-                        <WidgetComponent 
-                          config={previewConfig}
-                          isEditMode={true}
-                          isPreview={true}
-                        />
-                      </div>
-
-                      {/* 遮罩层 - 用于拖拽交互和高亮 */}
-                      <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
-
-                      {/* 悬浮提示 */}
-                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-                        {widgetType.name}
-                      </div>
-                    </motion.div>
-                  );
-                })}
-                
-                {/* 占位符，确保最后一个元素右侧有间距 */}
-                <div className="w-2 flex-shrink-0" />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {libraryContainerClassName ? (
+        createPortal(
+          <AnimatePresence>
+            {isEditMode && !isCompact && libraryContent}
+          </AnimatePresence>,
+          document.body
+        )
+      ) : (
+        <AnimatePresence>
+          {isEditMode && !isCompact && libraryContent}
+        </AnimatePresence>
+      )}
 
       {/* 网格区域 */}
-      <div className={`relative w-full flex-1 flex flex-col ${isCompact ? 'justify-start overflow-visible pb-20' : 'justify-end pb-2'} min-h-0`}>
+      <div className={`relative w-full flex-1 flex flex-col ${isCompact ? 'justify-start overflow-visible pb-20' : 'justify-end'} min-h-0`}>
         {/* 插入 children (InfoBar) */}
         {children}
 
         <div
           ref={gridRef}
-          className="widget-grid-container relative w-full rounded-xl"
+          className="widget-grid-container relative w-full rounded-xl transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
           style={isCompact && totalPixelHeight ? {
             height: totalPixelHeight,
             // 移除 aspectRatio，使用固定高度
@@ -1091,7 +1159,7 @@ export default function WidgetGrid({
       <AnimatePresence>
         {draggedWidget && dragCursorPosition && dragPreview && dragPreview.widgetType && dragPreview.widgetConfig && (() => {
           // 计算实际的网格单元格尺寸
-          const gridRect = (window as any).__widgetGridRect;
+          const gridRect = containerRef.current?.getBoundingClientRect();
           let cellWidth = 100;
           let cellHeight = 100;
 

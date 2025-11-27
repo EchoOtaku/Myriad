@@ -34,6 +34,7 @@ import {
 import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
 import { useWallpaper } from '../hooks/useWallpaper';
 import { loadResource, LoadPriority, globalResourceLoader } from '../utils/resourceLoader';
+import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets';
 
 interface User {
   username: string;
@@ -80,7 +81,6 @@ const GlobalControlPanel: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
-  const [expandedCardIndex, setExpandedCardIndex] = useState(0); // 0=天气, 1=名言
 
   // 壁纸管理 Hook（替代之前的独立状态和函数）
   const { wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper();
@@ -1083,73 +1083,115 @@ const GlobalControlPanel: React.FC = () => {
     return () => observer.disconnect();
   }, []); // 移除 loadDynamicContents 依赖
 
-  // 展开后的卡片轮播
-  useEffect(() => {
-    if (!isExpanded || !weatherData || !quoteData) return;
-
-    const interval = setInterval(() => {
-      setExpandedCardIndex(prev => (prev + 1) % 2);
-    }, 6000); // 每6秒切换
-
-    return () => clearInterval(interval);
-  }, [isExpanded, weatherData, quoteData]);
-
-  // 动态计算展开面板的高度
+  // 动态计算展开面板的高度 - 使用持久化克隆方案（性能优化版）
   useEffect(() => {
     if (!triggerRef.current) return;
     
     const triggerEl = triggerRef.current;
     
-    // 收缩时恢复默认高度
+    // 收缩时恢复默认高度并清理克隆
     if (!isExpanded) {
       triggerEl.style.height = '3rem';
+      const existingMeasure = document.getElementById('control-panel-measure-container');
+      if (existingMeasure) {
+        existingMeasure.remove();
+      }
       return;
     }
     
-    // 展开时计算高度
-    if (expandedContentRef.current) {
-      const contentEl = expandedContentRef.current;
-      const triggerStyle = window.getComputedStyle(triggerEl);
-      
-      // 创建临时测量容器
-      const measureContainer = document.createElement('div');
+    if (!expandedContentRef.current) return;
+    
+    const contentEl = expandedContentRef.current;
+    const triggerStyle = window.getComputedStyle(triggerEl);
+    
+    // 创建持久化的测量容器
+    let measureContainer = document.getElementById('control-panel-measure-container') as HTMLDivElement;
+    if (!measureContainer) {
+      measureContainer = document.createElement('div');
+      measureContainer.id = 'control-panel-measure-container';
       measureContainer.style.cssText = `
-        position: absolute;
+        position: fixed;
         visibility: hidden;
         pointer-events: none;
-        width: 420px;
+        width: 400px;
         padding: ${triggerStyle.paddingTop} ${triggerStyle.paddingRight} ${triggerStyle.paddingBottom} ${triggerStyle.paddingLeft};
         top: -9999px;
         left: -9999px;
         box-sizing: border-box;
+        z-index: -1;
       `;
-      
-      // 克隆内容元素
-      const clonedContent = contentEl.cloneNode(true) as HTMLElement;
-      clonedContent.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        gap: 0.875rem;
-        width: 100%;
-        opacity: 1;
-        transform: none;
-        visibility: visible;
-      `;
-      
-      measureContainer.appendChild(clonedContent);
       document.body.appendChild(measureContainer);
-      
-      // 测量并应用高度
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const measuredHeight = measureContainer.offsetHeight;
-          const compensatedHeight = Math.ceil(measuredHeight * 1.06);
-          
-          document.body.removeChild(measureContainer);
-          triggerEl.style.height = `${compensatedHeight}px`;
-        });
-      });
     }
+    
+    // 防抖和 RAF 控制
+    let rafId: number | null = null;
+    let lastHeight = 0;
+    
+    // 更新高度的函数（带防抖和相同高度跳过）
+    const updateHeight = () => {
+      if (rafId) return; // 已有待执行的更新，跳过
+      
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        
+        // 同步克隆内容到测量容器
+        measureContainer.innerHTML = '';
+        const clonedContent = contentEl.cloneNode(true) as HTMLElement;
+        clonedContent.style.cssText = `
+          display: flex;
+          flex-direction: column;
+          gap: 0.875rem;
+          width: 100%;
+          opacity: 1;
+          transform: none;
+          visibility: visible;
+        `;
+        measureContainer.appendChild(clonedContent);
+        
+        // 测量高度
+        const measuredHeight = measureContainer.offsetHeight;
+        const compensatedHeight = Math.ceil(measuredHeight * 1.04);
+        
+        // 仅当高度变化时才更新 DOM
+        if (Math.abs(compensatedHeight - lastHeight) > 1) {
+          lastHeight = compensatedHeight;
+          triggerEl.style.height = `${compensatedHeight}px`;
+        }
+      });
+    };
+
+    // 初始更新
+    updateHeight();
+
+    // 使用 ResizeObserver 监听关键元素（不递归监听所有后代）
+    const resizeObserver = new ResizeObserver(updateHeight);
+    
+    // 只监听内容容器和直接子元素（一级深度）
+    resizeObserver.observe(contentEl);
+    for (let i = 0; i < contentEl.children.length; i++) {
+      resizeObserver.observe(contentEl.children[i]);
+      // 二级深度：监听每个子元素的子元素（如 WidgetGrid 容器）
+      const child = contentEl.children[i];
+      for (let j = 0; j < child.children.length; j++) {
+        resizeObserver.observe(child.children[j]);
+      }
+    }
+
+    // MutationObserver 只监听直接子节点变化
+    const mutationObserver = new MutationObserver(updateHeight);
+    mutationObserver.observe(contentEl, {
+      childList: true,
+      subtree: false // 不监听整个子树，减少开销
+    });
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      if (measureContainer && measureContainer.parentNode) {
+        measureContainer.remove();
+      }
+    };
   }, [isExpanded, isAuthenticated]);
 
   const toggleTheme = useCallback(() => {
@@ -2183,71 +2225,7 @@ const GlobalControlPanel: React.FC = () => {
                 </div>
 
                 {/* 动态信息卡片 - 切换显示 */}
-                <div className="info-card-wrapper">
-                  {/* 天气卡片 */}
-                  {weatherData && expandedCardIndex === 0 && (
-                    <div className="info-card weather-card animated">
-                      <div className="info-card-header">
-                        <span className="info-card-icon">{weatherData.icon}</span>
-                        <span className="info-card-title">天气</span>
-                      </div>
-                      <div className="weather-details">
-                        <div className="weather-primary">
-                          <div className="weather-temp-large">{weatherData.temperature}</div>
-                          <div className="weather-location">{weatherData.city}</div>
-                        </div>
-                        <div className="weather-secondary">
-                          <div className="weather-status">{weatherData.weather}</div>
-                          {(weatherData.feelsLike !== undefined || weatherData.humidity !== undefined || weatherData.windSpeed !== undefined) && (
-                            <div className="weather-extra-info">
-                              {weatherData.feelsLike !== undefined && (
-                                <span>体感 {weatherData.feelsLike}°C</span>
-                              )}
-                              {weatherData.humidity !== undefined && (
-                                <span>💧 {weatherData.humidity}%</span>
-                              )}
-                              {weatherData.windSpeed !== undefined && (
-                                <span>🍃 {Math.round(weatherData.windSpeed)} km/h</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 名言卡片 */}
-                  {quoteData && expandedCardIndex === 1 && (
-                    <div className="info-card quote-card animated">
-                      <div className="info-card-header">
-                        <span className="info-card-icon">💭</span>
-                        <span className="info-card-title">一言</span>
-                      </div>
-                      <div className="quote-details">
-                        <div className="quote-text-main">{quoteData.text}</div>
-                        {quoteData.author && (
-                          <div className="quote-author-main">— {quoteData.author}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 切换按钮 */}
-                  {weatherData && quoteData && (
-                    <div className="card-nav-dots">
-                      <button 
-                        className={`nav-dot ${expandedCardIndex === 0 ? 'active' : ''}`}
-                        onClick={() => setExpandedCardIndex(0)}
-                        aria-label="显示天气"
-                      />
-                      <button 
-                        className={`nav-dot ${expandedCardIndex === 1 ? 'active' : ''}`}
-                        onClick={() => setExpandedCardIndex(1)}
-                        aria-label="显示名言"
-                      />
-                    </div>
-                  )}
-                </div>
+                <ControlPanelWidgets isAdmin={user?.is_admin} />
 
                 {/* 音乐播放器 */}
                 {musicEnabled && (

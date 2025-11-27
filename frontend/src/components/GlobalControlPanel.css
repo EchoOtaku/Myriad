@@ -84,7 +84,7 @@ html.dark .control-bar-trigger:not(.expanded):hover {
 .control-bar-trigger.expanded {
   flex-direction: column;
   align-items: stretch;
-  width: 420px;
+  width: 400px;
   /* 高度通过 JS 动态设置 */
   padding: 1.125rem 1.375rem;
   border-radius: 1.5rem;

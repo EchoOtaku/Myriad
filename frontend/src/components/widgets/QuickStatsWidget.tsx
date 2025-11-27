@@ -66,7 +66,7 @@ const StatCard = memo(({ cat, value, loading, scale = 1, fontScale = 1 }: { cat:
 
   return (
     <div 
-      className="flex flex-col items-center justify-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm rounded-lg relative overflow-hidden p-1.5"
+      className="flex flex-col items-center justify-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm rounded-md relative overflow-hidden p-1.5"
       style={{ padding: `${6 * scale}px` }}
     >
       <div 
@@ -219,7 +219,7 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
   ], []);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景装饰 */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       
@@ -273,7 +273,7 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
       </div>
 
       {isEditMode && (
-        <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-2xl pointer-events-none" />
+        <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none" />
       )}
     </div>
   );

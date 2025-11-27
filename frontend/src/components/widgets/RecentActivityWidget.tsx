@@ -83,7 +83,7 @@ const ActivityItem = memo(({ activity, index }: { activity: Activity; index: num
       initial={{ x: -10, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ delay: index * 0.05 }}
-      className="flex items-center gap-2 p-1.5 rounded-lg bg-white/40 dark:bg-white/[0.02] hover:bg-white/60 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+      className="flex items-center gap-2 p-1.5 rounded-md bg-white/40 dark:bg-white/[0.02] hover:bg-white/60 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
     >
       <div className="flex-shrink-0 text-gray-600 dark:text-gray-400">
         <PlatformIcon platformName={activity.platform_name} />

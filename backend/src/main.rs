@@ -429,6 +429,31 @@ async fn update_dashboard_config_wrapper(
     }
 }
 
+/// Wrapper for update_control_panel_config that gets DB from global state
+async fn update_control_panel_config_wrapper(
+    Json(payload): Json<api::config::ControlPanelConfigPayload>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::update_control_panel_config(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，配置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for test_platform that gets DB from global state
 async fn test_platform_wrapper(Json(payload): Json<serde_json::Value>) -> Response {
     let db_opt = DB_CONNECTION.read().await;
@@ -810,6 +835,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route(
             "/api/config/dashboard",
             post(update_dashboard_config_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/config/control-panel",
+            post(update_control_panel_config_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(

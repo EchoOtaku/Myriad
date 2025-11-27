@@ -1315,6 +1315,8 @@ pub async fn get_public_ui_config(State(db): State<DatabaseConnection>) -> (Stat
         ),
         "dashboard_layout": db_config.as_ref().and_then(|c| c.dashboard_layout.clone()),
         "dashboard_title": db_config.as_ref().and_then(|c| c.dashboard_title.clone()),
+        "control_panel_layout": db_config.as_ref().and_then(|c| c.control_panel_layout.clone()),
+        "control_panel_rows": db_config.as_ref().map(|c| c.control_panel_rows).unwrap_or(2),
     });
 
     (StatusCode::OK, Json(ui_config))
@@ -1356,6 +1358,46 @@ pub async fn update_dashboard_config(
         Json(json!({
             "success": true,
             "message": "Dashboard configuration updated successfully"
+        })),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ControlPanelConfigPayload {
+    pub control_panel_layout: Option<String>,
+    pub control_panel_rows: Option<i32>,
+}
+
+pub async fn update_control_panel_config(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<ControlPanelConfigPayload>,
+) -> (StatusCode, Json<Value>) {
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    let mut updates = std::collections::HashMap::new();
+
+    if let Some(layout) = payload.control_panel_layout {
+        updates.insert("control_panel_layout".to_string(), json!(layout));
+    }
+
+    if let Some(rows) = payload.control_panel_rows {
+        updates.insert("control_panel_rows".to_string(), json!(rows));
+    }
+
+    if let Err(e) = config_service.update_configs(updates).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": format!("Failed to update control panel config: {}", e)
+            })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "message": "Control panel configuration updated successfully"
         })),
     )
 }

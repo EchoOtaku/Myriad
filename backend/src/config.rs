@@ -186,6 +186,10 @@ pub struct DynamicConfig {
     // 仪表盘配置
     pub dashboard_layout: Option<String>,
     pub dashboard_title: Option<String>,
+
+    // 控制面板小组件配置
+    pub control_panel_layout: Option<String>,
+    pub control_panel_rows: i32,
 }
 
 impl Default for DynamicConfig {
@@ -245,6 +249,9 @@ impl Default for DynamicConfig {
 
             dashboard_layout: None,
             dashboard_title: None,
+
+            control_panel_layout: None,
+            control_panel_rows: 2,
         }
     }
 }

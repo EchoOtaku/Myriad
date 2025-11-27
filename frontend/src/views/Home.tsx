@@ -43,7 +43,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '🕐',
     component: RecentActivityWidget,
-    supportedSizes: ['4x2'],
+    supportedSizes: ['2x2', '4x2', '4x4'],
   },
   {
     id: 'weather',
@@ -51,7 +51,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '2x2',
     icon: '🌤️',
     component: WeatherWidget,
-    supportedSizes: ['2x2', '4x2'],
+    supportedSizes: ['2x2', '4x2', '4x1'],
   },
   {
     id: 'quote',
@@ -59,7 +59,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '2x2',
     icon: '💭',
     component: QuoteWidget,
-    supportedSizes: ['2x2', '4x2'],
+    supportedSizes: ['2x2', '4x2', '4x1'],
   },
   {
     id: 'music-player',

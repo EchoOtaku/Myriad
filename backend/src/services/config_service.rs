@@ -220,6 +220,20 @@ impl ConfigService {
             }
         }
 
+        // 控制面板小组件配置
+        if let Some(v) = map.get("control_panel_layout") {
+            if let Some(s) = v.as_str() {
+                config.control_panel_layout = Some(s.to_string());
+            } else {
+                config.control_panel_layout = Some(v.to_string());
+            }
+        }
+        if let Some(v) = map.get("control_panel_rows") {
+            if let Some(n) = v.as_i64() {
+                config.control_panel_rows = n as i32;
+            }
+        }
+
         // 网站元数据配置
         if let Some(v) = map.get("site_title") {
             config.site_title = v.as_str().map(|s| s.to_string());

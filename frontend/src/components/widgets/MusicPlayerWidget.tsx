@@ -53,7 +53,7 @@ const AlbumCover = memo(({
       }}
     >
       <div 
-        className="rounded-lg overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm"
+        className="rounded-md overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm"
         style={{ width: `${48 * scale}px`, height: `${48 * scale}px` }}
       >
         <img
@@ -216,7 +216,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
 
   if (!isEnabled) {
     return (
-      <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         <motion.div 
           className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl opacity-10"
           style={{ background: themeColor }}
@@ -242,7 +242,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
 
   if (!currentSong) {
     return (
-      <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         <motion.div 
           className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl opacity-10"
           style={{ background: themeColor }}
@@ -271,7 +271,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
     return (
       <div 
         ref={containerRef}
-        className="relative h-full w-full rounded-2xl overflow-hidden glass cursor-pointer group flex flex-col"
+        className="relative h-full w-full rounded-xl overflow-hidden glass cursor-pointer group flex flex-col"
         onClick={handleClick}
       >
         {/* 全局背景光效 */}
@@ -424,7 +424,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   return (
     <div 
       ref={containerRef}
-      className="relative h-full w-full rounded-2xl overflow-hidden glass cursor-pointer group"
+      className="relative h-full w-full rounded-xl overflow-hidden glass cursor-pointer group"
       onClick={handleClick}
     >
       {/* 背景光效 - 呼吸效果 */}

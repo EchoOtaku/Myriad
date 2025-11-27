@@ -125,7 +125,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   // 4x2 宽版布局 - 左右结构重构 (左3/5 右2/5)
   if (config.size === '4x2') {
     return (
-      <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 动态背景光效 */}
         <motion.div 
           className="absolute -right-8 -top-8 w-48 h-48 rounded-full blur-3xl"
@@ -212,7 +212,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
               weatherData.forecast.slice(0, 3).map((day, i) => (
                 <motion.div 
                   key={day.date}
-                  className="flex-1 flex items-center justify-between px-2 rounded-lg hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
+                  className="flex-1 flex items-center justify-between px-2 rounded-md hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.1 * i }}
@@ -238,8 +238,81 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     );
   }
 
+  // 4x1 紧凑横版布局 (参考 4x2 但只显示1天预报)
+  if (config.size === '4x1') {
+    // 获取明天预报 (通常是索引1，索引0为今天)
+    const tomorrow = weatherData.forecast && weatherData.forecast.length > 1 ? weatherData.forecast[1] : null;
+
+    return (
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
+        {/* 动态背景光效 */}
+        <motion.div 
+          className="absolute -right-8 -top-8 w-48 h-48 rounded-full blur-3xl"
+          style={{ background: themeColor }}
+          animate={{ opacity: [0.1, 0.2, 0.1], scale: [1, 1.1, 1] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        />
+        
+        <div className="absolute inset-0 flex flex-row px-4 py-2" style={{ padding: `${8 * scale}px` }}>
+          {/* 左侧：主要信息 (75%) */}
+          <div className="w-[75%] flex items-center pr-3 border-r border-gray-200/10 dark:border-white/10 gap-3">
+             {/* 图标 & 温度 */}
+             <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="text-3xl" style={{ fontSize: `${32 * fontScale}px` }}>{weatherData.icon}</div>
+                <div className="flex flex-col justify-center">
+                    <div className="font-black text-gray-800 dark:text-gray-100 leading-none" style={{ fontSize: `${28 * fontScale}px` }}>
+                      {weatherData.temperature}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium" style={{ fontSize: `${12 * fontScale}px` }}>
+                      {weatherData.weather}
+                    </div>
+                </div>
+             </div>
+
+             {/* 城市 & 详情 */}
+             <div className="flex flex-col justify-center gap-1 min-w-0 flex-1">
+                <div className="font-bold text-gray-700 dark:text-gray-200 truncate" style={{ fontSize: `${14 * fontScale}px` }}>
+                   {weatherData.city}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400" style={{ fontSize: `${10 * fontScale}px` }}>
+                    {weatherData.humidity !== undefined && (
+                      <span className="flex items-center gap-0.5 whitespace-nowrap">
+                        <span>💧</span>{weatherData.humidity}%
+                      </span>
+                    )}
+                    {weatherData.windSpeed !== undefined && (
+                      <span className="flex items-center gap-0.5 whitespace-nowrap">
+                        <span>🍃</span>{Math.round(weatherData.windSpeed)}
+                      </span>
+                    )}
+                </div>
+             </div>
+          </div>
+
+          {/* 右侧：明天预报 (25%) - 极简模式 */}
+          <div className="w-[25%] pl-1 flex flex-col items-center justify-center h-full">
+            {tomorrow ? (
+                <>
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5 scale-90 origin-bottom" style={{ fontSize: `${10 * fontScale}px` }}>明天</div>
+                  <div className="flex items-center gap-1.5">
+                     <span className="leading-none" style={{ fontSize: `${18 * fontScale}px` }}>{tomorrow.icon}</span>
+                     <div className="flex flex-col items-end leading-none gap-0.5">
+                        <span className="font-bold text-gray-800 dark:text-gray-100" style={{ fontSize: `${13 * fontScale}px` }}>{tomorrow.maxTemp}°</span>
+                        <span className="text-gray-400 dark:text-gray-500" style={{ fontSize: `${10 * fontScale}px` }}>{tomorrow.minTemp}°</span>
+                     </div>
+                  </div>
+                </>
+            ) : (
+              <div className="text-xs text-gray-400 text-center">暂无预报</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 动态背景光效 - 呼吸效果 */}
       <motion.div 
         className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"

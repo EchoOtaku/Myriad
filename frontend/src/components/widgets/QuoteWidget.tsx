@@ -3,11 +3,15 @@
  * 现代化Glass风格设计
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { getRandomQuote, QuoteData } from '../../utils/dynamicContent';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+
+// 缓存配置
+const CACHE_KEY = 'quote_data_cache';
+const CACHE_DURATION = 60 * 60 * 1000; // 1小时
 
 export interface QuoteWidgetProps {
   config: WidgetConfig;
@@ -15,11 +19,54 @@ export interface QuoteWidgetProps {
   isPreview?: boolean;
 }
 
-export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps) {
+export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [themeColor, setThemeColor] = useState('#a855f7');
+
+  // 从缓存加载
+  const loadFromCache = useCallback(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          setQuoteData(data);
+          return true;
+        }
+      }
+    } catch (err) {
+      console.error('加载一言缓存失败:', err);
+    }
+    return false;
+  }, []);
+
+  // 保存到缓存
+  const saveToCache = useCallback((data: QuoteData) => {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }));
+    } catch (err) {
+      console.error('保存一言缓存失败:', err);
+    }
+  }, []);
+
+  const fetchQuote = useCallback(async () => {
+    try {
+      const quote = await getRandomQuote();
+      if (quote) {
+        setQuoteData(quote);
+        saveToCache(quote);
+      }
+    } catch (error) {
+      console.error('获取一言失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [saveToCache]);
 
   useEffect(() => {
     if (isPreview) {
@@ -28,33 +75,29 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
       return;
     }
 
-    const fetchQuote = async () => {
-      try {
-        const quote = await getRandomQuote();
-        if (quote) {
-          setQuoteData(quote);
-        }
-      } catch (error) {
-        console.error('获取一言失败:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // 先尝试从缓存加载
+    const hasCache = loadFromCache();
+    if (hasCache) {
+      setLoading(false);
+    }
 
+    // 然后获取最新一言
     fetchQuote();
+    
     // 每小时更新一次一言
-    const interval = setInterval(fetchQuote, 60 * 60 * 1000);
+    const interval = setInterval(fetchQuote, CACHE_DURATION);
     return () => clearInterval(interval);
+  }, [loadFromCache, fetchQuote, isPreview]);
+
+  // 主题色获取 - useMemo 优化
+  const updateThemeColor = useCallback(() => {
+    const primaryColor = getComputedStyle(document.documentElement)
+      .getPropertyValue('--color-primary')
+      .trim() || '#a855f7';
+    setThemeColor(primaryColor);
   }, []);
 
   useEffect(() => {
-    const updateThemeColor = () => {
-      const primaryColor = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-primary')
-        .trim() || '#a855f7';
-      setThemeColor(primaryColor);
-    };
-
     updateThemeColor();
     // 监听主题色变化
     const observer = new MutationObserver(updateThemeColor);
@@ -64,7 +107,7 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
     });
 
     return () => observer.disconnect();
-  }, []);
+  }, [updateThemeColor]);
 
   if (loading) {
     return (
@@ -85,7 +128,7 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
   // 4x2 宽版布局 - 上下结构重构
   if (config.size === '4x2') {
     return (
-      <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass flex flex-col p-5">
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass flex flex-col p-5">
         {/* 背景装饰 */}
         <motion.div 
           className="absolute -left-10 -bottom-10 w-40 h-40 rounded-full blur-3xl opacity-20"
@@ -124,8 +167,51 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
     );
   }
 
+  // 4x1 紧凑横版布局
+  if (config.size === '4x1') {
+    return (
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
+        {/* 背景装饰 */}
+        <motion.div 
+          className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full blur-2xl opacity-30"
+          style={{ background: themeColor }}
+        />
+        
+        {/* 引言内容 - 增加右侧内边距避开作者信息 */}
+        <div className="absolute inset-0 flex items-center px-4">
+          <motion.p 
+            className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed font-serif italic w-full pr-12 line-clamp-2"
+            style={{ fontSize: `${14 * fontScale}px` }}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {quoteData.text}
+          </motion.p>
+        </div>
+          
+        {/* 作者信息 - 绝对定位在右下角 */}
+        {quoteData.author && (
+          <motion.div 
+            className="absolute bottom-1.5 right-3 z-10 max-w-[40%] truncate"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+          >
+            <span 
+              className="text-[10px] text-gray-500 dark:text-gray-400 font-medium"
+              style={{ fontSize: `${9 * fontScale}px` }}
+            >
+              — {quoteData.author}
+            </span>
+          </motion.div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景光效 - 呼吸效果 */}
       <motion.div 
         className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
@@ -199,4 +285,6 @@ export function QuoteWidget({ config, isEditMode, isPreview }: QuoteWidgetProps)
       </div>
     </div>
   );
-}
+});
+
+QuoteWidget.displayName = 'QuoteWidget';

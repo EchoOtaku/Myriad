@@ -107,7 +107,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   }, []);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full rounded-2xl overflow-hidden glass">
+    <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景装饰 */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       <motion.div 
@@ -193,7 +193,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
               className="absolute inset-0 cursor-pointer"
             >
               <div 
-                className="relative h-full w-full rounded-xl bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden p-4"
+                className="relative h-full w-full rounded-lg bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden p-4"
                 style={{ padding: `${16 * scale}px` }}
               >
                 {/* 顶部：图标 + 标题 */}
@@ -289,7 +289,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
       </div>
 
       {isEditMode && (
-        <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-2xl pointer-events-none" />
+        <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none" />
       )}
     </div>
   );
