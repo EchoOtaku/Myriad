@@ -3,7 +3,7 @@
  * 统一管理所有角落通知（加载提示、错误提示等）
  */
 
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useRef } from 'react';
 
 interface Notification {
     id: string;
@@ -21,11 +21,14 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
+// 全局计数器确保 ID 唯一
+let notificationCounter = 0;
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
     const [notifications, setNotifications] = useState<Notification[]>([]);
 
     const showLoading = useCallback((message: string, id?: string) => {
-        const notificationId = id || `loading-${Date.now()}`;
+        const notificationId = id || `loading-${Date.now()}-${++notificationCounter}`;
         setNotifications(prev => [
             ...prev,
             { id: notificationId, type: 'loading', message }
@@ -38,7 +41,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const showInfo = useCallback((message: string) => {
-        const id = `info-${Date.now()}`;
+        const id = `info-${Date.now()}-${++notificationCounter}`;
         setNotifications(prev => [
             ...prev,
             { id, type: 'info', message }
@@ -50,7 +53,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const showError = useCallback((message: string) => {
-        const id = `error-${Date.now()}`;
+        const id = `error-${Date.now()}-${++notificationCounter}`;
         setNotifications(prev => [
             ...prev,
             { id, type: 'error', message }

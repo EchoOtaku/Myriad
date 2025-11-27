@@ -1324,7 +1324,7 @@ pub async fn get_public_ui_config(State(db): State<DatabaseConnection>) -> (Stat
 
 #[derive(Debug, Deserialize)]
 pub struct DashboardConfigPayload {
-    pub layout: Option<Value>,
+    pub layout: Option<String>,
     pub title: Option<String>,
 }
 
@@ -1336,7 +1336,7 @@ pub async fn update_dashboard_config(
     let mut updates = std::collections::HashMap::new();
 
     if let Some(layout) = payload.layout {
-        updates.insert("dashboard_layout".to_string(), layout);
+        updates.insert("dashboard_layout".to_string(), json!(layout));
     }
 
     if let Some(title) = payload.title {

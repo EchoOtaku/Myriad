@@ -1,18 +1,3 @@
-/// 🚀 批量数据保存服务
-///
-/// 核心思路:利用PostgreSQL的批量INSERT能力
-/// 将1919首歌曲分成多个小JSON,批量插入,避免单个超大JSON导致OOM
-///
-/// 方案:使用现有的 platform_metadata 表,分多条记录保存
-/// - 主记录: platform_name = "netease"
-/// - 分片记录: platform_name = "netease_chunk_0", "netease_chunk_1", ...
-///
-/// 优势:
-/// - ✅ 不需要修改数据库schema
-/// - ✅ 每个chunk只有100首歌,永远不会OOM
-/// - ✅ 查询时自动合并所有chunks
-/// - ✅ 使用后台任务,不阻塞响应
-
 use crate::models::entities::platform_metadata;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
@@ -64,14 +49,12 @@ impl BatchSaver {
         let now = Utc::now().naive_utc();
 
         // 1. 检查是否需要分批(检测liked_songs数组大小)
-        let (needs_chunking, total_songs) = if let Some(songs) = full_data
-            .get("liked_songs")
-            .and_then(|s| s.as_array())
-        {
-            (songs.len() > chunk_size, songs.len())
-        } else {
-            (false, 0)
-        };
+        let (needs_chunking, total_songs) =
+            if let Some(songs) = full_data.get("liked_songs").and_then(|s| s.as_array()) {
+                (songs.len() > chunk_size, songs.len())
+            } else {
+                (false, 0)
+            };
 
         if !needs_chunking {
             // 数据量小,直接保存
@@ -97,7 +80,10 @@ impl BatchSaver {
 
         // 2.1 创建主记录(只包含前chunk_size首歌曲)
         let mut main_data = full_data.clone();
-        if let Some(songs) = main_data.get_mut("liked_songs").and_then(|s| s.as_array_mut()) {
+        if let Some(songs) = main_data
+            .get_mut("liked_songs")
+            .and_then(|s| s.as_array_mut())
+        {
             songs.truncate(chunk_size);
         }
 
@@ -294,14 +280,15 @@ impl BatchSaver {
         let chunk_prefix = format!("{}_chunk_", platform_name);
         let chunks = platform_metadata::Entity::find()
             .filter(platform_metadata::Column::UserId.eq(user_id))
-            .filter(
-                platform_metadata::Column::PlatformName.contains(&chunk_prefix)
-            )
+            .filter(platform_metadata::Column::PlatformName.contains(&chunk_prefix))
             .all(&self.db)
             .await?;
 
         // 4. 合并所有chunks的songs
-        if let Some(main_songs) = full_data.get_mut("liked_songs").and_then(|s| s.as_array_mut()) {
+        if let Some(main_songs) = full_data
+            .get_mut("liked_songs")
+            .and_then(|s| s.as_array_mut())
+        {
             for chunk in chunks {
                 if let Some(chunk_songs) = chunk.raw_data.get("songs").and_then(|s| s.as_array()) {
                     main_songs.extend_from_slice(chunk_songs);
