@@ -132,7 +132,8 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
         // 使用 ResizeObserver 监听尺寸变化
         const resizeObserver = new ResizeObserver(() => {
           if (pageHiddenRef.current) return;
-          // 采用更保守的监听：仅尾触发，周期 2000ms 以减少频繁重排
+          // ⚠️ 优化: 减少节流时间从 2000ms 到 500ms,提高响应性同时保持性能
+          // 但仍然保持节流避免频繁测量
           if (measureThrottleRef.current) {
             // 已有等待中的测量，不再重复排队
             return;
@@ -140,7 +141,7 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
           measureThrottleRef.current = window.setTimeout(() => {
             measureElement();
             measureThrottleRef.current = null;
-          }, 2000);
+          }, 500); // 从 2000ms 降低到 500ms
         });
         resizeObserver.observe(node);
         (node as any).__widgetResizeObserver = resizeObserver;

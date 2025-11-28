@@ -485,6 +485,7 @@ const GlobalControlPanel: React.FC = () => {
   }, []); // 移除 loadDynamicContents 依赖
 
   // 动态计算展开面板的高度 - 使用克隆测量方案（性能优化版）
+  // ⚠️ 关键优化: 增加节流时间,减少 DOM 克隆频率
   useLayoutEffect(() => {
     if (!triggerRef.current) return;
     const triggerEl = triggerRef.current;
@@ -498,37 +499,54 @@ const GlobalControlPanel: React.FC = () => {
 
     let lastHeight = 0;
     let lastUpdateTime = 0;
-    // 低性能设备放宽节流间隔
-    const THROTTLE_MS = anim.level === 'standard' ? 180 : 360;
+    let pendingMeasure = false;
+    let measureTimeout: number | null = null;
+
+    // ⚠️ 增加节流间隔,减少 DOM 克隆次数
+    // 移动端进一步增加节流时间,避免滑动时频繁触发
+    const isMobileDevice = window.innerWidth <= 640;
+    const THROTTLE_MS = isMobileDevice ? 500 : (anim.level === 'standard' ? 300 : 500);
 
     const measure = () => {
       const now = Date.now();
-      if (now - lastUpdateTime < THROTTLE_MS) return;
+      if (now - lastUpdateTime < THROTTLE_MS) {
+        // 如果在节流期内,标记待测量,稍后执行
+        if (!pendingMeasure) {
+          pendingMeasure = true;
+          const delay = THROTTLE_MS - (now - lastUpdateTime);
+          measureTimeout = window.setTimeout(() => {
+            pendingMeasure = false;
+            measureTimeout = null;
+            measure();
+          }, delay);
+        }
+        return;
+      }
       lastUpdateTime = now;
-      
+
       // 计算目标宽度用于测量（避免动画过程中的宽度变化导致高度计算错误）
       const isMobile = window.innerWidth <= 640;
       // Desktop: 400px - padding(1.375rem * 2 = 44px) = 356px
       // Mobile: (100vw - 1.5rem) - padding(1rem * 2 = 32px) = 100vw - 56px
-      const targetWidth = isMobile 
-        ? window.innerWidth - 56 
+      const targetWidth = isMobile
+        ? window.innerWidth - 56
         : 356;
 
-      // 通过克隆节点精确测量高度
+      // ⚠️ DOM 克隆操作开销大,已添加严格节流
       const clone = contentEl.cloneNode(true) as HTMLElement;
       clone.style.position = 'absolute';
       clone.style.visibility = 'hidden';
       clone.style.height = 'auto';
       // 关键修复：强制使用目标宽度而不是当前宽度
       clone.style.width = targetWidth + 'px';
-      
+
       document.body.appendChild(clone);
       const raw = clone.offsetHeight;
       document.body.removeChild(clone);
-      
+
       // 适当补偿 (考虑内边距 + 过渡)
       const compensated = Math.ceil(raw * 1.08);
-      
+
       if (Math.abs(compensated - lastHeight) > 4) {
         lastHeight = compensated;
         triggerEl.style.height = compensated + 'px';
@@ -540,9 +558,15 @@ const GlobalControlPanel: React.FC = () => {
 
     const resizeObserver = new ResizeObserver(() => measure());
     resizeObserver.observe(contentEl);
-    
+
+    // ⚠️ 优化: 减少 MutationObserver 的监听范围
+    // 只监听直接子节点变化,不监听 subtree 和 characterData
     const mutationObserver = new MutationObserver(() => measure());
-    mutationObserver.observe(contentEl, { childList: true, subtree: true, characterData: true });
+    mutationObserver.observe(contentEl, {
+      childList: true,
+      // subtree: true,  // 移除 subtree 监听,减少触发频率
+      // characterData: true  // 移除 characterData 监听
+    });
 
     // 可见性变化时重新测量
     const handleVisibility = () => { if (!document.hidden) setTimeout(measure, 100); };
@@ -552,6 +576,9 @@ const GlobalControlPanel: React.FC = () => {
       resizeObserver.disconnect();
       mutationObserver.disconnect();
       document.removeEventListener('visibilitychange', handleVisibility);
+      if (measureTimeout !== null) {
+        clearTimeout(measureTimeout);
+      }
     };
   }, [isExpanded, isAuthenticated, perf.lowEndDevice, anim.level]);
 

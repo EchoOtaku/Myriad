@@ -11,6 +11,13 @@ import React from 'react';
 import './WidgetGrid.css';
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 
+// ⚠️ 移动端检测 - 用于优化触摸事件性能
+const getIsMobile = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(max-width: 767px)').matches ||
+         window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+};
+
 // 小组件尺寸配置
 export type WidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '2x4' | '4x1' | '4x2' | '4x4';
 
@@ -811,14 +818,23 @@ export default function WidgetGrid({
   handleResizeEndRef.current = handleResizeEnd;
 
   // 注册拖拽事件（鼠标和触屏）- 使用 ref 避免频繁重建监听器
+  // ⚠️ 关键优化: 移动端禁用编辑模式,避免 passive: false 破坏滚动性能
   useEffect(() => {
     if (draggedWidget) {
+      const isMobile = getIsMobile();
       const moveHandler = (e: MouseEvent | TouchEvent) => handleDragMoveRef.current(e);
       const endHandler = () => handleDragEndRef.current();
 
       window.addEventListener('mousemove', moveHandler);
       window.addEventListener('mouseup', endHandler);
-      window.addEventListener('touchmove', moveHandler, { passive: false });
+
+      // ⚠️ 移动端使用 passive: true 避免阻塞滚动
+      // 这意味着在移动端拖拽时无法调用 preventDefault,但保证了滚动流畅性
+      if (isMobile) {
+        window.addEventListener('touchmove', moveHandler, { passive: true });
+      } else {
+        window.addEventListener('touchmove', moveHandler, { passive: false });
+      }
       window.addEventListener('touchend', endHandler);
       window.addEventListener('touchcancel', endHandler);
 
@@ -837,14 +853,22 @@ export default function WidgetGrid({
   }, [draggedWidget]); // 只依赖 draggedWidget 是否存在
 
   // 注册调整大小事件 - 使用 ref 避免频繁重建监听器
+  // ⚠️ 关键优化: 移动端使用 passive 监听避免阻塞滚动
   useEffect(() => {
     if (resizingWidget) {
+      const isMobile = getIsMobile();
       const moveHandler = (e: MouseEvent | TouchEvent) => handleResizeMoveRef.current(e);
       const endHandler = () => handleResizeEndRef.current();
 
       window.addEventListener('mousemove', moveHandler);
       window.addEventListener('mouseup', endHandler);
-      window.addEventListener('touchmove', moveHandler, { passive: false });
+
+      // ⚠️ 移动端使用 passive: true 避免阻塞滚动
+      if (isMobile) {
+        window.addEventListener('touchmove', moveHandler, { passive: true });
+      } else {
+        window.addEventListener('touchmove', moveHandler, { passive: false });
+      }
       window.addEventListener('touchend', endHandler);
       window.addEventListener('touchcancel', endHandler);
 

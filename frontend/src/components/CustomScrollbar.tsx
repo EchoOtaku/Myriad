@@ -14,33 +14,48 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 
-// 检测是否为移动端
+// 检测是否为移动端 - 使用多重检测确保准确性
 const getIsMobile = (): boolean => {
   if (typeof window === 'undefined') return true; // SSR 时视为移动端，不渲染
-  return window.matchMedia('(max-width: 767px)').matches;
+
+  // 多重检测: 屏幕宽度 + 触摸设备
+  const isSmallScreen = window.matchMedia('(max-width: 767px)').matches;
+  const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+  return isSmallScreen || isTouchDevice;
 };
+
+// 在模块加载时立即检测,避免任何延迟
+const IS_MOBILE_DEVICE = typeof window !== 'undefined' ? getIsMobile() : true;
 
 /**
  * 主导出组件 - 移动端守卫
- * 在移动端完全不渲染内部组件，避免事件监听器注册
+ * ⚠️ 关键优化: 在移动端完全不渲染,避免注册任何 Observer 和事件监听器
+ * 这是防止移动端崩溃的第一道防线
  */
 export default function CustomScrollbar() {
+  // ⚠️ 关键: 使用模块级常量,避免首次渲染延迟
+  // 如果是移动端,直接返回 null,不执行任何逻辑
+  if (IS_MOBILE_DEVICE) {
+    return null;
+  }
+
   const [isMobile, setIsMobile] = useState(getIsMobile);
-  
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
+
     const mediaQuery = window.matchMedia('(max-width: 767px)');
     const handleChange = (e: MediaQueryListEvent) => {
       setIsMobile(e.matches);
     };
-    
+
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handleChange);
     } else {
       mediaQuery.addListener(handleChange);
     }
-    
+
     return () => {
       if (mediaQuery.removeEventListener) {
         mediaQuery.removeEventListener('change', handleChange);
@@ -49,12 +64,12 @@ export default function CustomScrollbar() {
       }
     };
   }, []);
-  
-  // 移动端完全不渲染，避免所有事件监听器
+
+  // 二次检查: 响应式变化时也要检测
   if (isMobile) {
     return null;
   }
-  
+
   return <CustomScrollbarInner />;
 }
 
@@ -144,8 +159,11 @@ function CustomScrollbarInner() {
   }, [TRACK_HEIGHT_PERCENT, MIN_THUMB_HEIGHT]);
 
   // 监听滚动、resize 和内容变化
+  // ⚠️ 关键优化: 移除 MutationObserver,避免监听整个 body 的 DOM 变化
+  // 只使用 ResizeObserver + scroll/resize 事件,大幅减少性能开销
   useEffect(() => {
     let rafId: number | null = null;
+    let throttleTimer: number | null = null;
 
     const handleUpdate = () => {
       if (isDraggingRef.current) return;
@@ -159,6 +177,15 @@ function CustomScrollbarInner() {
       });
     };
 
+    // ⚠️ 节流版本的更新,用于高频事件(如 ResizeObserver)
+    const handleUpdateThrottled = () => {
+      if (throttleTimer !== null) return;
+      throttleTimer = window.setTimeout(() => {
+        handleUpdate();
+        throttleTimer = null;
+      }, 100); // 100ms 节流
+    };
+
     // 立即执行初始更新，确保 thumb 可见
     requestAnimationFrame(() => {
       updateThumb();
@@ -170,27 +197,17 @@ function CustomScrollbarInner() {
     window.addEventListener('scroll', handleUpdate, { passive: true });
     window.addEventListener('resize', handleUpdate);
 
-    // 使用 MutationObserver 监听 DOM 内容变化
-    const observer = new MutationObserver(handleUpdate);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      characterData: true,
-      attributeFilter: ['style', 'class'],
-    });
-
-    // 额外的 ResizeObserver 监听内容尺寸变化
-    const resizeObserver = new ResizeObserver(handleUpdate);
-    resizeObserver.observe(document.body);
-    resizeObserver.observe(document.documentElement);
+    // ⚠️ 移除了 MutationObserver - 这是造成移动端崩溃的主要原因
+    // 只使用 ResizeObserver 监听文档高度变化,并使用节流版本
+    const resizeObserver = new ResizeObserver(handleUpdateThrottled);
+    resizeObserver.observe(document.documentElement); // 只监听 documentElement,不监听 body
 
     return () => {
       window.removeEventListener('scroll', handleUpdate);
       window.removeEventListener('resize', handleUpdate);
-      observer.disconnect();
       resizeObserver.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (throttleTimer !== null) clearTimeout(throttleTimer);
     };
   }, [updateThumb]);
 

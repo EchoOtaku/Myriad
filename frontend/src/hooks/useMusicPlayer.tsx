@@ -264,29 +264,41 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   }, [musicColors, normalizeColor]);
   
   // 进度条呼吸动画控制
+  // ⚠️ 关键优化: 在移动端/低端设备禁用呼吸动画,减少 RAF 负担
   const startProgressBreathAnimation = useCallback(() => {
     if (!progressBarRef.current) return;
-    
+
+    // ⚠️ 移动端/低端设备检测 - 禁用动画
+    const isMobile = window.matchMedia('(max-width: 767px)').matches ||
+                     window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const isLowEndDevice = (navigator as any).hardwareConcurrency <= 4 ||
+                          (navigator as any).deviceMemory <= 4;
+
+    // 移动端或低端设备直接返回,不启动动画
+    if (isMobile || isLowEndDevice) {
+      return;
+    }
+
     if (breathAnimationRef.current !== null) {
       cancelAnimationFrame(breathAnimationRef.current);
     }
-    
+
     const progressBar = progressBarRef.current;
     const startTime = Date.now();
     const duration = 1500;
-    
+
     const animate = () => {
       const elapsed = Date.now() - startTime;
       const progress = (elapsed % duration) / duration;
-      
+
       const scale = 1 + 0.3 * Math.sin(progress * Math.PI * 2);
       const opacity = 0.85 + 0.15 * Math.sin(progress * Math.PI * 2);
       const shadowIntensity = 0.3 + 0.25 * Math.sin(progress * Math.PI * 2);
-      
+
       const primaryColor = getComputedStyle(document.documentElement)
         .getPropertyValue('--music-primary')
         .trim() || '#ec4899';
-      
+
       const hexToRgba = (hex: string, alpha: number) => {
         const cleanHex = hex.replace('#', '');
         const r = parseInt(cleanHex.substring(0, 2), 16);
@@ -294,16 +306,16 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         const b = parseInt(cleanHex.substring(4, 6), 16);
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
       };
-      
+
       progressBar.style.setProperty('--thumb-scale', scale.toString());
       progressBar.style.setProperty('--thumb-opacity', opacity.toString());
       progressBar.style.setProperty('--thumb-shadow',
         `0 ${2 + 2 * (scale - 1) / 0.3}px ${6 + 6 * (scale - 1) / 0.3}px ${hexToRgba(primaryColor, shadowIntensity)}, 0 0 ${20 * (scale - 1) / 0.3}px ${hexToRgba(primaryColor, shadowIntensity * 0.6)}`
       );
-      
+
       breathAnimationRef.current = requestAnimationFrame(animate);
     };
-    
+
     breathAnimationRef.current = requestAnimationFrame(animate);
   }, []);
   
