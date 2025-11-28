@@ -412,6 +412,15 @@ export default function WidgetGrid({
 
   // 计算网格单元格尺寸
   const gridRef = useCallback((node: HTMLDivElement | null) => {
+    // 清理旧的 observer
+    if (containerRef.current) {
+      const oldObserver = (containerRef.current as any).__resizeObserver;
+      if (oldObserver) {
+        oldObserver.disconnect();
+        delete (containerRef.current as any).__resizeObserver;
+      }
+    }
+    
     containerRef.current = node;
     if (node) {
       const rect = node.getBoundingClientRect();
@@ -419,26 +428,37 @@ export default function WidgetGrid({
       // 更新容器宽度
       setContainerWidth(rect.width);
       
-      // 使用 ResizeObserver 监听宽度变化
+      // 使用 ResizeObserver 监听宽度变化 - 添加节流
+      let resizeRafId: number | null = null;
       const resizeObserver = new ResizeObserver(entries => {
-        for (const entry of entries) {
-          setContainerWidth(entry.contentRect.width);
-        }
+        if (resizeRafId) return;
+        resizeRafId = requestAnimationFrame(() => {
+          resizeRafId = null;
+          for (const entry of entries) {
+            setContainerWidth(entry.contentRect.width);
+          }
+        });
       });
       resizeObserver.observe(node);
       
-      // 清理函数需要存储在 ref 中或者使用 useEffect
-      // 这里简化处理，因为 gridRef 可能会被多次调用
+      // 保存 observer 和 rafId 以便清理
       (node as any).__resizeObserver = resizeObserver;
+      (node as any).__resizeRafId = resizeRafId;
     }
   }, []);
 
   // 清理 ResizeObserver
   useEffect(() => {
     return () => {
-      const node = document.querySelector('.widget-grid-container');
-      if (node && (node as any).__resizeObserver) {
-        (node as any).__resizeObserver.disconnect();
+      if (containerRef.current) {
+        const observer = (containerRef.current as any).__resizeObserver;
+        const rafId = (containerRef.current as any).__resizeRafId;
+        if (observer) {
+          observer.disconnect();
+        }
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+        }
       }
     };
   }, []);
@@ -782,11 +802,21 @@ export default function WidgetGrid({
     }
   }, [historyIndex, widgetHistory, onWidgetsChange]);
 
-  // 注册拖拽事件（鼠标和触屏）
+  // 使用 ref 存储事件处理函数，避免每次状态变化时重新添加/移除事件监听器
+  const handleDragMoveRef = useRef(handleDragMove);
+  const handleDragEndRef = useRef(handleDragEnd);
+  const handleResizeMoveRef = useRef(handleResizeMove);
+  const handleResizeEndRef = useRef(handleResizeEnd);
+  handleDragMoveRef.current = handleDragMove;
+  handleDragEndRef.current = handleDragEnd;
+  handleResizeMoveRef.current = handleResizeMove;
+  handleResizeEndRef.current = handleResizeEnd;
+
+  // 注册拖拽事件（鼠标和触屏）- 使用 ref 避免频繁重建监听器
   useEffect(() => {
     if (draggedWidget) {
-      const moveHandler = handleDragMove as any;
-      const endHandler = handleDragEnd as any;
+      const moveHandler = (e: MouseEvent | TouchEvent) => handleDragMoveRef.current(e);
+      const endHandler = () => handleDragEndRef.current();
 
       window.addEventListener('mousemove', moveHandler);
       window.addEventListener('mouseup', endHandler);
@@ -806,13 +836,13 @@ export default function WidgetGrid({
         }
       };
     }
-  }, [draggedWidget, handleDragMove, handleDragEnd]);
+  }, [draggedWidget]); // 只依赖 draggedWidget 是否存在
 
-  // 注册调整大小事件
+  // 注册调整大小事件 - 使用 ref 避免频繁重建监听器
   useEffect(() => {
     if (resizingWidget) {
-      const moveHandler = handleResizeMove as any;
-      const endHandler = handleResizeEnd as any;
+      const moveHandler = (e: MouseEvent | TouchEvent) => handleResizeMoveRef.current(e);
+      const endHandler = () => handleResizeEndRef.current();
 
       window.addEventListener('mousemove', moveHandler);
       window.addEventListener('mouseup', endHandler);
@@ -832,7 +862,7 @@ export default function WidgetGrid({
         }
       };
     }
-  }, [resizingWidget, handleResizeMove, handleResizeEnd]);
+  }, [resizingWidget]); // 只依赖 resizingWidget 是否存在
 
   // 键盘快捷键支持（编辑模式）
   useEffect(() => {

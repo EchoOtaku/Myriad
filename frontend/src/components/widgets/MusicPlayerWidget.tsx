@@ -194,7 +194,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
     fetchLyrics();
   }, [currentSong?.id, currentSong?.source, isPreview]);
 
-  // 同步歌词进度
+  // 同步歌词进度 - 添加节流优化
   useEffect(() => {
     if (isPreview) return;
 
@@ -203,7 +203,15 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
     const audio = audioManager.getCurrentAudio();
     if (!audio) return;
 
+    // 使用节流避免过于频繁的状态更新
+    let lastUpdateTime = 0;
+    const THROTTLE_MS = 100; // 100ms 节流
+
     const handleTimeUpdate = () => {
+      const now = Date.now();
+      if (now - lastUpdateTime < THROTTLE_MS) return;
+      lastUpdateTime = now;
+      
       const index = getCurrentLyricIndex(lyrics, audio.currentTime);
       if (index !== currentLyricIndex) {
         setCurrentLyricIndex(index);

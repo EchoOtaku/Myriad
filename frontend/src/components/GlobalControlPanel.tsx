@@ -374,18 +374,21 @@ const GlobalControlPanel: React.FC = () => {
   // 壁纸加载和刷新功能已由 useWallpaper Hook 提供
   // loadWallpaperConfig 和 refreshWallpaper 已废弃
 
-  // 监听登录成功事件
+  // 监听登录成功事件 - 使用 ref 避免频繁重建监听器
+  const checkAuthRef = useRef(checkAuth);
+  checkAuthRef.current = checkAuth;
+  
   useEffect(() => {
     const handleLoginSuccess = () => {
       handleUserModalClose();
-      checkAuth();
+      checkAuthRef.current();
     };
 
     window.addEventListener('auth-login-success', handleLoginSuccess);
     return () => {
       window.removeEventListener('auth-login-success', handleLoginSuccess);
     };
-  }, [checkAuth]);
+  }, []); // 只在挂载时设置一次
 
   // 监听打开用户弹窗事件（从其他组件触发）
   useEffect(() => {
@@ -489,59 +492,64 @@ const GlobalControlPanel: React.FC = () => {
       document.body.appendChild(measureContainer);
     }
     
-    // 防抖和 RAF 控制
+    // 防抖和 RAF 控制 - 使用更激进的节流
     let rafId: number | null = null;
     let lastHeight = 0;
+    let lastUpdateTime = 0;
+    const THROTTLE_MS = 100; // 最少100ms更新一次
     
-    // 更新高度的函数（带防抖和相同高度跳过）
+    // 更新高度的函数（带节流和相同高度跳过）
     const updateHeight = () => {
-      if (rafId) return; // 已有待执行的更新，跳过
-      
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        
-        // 同步克隆内容到测量容器
-        measureContainer.innerHTML = '';
-        const clonedContent = contentEl.cloneNode(true) as HTMLElement;
-        clonedContent.style.cssText = `
-          display: flex;
-          flex-direction: column;
-          gap: 0.875rem;
-          width: 100%;
-          opacity: 1;
-          transform: none;
-          visibility: visible;
-        `;
-        measureContainer.appendChild(clonedContent);
-        
-        // 测量高度
-        const measuredHeight = measureContainer.offsetHeight;
-        const compensatedHeight = Math.ceil(measuredHeight * 1.04);
-        
-        // 仅当高度变化时才更新 DOM
-        if (Math.abs(compensatedHeight - lastHeight) > 1) {
-          lastHeight = compensatedHeight;
-          triggerEl.style.height = `${compensatedHeight}px`;
+      const now = Date.now();
+      if (now - lastUpdateTime < THROTTLE_MS) {
+        // 节流期内，延迟到节流期结束后执行
+        if (!rafId) {
+          rafId = window.setTimeout(() => {
+            rafId = null;
+            updateHeight();
+          }, THROTTLE_MS - (now - lastUpdateTime)) as unknown as number;
         }
-      });
+        return;
+      }
+      
+      if (rafId) {
+        clearTimeout(rafId as unknown as number);
+        rafId = null;
+      }
+      
+      lastUpdateTime = now;
+      
+      // 同步克隆内容到测量容器
+      measureContainer.innerHTML = '';
+      const clonedContent = contentEl.cloneNode(true) as HTMLElement;
+      clonedContent.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 0.875rem;
+        width: 100%;
+        opacity: 1;
+        transform: none;
+        visibility: visible;
+      `;
+      measureContainer.appendChild(clonedContent);
+      
+      // 测量高度
+      const measuredHeight = measureContainer.offsetHeight;
+      const compensatedHeight = Math.ceil(measuredHeight * 1.04);
+      
+      // 仅当高度变化超过阈值时才更新 DOM
+      if (Math.abs(compensatedHeight - lastHeight) > 2) {
+        lastHeight = compensatedHeight;
+        triggerEl.style.height = `${compensatedHeight}px`;
+      }
     };
 
-    // 初始更新
-    updateHeight();
+    // 初始更新 - 延迟执行以避免阻塞
+    const initialTimer = setTimeout(updateHeight, 50);
 
-    // 使用 ResizeObserver 监听关键元素（不递归监听所有后代）
+    // 使用 ResizeObserver 监听关键元素（只监听内容容器本身）
     const resizeObserver = new ResizeObserver(updateHeight);
-    
-    // 只监听内容容器和直接子元素（一级深度）
     resizeObserver.observe(contentEl);
-    for (let i = 0; i < contentEl.children.length; i++) {
-      resizeObserver.observe(contentEl.children[i]);
-      // 二级深度：监听每个子元素的子元素（如 WidgetGrid 容器）
-      const child = contentEl.children[i];
-      for (let j = 0; j < child.children.length; j++) {
-        resizeObserver.observe(child.children[j]);
-      }
-    }
 
     // MutationObserver 只监听直接子节点变化
     const mutationObserver = new MutationObserver(updateHeight);
@@ -551,7 +559,8 @@ const GlobalControlPanel: React.FC = () => {
     });
 
     return () => {
-      if (rafId) cancelAnimationFrame(rafId);
+      clearTimeout(initialTimer);
+      if (rafId) clearTimeout(rafId as unknown as number);
       resizeObserver.disconnect();
       mutationObserver.disconnect();
       if (measureContainer && measureContainer.parentNode) {
@@ -671,11 +680,16 @@ const GlobalControlPanel: React.FC = () => {
   // 当有歌词时，更新动态内容以显示歌词（仅播放时）
   // 使用 useRef 来减少状态更新频率
   const lastLyricTextRef = useRef<string>('');
+  const lastSongIdRef = useRef<string>('');
+  const lastPlayingStateRef = useRef<boolean>(false);
 
   useEffect(() => {
     const { currentSong, isPlaying, lyrics, currentLyricIndex } = musicPlayer;
     
-    if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0 && !isExpanded) {
+    // 早期返回：面板展开时不更新动态内容
+    if (isExpanded) return;
+    
+    if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0) {
       const currentLyric = lyrics[currentLyricIndex];
 
       // 如果歌词文本没有变化，跳过更新（避免重复渲染）
@@ -683,13 +697,12 @@ const GlobalControlPanel: React.FC = () => {
         return;
       }
       lastLyricTextRef.current = currentLyric.text;
+      lastSongIdRef.current = currentSong.id;
+      lastPlayingStateRef.current = true;
 
-      // 播放时显示歌词
+      // 播放时显示歌词 - 使用函数式更新避免闭包问题
       setDynamicContents(prev => {
-        // 移除之前的音乐内容
         const filtered = prev.filter(c => c.type !== 'music');
-
-        // 添加新的歌词内容
         return [
           {
             type: 'music' as const,
@@ -700,14 +713,23 @@ const GlobalControlPanel: React.FC = () => {
           ...filtered
         ];
       });
-    } else if (currentSong && !isExpanded) {
+    } else if (currentSong) {
+      // 避免重复更新：检查歌曲和播放状态是否真的变化了
+      const songChanged = lastSongIdRef.current !== currentSong.id;
+      const playingChanged = lastPlayingStateRef.current !== isPlaying;
+      
+      if (!songChanged && !playingChanged && lastLyricTextRef.current === '') {
+        return;
+      }
+      
       // 重置歌词文本引用
       lastLyricTextRef.current = '';
+      lastSongIdRef.current = currentSong.id;
+      lastPlayingStateRef.current = isPlaying;
 
       // 暂停时或没有歌词时只显示歌曲名
       setDynamicContents(prev => {
         const filtered = prev.filter(c => c.type !== 'music');
-
         return [
           {
             type: 'music' as const,
@@ -718,12 +740,14 @@ const GlobalControlPanel: React.FC = () => {
           ...filtered
         ];
       });
-    } else {
-      // 没有歌曲时移除音乐内容
+    } else if (lastSongIdRef.current !== '') {
+      // 没有歌曲时移除音乐内容（仅当之前有歌曲时）
       lastLyricTextRef.current = '';
+      lastSongIdRef.current = '';
+      lastPlayingStateRef.current = false;
       setDynamicContents(prev => prev.filter(c => c.type !== 'music'));
     }
-  }, [musicPlayer.currentSong, musicPlayer.lyrics, musicPlayer.currentLyricIndex, musicPlayer.isPlaying, isExpanded]);
+  }, [musicPlayer.currentSong?.id, musicPlayer.lyrics.length, musicPlayer.currentLyricIndex, musicPlayer.isPlaying, isExpanded]);
 
   // 获取当前显示的动态内容
   const currentContent = dynamicContents[currentContentIndex];

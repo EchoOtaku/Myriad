@@ -232,18 +232,29 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
     saveToBackend(updatedWidgets, rows);
   }, [widgets, saveToBackend]);
 
-  // 监听 WidgetGrid 的高度变化，通知父级控制面板重新计算高度
+  // 监听 WidgetGrid 的高度变化，通知父级控制面板重新计算高度 - 添加节流
   useEffect(() => {
     const widgetContainer = containerRef.current;
     if (!widgetContainer) return;
 
+    let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+    const THROTTLE_MS = 150; // 最少150ms触发一次
+
     const resizeObserver = new ResizeObserver(() => {
-      // 触发自定义事件通知 GlobalControlPanel 重新计算高度
-      window.dispatchEvent(new CustomEvent('control-panel-content-resize'));
+      if (throttleTimer) return;
+      
+      throttleTimer = setTimeout(() => {
+        throttleTimer = null;
+        // 触发自定义事件通知 GlobalControlPanel 重新计算高度
+        window.dispatchEvent(new CustomEvent('control-panel-content-resize'));
+      }, THROTTLE_MS);
     });
 
     resizeObserver.observe(widgetContainer);
-    return () => resizeObserver.disconnect();
+    return () => {
+      if (throttleTimer) clearTimeout(throttleTimer);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   const handleResizeStart = (e: React.MouseEvent) => {

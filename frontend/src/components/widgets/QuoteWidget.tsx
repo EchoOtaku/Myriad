@@ -89,24 +89,36 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
     return () => clearInterval(interval);
   }, [loadFromCache, fetchQuote, isPreview]);
 
-  // 主题色获取 - useMemo 优化
+  // 主题色获取 - 优化：使用节流避免频繁更新
   const updateThemeColor = useCallback(() => {
     const primaryColor = getComputedStyle(document.documentElement)
       .getPropertyValue('--color-primary')
       .trim() || '#a855f7';
-    setThemeColor(primaryColor);
+    setThemeColor(prev => prev !== primaryColor ? primaryColor : prev);
   }, []);
 
   useEffect(() => {
     updateThemeColor();
-    // 监听主题色变化
-    const observer = new MutationObserver(updateThemeColor);
+    // 监听主题色变化 - 使用节流
+    let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+    const throttledUpdate = () => {
+      if (throttleTimer) return;
+      throttleTimer = setTimeout(() => {
+        throttleTimer = null;
+        updateThemeColor();
+      }, 200);
+    };
+    
+    const observer = new MutationObserver(throttledUpdate);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['style']
     });
 
-    return () => observer.disconnect();
+    return () => {
+      if (throttleTimer) clearTimeout(throttleTimer);
+      observer.disconnect();
+    };
   }, [updateThemeColor]);
 
   if (loading) {

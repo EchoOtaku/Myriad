@@ -414,8 +414,26 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     });
   }, [playlist, excludeVipSongs]);
   
-  // 广播状态变化事件
+  // 广播状态变化事件 - 使用 ref 避免重复广播
+  const lastBroadcastRef = useRef<string>('');
   const broadcastStateChange = useCallback(() => {
+    // 创建状态快照用于比较
+    const stateSnapshot = JSON.stringify({
+      songId: currentSong?.id,
+      isEnabled: musicEnabled,
+      isPlaying,
+      color: musicColors?.primary,
+      isTempPlay: tempPlayModeRef.current.enabled,
+      index: currentSongIndex,
+      length: playlist.length,
+    });
+    
+    // 如果状态没有变化，跳过广播
+    if (lastBroadcastRef.current === stateSnapshot) {
+      return;
+    }
+    lastBroadcastRef.current = stateSnapshot;
+    
     window.dispatchEvent(new CustomEvent('music-player-state-change', {
       detail: {
         currentSong,
@@ -1127,23 +1145,28 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     setPreloadedSongIndex(-1);
   }, [playlist]);
   
-  // 初始化 Media Session API
+  // 初始化 Media Session API - 使用 ref 存储回调避免频繁重建
+  const playPreviousRef = useRef(playPrevious);
+  const playNextRef = useRef(playNext);
+  playPreviousRef.current = playPrevious;
+  playNextRef.current = playNext;
+  
   useEffect(() => {
     audioManager.setMediaSessionHandlers({
       play: () => {
-        if (audioRef.current && !isPlaying) {
+        if (audioRef.current) {
           audioRef.current.play().catch(() => {});
           setIsPlaying(true);
         }
       },
       pause: () => {
-        if (audioRef.current && isPlaying) {
+        if (audioRef.current) {
           audioRef.current.pause();
           setIsPlaying(false);
         }
       },
-      previoustrack: playPrevious,
-      nexttrack: playNext,
+      previoustrack: () => playPreviousRef.current(),
+      nexttrack: () => playNextRef.current(),
       seekbackward: () => {
         if (audioRef.current) {
           audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10);
@@ -1164,15 +1187,18 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         }
       },
     });
-  }, [isPlaying, playPrevious, playNext]);
+  }, []); // 只在挂载时初始化一次
   
-  // 监听播放歌曲事件
+  // 监听播放歌曲事件 - 使用 ref 避免频繁重建监听器
+  const playSongRef = useRef(playSong);
+  playSongRef.current = playSong;
+  
   useEffect(() => {
     const handlePlaySong = (e: Event) => {
       const customEvent = e as CustomEvent;
       const song = customEvent.detail?.song;
       if (song) {
-        playSong(song);
+        playSongRef.current(song);
       }
     };
     
@@ -1180,48 +1206,72 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     return () => {
       window.removeEventListener('play-song', handlePlaySong);
     };
-  }, [playSong]);
+  }, []); // 只在挂载时设置一次
   
-  // 监听切换播放/暂停事件
+  // 监听切换播放/暂停事件 - 使用 ref 避免频繁重建监听器
+  const togglePlayRef = useRef(togglePlay);
+  togglePlayRef.current = togglePlay;
+  
   useEffect(() => {
     const handleTogglePlayPause = () => {
-      togglePlay();
+      togglePlayRef.current();
     };
     
     window.addEventListener('toggle-play-pause', handleTogglePlayPause);
     return () => {
       window.removeEventListener('toggle-play-pause', handleTogglePlayPause);
     };
-  }, [togglePlay]);
+  }, []); // 只在挂载时设置一次
   
-  // 监听音乐状态同步请求
+  // 监听音乐状态同步请求 - 使用 ref 避免频繁重建监听器
+  const broadcastStateChangeRef = useRef(broadcastStateChange);
+  broadcastStateChangeRef.current = broadcastStateChange;
+  
   useEffect(() => {
     const handleSyncRequest = () => {
-      broadcastStateChange();
+      broadcastStateChangeRef.current();
     };
     
     window.addEventListener('request-music-state-sync', handleSyncRequest);
     return () => {
       window.removeEventListener('request-music-state-sync', handleSyncRequest);
     };
-  }, [broadcastStateChange]);
+  }, []); // 只在挂载时设置一次
   
-  // 发送音乐播放器状态变化事件
+  // 发送音乐播放器状态变化事件 - 使用节流避免频繁触发
+  const broadcastThrottleRef = useRef<number | null>(null);
   useEffect(() => {
-    broadcastStateChange();
-  }, [currentSong, musicEnabled, isPlaying, musicColors, currentSongIndex, playlist.length]);
+    // 使用节流，最多每 200ms 广播一次
+    if (broadcastThrottleRef.current) {
+      return;
+    }
+    broadcastThrottleRef.current = window.setTimeout(() => {
+      broadcastThrottleRef.current = null;
+      broadcastStateChange();
+    }, 200);
+    
+    return () => {
+      if (broadcastThrottleRef.current) {
+        clearTimeout(broadcastThrottleRef.current);
+        broadcastThrottleRef.current = null;
+      }
+    };
+  }, [currentSong?.id, musicEnabled, isPlaying, musicColors?.primary, currentSongIndex, playlist.length]);
   
-  // 监听停止临时播放事件
+  // 监听停止临时播放事件 - 使用 ref 避免频繁重建监听器
+  const stopTempPlayRef = useRef(stopTempPlay);
+  stopTempPlayRef.current = stopTempPlay;
+  
   useEffect(() => {
     const handleStopTempPlay = () => {
-      stopTempPlay();
+      stopTempPlayRef.current();
     };
     
     window.addEventListener('stop-temp-play', handleStopTempPlay);
     return () => {
       window.removeEventListener('stop-temp-play', handleStopTempPlay);
     };
-  }, [stopTempPlay]);
+  }, []); // 只在挂载时设置一次
   
   // 组件卸载时清理
   useEffect(() => {

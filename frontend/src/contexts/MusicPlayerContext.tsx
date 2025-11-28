@@ -117,31 +117,36 @@ export function useMusicPlayerControl() {
   return context;
 }
 
-// 降级方案：基于事件的实现（向后兼容）
+// 降级方案：基于事件的实现（向后兼容）- 优化：使用单个 state 对象减少重渲染
 function useFallbackMusicPlayerControl() {
   const globalState = (window as any).__musicPlayerState;
-  const [currentSong, setCurrentSong] = useState<Song | null>(globalState?.currentSong || null);
-  const [isEnabled, setIsEnabled] = useState(globalState?.isEnabled || false);
-  const [isPlaying, setIsPlaying] = useState(globalState?.isPlaying || false);
-  const [musicColor, setMusicColor] = useState<string>(globalState?.musicColor || '#ef4444');
-  const [isTempPlay, setIsTempPlay] = useState(globalState?.isTempPlay || false);
-  const [currentSongIndex, setCurrentSongIndex] = useState(globalState?.currentSongIndex || 0);
-  const [playlistLength, setPlaylistLength] = useState(globalState?.playlistLength || 0);
-  const [playlist, setPlaylist] = useState<Song[]>(globalState?.playlist || []);
+  const [state, setState] = useState<MusicPlayerState>(() => ({
+    currentSong: globalState?.currentSong || null,
+    isEnabled: globalState?.isEnabled || false,
+    isPlaying: globalState?.isPlaying || false,
+    musicColor: globalState?.musicColor || '#ef4444',
+    isTempPlay: globalState?.isTempPlay || false,
+    currentSongIndex: globalState?.currentSongIndex || 0,
+    playlistLength: globalState?.playlistLength || 0,
+    playlist: globalState?.playlist || [],
+  }));
 
   useEffect(() => {
     const handleMusicStateChange = (e: Event) => {
       const customEvent = e as CustomEvent;
       const detail = customEvent.detail;
       
-      setCurrentSong(detail?.currentSong || null);
-      setIsEnabled(detail?.isEnabled || false);
-      setIsPlaying(detail?.isPlaying || false);
-      setMusicColor(detail?.musicColor || '#ef4444');
-      setIsTempPlay(detail?.isTempPlay || false);
-      setCurrentSongIndex(detail?.currentSongIndex || 0);
-      setPlaylistLength(detail?.playlistLength || 0);
-      setPlaylist(detail?.playlist || []);
+      // 单次 setState 更新所有状态，避免多次重渲染
+      setState({
+        currentSong: detail?.currentSong || null,
+        isEnabled: detail?.isEnabled || false,
+        isPlaying: detail?.isPlaying || false,
+        musicColor: detail?.musicColor || '#ef4444',
+        isTempPlay: detail?.isTempPlay || false,
+        currentSongIndex: detail?.currentSongIndex || 0,
+        playlistLength: detail?.playlistLength || 0,
+        playlist: detail?.playlist || [],
+      });
     };
 
     window.addEventListener('music-player-state-change', handleMusicStateChange);
@@ -167,17 +172,10 @@ function useFallbackMusicPlayerControl() {
   }, []);
 
   return {
+    ...state,
     playSong,
     togglePlayPause,
     stopTempPlay,
     updateState,
-    currentSong,
-    isEnabled,
-    isPlaying,
-    musicColor,
-    isTempPlay,
-    currentSongIndex,
-    playlistLength,
-    playlist,
   };
 }

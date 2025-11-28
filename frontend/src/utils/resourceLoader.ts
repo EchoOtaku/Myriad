@@ -317,13 +317,17 @@ if (import.meta.env.DEV) {
   // 将资源加载器暴露到全局，方便调试
   (window as any).__resourceLoader = globalResourceLoader;
   
-  // 每5秒打印一次加载统计
+  // 调试统计 - 仅在有活动任务时打印，且间隔更长
+  let lastStatsLog = 0;
   setInterval(() => {
     const stats = globalResourceLoader.getStats();
-    if (stats.queued > 0 || stats.active > 0) {
+    const now = Date.now();
+    // 只有在有活动任务且距离上次日志超过15秒时才打印
+    if ((stats.queued > 0 || stats.active > 0) && now - lastStatsLog > 15000) {
+      lastStatsLog = now;
       console.log('[Resource Loader Stats]', stats);
     }
-  }, 5000);
+  }, 10000);
 }
 
 // 便捷方法

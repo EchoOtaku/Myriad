@@ -3,7 +3,7 @@
  * 完全复用 Reports.tsx 中的所有子组件实现
  */
 
-import { useState, useEffect, useMemo, memo, useCallback } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback, useRef } from 'react';
 import { API_URL } from '../../config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetConfig } from '../WidgetGrid';
@@ -30,11 +30,16 @@ const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
 
 function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
+  const prevShowOverviewRef = useRef(showOverview);
+  
   useEffect(() => {
-    if (showOverview && libraryItems.length > 0) {
+    // 当从概览模式切换到库项目模式时，更新索引
+    if (prevShowOverviewRef.current && !showOverview && libraryItems.length > 0) {
       setCurrentItemIndex(prev => (prev + 1) % libraryItems.length);
     }
+    prevShowOverviewRef.current = showOverview;
   }, [showOverview, libraryItems.length]);
+  
   return { currentItem: libraryItems[currentItemIndex], currentItemIndex };
 }
 
@@ -66,7 +71,14 @@ const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
           animate={{ x: '-100%', opacity: [0, 1, 1, 0] }}
           transition={{ repeat: Infinity, duration: anim.duration, delay: anim.delay, ease: "linear" }}
           className="absolute whitespace-nowrap text-base font-bold"
-          style={{ top: anim.top, color: '#B3E5FF', opacity: anim.opacity, willChange: 'transform' } as React.CSSProperties}
+          style={{ 
+            top: anim.top, 
+            color: '#B3E5FF', 
+            opacity: anim.opacity, 
+            willChange: 'transform',
+            transform: 'translateZ(0)', // 强制 GPU 加速
+            backfaceVisibility: 'hidden'
+          } as React.CSSProperties}
         >
           {texts[i]}
         </motion.div>
@@ -435,17 +447,24 @@ const MusicStatsWidget = memo(({ data }: any) => {
                 background: `radial-gradient(120% 120% at 30% 30%, rgba(255,255,255,0.6) 0%, ${bubble.color}20 20%, ${bubble.color}60 100%)`,
                 border: `1px solid rgba(255,255,255,0.3)`, color: bubble.color,
                 fontSize: `${Math.min(Math.max(10, bubble.size / 4), 16)}px`,
-                textShadow: `0 1px 1px rgba(255,255,255,0.8)`, zIndex: 10
+                textShadow: `0 1px 1px rgba(255,255,255,0.8)`, zIndex: 10,
+                willChange: 'transform', // GPU 加速
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden'
               }}
               initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1, y: [0, -8, 0, 8, 0], boxShadow: `0 8px 20px -6px ${bubble.color}60, inset 0 4px 10px rgba(255,255,255,0.3), inset 0 -5px 15px ${bubble.color}30`, zIndex: 10 }}
+              animate={{ 
+                scale: 1, 
+                opacity: 1, 
+                y: [0, -8, 0, 8, 0],
+                // 移除动态 boxShadow 动画，使用静态样式代替
+              }}
               transition={{
                 scale: { type: "spring", stiffness: 260, damping: 20, delay: i * 0.1 },
                 opacity: { duration: 0.6, delay: i * 0.1 },
                 y: { duration: bubble.floatDuration, repeat: Infinity, ease: "easeInOut", delay: bubble.floatDelay },
-                boxShadow: { duration: 0.3, ease: "easeInOut" }, zIndex: { delay: 0.1 }
               }}
-              whileHover={{ scale: 1.15, zIndex: 50, boxShadow: `0 15px 35px -5px ${bubble.color}80, inset 0 0 20px rgba(255,255,255,0.6)`, transition: { duration: 0.3, ease: "easeOut" } }}>
+              whileHover={{ scale: 1.15, zIndex: 50, transition: { duration: 0.3, ease: "easeOut" } }}>
               <div className="absolute top-[15%] left-[15%] w-[20%] h-[10%] bg-white/30 rounded-full blur-[1px] transform -rotate-45" />
               <span className="relative z-10 mix-blend-multiply dark:mix-blend-normal">{bubble.tag}</span>
             </motion.div>
@@ -495,7 +514,17 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange }: any) => {
   
   const libraryItems = useMemo(() => processedData?.library_items || [], [processedData?.library_items]);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
+  const prevShowOverviewRef = useRef(showOverview);
 
+  // 当从概览切换到库项目模式时，立即更新索引
+  useEffect(() => {
+    if (prevShowOverviewRef.current && !showOverview && libraryItems.length > 0) {
+      setCurrentItemIndex(prev => (prev + 2) % libraryItems.length);
+    }
+    prevShowOverviewRef.current = showOverview;
+  }, [showOverview, libraryItems.length]);
+
+  // 在非概览模式下，定时轮换项目
   useEffect(() => {
     if (!showOverview && libraryItems.length > 0) {
        const timer = setInterval(() => {

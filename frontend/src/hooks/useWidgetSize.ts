@@ -55,16 +55,29 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
   const [size, setSize] = useState({ width: 0, height: 0 });
   const elementRef = useRef<HTMLDivElement | null>(null);
 
-  // 测量元素尺寸
+  // 测量元素尺寸 - 添加节流
+  const measureThrottleRef = useRef<number | null>(null);
+  const lastMeasuredRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  
   const measureElement = useCallback(() => {
     if (!elementRef.current) return;
 
     const rect = elementRef.current.getBoundingClientRect();
     // 如果宽度为0 (可能是隐藏或未渲染)，不更新状态以避免闪烁
     if (rect.width > 0) {
+      // 检查尺寸是否真正变化（避免微小变化触发重渲染）
+      const widthDiff = Math.abs(lastMeasuredRef.current.width - rect.width);
+      const heightDiff = Math.abs(lastMeasuredRef.current.height - rect.height);
+      
+      if (widthDiff < 2 && heightDiff < 2) {
+        return; // 变化太小，跳过
+      }
+      
+      lastMeasuredRef.current = { width: rect.width, height: rect.height };
+      
       setSize(prev => {
         // 只有当尺寸真正变化时才更新状态，避免不必要的重渲染
-        if (Math.abs(prev.width - rect.width) < 1 && Math.abs(prev.height - rect.height) < 1) {
+        if (Math.abs(prev.width - rect.width) < 2 && Math.abs(prev.height - rect.height) < 2) {
           return prev;
         }
         return {

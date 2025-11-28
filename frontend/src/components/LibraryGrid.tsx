@@ -226,6 +226,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const { showInfo } = useNotification();
     const { playSong, currentSong, isPlaying: globalIsPlaying, musicColor } = useMusicPlayerControl();
     
+    // 使用 ref 存储回调函数，避免在依赖中频繁更新
+    const showInfoRef = useRef(showInfo);
+    const playSongRef = useRef(playSong);
+    showInfoRef.current = showInfo;
+    playSongRef.current = playSong;
+    
     // 筛选后的所有项目
     const filteredAllItems = useMemo(() => {
         return filter === 'all' 
@@ -556,19 +562,19 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         return result;
     };
 
-    // 显示错误通知
+    // 显示错误通知 - 使用 ref 避免依赖变化
     useEffect(() => {
         if (error) {
-            showInfo('资料库为空，请先在配置页面获取平台数据');
+            showInfoRef.current('资料库为空，请先在配置页面获取平台数据');
         }
-    }, [error, showInfo]);
+    }, [error]);
 
-    // 显示空状态通知
+    // 显示空状态通知 - 使用 ref 避免依赖变化
     useEffect(() => {
         if (!loading && filteredAllItems.length === 0 && !error) {
-            showInfo('此分类暂无内容，试试切换其他分类');
+            showInfoRef.current('此分类暂无内容，试试切换其他分类');
         }
-    }, [loading, filteredAllItems.length, error, showInfo]);
+    }, [loading, filteredAllItems.length, error]);
 
     const getPlatformColor = useCallback((platform: string) => {
         switch (platform.toLowerCase()) {
@@ -617,13 +623,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         const musicState = (window as any).__musicPlayerState;
         if (musicState?.currentSong?.id === songId) {
             window.dispatchEvent(new CustomEvent('open-control-panel'));
-            showInfo('🎵 已在播放中，打开控制面板');
+            showInfoRef.current('🎵 已在播放中，打开控制面板');
             return;
         }
         
         const isVip = item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4;
         if (isVip) {
-            showInfo('⚠️ VIP歌曲可能无法完整播放');
+            showInfoRef.current('⚠️ VIP歌曲可能无法完整播放');
         }
 
         const name = item.metadata.name || item.title;
@@ -662,10 +668,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             isVip: false
         };
 
-        playSong(song);
+        playSongRef.current(song);
         window.dispatchEvent(new CustomEvent('open-control-panel'));
-        showInfo(`🎵 正在播放: ${name}`);
-    }, [playSong, showInfo]);
+        showInfoRef.current(`🎵 正在播放: ${name}`);
+    }, []);
 
     const needsTransition = (from: string, to: string) => {
         return from !== 'all' && to !== 'all' && from !== to;

@@ -90,9 +90,13 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     // 然后获取最新天气
     fetchWeather();
     
-    // 每30分钟更新一次天气
-    const interval = setInterval(fetchWeather, CACHE_DURATION);
-    return () => clearInterval(interval);
+    // 每30分钟更新一次天气 - 使用更稳定的定时器模式
+    const intervalId = setInterval(fetchWeather, CACHE_DURATION);
+    
+    // 清理函数
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [loadFromCache, fetchWeather, isPreview]);
 
   // 根据天气状况选择主题色 - 使用 useMemo 缓存
