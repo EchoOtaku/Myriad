@@ -10,6 +10,7 @@ import { WeatherWidget } from '../widgets/WeatherWidget';
 import { QuoteWidget } from '../widgets/QuoteWidget';
 import { MusicPlayerWidget } from '../widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../widgets/ReportCardWidget';
+import { SocialNetworkWidget } from '../widgets/SocialNetworkWidget';
 import { getCSRFToken } from '../../utils/csrf';
 
 const API_URL = import.meta.env.PUBLIC_API_URL || '';
@@ -21,7 +22,15 @@ const CONTROL_PANEL_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '👋',
     component: WelcomeWidget,
-    supportedSizes: ['4x2'],
+    supportedSizes: ['2x2', '4x2'],
+  },
+  {
+    id: 'social-network',
+    name: '社交网络',
+    defaultSize: '1x1',
+    icon: '🔗',
+    component: SocialNetworkWidget,
+    supportedSizes: ['1x1', '2x1', '2x2'],
   },
   {
     id: 'quick-stats',
@@ -384,17 +393,30 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
     };
   }, [isEditMode, maxPage]);
 
-  // 根据 gridRows 过滤可用小组件（4x1 模式只显示支持 4x1 的小组件）
+  // 根据 gridRows 过滤可用小组件（1行模式只显示支持 4x1/2x1/1x1 的小组件）
   const filteredWidgets = useMemo((): WidgetType[] => {
     if (gridRows === 1) {
-      // 只显示支持 4x1 的小组件，并将 defaultSize 设为 4x1
+      // 显示支持 4x1、2x1、1x1 的小组件
       return CONTROL_PANEL_WIDGETS
-        .filter(w => w.supportedSizes?.includes('4x1'))
-        .map(w => ({
-          ...w,
-          defaultSize: '4x1' as WidgetType['defaultSize'],
-          supportedSizes: ['4x1'] as WidgetType['supportedSizes']
-        }));
+        .filter(w => {
+          const sizes = w.supportedSizes || [];
+          return sizes.includes('4x1') || sizes.includes('2x1') || sizes.includes('1x1');
+        })
+        .map(w => {
+          const sizes = w.supportedSizes || [];
+          // 只保留高度为1的尺寸
+          const allowedSizes = sizes.filter(s => s === '4x1' || s === '2x1' || s === '1x1');
+          // 优先使用 4x1，其次 2x1，最后 1x1
+          let defaultSize: WidgetType['defaultSize'] = '1x1';
+          if (allowedSizes.includes('4x1')) defaultSize = '4x1';
+          else if (allowedSizes.includes('2x1')) defaultSize = '2x1';
+          
+          return {
+            ...w,
+            defaultSize,
+            supportedSizes: allowedSizes as WidgetType['supportedSizes']
+          };
+        });
     }
     return CONTROL_PANEL_WIDGETS;
   }, [gridRows]);

@@ -35,6 +35,7 @@ export interface WidgetComponentProps {
   config: WidgetConfig;
   isEditMode: boolean;
   isPreview?: boolean;
+  onConfigChange?: (newConfig: any) => void;
 }
 
 // 网格尺寸常量
@@ -68,7 +69,8 @@ const WidgetGridItem = React.memo(({
   gridWidth,
   gridHeight,
   cellWidth,
-  cellHeight
+  cellHeight,
+  onConfigChange
 }: {
   widget: WidgetConfig;
   widgetType: WidgetType;
@@ -83,6 +85,7 @@ const WidgetGridItem = React.memo(({
   gridHeight?: number;
   cellWidth?: number;
   cellHeight?: number;
+  onConfigChange?: (newConfig: any) => void;
 }) => {
   const perf = usePerformanceProfile();
   const dim = SIZE_TO_DIMENSIONS[widget.size];
@@ -132,7 +135,11 @@ const WidgetGridItem = React.memo(({
           onMouseEnter={() => isEditMode && onMouseEnter(widget.id)}
           onMouseLeave={onMouseLeave}
         >
-          <WidgetComponent config={widget} isEditMode={isEditMode} />
+          <WidgetComponent 
+            config={widget} 
+            isEditMode={isEditMode} 
+            onConfigChange={onConfigChange}
+          />
         </div>
 
         {/* 删除按钮（编辑模式） */}
@@ -150,14 +157,18 @@ const WidgetGridItem = React.memo(({
               <FaTimes size={10} />
             </button>
 
-            {/* 调整大小手柄 - 明显的倒L型设计 */}
+            {/* 调整大小手柄 - 明显的倒L型设计，1x1组件用更小判定区域 */}
             {canResize && (
               <div
-                className="absolute bottom-0 right-0 w-12 h-12 cursor-se-resize z-50 flex items-end justify-end p-2 transition-transform hover:scale-110 active:scale-95 group/resize"
+                className={`absolute bottom-0 right-0 cursor-se-resize z-50 flex items-end justify-end transition-transform hover:scale-110 active:scale-95 group/resize ${
+                  widget.size === '1x1' ? 'w-6 h-6 p-0.5' : 'w-12 h-12 p-2'
+                }`}
                 onMouseDown={(e) => onResizeStart(e, widget.id, 'se')}
               >
-                 {/* L 型条 - 适配主题色 */}
-                 <div className="w-6 h-6 border-b-[8px] border-r-[8px] rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)]" />
+                 {/* L 型条 - 适配主题色，1x1组件更小 */}
+                 <div className={`border-b-[8px] border-r-[8px] rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)] ${
+                   widget.size === '1x1' ? 'w-4 h-4 border-b-[5px] border-r-[5px]' : 'w-6 h-6'
+                 }`} />
               </div>
             )}
 
@@ -1184,6 +1195,16 @@ export default function WidgetGrid({
             const widgetType = availableWidgets.find((w) => w.id === widget.type);
             if (!widgetType) return null;
 
+            // 处理小组件配置变更
+            const handleConfigChange = (newConfig: any) => {
+              // 只更新对应 widget 的 config 字段
+              const newWidgets = widgets.map(w =>
+                w.id === widget.id ? { ...w, config: newConfig } : w
+              );
+              onWidgetsChange?.(newWidgets);
+              saveToHistory(newWidgets);
+            };
+
             return (
               <WidgetGridItem
                 key={widget.id}
@@ -1200,6 +1221,7 @@ export default function WidgetGrid({
                 gridHeight={currentGridHeight}
                 cellWidth={cellWidth}
                 cellHeight={cellHeight}
+                onConfigChange={handleConfigChange}
               />
             );
           })}

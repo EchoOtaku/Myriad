@@ -18,6 +18,7 @@ import { WeatherWidget } from '../components/widgets/WeatherWidget';
 import { QuoteWidget } from '../components/widgets/QuoteWidget';
 import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget';
+import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget';
 
 // 注册所有可用的小组件类型
 const AVAILABLE_WIDGETS: WidgetType[] = [
@@ -27,7 +28,7 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     defaultSize: '4x2',
     icon: '👋',
     component: WelcomeWidget,
-    supportedSizes: ['4x2'],
+    supportedSizes: ['2x2', '4x2'],
   },
   {
     id: 'quick-stats',
@@ -100,6 +101,14 @@ const AVAILABLE_WIDGETS: WidgetType[] = [
     icon: '🎵',
     component: ReportCardWidget,
     supportedSizes: ['4x2'],
+  },
+  {
+    id: 'social-network',
+    name: '社交网络',
+    defaultSize: '1x1',
+    icon: '🌐',
+    component: SocialNetworkWidget,
+    supportedSizes: ['1x1', '2x1', '2x2'],
   },
 ];
 
@@ -238,7 +247,9 @@ export default function Home() {
             try {
               const parsedLayout = JSON.parse(data.dashboard_layout);
               if (Array.isArray(parsedLayout)) {
-                loadedWidgets = parsedLayout;
+                // 过滤掉未注册的小组件
+                const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
+                loadedWidgets = parsedLayout.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type));
               }
             } catch (e) {
               console.error('解析仪表盘布局失败:', e);
@@ -265,7 +276,11 @@ export default function Home() {
 
   // 保存小组件配置到后端
   const handleWidgetsChange = async (newWidgets: WidgetConfig[]) => {
-    setWidgets(newWidgets);
+    // 过滤掉未注册的小组件（已丢失/删除的组件）
+    const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
+    const validWidgets = newWidgets.filter(w => registeredWidgetIds.has(w.type));
+    
+    setWidgets(validWidgets);
     
     // 只有管理员可以保存
     if (!userInfo?.is_admin) return;
@@ -279,7 +294,7 @@ export default function Home() {
         },
         credentials: 'include',
         body: JSON.stringify({
-          layout: JSON.stringify(newWidgets) // 序列化为字符串存储
+          layout: JSON.stringify(validWidgets) // 序列化为字符串存储
         }),
       });
     } catch (err) {

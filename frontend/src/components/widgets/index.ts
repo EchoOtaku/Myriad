@@ -10,3 +10,4 @@ export * from './WeatherWidget';
 export * from './QuoteWidget';
 export * from './MusicPlayerWidget';
 export * from './ReportCardWidget';
+export * from './SocialNetworkWidget';

@@ -1,6 +1,13 @@
 /**
  * 最近活动小组件 - 4x2 紧凑布局
  * 显示最新的资料库更新历史
+ * 
+ * 性能优化:
+ * - 使用 memo 包裹组件和子组件
+ * - 全局请求缓存避免重复请求
+ * - useMemo 缓存计算结果
+ * - useCallback 缓存事件处理器
+ * - 静态动画配置提取到组件外部
  */
 
 import { motion } from 'framer-motion';
@@ -13,6 +20,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const CACHE_KEY = 'recent_activities_cache';
 const CACHE_DURATION = 5 * 60 * 1000; // 5分钟
 const DEBOUNCE_DELAY = 300; // 300ms 防抖
+
+// 全局请求状态 - 避免多实例重复请求
+let globalFetchPromise: Promise<Activity[]> | null = null;
+let globalCacheData: Activity[] | null = null;
+let globalCacheTimestamp = 0;
 
 interface Activity {
   id: number;
@@ -228,6 +240,11 @@ const getDetailedDescription = (activity: Activity): { title: string; details: s
   return { title, details };
 };
 
+// 静态动画配置 - 避免每次渲染创建新对象
+const ITEM_INITIAL_ANIMATION = { x: -10, opacity: 0 };
+const ITEM_ANIMATE = { x: 0, opacity: 1 };
+const getItemTransition = (index: number) => ({ delay: index * 0.05 });
+
 // 活动项组件 - 优化渲染性能
 const ActivityItem = memo(({ activity, index }: { activity: Activity; index: number }) => {
   const { title, details } = useMemo(() => getDetailedDescription(activity), [activity]);
@@ -250,11 +267,14 @@ const ActivityItem = memo(({ activity, index }: { activity: Activity; index: num
     }
   }, [activity.change_date]);
 
+  // 缓存 transition 对象
+  const transition = useMemo(() => getItemTransition(index), [index]);
+
   return (
     <motion.div
-      initial={{ x: -10, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      transition={{ delay: index * 0.05 }}
+      initial={ITEM_INITIAL_ANIMATION}
+      animate={ITEM_ANIMATE}
+      transition={transition}
       className="flex items-start gap-2 p-2 rounded-md bg-white/40 dark:bg-white/[0.02] hover:bg-white/60 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
     >
       <div className="flex-shrink-0 text-gray-600 dark:text-gray-400 mt-0.5">
@@ -314,22 +334,57 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
   }, []);
 
   const fetchActivities = useCallback(async () => {
+    const now = Date.now();
+    
+    // 检查全局缓存是否有效
+    if (globalCacheData && now - globalCacheTimestamp < CACHE_DURATION) {
+      setActivities(globalCacheData);
+      setLoading(false);
+      return;
+    }
+    
+    // 复用进行中的请求
+    if (globalFetchPromise) {
+      try {
+        const data = await globalFetchPromise;
+        setActivities(data);
+      } catch {
+        // 忽略
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    
+    // 创建新的请求
+    globalFetchPromise = (async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/activities?limit=8`, {
+          credentials: 'include',
+          signal: AbortSignal.timeout(10000), // 10秒超时
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && Array.isArray(data.activities)) {
+          globalCacheData = data.activities;
+          globalCacheTimestamp = Date.now();
+          saveToCache(data.activities);
+          return data.activities;
+        }
+        return [];
+      } finally {
+        globalFetchPromise = null;
+      }
+    })();
+    
     try {
-      const response = await fetch(`${API_URL}/api/activities?limit=8`, {
-        credentials: 'include',
-        signal: AbortSignal.timeout(10000), // 10秒超时
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.success && Array.isArray(data.activities)) {
-        setActivities(data.activities);
-        saveToCache(data.activities);
-      }
+      const data = await globalFetchPromise;
+      setActivities(data);
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('获取活动失败:', err);

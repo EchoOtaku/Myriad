@@ -112,6 +112,9 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
     });
   }, []);
 
+  // 判断是否为2x2布局
+  const is2x2 = config.size === '2x2';
+
   // 渲染导航图标 - 使用 useCallback 避免重复创建
   const renderNavIcon = useCallback((guide: NavigationGuide) => {
     if (guide.path === '/library') {
@@ -128,6 +131,65 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
     );
   }, []);
 
+  // 2x2 布局 - 简化版，只显示问候语，保持左上角布局
+  if (is2x2) {
+    return (
+      <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
+        {/* 背景装饰 */}
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
+        <motion.div 
+          className={`absolute -right-8 -top-8 w-32 h-32 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
+          style={{ background: 'var(--color-primary)' }}
+          animate={anim.loop ? { 
+            opacity: [0.08, 0.15, 0.08],
+            scale: [1, 1.1, 1]
+          } : { opacity: 0.1, scale: 1 }}
+          transition={anim.loop ? {
+            duration: 4,
+            repeat: Infinity,
+            ease: "easeInOut"
+          } : { duration: 0 }}
+        />
+
+        {/* 主内容 - 左上角布局 */}
+        <div 
+          className="relative h-full flex flex-col justify-center"
+          style={{ padding: `${16 * scale}px` }}
+        >
+          <motion.div
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
+          >
+            <div 
+              className="text-3xl mb-2"
+              style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${8 * scale}px` }}
+            >
+              👋
+            </div>
+            <h2 
+              className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none mb-1.5"
+              style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${6 * scale}px` }}
+            >
+              {greeting}
+            </h2>
+            <p 
+              className="text-xs text-gray-500 dark:text-gray-400"
+              style={{ fontSize: `${12 * fontScale}px` }}
+            >
+              {formattedDate}
+            </p>
+          </motion.div>
+        </div>
+
+        {isEditMode && (
+          <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none" />
+        )}
+      </div>
+    );
+  }
+
+  // 4x2 布局 - 完整版
   return (
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景装饰 */}

@@ -418,17 +418,17 @@ const GlobalControlPanel: React.FC = () => {
 
   // 动态内容轮播（带淡入淡出效果）
   useEffect(() => {
-    // 在以下情况禁用轮播：展开面板 / 悬停 / 动态内容为空 / 低性能设备 / 页面隐藏
-    if (dynamicContents.length === 0 || isExpanded || isHovering || document.hidden) return;
+    // 在以下情况禁用轮播：展开面板 / 悬停 / 动态内容为空 / 页面隐藏
+    if (dynamicContents.length === 0 || isExpanded || isHovering) return;
 
-    let frameId: number | null = null;
     let timerId: number | null = null;
     let cancelled = false;
 
     const cycle = () => {
-      if (cancelled) return;
+      if (cancelled || document.hidden) return;
       setIsTransitioning(true);
       timerId = window.setTimeout(() => {
+        if (cancelled) return;
         setCurrentContentIndex((prev) => (prev + 1) % dynamicContents.length);
         window.setTimeout(() => setIsTransitioning(false), 50);
         // 下一次循环：低端设备延长到 16s，正常 8s
@@ -440,19 +440,20 @@ const GlobalControlPanel: React.FC = () => {
 
     // 首次延迟启动，避免首屏竞争
     const startDelay = Math.round(3000 * (anim.durationScale || 1));
-    frameId = window.requestAnimationFrame(() => {
-      timerId = window.setTimeout(cycle, startDelay);
-    });
+    timerId = window.setTimeout(cycle, startDelay);
 
     const handleVisibility = () => {
       if (document.hidden) {
+        // 页面隐藏时清除定时器
+        if (timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+      } else if (!cancelled) {
+        // 页面重新可见时重新启动轮播
         if (timerId) clearTimeout(timerId);
-        if (frameId) cancelAnimationFrame(frameId);
-      } else {
-        // 页面重新可见时重新启动
-        cancelled = true; // 取消旧逻辑
-        // 重新触发 effect
-        setTimeout(() => setIsTransitioning(false), 0);
+        const restartDelay = Math.round(2000 * (anim.durationScale || 1));
+        timerId = window.setTimeout(cycle, restartDelay);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -460,7 +461,6 @@ const GlobalControlPanel: React.FC = () => {
     return () => {
       cancelled = true;
       if (timerId) clearTimeout(timerId);
-      if (frameId) cancelAnimationFrame(frameId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [dynamicContents.length, isExpanded, isHovering, anim.durationScale]);
