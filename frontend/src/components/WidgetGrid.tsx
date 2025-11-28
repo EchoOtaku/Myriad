@@ -1109,7 +1109,7 @@ export default function WidgetGrid({
 
         <div
           ref={gridRef}
-          className="widget-grid-container relative w-full rounded-xl transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
+          className={`widget-grid-container relative w-full rounded-xl transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isEditMode ? 'edit-mode' : ''}`}
           style={isCompact && totalPixelHeight ? {
             height: totalPixelHeight,
             // 移除 aspectRatio，使用固定高度
