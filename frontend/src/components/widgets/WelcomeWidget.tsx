@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 
 interface NavigationGuide {
   title: string;
@@ -41,6 +42,7 @@ const navigationGuides: NavigationGuide[] = [
 export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
   // 如果是预览模式，强制 scale 为 1，因为外部容器已经进行了缩放
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
+  const anim = useAnimationLevel();
   const navigate = useNavigate();
   const [currentGuideIndex, setCurrentGuideIndex] = useState(0);
   const [greeting, setGreeting] = useState('');
@@ -61,13 +63,33 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
     else setGreeting('夜深了');
   }, [isPreview]);
 
-  // 轮播引导卡片
+  // 轮播引导卡片 - 使用 timeout 链 + 可见性暂停
   useEffect(() => {
     if (isEditMode || isPreview) return;
-    const timer = setInterval(() => {
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const tick = () => {
+      if (cancelled || document.hidden) return;
       setCurrentGuideIndex((prev) => (prev + 1) % navigationGuides.length);
-    }, 5000);
-    return () => clearInterval(timer);
+      timeoutId = window.setTimeout(tick, 5000);
+    };
+    timeoutId = window.setTimeout(tick, 5000);
+    
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        tick();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [isEditMode, isPreview]);
 
   const currentGuide = useMemo(
@@ -113,15 +135,15 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
       <motion.div 
         className="absolute -right-16 -top-16 w-48 h-48 rounded-full blur-3xl"
         style={{ background: 'var(--color-primary)' }}
-        animate={{ 
+        animate={anim.loop ? { 
           opacity: [0.08, 0.15, 0.08],
           scale: [1, 1.1, 1]
-        }}
-        transition={{
+        } : { opacity: 0.1, scale: 1 }}
+        transition={anim.loop ? {
           duration: 4,
           repeat: Infinity,
           ease: "easeInOut"
-        }}
+        } : { duration: 0 }}
       />
 
       {/* 主内容 - 左右布局 */}
@@ -272,12 +294,12 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                     style={{ width: `${12 * scale}px`, height: `${12 * scale}px` }}
                     fill="currentColor" 
                     viewBox="0 0 20 20"
-                    animate={{ x: [0, 3, 0] }}
-                    transition={{
+                    animate={anim.loop ? { x: [0, 3, 0] } : { x: 0 }}
+                    transition={anim.loop ? {
                       duration: 1.5,
                       repeat: Infinity,
                       ease: "easeInOut"
-                    }}
+                    } : { duration: 0 }}
                   >
                     <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                   </motion.svg>

@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { getRandomQuote, QuoteData } from '../../utils/dynamicContent';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 
 // 缓存配置
 const CACHE_KEY = 'quote_data_cache';
@@ -21,6 +22,7 @@ export interface QuoteWidgetProps {
 
 export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
+    const anim = useAnimationLevel();
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [themeColor, setThemeColor] = useState('#a855f7');
@@ -84,9 +86,31 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
     // 然后获取最新一言
     fetchQuote();
     
-    // 每小时更新一次一言
-    const interval = setInterval(fetchQuote, CACHE_DURATION);
-    return () => clearInterval(interval);
+    // 每小时更新一次一言 - 使用 timeout 链 + 可见性暂停
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const schedule = () => {
+      if (cancelled || document.hidden) return;
+      fetchQuote();
+      timeoutId = window.setTimeout(schedule, CACHE_DURATION);
+    };
+    timeoutId = window.setTimeout(schedule, CACHE_DURATION);
+    
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        schedule();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [loadFromCache, fetchQuote, isPreview]);
 
   // 主题色获取 - 优化：使用节流避免频繁更新
@@ -228,15 +252,15 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
       <motion.div 
         className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
         style={{ background: themeColor }}
-        animate={{ 
+        animate={anim.loop ? { 
           opacity: [0.08, 0.15, 0.08],
           scale: [1, 1.1, 1]
-        }}
-        transition={{
+        } : { opacity: 0.1, scale: 1 }}
+        transition={anim.loop ? {
           duration: 4,
           repeat: Infinity,
           ease: "easeInOut"
-        }}
+        } : { duration: 0 }}
       />
       
       {/* 主内容区：2x2紧凑布局 */}

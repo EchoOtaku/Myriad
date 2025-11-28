@@ -116,8 +116,8 @@ impl BatchSaver {
         let full_data_clone = full_data.clone();
         let platform_name_clone = platform_name.to_string();
 
-        // 计算总chunk数
-        let total_chunks = (total_songs + chunk_size - 1) / chunk_size - 1; // 减去主记录
+        // 计算总chunk数（向上取整），再减去主记录
+        let total_chunks = total_songs.div_ceil(chunk_size) - 1; // 减去主记录
 
         // 初始化进度
         {
@@ -172,7 +172,7 @@ impl BatchSaver {
         let mut saved_chunks = 0;
 
         // 从第二个chunk开始(第一个已在主记录中)
-        for chunk_idx in 1..((total_songs + chunk_size - 1) / chunk_size) {
+        for chunk_idx in 1..(total_songs.div_ceil(chunk_size)) {
             let start = chunk_idx * chunk_size;
             let end = std::cmp::min(start + chunk_size, total_songs);
 
@@ -218,7 +218,7 @@ impl BatchSaver {
                 start,
                 end - 1,
                 saved_chunks,
-                (total_songs + chunk_size - 1) / chunk_size - 1
+                total_songs.div_ceil(chunk_size) - 1
             );
 
             // 添加短暂延迟,避免数据库压力

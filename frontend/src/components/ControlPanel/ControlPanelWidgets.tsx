@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import './ControlPanelWidgets.css';
 import { createPortal } from 'react-dom';
 import WidgetGrid, { WidgetConfig, WidgetType } from '../WidgetGrid';
 import { WelcomeWidget } from '../widgets/WelcomeWidget';
@@ -361,11 +362,26 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
   useEffect(() => {
     if (isEditMode || maxPage <= 0) return;
 
-    const interval = setInterval(() => {
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled || document.hidden) return;
       setCurrentPage(prev => (prev >= maxPage ? 0 : prev + 1));
-    }, 10000);
-
-    return () => clearInterval(interval);
+      timeout = window.setTimeout(tick, 10000);
+    };
+    let timeout: number = window.setTimeout(tick, 10000);
+    const onVisibility = () => {
+      if (document.hidden && timeout) {
+        clearTimeout(timeout);
+      } else if (!document.hidden && !cancelled) {
+        timeout = window.setTimeout(tick, 10000);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [isEditMode, maxPage]);
 
   // 根据 gridRows 过滤可用小组件（4x1 模式只显示支持 4x1 的小组件）
@@ -438,11 +454,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
              onWheel={handleWheel}
            >
              <div 
-               className="flex transition-transform duration-500 cubic-bezier(0.25, 1, 0.5, 1)"
-               style={{ 
-                 width: '300%', // 3页宽度
-                 transform: `translateX(-${currentPage * (100 / 3)}%)` 
-               }}
+               className={`flex transition-transform duration-500 cubic-bezier(0.25, 1, 0.5, 1) pages-3 slider page-${Math.min(2, Math.max(0, currentPage))}`}
              >
                <div 
                  className="w-full transition-all duration-300 ease-in-out"

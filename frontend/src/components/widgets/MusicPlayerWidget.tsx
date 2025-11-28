@@ -9,6 +9,7 @@ import { Song, getNeteaseLyrics, getQQLyrics, LyricLine, getCurrentLyricIndex, a
 import { WidgetConfig } from '../WidgetGrid';
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+import { useAnimationLevel, AnimationConfig } from '../../hooks/useAnimationLevel';
 
 export interface MusicPlayerWidgetProps {
   config: WidgetConfig;
@@ -24,7 +25,8 @@ const AlbumCover = memo(({
   themeColor,
   scale = 1,
   className,
-  style
+  style,
+  anim
 }: { 
   cover: string | undefined; 
   name: string; 
@@ -33,6 +35,7 @@ const AlbumCover = memo(({
   scale?: number;
   className?: string;
   style?: React.CSSProperties;
+  anim: AnimationConfig;
 }) => {
   // 直接使用 cover 作为 key，强制重新渲染，不使用内部状态缓存
   // 这样可以确保封面立即更新，而不是等待加载完成
@@ -79,7 +82,7 @@ const AlbumCover = memo(({
           }}
           transition={{
             duration: 2,
-            repeat: Infinity,
+            repeat: anim.loop ? Infinity : 0,
             ease: "easeInOut"
           }}
         />
@@ -91,7 +94,7 @@ const AlbumCover = memo(({
 AlbumCover.displayName = 'AlbumCover';
 
 // 播放状态指示器 - 独立组件
-const PlayingIndicator = memo(({ themeColor, scale = 1 }: { themeColor: string; scale?: number }) => (
+const PlayingIndicator = memo(({ themeColor, scale = 1, anim }: { themeColor: string; scale?: number; anim: AnimationConfig }) => (
   <motion.div 
     className="flex items-end"
     style={{ gap: `${2 * scale}px`, height: `${16 * scale}px` }}
@@ -103,19 +106,19 @@ const PlayingIndicator = memo(({ themeColor, scale = 1 }: { themeColor: string; 
       className="rounded-full"
       style={{ background: themeColor, width: `${2 * scale}px` }}
       animate={{ height: ['30%', '100%', '30%'] }}
-      transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut" }}
+      transition={{ duration: 0.6, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" }}
     />
     <motion.div 
       className="rounded-full"
       style={{ background: themeColor, width: `${2 * scale}px` }}
       animate={{ height: ['60%', '100%', '60%'] }}
-      transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut", delay: 0.1 }}
+      transition={{ duration: 0.6, repeat: anim.loop ? Infinity : 0, ease: "easeInOut", delay: 0.1 }}
     />
     <motion.div 
       className="rounded-full"
       style={{ background: themeColor, width: `${2 * scale}px` }}
       animate={{ height: ['40%', '100%', '40%'] }}
-      transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+      transition={{ duration: 0.6, repeat: anim.loop ? Infinity : 0, ease: "easeInOut", delay: 0.2 }}
     />
   </motion.div>
 ));
@@ -125,6 +128,7 @@ PlayingIndicator.displayName = 'PlayingIndicator';
 export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicPlayerWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const playerControl = useMusicPlayerControl();
+  const anim = useAnimationLevel();
   
   const currentSong = isPreview ? { 
     name: '示例歌曲', 
@@ -308,10 +312,10 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                 }}
                 transition={{ 
                   opacity: { duration: 1 },
-                  scale: { duration: 20, repeat: Infinity, ease: "easeInOut" },
-                  rotate: { duration: 45, repeat: Infinity, ease: "easeInOut" },
-                  x: { duration: 25, repeat: Infinity, ease: "easeInOut" },
-                  y: { duration: 30, repeat: Infinity, ease: "easeInOut" },
+                  scale: { duration: 20, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" },
+                  rotate: { duration: 45, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" },
+                  x: { duration: 25, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" },
+                  y: { duration: 30, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" },
                 }}
               />
               {/* 遮罩层：增强文字对比度 */}
@@ -328,7 +332,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                   }}
                   transition={{
                     duration: 4,
-                    repeat: Infinity,
+                    repeat: anim.loop ? Infinity : 0,
                     ease: "easeInOut"
                   }}
                 />
@@ -365,7 +369,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                   y: isPlaying ? [0, -4, 0] : 0,
                 }}
                 transition={{ 
-                  y: { duration: 4, repeat: Infinity, ease: "easeInOut" }
+                  y: { duration: 4, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" }
                 }}
               >
                  <AlbumCover 
@@ -376,6 +380,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                   scale={scale * 1.35} // 放大封面
                   className="relative z-10 shadow-xl"
                   style={{}} 
+                  anim={anim}
                 />
               </motion.div>
               {/* 信息 - 切换时滑入动效 */}
@@ -405,7 +410,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
            
            {/* 控制区 */}
            <div className="flex items-center gap-3 shrink-0">
-             {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale * 0.8} />}
+             {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale * 0.8} anim={anim} />}
              <motion.button
                 onClick={handleTogglePlay}
                 className="rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10"
@@ -445,7 +450,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
         }}
         transition={{
           duration: 3,
-          repeat: Infinity,
+          repeat: anim.loop ? Infinity : 0,
           ease: "easeInOut"
         }}
       />
@@ -457,6 +462,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
         isPlaying={isPlaying}
         themeColor={themeColor}
         scale={scale}
+        anim={anim}
       />
 
       {/* 主内容区：2x2紧凑布局 */}
@@ -475,7 +481,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
             opacity: { duration: 0.6 },
             rotate: isPlaying ? {
               duration: 2,
-              repeat: Infinity,
+              repeat: anim.loop ? Infinity : 0,
               ease: "easeInOut"
             } : {}
           }}
@@ -541,7 +547,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
           </button>
           
           {/* 播放状态指示器 */}
-          {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale} />}
+          {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale} anim={anim} />}
         </motion.div>
       </div>
     </div>

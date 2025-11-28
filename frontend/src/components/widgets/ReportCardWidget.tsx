@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetConfig } from '../WidgetGrid';
 import { FaSteam, FaGithub } from 'react-icons/fa';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
+import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 
 export interface ReportCardWidgetProps {
   config: WidgetConfig;
@@ -44,7 +45,7 @@ function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
 }
 
 // ==================== B站组件（完整版）====================
-const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
+const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: string[] }, allowLoop?: boolean }) => {
   const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
   const animations = useMemo(() => {
     const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
@@ -69,7 +70,7 @@ const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
           key={`${texts[i]}-${i}`}
           initial={{ x: '100%', opacity: 0 }}
           animate={{ x: '-100%', opacity: [0, 1, 1, 0] }}
-          transition={{ repeat: Infinity, duration: anim.duration, delay: anim.delay, ease: "linear" }}
+          transition={{ repeat: allowLoop ? Infinity : 0, duration: anim.duration, delay: anim.delay, ease: "linear" }}
           className="absolute whitespace-nowrap text-base font-bold"
           style={{ 
             top: anim.top, 
@@ -87,7 +88,7 @@ const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
   );
 });
 
-const BilibiliWidget = memo(({ data, showOverview, onContentChange }: any) => {
+const BilibiliWidget = memo(({ data, showOverview, onContentChange, allowLoop = true }: any) => {
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
   const { currentItem, currentItemIndex } = useLibraryItemRotation(libraryItems, showOverview);
   
@@ -103,7 +104,7 @@ const BilibiliWidget = memo(({ data, showOverview, onContentChange }: any) => {
     <AnimatePresence mode="wait">
       {showOverview || !currentItem ? (
         <motion.div key="danmaku" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="h-full w-full">
-          <DanmakuWidget data={data} />
+          <DanmakuWidget data={data} allowLoop={allowLoop} />
         </motion.div>
       ) : (
         <motion.div key={`lib-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
@@ -370,7 +371,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
 });
 
 // ==================== Netease组件（完整版）====================
-const MusicStatsWidget = memo(({ data }: any) => {
+const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
   const color = useMemo(() => data?.soul_color || "#ef4444", [data?.soul_color]);
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords]);
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count]);
@@ -462,7 +463,7 @@ const MusicStatsWidget = memo(({ data }: any) => {
               transition={{
                 scale: { type: "spring", stiffness: 260, damping: 20, delay: i * 0.1 },
                 opacity: { duration: 0.6, delay: i * 0.1 },
-                y: { duration: bubble.floatDuration, repeat: Infinity, ease: "easeInOut", delay: bubble.floatDelay },
+                y: { duration: bubble.floatDuration, repeat: allowLoop ? Infinity : 0, ease: "easeInOut", delay: bubble.floatDelay },
               }}
               whileHover={{ scale: 1.15, zIndex: 50, transition: { duration: 0.3, ease: "easeOut" } }}>
               <div className="absolute top-[15%] left-[15%] w-[20%] h-[10%] bg-white/30 rounded-full blur-[1px] transform -rotate-45" />
@@ -495,7 +496,7 @@ const MusicStatsWidget = memo(({ data }: any) => {
   );
 });
 
-const NeteaseWidget = memo(({ data, showOverview, onContentChange }: any) => {
+const NeteaseWidget = memo(({ data, showOverview, onContentChange, allowLoop = true }: any) => {
   const processedData = useMemo(() => {
     if (!data) return undefined;
     let moodKeywords: Array<{ tag: string; color: string }> = [];
@@ -524,13 +525,33 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange }: any) => {
     prevShowOverviewRef.current = showOverview;
   }, [showOverview, libraryItems.length]);
 
-  // 在非概览模式下，定时轮换项目
+  // 在非概览模式下，定时轮换项目 - timeout 链 + 可见性暂停
   useEffect(() => {
     if (!showOverview && libraryItems.length > 0) {
-       const timer = setInterval(() => {
+       let cancelled = false;
+       let timeoutId: number | null = null;
+       const tick = () => {
+         if (cancelled || document.hidden) return;
          setCurrentItemIndex(prev => (prev + 2) % libraryItems.length);
-       }, 5000);
-       return () => clearInterval(timer);
+         timeoutId = window.setTimeout(tick, 5000);
+       };
+       timeoutId = window.setTimeout(tick, 5000);
+       
+       const onVisibility = () => {
+         if (document.hidden && timeoutId) {
+           clearTimeout(timeoutId);
+           timeoutId = null;
+         } else if (!document.hidden && !cancelled && !timeoutId) {
+           tick();
+         }
+       };
+       document.addEventListener('visibilitychange', onVisibility);
+       
+       return () => {
+         cancelled = true;
+         if (timeoutId) clearTimeout(timeoutId);
+         document.removeEventListener('visibilitychange', onVisibility);
+       };
     }
   }, [showOverview, libraryItems.length]);
   
@@ -548,7 +569,7 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange }: any) => {
     <AnimatePresence mode="wait">
       {showOverview || currentItems.length === 0 || libraryItems.length === 0 ? (
         <motion.div key="stats" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="h-full w-full">
-          <MusicStatsWidget data={processedData} />
+          <MusicStatsWidget data={processedData} allowLoop={allowLoop} />
         </motion.div>
       ) : (
         <motion.div key={`music-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
@@ -579,6 +600,7 @@ const PLATFORM_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg
 
 // ==================== 主组件 ====================
 export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportCardWidgetProps) => {
+    const animLevel = useAnimationLevel();
   const platformId = (config.config?.platformId || 'bilibili') as string;
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -625,14 +647,62 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
       }
     };
     fetchReport();
-    const interval = setInterval(fetchReport, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    
+    // 5分钟刷新一次 - timeout 链 + 可见性暂停
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const schedule = () => {
+      if (cancelled || document.hidden) return;
+      fetchReport();
+      timeoutId = window.setTimeout(schedule, 5 * 60 * 1000);
+    };
+    timeoutId = window.setTimeout(schedule, 5 * 60 * 1000);
+    
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        schedule();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [platformId]);
 
   useEffect(() => {
     if (isPreview) return;
-    const interval = setInterval(() => setShowOverview(prev => !prev), 10000);
-    return () => clearInterval(interval);
+    
+    // 10秒切换概览/详情 - timeout 链 + 可见性暂停
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const tick = () => {
+      if (cancelled || document.hidden) return;
+      setShowOverview(prev => !prev);
+      timeoutId = window.setTimeout(tick, 10000);
+    };
+    timeoutId = window.setTimeout(tick, 10000);
+    
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        tick();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [isPreview]);
 
   const handleContentChange = useCallback((content: any) => {
@@ -654,10 +724,10 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
       
       {/* 主内容区 */}
       <div className="absolute inset-0 flex flex-col z-10">
-        {platformId === 'bilibili' && <BilibiliWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
+        {platformId === 'bilibili' && <BilibiliWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} allowLoop={animLevel.loop} />}
         {platformId === 'steam' && <SteamWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
         {platformId === 'github' && <GithubWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
-        {platformId === 'netease' && <NeteaseWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
+        {platformId === 'netease' && <NeteaseWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} allowLoop={animLevel.loop} />}
       </div>
 
       {/* 左下角浮动Logo */}

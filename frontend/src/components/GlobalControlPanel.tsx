@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { getCSRFToken } from '../utils/csrf';
@@ -18,6 +18,8 @@ import { loadResource } from '../utils/resourceLoader';
 import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 import { MusicPlayer } from './ControlPanel/MusicPlayer';
+import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
+import { useAnimationLevel } from '../hooks/useAnimationLevel';
 
 interface User {
   username: string;
@@ -78,6 +80,8 @@ const GlobalControlPanel: React.FC = () => {
   const triggerRef = useRef<HTMLDivElement>(null);
   const expandedContentRef = useRef<HTMLDivElement>(null);
   const volumeControlRef = useRef<HTMLDivElement>(null);
+  const perf = usePerformanceProfile();
+  const anim = useAnimationLevel();
 
   useEffect(() => {
     // 检查当前主题
@@ -414,24 +418,52 @@ const GlobalControlPanel: React.FC = () => {
 
   // 动态内容轮播（带淡入淡出效果）
   useEffect(() => {
-    if (dynamicContents.length === 0 || isExpanded || isHovering) return;
+    // 在以下情况禁用轮播：展开面板 / 悬停 / 动态内容为空 / 低性能设备 / 页面隐藏
+    if (dynamicContents.length === 0 || isExpanded || isHovering || document.hidden) return;
 
-    const interval = setInterval(() => {
-      // 先淡出
+    let frameId: number | null = null;
+    let timerId: number | null = null;
+    let cancelled = false;
+
+    const cycle = () => {
+      if (cancelled) return;
       setIsTransitioning(true);
-
-      // 300ms 后切换内容
-      setTimeout(() => {
+      timerId = window.setTimeout(() => {
         setCurrentContentIndex((prev) => (prev + 1) % dynamicContents.length);
-        // 再淡入
-        setTimeout(() => {
-          setIsTransitioning(false);
-        }, 50);
+        window.setTimeout(() => setIsTransitioning(false), 50);
+        // 下一次循环：低端设备延长到 16s，正常 8s
+        const base = 8000;
+        const nextDelay = Math.round(base * (anim.durationScale || 1));
+        timerId = window.setTimeout(cycle, nextDelay);
       }, 300);
-    }, 8000); // 每8秒切换
+    };
 
-    return () => clearInterval(interval);
-  }, [dynamicContents.length, isExpanded, isHovering]);
+    // 首次延迟启动，避免首屏竞争
+    const startDelay = Math.round(3000 * (anim.durationScale || 1));
+    frameId = window.requestAnimationFrame(() => {
+      timerId = window.setTimeout(cycle, startDelay);
+    });
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (timerId) clearTimeout(timerId);
+        if (frameId) cancelAnimationFrame(frameId);
+      } else {
+        // 页面重新可见时重新启动
+        cancelled = true; // 取消旧逻辑
+        // 重新触发 effect
+        setTimeout(() => setIsTransitioning(false), 0);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      cancelled = true;
+      if (timerId) clearTimeout(timerId);
+      if (frameId) cancelAnimationFrame(frameId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [dynamicContents.length, isExpanded, isHovering, anim.durationScale]);
 
   // 监听主题变化，仅更新主题状态（不重新请求数据）
   useEffect(() => {
@@ -452,122 +484,86 @@ const GlobalControlPanel: React.FC = () => {
     return () => observer.disconnect();
   }, []); // 移除 loadDynamicContents 依赖
 
-  // 动态计算展开面板的高度 - 使用持久化克隆方案（性能优化版）
-  useEffect(() => {
+  // 动态计算展开面板的高度 - 使用克隆测量方案（性能优化版）
+  useLayoutEffect(() => {
     if (!triggerRef.current) return;
-    
     const triggerEl = triggerRef.current;
-    
-    // 收缩时恢复默认高度并清理克隆
+
     if (!isExpanded) {
       triggerEl.style.height = '3rem';
-      const existingMeasure = document.getElementById('control-panel-measure-container');
-      if (existingMeasure) {
-        existingMeasure.remove();
-      }
       return;
     }
-    
     if (!expandedContentRef.current) return;
-    
     const contentEl = expandedContentRef.current;
-    const triggerStyle = window.getComputedStyle(triggerEl);
-    
-    // 创建持久化的测量容器
-    let measureContainer = document.getElementById('control-panel-measure-container') as HTMLDivElement;
-    if (!measureContainer) {
-      measureContainer = document.createElement('div');
-      measureContainer.id = 'control-panel-measure-container';
-      measureContainer.style.cssText = `
-        position: fixed;
-        visibility: hidden;
-        pointer-events: none;
-        width: 400px;
-        padding: ${triggerStyle.paddingTop} ${triggerStyle.paddingRight} ${triggerStyle.paddingBottom} ${triggerStyle.paddingLeft};
-        top: -9999px;
-        left: -9999px;
-        box-sizing: border-box;
-        z-index: -1;
-      `;
-      document.body.appendChild(measureContainer);
-    }
-    
-    // 防抖和 RAF 控制 - 使用更激进的节流
-    let rafId: number | null = null;
+
     let lastHeight = 0;
     let lastUpdateTime = 0;
-    const THROTTLE_MS = 100; // 最少100ms更新一次
-    
-    // 更新高度的函数（带节流和相同高度跳过）
-    const updateHeight = () => {
+    // 低性能设备放宽节流间隔
+    const THROTTLE_MS = anim.level === 'standard' ? 180 : 360;
+
+    const measure = () => {
       const now = Date.now();
-      if (now - lastUpdateTime < THROTTLE_MS) {
-        // 节流期内，延迟到节流期结束后执行
-        if (!rafId) {
-          rafId = window.setTimeout(() => {
-            rafId = null;
-            updateHeight();
-          }, THROTTLE_MS - (now - lastUpdateTime)) as unknown as number;
-        }
-        return;
-      }
-      
-      if (rafId) {
-        clearTimeout(rafId as unknown as number);
-        rafId = null;
-      }
-      
+      if (now - lastUpdateTime < THROTTLE_MS) return;
       lastUpdateTime = now;
       
-      // 同步克隆内容到测量容器
-      measureContainer.innerHTML = '';
-      const clonedContent = contentEl.cloneNode(true) as HTMLElement;
-      clonedContent.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        gap: 0.875rem;
-        width: 100%;
-        opacity: 1;
-        transform: none;
-        visibility: visible;
-      `;
-      measureContainer.appendChild(clonedContent);
+      // 计算目标宽度用于测量（避免动画过程中的宽度变化导致高度计算错误）
+      const isMobile = window.innerWidth <= 640;
+      // Desktop: 400px - padding(1.375rem * 2 = 44px) = 356px
+      // Mobile: (100vw - 1.5rem) - padding(1rem * 2 = 32px) = 100vw - 56px
+      const targetWidth = isMobile 
+        ? window.innerWidth - 56 
+        : 356;
+
+      // 通过克隆节点精确测量高度
+      const clone = contentEl.cloneNode(true) as HTMLElement;
+      clone.style.position = 'absolute';
+      clone.style.visibility = 'hidden';
+      clone.style.height = 'auto';
+      // 关键修复：强制使用目标宽度而不是当前宽度
+      clone.style.width = targetWidth + 'px';
       
-      // 测量高度
-      const measuredHeight = measureContainer.offsetHeight;
-      const compensatedHeight = Math.ceil(measuredHeight * 1.04);
+      document.body.appendChild(clone);
+      const raw = clone.offsetHeight;
+      document.body.removeChild(clone);
       
-      // 仅当高度变化超过阈值时才更新 DOM
-      if (Math.abs(compensatedHeight - lastHeight) > 2) {
-        lastHeight = compensatedHeight;
-        triggerEl.style.height = `${compensatedHeight}px`;
+      // 适当补偿 (考虑内边距 + 过渡)
+      const compensated = Math.ceil(raw * 1.08);
+      
+      if (Math.abs(compensated - lastHeight) > 4) {
+        lastHeight = compensated;
+        triggerEl.style.height = compensated + 'px';
       }
     };
 
-    // 初始更新 - 延迟执行以避免阻塞
-    const initialTimer = setTimeout(updateHeight, 50);
+    // 立即测量，确保动画起始帧即为正确高度
+    measure();
 
-    // 使用 ResizeObserver 监听关键元素（只监听内容容器本身）
-    const resizeObserver = new ResizeObserver(updateHeight);
+    const resizeObserver = new ResizeObserver(() => measure());
     resizeObserver.observe(contentEl);
+    
+    const mutationObserver = new MutationObserver(() => measure());
+    mutationObserver.observe(contentEl, { childList: true, subtree: true, characterData: true });
 
-    // MutationObserver 只监听直接子节点变化
-    const mutationObserver = new MutationObserver(updateHeight);
-    mutationObserver.observe(contentEl, {
-      childList: true,
-      subtree: false // 不监听整个子树，减少开销
-    });
+    // 可见性变化时重新测量
+    const handleVisibility = () => { if (!document.hidden) setTimeout(measure, 100); };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      clearTimeout(initialTimer);
-      if (rafId) clearTimeout(rafId as unknown as number);
       resizeObserver.disconnect();
       mutationObserver.disconnect();
-      if (measureContainer && measureContainer.parentNode) {
-        measureContainer.remove();
-      }
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [isExpanded, isAuthenticated]);
+  }, [isExpanded, isAuthenticated, perf.lowEndDevice, anim.level]);
+
+  // 统一暂停定时器策略：页面不可见时发事件给子组件停止动画（可选扩展）
+  useEffect(() => {
+    const handler = () => {
+      const hidden = document.hidden;
+      window.dispatchEvent(new CustomEvent('app-visibility-changed', { detail: { hidden } }));
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
 
   const toggleTheme = useCallback(() => {
     const html = document.documentElement;

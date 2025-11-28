@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FaEdit, FaSave, FaTimes, FaPlus } from 'react-icons/fa';
 import React from 'react';
 import './WidgetGrid.css';
+import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 
 // 小组件尺寸配置
 export type WidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '2x4' | '4x1' | '4x2' | '4x4';
@@ -76,6 +77,7 @@ const WidgetGridItem = React.memo(({
   cellWidth?: number;
   cellHeight?: number;
 }) => {
+  const perf = usePerformanceProfile();
   const dim = SIZE_TO_DIMENSIONS[widget.size];
   const WidgetComponent = widgetType.component;
   
@@ -110,11 +112,7 @@ const WidgetGridItem = React.memo(({
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ 
-        type: 'spring', 
-        stiffness: 400, 
-        damping: 30
-      }}
+      transition={perf.lowEndDevice ? { type: 'tween', duration: 0.25 } : { type: 'spring', stiffness: 400, damping: 30 }}
     >
       <div className="relative h-full w-full p-1 group">
         <div

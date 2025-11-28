@@ -18,6 +18,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { usePerformanceProfile } from './usePerformanceProfile';
 import { WidgetSize } from '../components/WidgetGrid';
 
 // 标准尺寸映射 (像素值基于假设的标准单元格大小)
@@ -27,10 +28,11 @@ import { WidgetSize } from '../components/WidgetGrid';
 const STANDARD_DIMENSIONS: Record<WidgetSize, { width: number; height: number }> = {
   '1x1': { width: 80, height: 80 },
   '2x1': { width: 160, height: 80 },
+  '4x1': { width: 320, height: 80 },
   '1x2': { width: 80, height: 160 },
   '2x2': { width: 160, height: 160 },
   '2x4': { width: 160, height: 320 },
-  '4x2': { width: 340, height: 160 }, // 稍微增加标准宽度，使缩放比例略微减小，防止溢出
+  '4x2': { width: 320, height: 160 }, // 稍微增加标准宽度，使缩放比例略微减小，防止溢出
   '4x4': { width: 320, height: 320 },
 };
 
@@ -54,12 +56,17 @@ export interface WidgetSizeInfo {
 export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): WidgetSizeInfo {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const elementRef = useRef<HTMLDivElement | null>(null);
+  const perf = usePerformanceProfile();
 
-  // 测量元素尺寸 - 添加节流
+  // 测量节流/去抖定时器
   const measureThrottleRef = useRef<number | null>(null);
+  // 可见性监听，避免后台标签持续计算
+  const pageHiddenRef = useRef<boolean>(typeof document !== 'undefined' ? document.hidden : false);
   const lastMeasuredRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   
   const measureElement = useCallback(() => {
+    // 页面不可见时跳过测量，避免后台持续计算
+    if (pageHiddenRef.current) return;
     if (!elementRef.current) return;
 
     const rect = elementRef.current.getBoundingClientRect();
@@ -68,16 +75,18 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
       // 检查尺寸是否真正变化（避免微小变化触发重渲染）
       const widthDiff = Math.abs(lastMeasuredRef.current.width - rect.width);
       const heightDiff = Math.abs(lastMeasuredRef.current.height - rect.height);
+      // 预置阈值：仅当 >=8px 时才更新
+      const THRESHOLD_PX = 8;
       
-      if (widthDiff < 2 && heightDiff < 2) {
+      if (widthDiff < THRESHOLD_PX && heightDiff < THRESHOLD_PX) {
         return; // 变化太小，跳过
       }
       
       lastMeasuredRef.current = { width: rect.width, height: rect.height };
       
       setSize(prev => {
-        // 只有当尺寸真正变化时才更新状态，避免不必要的重渲染
-        if (Math.abs(prev.width - rect.width) < 2 && Math.abs(prev.height - rect.height) < 2) {
+        // 二次阈值判断，进一步避免频繁状态更新
+        if (Math.abs(prev.width - rect.width) < THRESHOLD_PX && Math.abs(prev.height - rect.height) < THRESHOLD_PX) {
           return prev;
         }
         return {
@@ -91,6 +100,10 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
   // 监听 widgetSize 变化，强制重新测量
   // 使用 useLayoutEffect 确保在浏览器绘制前更新，减少闪烁
   useLayoutEffect(() => {
+    // 监听页面可见性变化，恢复/暂停测量
+    const onVisibility = () => { pageHiddenRef.current = document.hidden; };
+    document.addEventListener('visibilitychange', onVisibility);
+
     // 立即测量一次
     measureElement();
     
@@ -98,7 +111,10 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
     // 确保动画结束后尺寸是正确的
     const timer = setTimeout(measureElement, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [measureElement, widgetSize]);
 
   // Ref callback
@@ -107,22 +123,36 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
       elementRef.current = node;
       measureElement();
 
-      // 使用 ResizeObserver 监听尺寸变化
-      // 使用 requestAnimationFrame 优化性能，避免在一帧内多次触发重绘
-      const resizeObserver = new ResizeObserver(() => {
-        window.requestAnimationFrame(() => {
-          measureElement();
+      // 低端设备：默认不持续监听，改为按需测量
+      if (!perf.lowEndDevice) {
+        // 使用 ResizeObserver 监听尺寸变化
+        const resizeObserver = new ResizeObserver(() => {
+          if (pageHiddenRef.current) return;
+          // 采用更保守的监听：仅尾触发，周期 500ms
+          if (measureThrottleRef.current) {
+            // 已有等待中的测量，不再重复排队
+            return;
+          }
+          measureThrottleRef.current = window.setTimeout(() => {
+            measureElement();
+            measureThrottleRef.current = null;
+          }, 5000);
         });
-      });
-      resizeObserver.observe(node);
-
-      // 保存到节点以便清理
-      (node as any).__widgetResizeObserver = resizeObserver;
+        resizeObserver.observe(node);
+        (node as any).__widgetResizeObserver = resizeObserver;
+      } else {
+        // 低端设备：仅在首次挂载测量一次即可
+        (node as any).__widgetResizeObserver = null;
+      }
     } else if (elementRef.current) {
       // 清理
       const observer = (elementRef.current as any).__widgetResizeObserver;
       if (observer) {
         observer.disconnect();
+      }
+      if (measureThrottleRef.current) {
+        window.clearTimeout(measureThrottleRef.current);
+        measureThrottleRef.current = null;
       }
       elementRef.current = null;
     }
