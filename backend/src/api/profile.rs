@@ -2787,22 +2787,45 @@ pub async fn get_recent_activities(
             let activities: Vec<ActivityItem> = records
                 .into_iter()
                 .map(|record| {
-                    // 从 changed_fields 中提取信息
                     let changed_fields = record.changed_fields.clone();
-                    let item_type = changed_fields
-                        .get("item_type")
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
-                    let item_title = changed_fields
-                        .get("title")
-                        .and_then(|v| v.as_str())
-                        .map(String::from)
-                        .or_else(|| {
-                            changed_fields
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .map(String::from)
-                        });
+
+                    // 尝试从 new_data 或 old_data 中提取标题和类型
+                    let (item_title, item_type) = if let Some(new_data) = &record.new_data {
+                        let title = new_data
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| new_data.get("name").and_then(|v| v.as_str()))
+                            .or_else(|| new_data.get("full_name").and_then(|v| v.as_str()))
+                            .map(String::from);
+
+                        let item_type = new_data
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+
+                        (title, item_type)
+                    } else if let Some(old_data) = &record.old_data {
+                        let title = old_data
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| old_data.get("name").and_then(|v| v.as_str()))
+                            .or_else(|| old_data.get("full_name").and_then(|v| v.as_str()))
+                            .map(String::from);
+
+                        let item_type = old_data
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+
+                        (title, item_type)
+                    } else {
+                        (None, None)
+                    };
+
+                    // 如果 new_data/old_data 中没有标题，尝试使用平台名称作为后备
+                    let final_title = item_title.or_else(|| {
+                        Some(format!("{} 数据", record.platform_name))
+                    });
 
                     ActivityItem {
                         id: record.id,
@@ -2810,7 +2833,7 @@ pub async fn get_recent_activities(
                         changed_fields,
                         change_date: record.change_date.to_string(),
                         item_type,
-                        item_title,
+                        item_title: final_title,
                     }
                 })
                 .collect();

@@ -17,7 +17,7 @@ const DEBOUNCE_DELAY = 300; // 300ms 防抖
 interface Activity {
   id: number;
   platform_name: string;
-  changed_fields: any;
+  changed_fields: Record<string, any> | string[]; // 可以是字段名数组或字段-值对象
   change_date: string;
   item_type?: string;
   item_title?: string;
@@ -52,13 +52,185 @@ const PlatformIcon = memo(({ platformName }: { platformName: string }) => {
 
 PlatformIcon.displayName = 'PlatformIcon';
 
+// 格式化值以便显示
+const formatValue = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'number') return value.toString();
+  if (typeof value === 'string') {
+    // 如果是时间戳或日期字符串
+    if (!isNaN(Date.parse(value)) && value.match(/^\d{4}-\d{2}-\d{2}/)) {
+      const date = new Date(value);
+      return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object') {
+    // 处理对象类型，如 {old: xxx, new: xxx}
+    if (value.old !== undefined && value.new !== undefined) {
+      return `${formatValue(value.old)} → ${formatValue(value.new)}`;
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+};
+
+// 解析字段名，去除技术性描述
+const parseFieldName = (fieldStr: string): { name: string; skip: boolean } => {
+  // 过滤掉技术性描述 - 这些通常是数据库级别的技术信息
+  const skipPatterns = [
+    /\(array has \d+ more elements not checked\)/i,
+    /\(large array length:/i,
+    /\(array length:/i,
+    /\(comparison truncated\)/i,
+    /\(deep change\)/i,
+  ];
+
+  // 检查是否应该跳过
+  const shouldSkip = skipPatterns.some(pattern => pattern.test(fieldStr));
+  if (shouldSkip) {
+    return { name: '', skip: true };
+  }
+
+  // 提取实际的字段名（去除技术描述和数字后缀）
+  let cleanName = fieldStr
+    .replace(/\s*\(.*?\)\s*/g, '') // 移除括号内容
+    .replace(/\s+\+\d+\s*$/g, '') // 移除类似 "+48", "+6682" 的数字后缀
+    .trim();
+
+  // 如果字段名为空，跳过
+  if (!cleanName) {
+    return { name: '', skip: true };
+  }
+
+  // 如果是嵌套字段，智能处理
+  const parts = cleanName.split('.');
+  if (parts.length > 1) {
+    // 检查最后一部分是否是数组索引
+    const lastPart = parts[parts.length - 1];
+    if (!isNaN(Number(lastPart))) {
+      // 如果最后是数字索引（如 games.0），取倒数第二个
+      cleanName = parts[parts.length - 2] || parts[0];
+    } else {
+      // 否则取最后一部分（如 games.name -> name）
+      cleanName = lastPart;
+    }
+  }
+
+  return { name: cleanName, skip: false };
+};
+
+// 生成详细的活动描述
+const getDetailedDescription = (activity: Activity): { title: string; details: string[] } => {
+  const changedFields = activity.changed_fields || {};
+  const details: string[] = [];
+  const seenFields = new Set<string>(); // 去重
+
+  // 获取标题
+  let title = activity.item_title || '未知项目';
+
+  // 如果 changed_fields 是对象，尝试从中提取标题
+  if (!Array.isArray(changedFields) && typeof changedFields === 'object') {
+    title = activity.item_title ||
+            changedFields.title ||
+            changedFields.name ||
+            '未知项目';
+  }
+
+  // 字段名称映射（中文）
+  const fieldMap: Record<string, string> = {
+    play_time: '游玩时长',
+    playtime_2weeks: '近两周游玩',
+    playtime_forever: '总游玩时长',
+    achievement_count: '成就数量',
+    achievements: '成就',
+    last_played: '最后游玩时间',
+    status: '状态',
+    rating: '评分',
+    progress: '进度',
+    tags: '标签',
+    notes: '笔记',
+    note: '笔记',
+    favorite: '收藏状态',
+    img_icon_url: '图标',
+    last_sync: '同步时间',
+    description: '描述',
+    category: '分类',
+    genres: '游戏类型',
+    name: '名称',
+    title: '标题',
+    watchers_count: '关注数',
+    watchers: '关注者',
+    stargazers_count: '星标数',
+    forks_count: '分支数',
+    open_issues_count: '议题数',
+    liked_songs: '喜欢的歌曲',
+    playlists: '歌单',
+    picUrl: '封面图',
+    coverUrl: '封面',
+    sr: '采样率',
+    games: '游戏列表',
+    videos: '视频列表',
+    songs: '歌曲列表',
+    albums: '专辑列表',
+    // 可以根据实际字段继续添加
+  };
+
+  // 处理字段变更列表
+  let fieldNames: string[] = [];
+
+  if (Array.isArray(changedFields)) {
+    // 如果是数组格式（字段名列表）
+    fieldNames = changedFields
+      .map(field => {
+        const parsed = parseFieldName(field);
+        return parsed.skip ? null : parsed.name;
+      })
+      .filter((field): field is string =>
+        field !== null &&
+        field.length > 0 &&
+        !['item_type', 'title', 'name', 'id', 'metadata_id', 'user_id', 'platform_id'].includes(field)
+      );
+  } else if (typeof changedFields === 'object') {
+    // 如果是对象格式（字段名-值对）
+    fieldNames = Object.keys(changedFields).filter(
+      key => !['item_type', 'title', 'name', 'id', 'metadata_id', 'user_id', 'platform_id'].includes(key)
+    );
+  }
+
+  if (fieldNames.length > 0) {
+    fieldNames.forEach(field => {
+      // 去重
+      if (seenFields.has(field)) return;
+      seenFields.add(field);
+
+      const displayName = fieldMap[field] || field;
+
+      // 如果是对象格式，尝试获取值
+      if (!Array.isArray(changedFields) && typeof changedFields === 'object') {
+        const value = changedFields[field];
+        if (value !== null && value !== undefined) {
+          const formattedValue = formatValue(value);
+          // 如果有具体的值，显示出来；否则只显示字段名
+          if (formattedValue && formattedValue.length > 0 && formattedValue.length < 30) {
+            details.push(`${displayName}: ${formattedValue}`);
+            return;
+          }
+        }
+      }
+
+      // 否则只显示字段名
+      details.push(displayName);
+    });
+  }
+
+  return { title, details };
+};
+
 // 活动项组件 - 优化渲染性能
 const ActivityItem = memo(({ activity, index }: { activity: Activity; index: number }) => {
-  const description = useMemo(() => {
-    if (activity.item_title) return activity.item_title;
-    if (activity.item_type) return `更新了${activity.item_type}数据`;
-    return '数据更新';
-  }, [activity.item_title, activity.item_type]);
+  const { title, details } = useMemo(() => getDetailedDescription(activity), [activity]);
 
   const timeAgo = useMemo(() => {
     const date = new Date(activity.change_date);
@@ -83,15 +255,21 @@ const ActivityItem = memo(({ activity, index }: { activity: Activity; index: num
       initial={{ x: -10, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ delay: index * 0.05 }}
-      className="flex items-center gap-2 p-1.5 rounded-md bg-white/40 dark:bg-white/[0.02] hover:bg-white/60 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+      className="flex items-start gap-2 p-2 rounded-md bg-white/40 dark:bg-white/[0.02] hover:bg-white/60 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
     >
-      <div className="flex-shrink-0 text-gray-600 dark:text-gray-400">
+      <div className="flex-shrink-0 text-gray-600 dark:text-gray-400 mt-0.5">
         <PlatformIcon platformName={activity.platform_name} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-gray-800 dark:text-gray-200 truncate leading-tight">
-          {description}
+        <div className="text-[11px] font-medium text-gray-800 dark:text-gray-200 truncate leading-tight">
+          {title}
         </div>
+        {details.length > 0 && (
+          <div className="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">
+            {details.slice(0, 2).join(' · ')}
+            {details.length > 2 && ` +${details.length - 2}`}
+          </div>
+        )}
         <div className="text-[9px] text-gray-500 dark:text-gray-400 mt-0.5">
           {timeAgo}
         </div>
@@ -164,10 +342,43 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
   useEffect(() => {
     if (isPreview) {
       setActivities([
-        { id: 1, platform_name: 'steam', changed_fields: {}, change_date: new Date().toISOString(), item_title: '示例游戏' },
-        { id: 2, platform_name: 'bilibili', changed_fields: {}, change_date: new Date().toISOString(), item_title: '示例视频' },
-        { id: 3, platform_name: 'netease', changed_fields: {}, change_date: new Date().toISOString(), item_title: '示例歌曲' },
-        { id: 4, platform_name: 'github', changed_fields: {}, change_date: new Date().toISOString(), item_title: '示例提交' }
+        {
+          id: 1,
+          platform_name: 'steam',
+          changed_fields: ['playtime_forever', 'achievement_count', 'last_played'],
+          change_date: new Date().toISOString(),
+          item_title: 'Elden Ring',
+          item_type: 'game'
+        },
+        {
+          id: 2,
+          platform_name: 'github',
+          changed_fields: ['watchers_count', 'stargazers_count +15', 'open_issues_count'],
+          change_date: new Date(Date.now() - 3600000).toISOString(),
+          item_title: 'Myriad',
+          item_type: 'repository'
+        },
+        {
+          id: 3,
+          platform_name: 'netease',
+          changed_fields: [
+            'playlists',
+            'coverUrl +48',
+            'picUrl',
+            'sr (deleted) +6682'
+          ],
+          change_date: new Date(Date.now() - 7200000).toISOString(),
+          item_title: '我的音乐收藏',
+          item_type: 'profile'
+        },
+        {
+          id: 4,
+          platform_name: 'bilibili',
+          changed_fields: ['videos.0.title', 'status', 'progress'],
+          change_date: new Date(Date.now() - 86400000).toISOString(),
+          item_title: '技术分享合集',
+          item_type: 'collection'
+        }
       ]);
       setLoading(false);
       return;

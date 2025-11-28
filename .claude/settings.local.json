@@ -45,7 +45,9 @@
       "Bash(python -m json.tool:*)",
       "Bash(timeout /t 2)",
       "Bash(timeout /t 10 /nobreak)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(Select-String \"error|warning|Result\" -CaseSensitive)",
+      "Bash(timeout /t 15)"
     ],
     "deny": [],
     "ask": []
