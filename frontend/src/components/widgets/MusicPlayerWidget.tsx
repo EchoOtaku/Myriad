@@ -217,14 +217,15 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
       lastUpdateTime = now;
       
       const index = getCurrentLyricIndex(lyrics, audio.currentTime);
-      if (index !== currentLyricIndex) {
-        setCurrentLyricIndex(index);
-      }
+      setCurrentLyricIndex(prev => {
+        if (prev !== index) return index;
+        return prev;
+      });
     };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
-  }, [isPlaying, currentSong, lyrics, currentLyricIndex, isPreview]);
+  }, [isPlaying, currentSong, lyrics, isPreview]);
 
   if (!isEnabled) {
     return (
@@ -300,15 +301,18 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
            <div className="absolute inset-0 z-0 overflow-hidden">
               <motion.div 
                 key={currentSong.cover}
-                className="absolute inset-0 bg-cover bg-center blur-xl opacity-30 dark:opacity-20"
+                className={`absolute inset-0 bg-cover bg-center ${anim.level === 'standard' ? 'blur-xl' : 'blur-sm'} opacity-30 dark:opacity-20`}
                 style={{ backgroundImage: `url(${currentSong.cover || ''})` }}
                 initial={{ opacity: 0, scale: 1.2 }}
-                animate={{ 
+                animate={anim.level === 'standard' ? { 
                   opacity: 0.3,
                   scale: [1.2, 1.5, 1.2], // 加大呼吸幅度
                   rotate: [0, 15, 0, -15, 0], // 增加旋转角度
                   x: [0, 20, 0, -20, 0], // 添加水平漂移
                   y: [0, -15, 0, 15, 0], // 添加垂直漂移
+                } : {
+                  opacity: 0.3,
+                  scale: 1.2
                 }}
                 transition={{ 
                   opacity: { duration: 1 },
