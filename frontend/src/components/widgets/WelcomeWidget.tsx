@@ -133,7 +133,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
       {/* 背景装饰 */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
       <motion.div 
-        className="absolute -right-16 -top-16 w-48 h-48 rounded-full blur-3xl"
+        className={`absolute -right-16 -top-16 w-48 h-48 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
         style={{ background: 'var(--color-primary)' }}
         animate={anim.loop ? { 
           opacity: [0.08, 0.15, 0.08],

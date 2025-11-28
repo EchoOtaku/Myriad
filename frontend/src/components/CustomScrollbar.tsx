@@ -6,7 +6,7 @@
  * - 使用壁纸色（--color-primary）
  * - 流畅的进入/退出/滚动动画
  * - 超跟手的拖拽体验
- * - 仅在桌面端显示，移动端隐藏
+ * - 仅在桌面端显示，移动端完全不加载
  * - 右侧 1rem 定位
  * - SPA 路由切换时平滑过渡尺寸
  */
@@ -14,7 +14,54 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 
+// 检测是否为移动端
+const getIsMobile = (): boolean => {
+  if (typeof window === 'undefined') return true; // SSR 时视为移动端，不渲染
+  return window.matchMedia('(max-width: 767px)').matches;
+};
+
+/**
+ * 主导出组件 - 移动端守卫
+ * 在移动端完全不渲染内部组件，避免事件监听器注册
+ */
 export default function CustomScrollbar() {
+  const [isMobile, setIsMobile] = useState(getIsMobile);
+  
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      setIsMobile(e.matches);
+    };
+    
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleChange);
+    } else {
+      mediaQuery.addListener(handleChange);
+    }
+    
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', handleChange);
+      } else {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
+  }, []);
+  
+  // 移动端完全不渲染，避免所有事件监听器
+  if (isMobile) {
+    return null;
+  }
+  
+  return <CustomScrollbarInner />;
+}
+
+/**
+ * 内部滚动条组件 - 只在桌面端渲染
+ */
+function CustomScrollbarInner() {
   const location = useLocation();
   const [isDragging, setIsDragging] = useState(false);
   const [isVisible, setIsVisible] = useState(false);

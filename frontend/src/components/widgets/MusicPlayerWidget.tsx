@@ -230,8 +230,9 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   if (!isEnabled) {
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
-        <motion.div 
-          className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl opacity-10"
+        {/* 背景光效 - 低端设备使用 blur-xl 减少性能消耗 */}
+        <div 
+          className={`absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-10 ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
           style={{ background: themeColor }}
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-3" style={{ padding: `${12 * scale}px` }}>
@@ -256,8 +257,9 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   if (!currentSong) {
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
-        <motion.div 
-          className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl opacity-10"
+        {/* 背景光效 - 低端设备使用 blur-xl */}
+        <div 
+          className={`absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-10 ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
           style={{ background: themeColor }}
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-3" style={{ padding: `${12 * scale}px` }}>
@@ -326,40 +328,54 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
               <div className="absolute inset-0 bg-white/40 dark:bg-black/40 mix-blend-overlay" />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white/10 dark:to-black/10" />
               
-              {/* 动态光斑效果 - 随播放状态呼吸 */}
-              {isPlaying && (
+              {/* 动态光斑效果 - 低端设备完全禁用 */}
+              {isPlaying && anim.level === 'standard' && (
                 <motion.div 
-                  className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr from-white/20 to-transparent rounded-full blur-3xl mix-blend-overlay"
+                  className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr from-white/20 to-transparent rounded-full blur-xl mix-blend-overlay"
                   animate={{ 
                     scale: [0.8, 1.1, 0.8],
                     opacity: [0.2, 0.4, 0.2],
                   }}
                   transition={{
                     duration: 4,
-                    repeat: anim.loop ? Infinity : 0,
+                    repeat: Infinity,
                     ease: "easeInOut"
                   }}
                 />
               )}
            </div>
 
-           <AnimatePresence mode="wait">
-              {lyrics.length > 0 ? (
-                <motion.div 
-                  key={currentLyricIndex}
-                  className="relative z-10 font-bold text-gray-800 dark:text-white line-clamp-2 w-full transition-all duration-300 ease-out"
-                  style={{ fontSize: `${18 * fontScale}px` }}
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  {lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : '')}
-                </motion.div>
-              ) : (
-                <div className="relative z-10 text-sm text-gray-500 dark:text-gray-400">暂无歌词</div>
-              )}
-           </AnimatePresence>
+           {/* 歌词显示 - 低端设备使用简单过渡，标准设备使用 AnimatePresence */}
+           {anim.level === 'standard' ? (
+             <AnimatePresence mode="wait">
+                {lyrics.length > 0 ? (
+                  <motion.div 
+                    key={currentLyricIndex}
+                    className="relative z-10 font-bold text-gray-800 dark:text-white line-clamp-2 w-full transition-all duration-300 ease-out"
+                    style={{ fontSize: `${18 * fontScale}px` }}
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={{ duration: 0.4 }}
+                  >
+                    {lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : '')}
+                  </motion.div>
+                ) : (
+                  <div className="relative z-10 text-sm text-gray-500 dark:text-gray-400">暂无歌词</div>
+                )}
+             </AnimatePresence>
+           ) : (
+             // 低端设备：使用简单的 CSS 过渡，避免频繁的组件挂载/卸载
+             <div 
+               className="relative z-10 font-bold text-gray-800 dark:text-white line-clamp-2 w-full transition-opacity duration-300 ease-out"
+               style={{ fontSize: `${18 * fontScale}px` }}
+             >
+               {lyrics.length > 0 
+                 ? (lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : ''))
+                 : <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">暂无歌词</span>
+               }
+             </div>
+           )}
         </div>
 
         {/* 下半部分：信息 + 控制 (1/3) */}
@@ -444,20 +460,27 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
       className="relative h-full w-full rounded-xl overflow-hidden glass cursor-pointer group"
       onClick={handleClick}
     >
-      {/* 背景光效 - 呼吸效果 */}
-      <motion.div 
-        className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
-        style={{ background: themeColor }}
-        animate={{ 
-          opacity: [0.1, 0.2, 0.1],
-          scale: [1, 1.15, 1]
-        }}
-        transition={{
-          duration: 3,
-          repeat: anim.loop ? Infinity : 0,
-          ease: "easeInOut"
-        }}
-      />
+      {/* 背景光效 - 低端设备禁用动画和减少 blur */}
+      {anim.level === 'standard' ? (
+        <motion.div 
+          className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-xl"
+          style={{ background: themeColor }}
+          animate={{ 
+            opacity: [0.1, 0.2, 0.1],
+            scale: [1, 1.15, 1]
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+      ) : (
+        <div 
+          className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-xl opacity-10"
+          style={{ background: themeColor }}
+        />
+      )}
       
       {/* 右上角：专辑封面 - 浮动元素 */}
       <AlbumCover 

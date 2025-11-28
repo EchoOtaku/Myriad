@@ -167,7 +167,7 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass flex flex-col p-5">
         {/* 背景装饰 */}
         <motion.div 
-          className="absolute -left-10 -bottom-10 w-40 h-40 rounded-full blur-3xl opacity-20"
+          className={`absolute -left-10 -bottom-10 w-40 h-40 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'} opacity-20`}
           style={{ background: themeColor }}
         />
         <div className="absolute top-2 left-4 text-8xl opacity-[0.08] font-serif text-gray-500 leading-none select-none pointer-events-none">"</div>
@@ -250,7 +250,7 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景光效 - 呼吸效果 */}
       <motion.div 
-        className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
+        className={`absolute -right-8 -top-8 w-32 h-32 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
         style={{ background: themeColor }}
         animate={anim.loop ? { 
           opacity: [0.08, 0.15, 0.08],

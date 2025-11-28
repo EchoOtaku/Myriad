@@ -718,7 +718,7 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
     <div className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 动态背景光效 */}
       <div 
-        className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl opacity-10 group-hover:opacity-20 transition-opacity"
+        className={`absolute -right-10 -top-10 w-40 h-40 rounded-full ${animLevel.level === 'standard' ? 'blur-3xl' : 'blur-xl'} opacity-10 group-hover:opacity-20 transition-opacity`}
         style={{ background: platformConfig.color }}
       />
       

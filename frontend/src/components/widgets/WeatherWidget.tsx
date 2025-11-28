@@ -154,7 +154,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 动态背景光效 */}
         <motion.div 
-          className="absolute -right-8 -top-8 w-48 h-48 rounded-full blur-3xl"
+          className={`absolute -right-8 -top-8 w-48 h-48 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
           style={{ background: themeColor }}
           animate={anim.loop ? { opacity: [0.1, 0.2, 0.1], scale: [1, 1.1, 1] } : { opacity: 0.12, scale: 1 }}
           transition={anim.loop ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
@@ -277,7 +277,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 动态背景光效 */}
         <motion.div 
-          className="absolute -right-8 -top-8 w-48 h-48 rounded-full blur-3xl"
+          className={`absolute -right-8 -top-8 w-48 h-48 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
           style={{ background: themeColor }}
           animate={anim.loop ? { opacity: [0.1, 0.2, 0.1], scale: [1, 1.1, 1] } : { opacity: 0.12, scale: 1 }}
           transition={anim.loop ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
@@ -345,7 +345,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 动态背景光效 - 呼吸效果 */}
       <motion.div 
-        className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl"
+        className={`absolute -right-8 -top-8 w-32 h-32 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
         style={{ background: themeColor }}
         animate={anim.loop ? { opacity: [0.08, 0.15, 0.08], scale: [1, 1.1, 1] } : { opacity: 0.12, scale: 1 }}
         transition={anim.loop ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}

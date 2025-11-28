@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * 设备性能画像与动态特性检测
@@ -12,11 +12,11 @@ export interface PerformanceProfile {
   deviceMemory: number | null;
 }
 
-// SSR 安全的默认值
+// SSR 安全的默认值 - 保守策略：假设为低端设备
 const DEFAULT_PROFILE: PerformanceProfile = {
-  isMobile: false,
+  isMobile: true,  // SSR 时假设为移动端，避免注册不必要的监听器
   reduceMotion: false,
-  lowEndDevice: false,
+  lowEndDevice: true,  // SSR 时假设为低端设备，避免复杂计算
   hardwareConcurrency: null,
   deviceMemory: null,
 };
@@ -60,13 +60,31 @@ function detectPerformanceProfile(): PerformanceProfile {
   }
 }
 
+// 立即获取初始值（如果在浏览器环境）
+const getInitialProfile = (): PerformanceProfile => {
+  if (isBrowser) {
+    return detectPerformanceProfile();
+  }
+  return DEFAULT_PROFILE;
+};
+
 export function usePerformanceProfile(): PerformanceProfile {
-  // 使用 useState + useEffect 确保 SSR 和客户端水合时行为一致
-  const [profile, setProfile] = useState<PerformanceProfile>(DEFAULT_PROFILE);
+  // 使用同步初始化，避免首次渲染时使用错误的默认值
+  // 这样可以确保在组件首次渲染时就能获取正确的设备信息
+  const [profile, setProfile] = useState<PerformanceProfile>(getInitialProfile);
 
   useEffect(() => {
-    // 仅在客户端执行检测
-    setProfile(detectPerformanceProfile());
+    // 客户端水合后再次检测，确保值是正确的
+    const detected = detectPerformanceProfile();
+    setProfile(prev => {
+      // 只在值真正变化时更新，避免不必要的重渲染
+      if (prev.isMobile !== detected.isMobile || 
+          prev.lowEndDevice !== detected.lowEndDevice ||
+          prev.reduceMotion !== detected.reduceMotion) {
+        return detected;
+      }
+      return prev;
+    });
   }, []);
 
   return profile;
