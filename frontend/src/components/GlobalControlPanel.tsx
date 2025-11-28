@@ -485,7 +485,7 @@ const GlobalControlPanel: React.FC = () => {
   }, []); // 移除 loadDynamicContents 依赖
 
   // 动态计算展开面板的高度 - 使用克隆测量方案（性能优化版）
-  // ⚠️ 关键优化: 增加节流时间,减少 DOM 克隆频率
+  // ⚠️ 关键优化: 移动端改为轻量监测（无 ResizeObserver），桌面保留 Observer
   useLayoutEffect(() => {
     if (!triggerRef.current) return;
     const triggerEl = triggerRef.current;
@@ -498,14 +498,16 @@ const GlobalControlPanel: React.FC = () => {
     const contentEl = expandedContentRef.current;
 
     let lastHeight = 0;
+    let lastNaturalHeight = 0;
     let lastUpdateTime = 0;
     let pendingMeasure = false;
     let measureTimeout: number | null = null;
 
-    // ⚠️ 增加节流间隔,减少 DOM 克隆次数
-    // 移动端进一步增加节流时间,避免滑动时频繁触发
-    const isMobileDevice = window.innerWidth <= 640;
-    const THROTTLE_MS = isMobileDevice ? 500 : (anim.level === 'standard' ? 300 : 500);
+    // ⚠️ 移动端检测 - 使用性能配置而非 window.innerWidth，更可靠
+    const isMobileDevice = perf.isMobile || perf.lowEndDevice;
+    
+    // ⚠️ 移动端使用更长的节流时间，减少测量频率
+    const THROTTLE_MS = isMobileDevice ? 1000 : (anim.level === 'standard' ? 300 : 500);
 
     const measure = () => {
       const now = Date.now();
@@ -546,6 +548,7 @@ const GlobalControlPanel: React.FC = () => {
 
       // 适当补偿 (考虑内边距 + 过渡)
       const compensated = Math.ceil(raw * 1.08);
+      lastNaturalHeight = raw;
 
       if (Math.abs(compensated - lastHeight) > 4) {
         lastHeight = compensated;
@@ -556,6 +559,77 @@ const GlobalControlPanel: React.FC = () => {
     // 立即测量，确保动画起始帧即为正确高度
     measure();
 
+    // ⚠️ 关键优化: 移动端/低端设备禁用 Observer，避免滚动时触发性能问题
+    // 只在展开时进行一次测量，之后不再监听变化
+    if (isMobileDevice) {
+      // 移动端: 初始测量后启动轻量监测，避免滚动/视口变化导致高度失准
+      const delayedMeasure = setTimeout(measure, 200);
+
+      let scrollIdleId: number | null = null;
+      const handleScroll = () => {
+        if (scrollIdleId) {
+          clearTimeout(scrollIdleId);
+        }
+        scrollIdleId = window.setTimeout(() => {
+          scrollIdleId = null;
+          lastUpdateTime = 0; // 强制允许下一次测量
+          measure();
+        }, 180);
+      };
+      window.addEventListener('scroll', handleScroll, { passive: true });
+
+      const handleViewportResize = () => {
+        lastUpdateTime = 0;
+        measure();
+      };
+      window.addEventListener('resize', handleViewportResize);
+      window.addEventListener('orientationchange', handleViewportResize);
+
+      const visualViewport = window.visualViewport;
+      const handleVisualViewportResize = visualViewport
+        ? () => {
+            lastUpdateTime = 0;
+            measure();
+          }
+        : null;
+      if (visualViewport && handleVisualViewportResize) {
+        visualViewport.addEventListener('resize', handleVisualViewportResize);
+      }
+
+      // 轮询内容自然高度，只有在真实高度变化时才触发克隆测量
+      let pollId: number | null = null;
+      const startPolling = () => {
+        pollId = window.setInterval(() => {
+          const currentNaturalHeight = contentEl.scrollHeight;
+          if (Math.abs(currentNaturalHeight - lastNaturalHeight) > 6) {
+            lastUpdateTime = 0;
+            measure();
+          }
+        }, 450);
+      };
+      startPolling();
+
+      return () => {
+        clearTimeout(delayedMeasure);
+        if (scrollIdleId) {
+          clearTimeout(scrollIdleId);
+        }
+        window.removeEventListener('scroll', handleScroll);
+        window.removeEventListener('resize', handleViewportResize);
+        window.removeEventListener('orientationchange', handleViewportResize);
+        if (visualViewport && handleVisualViewportResize) {
+          visualViewport.removeEventListener('resize', handleVisualViewportResize);
+        }
+        if (pollId) {
+          clearInterval(pollId);
+        }
+        if (measureTimeout !== null) {
+          clearTimeout(measureTimeout);
+        }
+      };
+    }
+
+    // 桌面端: 使用 Observer 监听变化
     const resizeObserver = new ResizeObserver(() => measure());
     resizeObserver.observe(contentEl);
 
@@ -580,7 +654,7 @@ const GlobalControlPanel: React.FC = () => {
         clearTimeout(measureTimeout);
       }
     };
-  }, [isExpanded, isAuthenticated, perf.lowEndDevice, anim.level]);
+  }, [isExpanded, isAuthenticated, perf.lowEndDevice, perf.isMobile, anim.level]);
 
   // 统一暂停定时器策略：页面不可见时发事件给子组件停止动画（可选扩展）
   useEffect(() => {

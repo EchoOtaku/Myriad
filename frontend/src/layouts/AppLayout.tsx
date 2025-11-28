@@ -10,6 +10,7 @@ import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtract
 import { useWallpaper } from '../hooks/useWallpaper';
 import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
+import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import {
   shouldApplyColorExtraction,
   getColorFromCache,
@@ -37,6 +38,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const { notifications } = useNotification();
+  
+  // ℹ️ 性能优化: 移动端/低端设备禁用背景动画
+  const anim = useAnimationLevel();
 
   // 壁纸管理 Hook
   const { loadWallpaper: loadWallpaperFromHook } = useWallpaper();
@@ -1032,11 +1036,15 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div id="bg-container" className="fixed inset-0 -z-10 overflow-hidden">
         <div id="wallpaper" className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-in-out"></div>
         <div id="bg-gradient" className="absolute inset-0 bg-gradient-to-b from-transparent from-[35%] via-white/40 via-[55%] to-white/90 to-[85%] transition-opacity duration-500 ease-out"></div>
-        <div className="absolute inset-0 opacity-20 transition-opacity duration-700">
-          <div className="absolute top-[40%] left-10 w-96 h-96 bg-green-400/30 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-          <div className="absolute top-[40%] right-10 w-96 h-96 bg-pink-400/30 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-          <div className="absolute top-[60%] left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/25 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
-        </div>
+        {/* ⚠️ 性能优化: 只在标准设备上渲染 blur-3xl 动画背景
+            移动端/低端设备上这些动画会导致滚动时性能严重下降并可能触发崩溃 */}
+        {anim.level === 'standard' && (
+          <div className="absolute inset-0 opacity-20 transition-opacity duration-700">
+            <div className="absolute top-[40%] left-10 w-96 h-96 bg-green-400/30 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+            <div className="absolute top-[40%] right-10 w-96 h-96 bg-pink-400/30 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+            <div className="absolute top-[60%] left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/25 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
+          </div>
+        )}
         <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
       </div>
 
