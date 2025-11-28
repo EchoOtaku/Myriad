@@ -117,6 +117,10 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
     };
   }, [measureElement, widgetSize]);
 
+  // 使用 ref 存储 lowEndDevice 值，避免 useCallback 依赖问题
+  const lowEndDeviceRef = useRef(perf.lowEndDevice);
+  lowEndDeviceRef.current = perf.lowEndDevice;
+
   // Ref callback
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (node) {
@@ -124,7 +128,7 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
       measureElement();
 
       // 低端设备：默认不持续监听，改为按需测量
-      if (!perf.lowEndDevice) {
+      if (!lowEndDeviceRef.current) {
         // 使用 ResizeObserver 监听尺寸变化
         const resizeObserver = new ResizeObserver(() => {
           if (pageHiddenRef.current) return;

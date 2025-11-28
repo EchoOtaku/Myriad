@@ -53,7 +53,7 @@ export function useLazyImage(
     };
 
     // 如果浏览器支持 IntersectionObserver
-    if ('IntersectionObserver' in window) {
+    if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
       observerRef.current = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {

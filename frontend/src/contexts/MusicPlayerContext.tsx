@@ -30,20 +30,35 @@ const MusicPlayerContext = createContext<MusicPlayerContextType | null>(null);
 
 // Provider 组件 - 在 AppLayout 或 App 中使用
 export function MusicPlayerProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<MusicPlayerState>(() => {
-    // 初始化时从全局状态读取
-    const globalState = (window as any).__musicPlayerState;
-    return {
-      currentSong: globalState?.currentSong || null,
-      isEnabled: globalState?.isEnabled || false,
-      isPlaying: globalState?.isPlaying || false,
-      musicColor: globalState?.musicColor || '#ef4444',
-      isTempPlay: globalState?.isTempPlay || false,
-      currentSongIndex: globalState?.currentSongIndex || 0,
-      playlistLength: globalState?.playlistLength || 0,
-      playlist: globalState?.playlist || [],
-    };
+  const [state, setState] = useState<MusicPlayerState>({
+    currentSong: null,
+    isEnabled: false,
+    isPlaying: false,
+    musicColor: '#ef4444',
+    isTempPlay: false,
+    currentSongIndex: 0,
+    playlistLength: 0,
+    playlist: [],
   });
+
+  // 在客户端初始化时从全局状态读取
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const globalState = (window as any).__musicPlayerState;
+      if (globalState) {
+        setState({
+          currentSong: globalState.currentSong || null,
+          isEnabled: globalState.isEnabled || false,
+          isPlaying: globalState.isPlaying || false,
+          musicColor: globalState.musicColor || '#ef4444',
+          isTempPlay: globalState.isTempPlay || false,
+          currentSongIndex: globalState.currentSongIndex || 0,
+          playlistLength: globalState.playlistLength || 0,
+          playlist: globalState.playlist || [],
+        });
+      }
+    }
+  }, []);
 
   // 监听音乐播放器状态变化事件（向后兼容）
   useEffect(() => {
@@ -119,17 +134,35 @@ export function useMusicPlayerControl() {
 
 // 降级方案：基于事件的实现（向后兼容）- 优化：使用单个 state 对象减少重渲染
 function useFallbackMusicPlayerControl() {
-  const globalState = (window as any).__musicPlayerState;
-  const [state, setState] = useState<MusicPlayerState>(() => ({
-    currentSong: globalState?.currentSong || null,
-    isEnabled: globalState?.isEnabled || false,
-    isPlaying: globalState?.isPlaying || false,
-    musicColor: globalState?.musicColor || '#ef4444',
-    isTempPlay: globalState?.isTempPlay || false,
-    currentSongIndex: globalState?.currentSongIndex || 0,
-    playlistLength: globalState?.playlistLength || 0,
-    playlist: globalState?.playlist || [],
-  }));
+  const [state, setState] = useState<MusicPlayerState>({
+    currentSong: null,
+    isEnabled: false,
+    isPlaying: false,
+    musicColor: '#ef4444',
+    isTempPlay: false,
+    currentSongIndex: 0,
+    playlistLength: 0,
+    playlist: [],
+  });
+
+  // 在客户端初始化时从全局状态读取
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const globalState = (window as any).__musicPlayerState;
+      if (globalState) {
+        setState({
+          currentSong: globalState.currentSong || null,
+          isEnabled: globalState.isEnabled || false,
+          isPlaying: globalState.isPlaying || false,
+          musicColor: globalState.musicColor || '#ef4444',
+          isTempPlay: globalState.isTempPlay || false,
+          currentSongIndex: globalState.currentSongIndex || 0,
+          playlistLength: globalState.playlistLength || 0,
+          playlist: globalState.playlist || [],
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const handleMusicStateChange = (e: Event) => {

@@ -108,34 +108,53 @@ export interface UseMusicPlayerReturn {
   getPlayModeInfo: () => { icon: React.ReactNode; text: string };
 }
 
-// 全局状态恢复（跨页面切换）
-const getGlobalState = () => (window as any).__musicPlayerState;
+// 全局状态恢复（跨页面切换）- SSR 安全
+const isBrowser = typeof window !== 'undefined';
+
+const getGlobalState = () => {
+  if (!isBrowser) return null;
+  return (window as any).__musicPlayerState;
+};
+
 const setGlobalState = (state: any) => {
+  if (!isBrowser) return;
   (window as any).__musicPlayerState = state;
 };
 
 export function useMusicPlayer(): UseMusicPlayerReturn {
-  // 尝试从全局状态恢复
-  const globalState = getGlobalState();
-  
-  // 基本状态
-  const [playlist, setPlaylist] = useState<Song[]>(globalState?.playlist || []);
-  const [currentSongIndex, setCurrentSongIndex] = useState(globalState?.currentSongIndex || 0);
-  const [currentSong, setCurrentSong] = useState<Song | null>(globalState?.currentSong || null);
-  const [isPlaying, setIsPlaying] = useState(false); // 播放状态不恢复，避免自动播放
+  // 基本状态 - 使用默认值初始化，避免 SSR 问题
+  const [playlist, setPlaylist] = useState<Song[]>([]);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [currentSong, setCurrentSong] = useState<Song | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [volume, setVolume] = useState(0.7);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
-  const [musicEnabled, setMusicEnabled] = useState(globalState?.isEnabled || false);
+  const [musicEnabled, setMusicEnabled] = useState(false);
   const [musicSource, setMusicSource] = useState<MusicSource>('netease');
   const [playlistId, setPlaylistId] = useState('');
   const [musicError, setMusicError] = useState<string>('');
   const [musicPlayerView, setMusicPlayerView] = useState<MusicPlayerView>('info');
   const [playMode, setPlayMode] = useState<PlayMode>('loop');
   const [musicColors, setMusicColors] = useState<MusicColors | null>(null);
+  
+  // 在客户端从全局状态恢复
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    
+    const globalState = getGlobalState();
+    if (globalState) {
+      if (globalState.playlist) setPlaylist(globalState.playlist);
+      if (typeof globalState.currentSongIndex === 'number') setCurrentSongIndex(globalState.currentSongIndex);
+      if (globalState.currentSong) setCurrentSong(globalState.currentSong);
+      if (typeof globalState.isEnabled === 'boolean') setMusicEnabled(globalState.isEnabled);
+    }
+  }, []);
   
   // 搜索和过滤状态
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');

@@ -349,6 +349,11 @@ export default function CustomScrollbar() {
     });
   };
 
+  // SSR 安全检查 - 在服务端渲染时不渲染此组件
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return null;
+  }
+
   // 计算轨道尺寸
   const windowHeight = window.innerHeight;
   const TRACK_HEIGHT = windowHeight * TRACK_HEIGHT_PERCENT;
