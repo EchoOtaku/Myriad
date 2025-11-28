@@ -73,6 +73,11 @@ export default function CustomScrollbar() {
   return <CustomScrollbarInner />;
 }
 
+// ⚠️ 关键修复: 将常量移到组件外部，避免每次渲染重新创建
+// 这是导致无限重渲染的根本原因！
+const TRACK_HEIGHT_PERCENT = 0.3;
+const MIN_THUMB_HEIGHT = 40; // 最小 Thumb 高度（px）
+
 /**
  * 内部滚动条组件 - 只在桌面端渲染
  */
@@ -92,10 +97,6 @@ function CustomScrollbarInner() {
   const dragEndTimeRef = useRef(0); // 记录拖动结束时间
   const isRouteTransitioningRef = useRef(false); // 路由切换中，禁止所有更新
   const routeTransitionTimeRef = useRef(0); // 记录路由切换开始时间
-
-  // 轨道容器固定为屏幕30%高度
-  const TRACK_HEIGHT_PERCENT = 0.3;
-  const MIN_THUMB_HEIGHT = 40; // 最小 Thumb 高度（px）
 
   // 计算并更新 Thumb 的位置和高度
   const updateThumb = useCallback(() => {
@@ -156,7 +157,7 @@ function CustomScrollbarInner() {
 
     // 记录当前 scrollTop
     lastScrollTopRef.current = scrollTop;
-  }, [TRACK_HEIGHT_PERCENT, MIN_THUMB_HEIGHT]);
+  }, []); // ⚠️ 修复: 空依赖数组，因为常量已移到组件外部
 
   // 监听滚动、resize 和内容变化
   // ⚠️ 关键优化: 移除 MutationObserver,避免监听整个 body 的 DOM 变化
