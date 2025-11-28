@@ -1087,7 +1087,7 @@ export default function WidgetGrid({
   );
 
   return (
-    <div className="h-full flex flex-col gap-2">
+    <div className={`flex flex-col gap-2 ${isCompact ? 'h-auto' : 'h-full'}`}>
       {/* 编辑模式：小组件库（顶部悬浮） */}
       {libraryContainerClassName ? (
         createPortal(
@@ -1103,7 +1103,7 @@ export default function WidgetGrid({
       )}
 
       {/* 网格区域 */}
-      <div className={`relative w-full flex-1 flex flex-col ${isCompact ? 'justify-start overflow-visible pb-20' : 'justify-end'} min-h-0`}>
+      <div className={`relative w-full flex flex-col ${isCompact ? 'justify-start pb-20' : 'flex-1 justify-end min-h-0'}`}>
         {/* 插入 children (InfoBar) */}
         {children}
 
