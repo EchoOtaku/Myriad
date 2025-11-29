@@ -5,7 +5,6 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useAnimationLevel } from './useAnimationLevel';
 
 // 配置常量 - 使用位运算友好的数值
 const SCALE = 1.02;
@@ -41,7 +40,6 @@ export function useWallpaperParallax(
     scale = SCALE,
   } = options;
 
-  const anim = useAnimationLevel();
   const ref = useRef<{
     tx: number; ty: number; cx: number; cy: number;
     raf: number | null; lt: number; active: boolean;
@@ -66,15 +64,7 @@ export function useWallpaperParallax(
       return;
     }
 
-    // 低端设备：静态放大
-    if (anim.level !== 'standard') {
-      const el = document.getElementById(elementId);
-      if (el) {
-        el.style.transform = `scale(${scale})`;
-        el.style.transformOrigin = 'center';
-      }
-      return;
-    }
+    // 🔧 移除移动端降级逻辑，所有设备都使用完整的视差效果
 
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -187,7 +177,7 @@ export function useWallpaperParallax(
       removeEventListener('deviceorientation', onGyro);
       el.style.transform = el.style.willChange = el.style.transformOrigin = '';
     };
-  }, [anim.level, enabled, enableMouse, enableGyroscope, scale, maxOffset, elementId]);
+  }, [enabled, enableMouse, enableGyroscope, scale, maxOffset, elementId]);
 }
 
 export default useWallpaperParallax;
