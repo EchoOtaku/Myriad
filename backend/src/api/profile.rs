@@ -2823,9 +2823,8 @@ pub async fn get_recent_activities(
                     };
 
                     // 如果 new_data/old_data 中没有标题，尝试使用平台名称作为后备
-                    let final_title = item_title.or_else(|| {
-                        Some(format!("{} 数据", record.platform_name))
-                    });
+                    let final_title =
+                        item_title.or_else(|| Some(format!("{} 数据", record.platform_name)));
 
                     ActivityItem {
                         id: record.id,

@@ -1,36 +1,35 @@
-# Rust
+# ===========================================
+# Myriad Project .gitignore
+# ===========================================
+
+# -------------------------------------------
+# Rust / Backend
+# -------------------------------------------
 /backend/target/
 /backend/**/*.rs.bk
 /backend/migrations/target/
 /backend/migrations/Cargo.lock
 /backend/flycheck*/
 
-# Node.js
+# Backend Cache & Data (runtime generated)
+/backend/cache/
+/backend/data/*.json
+!/backend/data/.gitkeep
+
+# -------------------------------------------
+# Node.js / Frontend
+# -------------------------------------------
 /frontend/node_modules/
 /frontend/dist/
 /frontend/.astro/
-/frontend/yarn.lock
-/frontend/pnpm-lock.yaml
 /frontend/.cache/
 /frontend/.parcel-cache/
 /frontend/.next/
 /frontend/.nuxt/
 
-# Cache & Temporary Data
-/backend/cache/*.json
-/backend/cache/*.tmp
-/backend/cache/*.cache
-!/backend/cache/README.md
-/backend/data/
-*.cache
-.cache/
-tmp/
-temp/
-*.tmp
-*.temp
-.temp/
-
-# Environment variables
+# -------------------------------------------
+# Environment Variables
+# -------------------------------------------
 .env
 .env.*
 !.env.example
@@ -40,33 +39,62 @@ temp/
 .env.development
 .env.test
 
-# Docker Compose override (contains sensitive config)
-docker-compose.override.yml
-
+# -------------------------------------------
 # Database
+# -------------------------------------------
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
-/database/data/
-/database/*.db
+/database/
 /postgres-data/
 
-# IDE
+# -------------------------------------------
+# Docker
+# -------------------------------------------
+docker-compose.override.yml
+docker/data/
+docker/logs/
+docker/volumes/
+docker/nginx/certs/*.pem
+docker/nginx/certs/*.key
+docker/nginx/certs/*.crt
+docker/nginx/certs/*.csr
+!/docker/nginx/certs/README.md
+docker/nginx/logs/*.log
+
+# -------------------------------------------
+# IDE & Editor
+# -------------------------------------------
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
 *.iml
 .project
 .classpath
 .settings/
 .history/
 
+# -------------------------------------------
+# OS Generated
+# -------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.Spotlight-V100
+.Trashes
+._*
+.AppleDouble
+.LSOverride
+nul
+
+# -------------------------------------------
 # Logs
+# -------------------------------------------
 *.log
 logs/
 *.log.*
@@ -76,43 +104,30 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Build artifacts
+# -------------------------------------------
+# Build Artifacts
+# -------------------------------------------
 /dist/
 /build/
-*.build
 out/
-
-# Docker & Nginx
-docker/data/
-docker/logs/
-docker/nginx/certs/*.pem
-docker/nginx/certs/*.key
-docker/nginx/certs/*.crt
-docker/nginx/certs/*.csr
-!/docker/nginx/certs/README.md
-docker/nginx/logs/*.log
-docker/volumes/
+*.build
 *.pid
 
-# OS Generated
-Thumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-.Spotlight-V100
-.Trashes
-._*
-.AppleDouble
-.LSOverride
-
-# Package Manager
+# -------------------------------------------
+# Package Manager Lock Files
+# -------------------------------------------
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+/frontend/yarn.lock
+/frontend/pnpm-lock.yaml
 .pnp.*
 .yarn/
 .pnpm-store/
 
-# Testing
+# -------------------------------------------
+# Testing & Coverage
+# -------------------------------------------
 coverage/
 .nyc_output/
 *.cover
@@ -121,13 +136,23 @@ coverage/
 .pytest_cache/
 test-results/
 
-# Backup files
+# -------------------------------------------
+# Temporary & Backup Files
+# -------------------------------------------
+*.tmp
+*.temp
 *.bak
 *.backup
 *.old
-*~
-nul
+.temp/
+tmp/
+temp/
+.cache/
+*.cache
+
+# -------------------------------------------
+# Claude AI
+# -------------------------------------------
+/.claude/
 .claude/settings.local.json
-/.claude
-backend/data/unknown_content_stats.json
-*.json
+

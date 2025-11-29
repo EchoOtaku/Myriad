@@ -62,7 +62,10 @@ impl MetadataService {
             return Ok(metadata_id);
         }
 
-        tracing::info!("✓ Small metadata ({} bytes), saving synchronously", estimated_size);
+        tracing::info!(
+            "✓ Small metadata ({} bytes), saving synchronously",
+            estimated_size
+        );
         let data_to_save = raw_data.clone();
 
         // 查找是否已存在该平台的元数据
@@ -154,7 +157,9 @@ impl MetadataService {
     fn truncate_large_data(mut data: Value, platform_name: &str) -> Value {
         match platform_name {
             "netease" => {
-                if let Some(liked_songs) = data.get_mut("liked_songs").and_then(|s| s.as_array_mut()) {
+                if let Some(liked_songs) =
+                    data.get_mut("liked_songs").and_then(|s| s.as_array_mut())
+                {
                     let original_count = liked_songs.len();
                     if original_count > 100 {
                         liked_songs.truncate(100);
@@ -168,7 +173,10 @@ impl MetadataService {
                 // 添加元数据说明截断
                 if let Some(obj) = data.as_object_mut() {
                     obj.insert("_truncated".to_string(), json!(true));
-                    obj.insert("_note".to_string(), json!("Large arrays truncated for database storage"));
+                    obj.insert(
+                        "_note".to_string(),
+                        json!("Large arrays truncated for database storage"),
+                    );
                 }
             }
             "steam" => {
@@ -176,10 +184,7 @@ impl MetadataService {
                     let original_count = games.len();
                     if original_count > 200 {
                         games.truncate(200);
-                        tracing::warn!(
-                            "🎮 Steam games truncated: {} -> 200",
-                            original_count
-                        );
+                        tracing::warn!("🎮 Steam games truncated: {} -> 200", original_count);
                     }
                 }
                 if let Some(obj) = data.as_object_mut() {
@@ -191,20 +196,14 @@ impl MetadataService {
                     let original_count = videos.len();
                     if original_count > 50 {
                         videos.truncate(50);
-                        tracing::warn!(
-                            "📺 Bilibili videos truncated: {} -> 50",
-                            original_count
-                        );
+                        tracing::warn!("📺 Bilibili videos truncated: {} -> 50", original_count);
                     }
                 }
                 if let Some(bangumi) = data.get_mut("bangumi").and_then(|b| b.as_array_mut()) {
                     let original_count = bangumi.len();
                     if original_count > 50 {
                         bangumi.truncate(50);
-                        tracing::warn!(
-                            "📺 Bilibili bangumi truncated: {} -> 50",
-                            original_count
-                        );
+                        tracing::warn!("📺 Bilibili bangumi truncated: {} -> 50", original_count);
                     }
                 }
                 if let Some(obj) = data.as_object_mut() {
@@ -216,10 +215,7 @@ impl MetadataService {
                     let original_count = repos.len();
                     if original_count > 100 {
                         repos.truncate(100);
-                        tracing::warn!(
-                            "💻 GitHub repos truncated: {} -> 100",
-                            original_count
-                        );
+                        tracing::warn!("💻 GitHub repos truncated: {} -> 100", original_count);
                     }
                 }
                 if let Some(obj) = data.as_object_mut() {
@@ -507,10 +503,11 @@ impl MetadataService {
             );
 
             // 创建轻量级摘要(只包含变化统计)
-            let new_summary = Self::create_change_summary(&new_data, platform_name, &changed_fields);
-            let old_summary = old_data.as_ref().map(|d| {
-                Self::create_change_summary(d, platform_name, &changed_fields)
-            });
+            let new_summary =
+                Self::create_change_summary(&new_data, platform_name, &changed_fields);
+            let old_summary = old_data
+                .as_ref()
+                .map(|d| Self::create_change_summary(d, platform_name, &changed_fields));
 
             (Some(new_summary), old_summary)
         } else {
@@ -530,7 +527,10 @@ impl MetadataService {
         };
 
         history.insert(&self.db).await?;
-        tracing::info!("✅ Metadata change history recorded (summary mode: {})", new_data_size >= MAX_SUMMARY_SIZE);
+        tracing::info!(
+            "✅ Metadata change history recorded (summary mode: {})",
+            new_data_size >= MAX_SUMMARY_SIZE
+        );
         Ok(())
     }
 
@@ -548,15 +548,15 @@ impl MetadataService {
         }
 
         match value {
-            Value::Null => 4,  // "null"
-            Value::Bool(_) => 5,  // "true" or "false"
+            Value::Null => 4,    // "null"
+            Value::Bool(_) => 5, // "true" or "false"
             Value::Number(n) => n.to_string().len(),
-            Value::String(s) => s.len() + 2,  // 包含引号
+            Value::String(s) => s.len() + 2, // 包含引号
             Value::Array(arr) => {
-                let mut size = 2;  // []
+                let mut size = 2; // []
                 for (i, item) in arr.iter().enumerate() {
                     if i > 0 {
-                        size += 1;  // 逗号
+                        size += 1; // 逗号
                     }
                     // 🚀 优化：对超大数组(>100元素)进行采样估算，避免遍历全部
                     if i < 100 {
@@ -571,12 +571,12 @@ impl MetadataService {
                 size
             }
             Value::Object(map) => {
-                let mut size = 2;  // {}
+                let mut size = 2; // {}
                 for (i, (key, val)) in map.iter().enumerate() {
                     if i > 0 {
-                        size += 1;  // 逗号
+                        size += 1; // 逗号
                     }
-                    size += key.len() + 3;  // "key":
+                    size += key.len() + 3; // "key":
                     size += Self::estimate_json_size_recursive(val, depth + 1, max_depth);
                 }
                 size
@@ -586,7 +586,11 @@ impl MetadataService {
 
     /// 创建轻量级变化摘要（只包含统计信息，不包含完整数据）
     /// 🚀 这是最彻底的方案：只记录"变化了什么"，而不是"数据是什么"
-    fn create_change_summary(data: &Value, platform_name: &str, changed_fields: &[String]) -> Value {
+    fn create_change_summary(
+        data: &Value,
+        platform_name: &str,
+        changed_fields: &[String],
+    ) -> Value {
         match platform_name {
             "netease" => {
                 json!({
@@ -732,6 +736,7 @@ impl MetadataService {
     }
 
     /// 获取所有平台的最新元数据
+    /// 🚀 自动合并分片数据（如网易云音乐的 liked_songs）
     #[allow(dead_code)]
     pub async fn get_all_latest_metadata(
         &self,
@@ -746,11 +751,73 @@ impl MetadataService {
         // 按平台分组，取最新的
         let mut result = HashMap::new();
         let mut seen_platforms = std::collections::HashSet::new();
+        // 收集分片数据以便后续合并
+        let mut chunk_data: HashMap<String, Vec<(i32, Value)>> = HashMap::new();
 
-        for metadata in all_metadata {
+        for metadata in &all_metadata {
+            // 检查是否是分片记录 (如 netease_chunk_1)
+            if metadata.platform_name.contains("_chunk_") {
+                // 提取原始平台名称 (如 netease_chunk_1 -> netease)
+                if let Some(base_platform) = metadata.platform_name.split("_chunk_").next() {
+                    // 提取分片索引
+                    if let Some(idx_str) = metadata.platform_name.split("_chunk_").nth(1) {
+                        if let Ok(idx) = idx_str.parse::<i32>() {
+                            chunk_data
+                                .entry(base_platform.to_string())
+                                .or_default()
+                                .push((idx, metadata.raw_data.clone()));
+                        }
+                    }
+                }
+                continue;
+            }
+
             if !seen_platforms.contains(&metadata.platform_name) {
-                result.insert(metadata.platform_name.clone(), metadata.raw_data);
-                seen_platforms.insert(metadata.platform_name);
+                result.insert(metadata.platform_name.clone(), metadata.raw_data.clone());
+                seen_platforms.insert(metadata.platform_name.clone());
+            }
+        }
+
+        // 🚀 合并分片数据到主记录
+        for (platform, mut chunks) in chunk_data {
+            if let Some(main_data) = result.get_mut(&platform) {
+                // 检查主记录是否标记为分片
+                let is_chunked = main_data
+                    .get("_chunked")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                if is_chunked {
+                    // 按分片索引排序
+                    chunks.sort_by_key(|(idx, _)| *idx);
+                    let chunks_count = chunks.len();
+
+                    // 合并所有分片的 songs 到 liked_songs
+                    if let Some(main_songs) = main_data
+                        .get_mut("liked_songs")
+                        .and_then(|s| s.as_array_mut())
+                    {
+                        let original_count = main_songs.len();
+                        for (idx, chunk) in chunks {
+                            if let Some(chunk_songs) = chunk.get("songs").and_then(|s| s.as_array())
+                            {
+                                main_songs.extend(chunk_songs.iter().cloned());
+                                tracing::debug!(
+                                    "🎵 Merged chunk {} with {} songs",
+                                    idx,
+                                    chunk_songs.len()
+                                );
+                            }
+                        }
+                        tracing::info!(
+                            "✅ Merged {} chunks for {}: {} -> {} songs",
+                            chunks_count,
+                            platform,
+                            original_count,
+                            main_songs.len()
+                        );
+                    }
+                }
             }
         }
 
