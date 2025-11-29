@@ -161,10 +161,11 @@ export async function getUserAvatarWithCache(fallbackUsername?: string): Promise
 /**
  * 获取完整用户信息（合并认证状态和公开资料）
  * 这是首页信息条使用的主要方法
- * 
+ *
+ * @param skipAuthCheck - 如果为 true，跳过认证检查（当已从 AuthContext 获取认证状态时）
  * ⚠️ 认证状态实时验证，展示信息使用缓存
  */
-export async function getUserInfoWithCache(): Promise<UserInfo> {
+export async function getUserInfoWithCache(skipAuthCheck: boolean = false): Promise<UserInfo> {
   // 默认访客信息
   let userInfo: UserInfo = {
     name: 'Myriad Dashboard',
@@ -173,11 +174,23 @@ export async function getUserInfoWithCache(): Promise<UserInfo> {
     is_admin: false,
   };
 
-  // 1. 并行获取：认证信息(实时) + 公开资料(缓存)
-  const [authInfo, profileInfo] = await Promise.all([
-    getAuthInfoRealtime(),      // ⚠️ 实时验证权限
-    getProfileInfoWithCache(),  // ✅ 可缓存的展示信息
-  ]);
+  // 1. 获取认证信息和公开资料
+  let authInfo: { isLoggedIn: boolean; is_admin: boolean; username?: string; display_name?: string } = {
+    isLoggedIn: false,
+    is_admin: false
+  };
+  let profileInfo: ProfileDisplayInfo | null = null;
+
+  if (skipAuthCheck) {
+    // 只获取公开资料，跳过认证检查（避免重复请求）
+    profileInfo = await getProfileInfoWithCache();
+  } else {
+    // 并行获取：认证信息(实时) + 公开资料(缓存)
+    [authInfo, profileInfo] = await Promise.all([
+      getAuthInfoRealtime(),      // ⚠️ 实时验证权限
+      getProfileInfoWithCache(),  // ✅ 可缓存的展示信息
+    ]);
+  }
 
   // 2. 如果已登录，使用账号基本信息
   if (authInfo.isLoggedIn) {

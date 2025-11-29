@@ -10,6 +10,8 @@ import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import TokenManager from '../utils/tokenManager';
 import { getUserAvatarWithCache } from '../utils/userInfoCache';
+import { useAuth } from '../contexts/AuthContext';
+import { hasSessionHint } from '../utils/sessionDetection';
 
 interface User {
   username: string;
@@ -21,6 +23,7 @@ interface User {
 
 export default function Account() {
   const navigate = useNavigate();
+  const { user: authUser, isAuthenticated, checkAuth: checkAuthFromContext } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,41 +31,32 @@ export default function Account() {
   const [passwordError, setPasswordError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // 加载账户信息
+  // 使用 AuthContext 加载账户信息
   useEffect(() => {
-    async function checkAuth() {
-      // ✅ 直接调用 API 验证（不再手动检查 token，因为 HttpOnly Cookie 无法被 JS 读取）
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch user info');
-        }
-
-        const userData = await response.json();
-        setUser(userData);
-
-        // 获取头像（使用缓存）
-        try {
-          const avatar = await getUserAvatarWithCache(userData.username);
-          setAvatarUrl(avatar);
-        } catch (e) {
-          setAvatarUrl(`https://ui-avatars.com/api/?name=${userData.username}`);
-        }
-
-        // 只有本地账户且未绑定 GitHub 才显示修改密码
-        setShowChangePassword(userData.auth_provider === 'local' && !userData.linked_github_id);
-      } catch (error) {
-        navigate('/login', { replace: true });
-      } finally {
+    if (!isAuthenticated) {
+      // 智能检测：检查是否有登录迹象
+      if (hasSessionHint()) {
+        // 有登录迹象，触发认证检查
+        checkAuthFromContext();
+      } else {
+        // 无登录迹象，设置加载完成并显示未登录状态
         setLoading(false);
       }
-    }
+    } else if (authUser) {
+      setUser(authUser as User);
 
-    checkAuth();
-  }, [navigate]);
+      // 获取头像（使用缓存）
+      getUserAvatarWithCache(authUser.username)
+        .then(setAvatarUrl)
+        .catch(() => {
+          setAvatarUrl(`https://ui-avatars.com/api/?name=${authUser.username}`);
+        });
+
+      // 只有本地账户且未绑定 GitHub 才显示修改密码
+      setShowChangePassword(authUser.auth_provider === 'local' && !authUser.linked_github_id);
+      setLoading(false);
+    }
+  }, [authUser, isAuthenticated, checkAuthFromContext]);
 
   // 处理修改密码
   async function handleChangePassword(e: React.FormEvent<HTMLFormElement>) {

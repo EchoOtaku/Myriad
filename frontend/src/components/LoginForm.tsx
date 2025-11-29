@@ -5,6 +5,7 @@ import { Spinner } from './Spinner';
 import { fetchJson } from '../utils/apiHelper';
 import { RateLimitError } from '../utils/rateLimiter';
 import { sanitizeUsername } from '../utils/inputSanitizer';
+import { setSessionHint } from '../utils/sessionDetection';
 
 const LoginForm: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -89,9 +90,10 @@ const LoginForm: React.FC = () => {
       // ✅ 安全修复 P0: 不再将 token 存入 localStorage（防止 XSS 窃取）
       // Token 已由后端通过 Set-Cookie 头设置为 HttpOnly Cookie
       // localStorage.setItem('auth_token', data.token);
-      
-      // 仅存储用户信息（不包含敏感 token）
-      localStorage.setItem('user_info', JSON.stringify(data.user));
+
+      // 🔒 安全修复 P1: 只存储会话提示标志，不存储用户信息
+      // 用户信息（包括 is_admin）将通过后端 API 实时验证
+      setSessionHint();
 
       // 触发自定义事件通知Layout更新用户信息（携带管理员状态）
       window.dispatchEvent(new CustomEvent('auth-login-success', { 

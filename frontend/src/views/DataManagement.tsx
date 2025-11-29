@@ -15,6 +15,8 @@ import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { FaSteam, FaGithub, FaSyncAlt, FaChevronLeft } from 'react-icons/fa';
 import { useBackgroundTasks } from '../hooks/useBackgroundTasks';
 import { TaskStatus } from '../components/TaskStatus';
+import { useAuth } from '../contexts/AuthContext';
+import { hasSessionHint } from '../utils/sessionDetection';
 import '../components/ConfigForm.css';
 
 // 平台定义
@@ -46,6 +48,7 @@ interface PlatformStatus {
 
 export default function DataManagement() {
   const navigate = useNavigate();
+  const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [message, setMessage] = useState('');
@@ -64,39 +67,30 @@ export default function DataManagement() {
     isSubmitting,
   } = useBackgroundTasks();
 
-  // 检查管理员权限并预加载 CSRF Token
+  // 使用 AuthContext 检查管理员权限
   useEffect(() => {
-    async function checkAdmin() {
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          credentials: 'include',
-        });
-
-        if (!response.ok) {
-          navigate('/login', { replace: true });
-          return;
-        }
-
-        const user = await response.json();
-
-        if (!user.is_admin) {
-          navigate('/', { replace: true });
-          return;
-        }
-
-        // 预加载 CSRF Token
-        await getCSRFToken(true);
-
-        setIsAdmin(true);
-      } catch (error) {
+    if (!isAuthenticated) {
+      // 智能检测：检查是否有登录迹象
+      if (hasSessionHint()) {
+        // 有登录迹象，触发认证检查
+        checkAuth();
+      } else {
+        // 无登录迹象，直接重定向到登录页
         navigate('/login', { replace: true });
-      } finally {
-        setLoading(false);
       }
-    }
+    } else {
+      if (!authIsAdmin) {
+        navigate('/', { replace: true });
+        return;
+      }
 
-    checkAdmin();
-  }, [navigate]);
+      // 预加载 CSRF Token
+      getCSRFToken(true).then(() => {
+        setIsAdmin(true);
+        setLoading(false);
+      });
+    }
+  }, [authIsAdmin, isAuthenticated, checkAuth, navigate]);
 
   // 加载所有状态
   const loadAllStatuses = async () => {

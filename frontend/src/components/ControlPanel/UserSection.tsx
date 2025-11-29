@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '../../config';
 import { clearPlaylistCache } from '../../utils/musicPlayer';
 import { invalidateAuthCache, invalidateUserInfoCache, clearAllUserCache } from '../../utils/userInfoCache';
 import LoginForm from '../LoginForm';
 import { UserModal } from './UserModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface User {
   username: string;
@@ -30,11 +31,21 @@ interface UserSectionProps {
  * 包含顶部用户信息按钮和用户弹窗逻辑
  */
 export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
+  const { isAuthenticated: authIsAuthenticated, user: authUser } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [isUserModalClosing, setIsUserModalClosing] = useState(false);
+
+  // 同步 AuthContext 的用户信息
+  useEffect(() => {
+    setIsAuthenticated(authIsAuthenticated);
+    setUser(authUser as User | null);
+    if (authUser) {
+      fetchUserInfo();
+    }
+  }, [authIsAuthenticated, authUser]);
 
   // 用户弹窗滚动锁定
   useEffect(() => {
@@ -69,43 +80,14 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     }
   }, []);
 
-  const checkAuth = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/auth/me`, {
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        setIsAuthenticated(true);
-
-        // 获取平台用户信息
-        fetchUserInfo();
-      } else {
-        setIsAuthenticated(false);
-      }
-    } catch {
-      setIsAuthenticated(false);
-    }
-  }, [fetchUserInfo]);
-
-  // 初始化
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  // 监听登录成功事件
-  const checkAuthRef = useRef(checkAuth);
-  checkAuthRef.current = checkAuth;
+  // 监听登录成功事件（使用 AuthContext 自动处理）
   
   useEffect(() => {
     const handleLoginSuccess = () => {
       handleUserModalClose();
-      // 登录成功后清除缓存，强制刷新用户信息
+      // 登录成功后清除缓存（AuthContext 会自动更新用户信息）
       invalidateAuthCache();
       invalidateUserInfoCache();
-      checkAuthRef.current();
     };
 
     window.addEventListener('auth-login-success', handleLoginSuccess);

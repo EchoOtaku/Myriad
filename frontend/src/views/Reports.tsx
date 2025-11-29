@@ -2,6 +2,8 @@
 import { API_URL } from '../config';
 import { getCSRFToken } from '../utils/csrf';
 import AnimatedView from '../components/AnimatedView';
+import { useAuth } from '../contexts/AuthContext';
+import { hasSessionHint } from '../utils/sessionDetection';
 import StageMode from '../components/StageMode';
 import Toast from '../components/Toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1433,27 +1435,19 @@ export default function Reports() {
     }
   }, [stageReportData]);
 
-  // 检查管理员状态（静默失败，不阻塞报告加载）
+  // 使用 AuthContext 获取管理员状态
+  const { isAdmin: authIsAdmin, isAuthenticated, hasChecked, checkAuth } = useAuth();
+
+  // 智能检测：如果有登录迹象且未检查过，触发认证检查
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const user = await response.json();
-          setIsAdmin(user.is_admin || false);
-        } else {
-          // 401未登录是正常情况，静默处理
-          setIsAdmin(false);
-        }
-      } catch (err) {
-        // 网络错误静默处理
-        setIsAdmin(false);
-      }
-    };
-    checkAdminStatus();
-  }, []);
+    if (!hasChecked && hasSessionHint()) {
+      checkAuth();
+    }
+  }, [hasChecked, checkAuth]);
+
+  useEffect(() => {
+    setIsAdmin(authIsAdmin);
+  }, [authIsAdmin, isAuthenticated]);
 
   // 加载最新报告（平台报告 + 综合报告）- 性能优化版
   useEffect(() => {

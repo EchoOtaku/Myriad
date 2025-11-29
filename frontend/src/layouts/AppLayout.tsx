@@ -14,6 +14,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget';
 import { invalidateAuthCache, getUserAvatarWithCache } from '../utils/userInfoCache';
+import { useAuth } from '../contexts/AuthContext';
 import {
   shouldApplyColorExtraction,
   getColorFromCache,
@@ -35,8 +36,7 @@ interface ModeMetrics {
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { isAuthenticated, isAdmin, user, checkAuth: checkAuthFromContext } = useAuth();
   const [userAvatar, setUserAvatar] = useState('');
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
@@ -691,44 +691,16 @@ export function AppLayout({ children }: AppLayoutProps) {
     prevPathRef.current = currentPath;
   }, [location.pathname, showLibraryFilters, showReportsTabs]);
 
-  // 检查认证状态（默认静默处理，不在控制台显示 401 错误）
-  const checkAuth = useCallback(async (silent = true) => {
-    try {
-      const response = await fetch(`${API_URL}/api/auth/me`, {
-        credentials: 'include',
+  // 获取用户头像
+  useEffect(() => {
+    if (user?.username) {
+      getUserAvatarWithCache(user.username).then(setUserAvatar).catch(() => {
+        setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
       });
-        
-      if (response.ok) {
-        const user = await response.json();
-        setIsAuthenticated(true);
-        setIsAdmin(user.is_admin || false);
-        
-        // 获取头像（使用缓存）
-        try {
-          const avatar = await getUserAvatarWithCache(user.username);
-          setUserAvatar(avatar);
-        } catch {
-          setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
-        }
-      } else {
-        // 401 是正常的未登录状态，静默处理
-        if (!silent && response.status !== 401) {
-          console.warn('Authentication check failed:', response.status);
-        }
-        setIsAuthenticated(false);
-        setIsAdmin(false);
-        setUserAvatar('');
-      }
-    } catch (error) {
-      // 只在非静默模式下记录网络错误
-      if (!silent) {
-        console.error('Network error during auth check:', error);
-      }
-      setIsAuthenticated(false);
-      setIsAdmin(false);
+    } else {
       setUserAvatar('');
     }
-  }, []);
+  }, [user]);
 
   // 加载壁纸和颜色（使用 Hook）
   const loadWallpaper = useCallback(async () => {
@@ -861,19 +833,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, []);
 
-  // 初始化：加载壁纸和检查认证（仅首次挂载执行）
+  // 初始化：加载壁纸（仅首次挂载执行）
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     // 防止重复初始化
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
-    
+
     (async () => {
       await loadWallpaper();
     })();
-    // ✅ 总是检查认证状态（静默模式），因为使用 HttpOnly Cookie 无法从 JavaScript 读取
-    // 即使未登录也会返回 401，但静默处理，不显示错误
-    checkAuth(true);
+    // 认证检查现在由 AuthContext 管理，按需触发
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -964,28 +934,20 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     const handleAuthChange = (e: CustomEvent) => {
       const isAuth = e.detail?.isAuthenticated ?? false;
-      setIsAuthenticated(isAuth);
-      
+
       if (isAuth) {
         // 登录成功，清除缓存并重新检查认证
         invalidateAuthCache();
-        checkAuth().then(() => {
-          // 认证检查完成后，再次触发事件，携带管理员状态
-          const adminStatus = e.detail?.isAdmin ?? false;
-          setIsAdmin(adminStatus);
-        });
-      } else {
-        // 退出登录，清理状态
-        setIsAdmin(false);
-        setUserAvatar('');
+        checkAuthFromContext();
       }
+      // 退出登录时，AuthContext 会自动更新状态
     };
 
     window.addEventListener('auth-state-changed', handleAuthChange as EventListener);
     return () => {
       window.removeEventListener('auth-state-changed', handleAuthChange as EventListener);
     };
-  }, [checkAuth]);
+  }, [checkAuthFromContext]);
 
 
 

@@ -13,6 +13,8 @@
 import { motion } from 'framer-motion';
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { WidgetComponentProps } from '../WidgetGrid';
+import { useAuth } from '../../contexts/AuthContext';
+import { hasSessionHint } from '../../utils/sessionDetection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -301,6 +303,7 @@ const ActivityItem = memo(({ activity, index }: { activity: Activity; index: num
 ActivityItem.displayName = 'ActivityItem';
 
 export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
+  const { isAuthenticated, isLoading: authLoading, hasChecked, checkAuth } = useAuth();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -334,15 +337,22 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
   }, []);
 
   const fetchActivities = useCallback(async () => {
+    // 如果未登录，不请求数据
+    if (!isAuthenticated) {
+      setActivities([]);
+      setLoading(false);
+      return;
+    }
+
     const now = Date.now();
-    
+
     // 检查全局缓存是否有效
     if (globalCacheData && now - globalCacheTimestamp < CACHE_DURATION) {
       setActivities(globalCacheData);
       setLoading(false);
       return;
     }
-    
+
     // 复用进行中的请求
     if (globalFetchPromise) {
       try {
@@ -355,7 +365,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
       }
       return;
     }
-    
+
     // 创建新的请求
     globalFetchPromise = (async () => {
       try {
@@ -363,13 +373,13 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
           credentials: 'include',
           signal: AbortSignal.timeout(10000), // 10秒超时
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        
+
         const data = await response.json();
-        
+
         if (data.success && Array.isArray(data.activities)) {
           globalCacheData = data.activities;
           globalCacheTimestamp = Date.now();
@@ -381,7 +391,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
         globalFetchPromise = null;
       }
     })();
-    
+
     try {
       const data = await globalFetchPromise;
       setActivities(data);
@@ -392,7 +402,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
     } finally {
       setLoading(false);
     }
-  }, [saveToCache]);
+  }, [isAuthenticated, saveToCache]);
 
   useEffect(() => {
     if (isPreview) {
@@ -439,15 +449,34 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
       return;
     }
 
+    // 智能检测：如果认证状态未知，检查是否有登录迹象
+    if (!hasChecked && !authLoading) {
+      if (hasSessionHint()) {
+        // 检测到可能存在活跃会话，触发认证检查
+        checkAuth();
+        return;
+      } else {
+        // 没有登录迹象，显示空状态
+        setLoading(false);
+        setActivities([]);
+        return;
+      }
+    }
+
+    // 等待认证状态加载完成
+    if (authLoading) {
+      return;
+    }
+
     // 先尝试从缓存加载
     const hasCache = loadFromCache();
     if (hasCache) {
       setLoading(false);
     }
-    
+
     // 然后获取最新数据
     fetchActivities();
-  }, [loadFromCache, fetchActivities, isPreview]);
+  }, [hasChecked, authLoading, isAuthenticated, checkAuth, loadFromCache, fetchActivities, isPreview]);
 
 
 

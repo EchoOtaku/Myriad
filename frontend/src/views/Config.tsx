@@ -9,42 +9,35 @@ import { useNavigate } from 'react-router-dom';
 import ConfigForm from '../components/ConfigForm';
 import { API_URL } from '../config';
 import TokenManager from '../utils/tokenManager';
+import { useAuth } from '../contexts/AuthContext';
+import { hasSessionHint } from '../utils/sessionDetection';
 
 export default function Config() {
   const navigate = useNavigate();
+  const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // 检查管理员权限
+  // 使用 AuthContext 检查管理员权限
   useEffect(() => {
-    async function checkAdmin() {
-      // ✅ 直接调用 API 验证（不再手动检查 token，因为 HttpOnly Cookie 无法被 JS 读取）
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          credentials: 'include', // ✅ 自动发送 HttpOnly Cookie
-        });
-
-        if (!response.ok) {
-          navigate('/login', { replace: true });
-          return;
-        }
-
-        const user = await response.json();
-        if (!user.is_admin) {
-          navigate('/', { replace: true });
-          return;
-        }
-
-        setIsAdmin(true);
-      } catch (error) {
+    if (!isAuthenticated) {
+      // 智能检测：检查是否有登录迹象
+      if (hasSessionHint()) {
+        // 有登录迹象，触发认证检查
+        checkAuth();
+      } else {
+        // 无登录迹象，直接重定向到登录页
         navigate('/login', { replace: true });
-      } finally {
-        setLoading(false);
       }
+    } else {
+      if (!authIsAdmin) {
+        navigate('/', { replace: true });
+        return;
+      }
+      setIsAdmin(true);
+      setLoading(false);
     }
-
-    checkAdmin();
-  }, [navigate]);
+  }, [authIsAdmin, isAuthenticated, checkAuth, navigate]);
 
   if (loading) {
     return null;

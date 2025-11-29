@@ -20,6 +20,8 @@ import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget';
 import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget';
 import { getUserInfoWithCache, getCsrfTokenWithCache, UserInfo } from '../utils/userInfoCache';
+import { useAuth } from '../contexts/AuthContext';
+import { hasSessionHint } from '../utils/sessionDetection';
 
 // 注册所有可用的小组件类型
 const AVAILABLE_WIDGETS: WidgetType[] = [
@@ -137,6 +139,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
 
 export default function Home() {
   const navigate = useNavigate();
+  const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -166,20 +169,21 @@ export default function Home() {
     checkSetup();
   }, [navigate]);
 
+  // 智能检测：如果有登录迹象（会话提示标志），主动检查认证状态
+  useEffect(() => {
+    if (!hasChecked && hasSessionHint()) {
+      // 检测到可能存在活跃会话，触发认证检查
+      checkAuth();
+    }
+  }, [hasChecked, checkAuth]);
+
   // 获取用户信息（使用缓存）
   useEffect(() => {
     async function fetchUserInfo() {
       try {
-        // 并行获取用户信息和 CSRF Token（都带缓存）
-        const [info, token] = await Promise.all([
-          getUserInfoWithCache(),
-          getCsrfTokenWithCache(),
-        ]);
-        
+        // 总是获取公开用户信息（站长资料），不需要等待认证检查
+        const info = await getUserInfoWithCache(true); // 跳过认证检查
         setUserInfo(info);
-        if (token) {
-          setCsrfToken(token);
-        }
       } catch (error) {
         console.debug('获取用户信息失败:', error);
         // 设置默认访客信息
@@ -193,6 +197,23 @@ export default function Home() {
     }
     fetchUserInfo();
   }, []);
+
+  // 登录后获取 CSRF Token
+  useEffect(() => {
+    async function fetchCsrfToken() {
+      if (isAuthenticated && hasChecked) {
+        try {
+          const token = await getCsrfTokenWithCache();
+          if (token) {
+            setCsrfToken(token);
+          }
+        } catch (error) {
+          console.debug('获取 CSRF Token 失败:', error);
+        }
+      }
+    }
+    fetchCsrfToken();
+  }, [isAuthenticated, hasChecked]);
 
   // 从后端加载小组件配置
   useEffect(() => {
@@ -239,11 +260,11 @@ export default function Home() {
     // 过滤掉未注册的小组件（已丢失/删除的组件）
     const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
     const validWidgets = newWidgets.filter(w => registeredWidgetIds.has(w.type));
-    
+
     setWidgets(validWidgets);
-    
+
     // 只有管理员可以保存
-    if (!userInfo?.is_admin) return;
+    if (!isAdmin) return;
 
     try {
       await fetch(`${API_URL}/api/config/dashboard`, {
@@ -265,9 +286,9 @@ export default function Home() {
   // 保存标题
   const handleTitleChange = async (newTitle: string) => {
     setDashboardTitle(newTitle);
-    
+
     // 只有管理员可以保存
-    if (!userInfo?.is_admin) return;
+    if (!isAdmin) return;
 
     try {
       await fetch(`${API_URL}/api/config/dashboard`, {
@@ -291,7 +312,7 @@ export default function Home() {
     const handleCustomPlatformsUpdate = async (event: Event) => {
       const customEvent = event as CustomEvent<{ platforms: any[] }>;
       // 只有管理员可以保存
-      if (!userInfo?.is_admin) return;
+      if (!isAdmin) return;
 
       try {
         await fetch(`${API_URL}/api/config/dashboard`, {
@@ -314,7 +335,7 @@ export default function Home() {
     return () => {
       window.removeEventListener('custom-platforms-update', handleCustomPlatformsUpdate);
     };
-  }, [userInfo?.is_admin, csrfToken]);
+  }, [isAdmin, csrfToken]);
 
   return (
     <AnimatedView className="min-h-screen lg:h-screen lg:overflow-hidden">
@@ -401,7 +422,7 @@ export default function Home() {
                   )}
 
                   {/* 编辑按钮 - 仅管理员可见，且仅在桌面端显示 */}
-                  {userInfo?.is_admin && (
+                  {isAdmin && (
                     <>
                       <div className="hidden lg:block h-6 w-px bg-gray-200 dark:bg-white/10 mx-1" />
 

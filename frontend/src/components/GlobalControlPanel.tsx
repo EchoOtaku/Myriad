@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '../config';
 import './GlobalControlPanel.css';
 import {
   getGreeting,
@@ -18,6 +17,7 @@ import { MusicPlayer } from './ControlPanel/MusicPlayer';
 import { UserSection, User } from './ControlPanel/UserSection';
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DynamicContent {
   type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
@@ -28,6 +28,7 @@ interface DynamicContent {
 
 const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDynamicContent, setShowDynamicContent] = useState(true);
   const [showPanelContent, setShowPanelContent] = useState(false);
@@ -63,8 +64,7 @@ const GlobalControlPanel: React.FC = () => {
     // 检查当前主题
     setIsDark(document.documentElement.classList.contains('dark'));
 
-    // 检查登录状态（仅用于获取用户名和管理员状态）
-    checkAuth();
+    // 认证检查现在由 AuthContext 管理，用户信息会自动同步
 
     // 加载动态内容
     loadDynamicContents();
@@ -178,21 +178,14 @@ const GlobalControlPanel: React.FC = () => {
     }]);
   }, [user?.username]);
 
-  // 简化的认证检查（仅用于获取用户名和管理员状态）
-  const checkAuth = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/auth/me`, {
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-      }
-    } catch {
-      // 静默处理错误
+  // 同步 AuthContext 的用户信息到本地状态
+  useEffect(() => {
+    if (authUser) {
+      setUser(authUser as User);
+    } else {
+      setUser(null);
     }
-  }, []);
+  }, [authUser]);
 
   // 当用户信息更新时，重新加载动态内容
   useEffect(() => {
