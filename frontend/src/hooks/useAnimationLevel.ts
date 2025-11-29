@@ -28,6 +28,11 @@ export function useAnimationLevel(): AnimationConfig {
     return { level: 'standard' as const, loop: true, spring: true, durationScale: 1.0 };
   }, [perf.reduceMotion, perf.lowEndDevice]);
 
+  // Debug 日志
+  useEffect(() => {
+    console.log('[AnimationLevel]', { level: config.level, isMobile: perf.isMobile, lowEndDevice: perf.lowEndDevice });
+  }, [config.level, perf.isMobile, perf.lowEndDevice]);
+
   // 根据性能级别自动配置动画调度器
   useEffect(() => {
     const isMobile = perf.isMobile;
