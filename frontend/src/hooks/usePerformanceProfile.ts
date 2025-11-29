@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 /**
  * 设备性能画像与动态特性检测
@@ -13,20 +13,17 @@ export interface PerformanceProfile {
 }
 
 // SSR 安全的默认值 - 乐观策略：假设为中高端设备
-// 这样可以避免 SSR 水合时的闪烁问题
 const DEFAULT_PROFILE: PerformanceProfile = {
   isMobile: false,
   reduceMotion: false,
-  lowEndDevice: false,  // 🔧 改为 false，避免 SSR 时误判
+  lowEndDevice: false,
   hardwareConcurrency: null,
   deviceMemory: null,
 };
 
-// 检测是否在浏览器环境
-const isBrowser = typeof window !== 'undefined' && typeof window.matchMedia === 'function';
-
 function detectPerformanceProfile(): PerformanceProfile {
-  if (!isBrowser) {
+  // 每次调用时检测浏览器环境
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return DEFAULT_PROFILE;
   }
 
@@ -59,19 +56,28 @@ function detectPerformanceProfile(): PerformanceProfile {
 }
 
 export function usePerformanceProfile(): PerformanceProfile {
-  // SSR 时使用默认值，客户端立即检测
-  const [profile, setProfile] = useState<PerformanceProfile>(() => {
-    // 🔧 客户端立即检测，不使用缓存，避免 SSR 残留问题
-    if (isBrowser) {
+  // 🔧 关键修复：使用 useMemo 在首次渲染时同步检测
+  // 这样可以确保第一次渲染就能获取正确的值
+  const initialProfile = useMemo(() => {
+    if (typeof window !== 'undefined') {
       return detectPerformanceProfile();
     }
     return DEFAULT_PROFILE;
-  });
+  }, []);
 
+  const [profile, setProfile] = useState<PerformanceProfile>(initialProfile);
+
+  // 监听 reduceMotion 变化
   useEffect(() => {
-    // 客户端水合后再次检测，确保值是正确的
-    const detected = detectPerformanceProfile();
-    setProfile(detected);
+    if (typeof window === 'undefined') return;
+    
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handler = () => {
+      setProfile(detectPerformanceProfile());
+    };
+    
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
   return profile;
