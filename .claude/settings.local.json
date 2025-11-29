@@ -48,7 +48,8 @@
       "Bash(node -e:*)",
       "Bash(Select-String \"error|warning|Result\" -CaseSensitive)",
       "Bash(timeout /t 15)",
-      "Bash(Select-String -Pattern \"error|Error|ERROR\" -Context 2,2)"
+      "Bash(Select-String -Pattern \"error|Error|ERROR\" -Context 2,2)",
+      "Bash(timeout /t 5 /nobreak)"
     ],
     "deny": [],
     "ask": []

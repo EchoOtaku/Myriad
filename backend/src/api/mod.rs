@@ -1,6 +1,7 @@
 use axum::{http::StatusCode, Json};
 use serde_json::{json, Value};
 
+pub mod ai_recommend; // ✅ AI图标推荐 API
 pub mod analysis;
 pub mod auth;
 pub mod auth_local;

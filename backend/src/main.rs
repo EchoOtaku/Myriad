@@ -851,6 +851,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/config/ui", get(get_public_ui_config_wrapper)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
         // ✅ 安全修复 P0: CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
+        // AI推荐API - 🔓 公开端点：图标推荐服务
+        .route("/api/ai/recommend-icon", post(api::ai_recommend::recommend_icon))
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)); // 🚀 性能优化：批量API

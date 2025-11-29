@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
+import { GlowBackground } from './shared/GlowBackground';
 
 interface NavigationGuide {
   title: string;
@@ -137,18 +138,12 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 背景装饰 */}
         <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
-        <motion.div 
-          className={`absolute -right-8 -top-8 w-32 h-32 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-          style={{ background: 'var(--color-primary)' }}
-          animate={anim.loop ? { 
-            opacity: [0.08, 0.15, 0.08],
-            scale: [1, 1.1, 1]
-          } : { opacity: 0.1, scale: 1 }}
-          transition={anim.loop ? {
-            duration: 4,
-            repeat: Infinity,
-            ease: "easeInOut"
-          } : { duration: 0 }}
+        <GlowBackground
+          color="var(--color-primary)"
+          animLevel={anim.level}
+          shouldAnimate={anim.loop}
+          variant="single"
+          size="md"
         />
 
         {/* 主内容 - 左上角布局 */}
@@ -194,18 +189,12 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景装饰 */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
-      <motion.div 
-        className={`absolute -right-16 -top-16 w-48 h-48 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-        style={{ background: 'var(--color-primary)' }}
-        animate={anim.loop ? { 
-          opacity: [0.08, 0.15, 0.08],
-          scale: [1, 1.1, 1]
-        } : { opacity: 0.1, scale: 1 }}
-        transition={anim.loop ? {
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut"
-        } : { duration: 0 }}
+      <GlowBackground
+        color="var(--color-primary)"
+        animLevel={anim.level}
+        shouldAnimate={anim.loop}
+        variant="single"
+        size="lg"
       />
 
       {/* 主内容 - 左右布局 */}

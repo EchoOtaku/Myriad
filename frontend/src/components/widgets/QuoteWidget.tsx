@@ -9,6 +9,7 @@ import { getRandomQuote, QuoteData } from '../../utils/dynamicContent';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
+import { GlowBackground } from './shared/GlowBackground';
 
 // 缓存配置
 const CACHE_KEY = 'quote_data_cache';
@@ -166,9 +167,13 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass flex flex-col p-5">
         {/* 背景装饰 */}
-        <motion.div 
-          className={`absolute -left-10 -bottom-10 w-40 h-40 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'} opacity-20`}
-          style={{ background: themeColor }}
+        <GlowBackground
+          color={themeColor}
+          animLevel={anim.level}
+          shouldAnimate={anim.loop}
+          variant="single-left"
+          size="lg"
+          opacity={0.2}
         />
         <div className="absolute top-2 left-4 text-8xl opacity-[0.08] font-serif text-gray-500 leading-none select-none pointer-events-none">"</div>
         
@@ -208,9 +213,13 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 背景装饰 */}
-        <motion.div 
-          className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full blur-2xl opacity-30"
-          style={{ background: themeColor }}
+        <GlowBackground
+          color={themeColor}
+          animLevel={anim.level}
+          shouldAnimate={false}
+          variant="single-left"
+          size="sm"
+          opacity={0.3}
         />
         
         {/* 引言内容 - 增加右侧内边距避开作者信息 */}
@@ -249,18 +258,12 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
   return (
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景光效 - 呼吸效果 */}
-      <motion.div 
-        className={`absolute -right-8 -top-8 w-32 h-32 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-        style={{ background: themeColor }}
-        animate={anim.loop ? { 
-          opacity: [0.08, 0.15, 0.08],
-          scale: [1, 1.1, 1]
-        } : { opacity: 0.1, scale: 1 }}
-        transition={anim.loop ? {
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut"
-        } : { duration: 0 }}
+      <GlowBackground
+        color={themeColor}
+        animLevel={anim.level}
+        shouldAnimate={anim.loop}
+        variant="single"
+        size="md"
       />
       
       {/* 主内容区：2x2紧凑布局 */}

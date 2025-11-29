@@ -219,6 +219,13 @@ impl ConfigService {
                 config.dashboard_title = Some(s.to_string());
             }
         }
+        if let Some(v) = map.get("custom_platforms") {
+            if let Some(s) = v.as_str() {
+                config.custom_platforms = Some(s.to_string());
+            } else {
+                config.custom_platforms = Some(v.to_string());
+            }
+        }
 
         // 控制面板小组件配置
         if let Some(v) = map.get("control_panel_layout") {

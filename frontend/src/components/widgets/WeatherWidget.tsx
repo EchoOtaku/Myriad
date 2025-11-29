@@ -10,6 +10,7 @@ import { usePerformanceProfile } from '../../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+import { GlowBackground } from './shared/GlowBackground';
 
 // 缓存配置
 const CACHE_KEY = 'weather_data_cache';
@@ -153,11 +154,12 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 动态背景光效 */}
-        <motion.div 
-          className={`absolute -right-8 -top-8 w-48 h-48 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-          style={{ background: themeColor }}
-          animate={anim.loop ? { opacity: [0.1, 0.2, 0.1], scale: [1, 1.1, 1] } : { opacity: 0.12, scale: 1 }}
-          transition={anim.loop ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+        <GlowBackground
+          color={themeColor}
+          animLevel={anim.level}
+          shouldAnimate={anim.loop}
+          variant="single"
+          size="lg"
         />
         
         <div className="absolute inset-0 flex flex-row px-4 py-3">
@@ -276,11 +278,12 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 动态背景光效 */}
-        <motion.div 
-          className={`absolute -right-8 -top-8 w-48 h-48 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-          style={{ background: themeColor }}
-          animate={anim.loop ? { opacity: [0.1, 0.2, 0.1], scale: [1, 1.1, 1] } : { opacity: 0.12, scale: 1 }}
-          transition={anim.loop ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+        <GlowBackground
+          color={themeColor}
+          animLevel={anim.level}
+          shouldAnimate={anim.loop}
+          variant="single"
+          size="lg"
         />
         
         <div className="absolute inset-0 flex flex-row px-4 py-2">
@@ -344,11 +347,12 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   return (
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 动态背景光效 - 呼吸效果 */}
-      <motion.div 
-        className={`absolute -right-8 -top-8 w-32 h-32 rounded-full ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-        style={{ background: themeColor }}
-        animate={anim.loop ? { opacity: [0.08, 0.15, 0.08], scale: [1, 1.1, 1] } : { opacity: 0.12, scale: 1 }}
-        transition={anim.loop ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+      <GlowBackground
+        color={themeColor}
+        animLevel={anim.level}
+        shouldAnimate={anim.loop}
+        variant="single"
+        size="md"
       />
       
       {/* 主内容区：2x2紧凑布局 */}

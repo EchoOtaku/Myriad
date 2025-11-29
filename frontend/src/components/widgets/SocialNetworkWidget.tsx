@@ -3,50 +3,155 @@
  * 支持 1x1, 2x1, 2x2 三种尺寸
  * glass风格 + 微动态效果
  * 长按设置面板选择平台
- *
- * 性能优化策略:
- * ✅ 组件级优化:
- *   - 使用 React.memo 包裹所有组件和子组件
- *   - 使用 useMemo 缓存复杂计算结果
- *   - 使用 useCallback 缓存所有事件处理器
- *   - 条件渲染减少不必要的 DOM 节点
- *
- * ✅ 数据优化:
- *   - 全局缓存平台配置数据 (5分钟 TTL)
- *   - 使用索引映射替代 find 查找
- *   - 静态配置对象提取到组件外部
- *
- * ✅ 事件优化:
- *   - 分离事件监听器避免类型检查
- *   - 使用 passive 事件监听器
- *   - 优化 MutationObserver 配置
- *
- * ✅ 动画优化:
- *   - 静态动画配置提取为常量
- *   - 使用 CSS filter 替代 box-shadow
- *   - 条件动画避免不必要的计算
- *
- * ✅ 渲染优化:
- *   - 移除 AnimatePresence 减少嵌套
- *   - 合并 ref 回调避免重复设置
- *   - 使用 createPortal 隔离弹窗渲染
- *
- * ✅ 多实例优化 (重要!):
- *   - 使用全局单例模式管理设置弹窗
- *   - 无论有多少个小组件实例,只渲染一个弹窗
- *   - 弹窗在 AppLayout 层级渲染,确保全局唯一
- *   - 使用发布/订阅模式同步弹窗状态
+ * 
+ * 核心特性:
+ * - 全局单例弹窗管理（发布/订阅模式）
+ * - 自定义平台支持（localStorage 持久化）
+ * - XSS 安全防护（URL/文本消毒）
+ * - 动画级别自适应
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { FaSteam, FaGithub, FaTimes } from 'react-icons/fa';
+import * as FaIcons from 'react-icons/fa';
+import * as SiIcons from 'react-icons/si';
+import * as Fa6Icons from 'react-icons/fa6';
 import { API_URL } from '../../config';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+import { GlowBackground } from './shared/GlowBackground';
+
+// ========== 安全验证工具函数 ==========
+
+// HTML 实体转义，防止 XSS
+const escapeHtml = (text: string): string => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+};
+
+// 验证 URL 模式是否安全
+const isValidUrlPattern = (pattern: string): boolean => {
+  if (!pattern) return true; // 空字符串允许
+  
+  // 必须以 http:// 或 https:// 或 mailto: 开头
+  const validProtocols = /^(https?:\/\/|mailto:)/i;
+  if (!validProtocols.test(pattern)) {
+    return false;
+  }
+  
+  // 禁止危险协议
+  const dangerousProtocols = /^(javascript:|data:|vbscript:|file:)/i;
+  if (dangerousProtocols.test(pattern)) {
+    return false;
+  }
+  
+  // 禁止包含可疑字符（防止注入）
+  const suspiciousChars = /[<>"'`\\]/;
+  if (suspiciousChars.test(pattern.replace('{username}', ''))) {
+    return false;
+  }
+  
+  return true;
+};
+
+// 消毒平台名称
+const sanitizePlatformName = (name: string): string => {
+  // 移除 HTML 标签和危险字符，限制长度
+  return name
+    .replace(/<[^>]*>/g, '') // 移除 HTML 标签
+    .replace(/[<>"'`\\]/g, '') // 移除危险字符
+    .trim()
+    .slice(0, 50); // 限制长度
+};
+
+// 消毒用户名
+const sanitizeUsername = (username: string): string => {
+  // 移除危险字符，限制长度
+  return username
+    .replace(/[<>"'`\\&]/g, '') // 移除危险字符
+    .trim()
+    .slice(0, 100); // 限制长度
+};
+
+// 消毒弹窗文本
+const sanitizePopupText = (text: string): string => {
+  // 转义 HTML 实体，限制长度
+  return escapeHtml(text.trim().slice(0, 500));
+};
+
+// 消毒 URL 模式
+const sanitizeUrlPattern = (pattern: string): string => {
+  if (!pattern) return '';
+  
+  // 移除空白字符
+  let cleaned = pattern.trim();
+  
+  // 如果没有协议，添加 https://
+  if (cleaned && !/^(https?:\/\/|mailto:)/i.test(cleaned)) {
+    cleaned = 'https://' + cleaned;
+  }
+  
+  return cleaned.slice(0, 500); // 限制长度
+};
+
+// ========== 结束安全验证工具函数 ==========
+
+// ========== 图标缓存系统 ==========
+// 图标缓存 - 避免重复创建 React 节点
+const iconCache = new Map<string, React.ReactNode>();
+const MAX_ICON_CACHE_SIZE = 100;
+
+// 清理图标缓存（当缓存超过限制时）
+const cleanIconCache = () => {
+  if (iconCache.size > MAX_ICON_CACHE_SIZE) {
+    const keysToDelete = Array.from(iconCache.keys()).slice(0, 20);
+    keysToDelete.forEach(key => iconCache.delete(key));
+  }
+};
+
+// 动态获取react-icons图标 - 带缓存
+const getReactIcon = (library: string, iconName: string): React.ReactNode => {
+  // 生成缓存键
+  const cacheKey = `${library}:${iconName}`;
+  
+  // 检查缓存
+  if (iconCache.has(cacheKey)) {
+    return iconCache.get(cacheKey);
+  }
+  
+  try {
+    let IconComponent;
+    switch (library) {
+      case 'fa':
+        IconComponent = (FaIcons as any)[iconName];
+        break;
+      case 'si':
+        IconComponent = (SiIcons as any)[iconName];
+        break;
+      case 'fa6':
+        IconComponent = (Fa6Icons as any)[iconName];
+        break;
+      default:
+        return null;
+    }
+
+    if (IconComponent) {
+      const iconElement = <IconComponent />;
+      // 存入缓存
+      cleanIconCache();
+      iconCache.set(cacheKey, iconElement);
+      return iconElement;
+    }
+  } catch (e) {
+    console.error(`Failed to load icon ${iconName} from ${library}:`, e);
+  }
+  return null;
+};
 
 // 平台配置定义 - 移到组件外部避免重复创建
 interface PlatformInfo {
@@ -57,6 +162,30 @@ interface PlatformInfo {
   darkColor: string;
   getUserUrl: (userId: string) => string;
   configKey: string;
+  isCustom?: boolean; // 标识是否为自定义平台
+}
+
+// 自定义平台扩展数据
+interface CustomPlatformData {
+  id: string; // 唯一标识
+  name: string; // 平台名称
+  username: string; // 用户名
+  iconType?: 'react-icons' | 'url'; // 图标类型
+  iconLibrary?: string; // react-icons库名称（fa/si/fa6）
+  iconName?: string; // react-icons图标名称
+  iconUrl?: string; // 外部图标URL
+  color: string; // 主题色
+  darkColor: string; // 暗色主题色
+  linkType: 'url' | 'popup'; // 链接类型：URL或信息弹窗
+  linkPattern?: string; // URL模式，例如: https://example.com/{username}
+  popupData?: CustomPlatformPopupData; // 信息弹窗数据
+}
+
+// 信息弹窗数据
+interface CustomPlatformPopupData {
+  type: 'text' | 'qrcode' | 'both'; // 显示类型：纯文本、二维码或两者
+  text?: string; // 显示的文本（如ID、数字等）
+  qrcodeUrl?: string; // 二维码图片URL
 }
 
 // 静态平台配置 - 使用 Object.freeze 防止意外修改
@@ -118,52 +247,178 @@ const ICON_STATIC_ANIMATION = {
   rotate: 0,
 };
 
-const ICON_HOVER_TRANSITION = {
+const ICON_STATIC_TRANSITION = { duration: 0.3 };
+
+// 通用循环动画过渡配置
+const LOOP_TRANSITION_FAST = {
+  duration: 0.5,
+  repeat: Infinity,
+  ease: 'easeInOut' as const,
+};
+
+const LOOP_TRANSITION_NORMAL = {
   duration: 0.6,
   repeat: Infinity,
   ease: 'easeInOut' as const,
 };
 
-const ICON_STATIC_TRANSITION = {
-  duration: 0.3,
+// 2x1/2x2 尺寸图标动画配置 - 更大的动画幅度
+const ICON_LARGE_HOVER_ANIMATION = {
+  scale: [1, 1.1, 1],
+  rotate: [0, 8, -8, 0],
 };
 
-// 背景光晕动画配置 - 提取为常量
-const GLOW_ANIMATION_1 = {
-  opacity: [0.06, 0.15, 0.06],
-  scale: [1, 1.15, 1],
+// 提示文字动画
+const HINT_ANIMATION = {
+  initial: { opacity: 0, y: 5 },
+  animate: { opacity: 1, y: 0 },
+  transition: { delay: 0.2 },
+};
+const HINT_ARROW_ANIMATION = { x: [0, 2, 0] };
+const HINT_LOOP_TRANSITION = { duration: 1, repeat: Infinity };
+
+// ========== 自定义平台 PlatformInfo 缓存 ==========
+// 注意：需要在 saveCustomPlatforms 之前声明
+const platformInfoCache = new Map<string, { info: PlatformInfo; timestamp: number }>();
+const PLATFORM_INFO_CACHE_TTL = 60 * 1000; // 1分钟缓存
+
+// 自定义平台存储管理
+let customPlatformsData: CustomPlatformData[] = [];
+let customPlatformsLoaded = false; // 标记是否已加载
+let customPlatformsLoadPromise: Promise<CustomPlatformData[]> | null = null;
+
+// 从后端API加载自定义平台
+const loadCustomPlatforms = (): CustomPlatformData[] => {
+  // 如果已加载，直接返回缓存的数据
+  if (customPlatformsLoaded) {
+    return customPlatformsData;
+  }
+  
+  // 触发异步加载（如果还没有）
+  if (!customPlatformsLoadPromise) {
+    customPlatformsLoadPromise = loadCustomPlatformsAsync();
+  }
+  
+  return customPlatformsData;
 };
 
-const GLOW_ANIMATION_1_STATIC = {
-  opacity: 0.1,
-  scale: 1,
+// 异步从后端加载自定义平台
+const loadCustomPlatformsAsync = async (): Promise<CustomPlatformData[]> => {
+  if (customPlatformsLoaded) {
+    return customPlatformsData;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/api/config/ui`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.custom_platforms) {
+        try {
+          customPlatformsData = JSON.parse(data.custom_platforms);
+        } catch (e) {
+          console.error('Failed to parse custom platforms:', e);
+          customPlatformsData = [];
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load custom platforms from API:', e);
+  }
+  
+  customPlatformsLoaded = true;
+  customPlatformsLoadPromise = null;
+  return customPlatformsData;
 };
 
-const GLOW_TRANSITION_1 = {
-  duration: 4,
-  repeat: Infinity,
-  ease: 'easeInOut' as const,
+// 保存自定义平台 - 通过全局事件通知父组件保存到后端
+const saveCustomPlatforms = async (platforms: CustomPlatformData[]) => {
+  customPlatformsData = platforms;
+  customPlatformsLoaded = true;
+  // 清除所有 PlatformInfo 缓存，因为数据已更新
+  platformInfoCache.clear();
+  
+  // 发送自定义事件，让 Home.tsx 处理实际的保存
+  window.dispatchEvent(new CustomEvent('custom-platforms-update', {
+    detail: { platforms }
+  }));
 };
 
-const GLOW_ANIMATION_2 = {
-  opacity: [0.03, 0.08, 0.03],
-  scale: [1.1, 1, 1.1],
+// 添加自定义平台
+const addCustomPlatform = async (platform: CustomPlatformData) => {
+  const updated = [...customPlatformsData, platform];
+  await saveCustomPlatforms(updated);
+  return platform.id;
 };
 
-const GLOW_ANIMATION_2_STATIC = {
-  opacity: 0.05,
-  scale: 1,
+// 删除自定义平台
+const removeCustomPlatform = async (platformId: string) => {
+  const updated = customPlatformsData.filter(p => p.id !== platformId);
+  await saveCustomPlatforms(updated);
 };
 
-const GLOW_TRANSITION_2 = {
-  duration: 5,
-  repeat: Infinity,
-  ease: 'easeInOut' as const,
-  delay: 1,
+// 默认图标 - 预先创建避免重复
+const DEFAULT_ICON = (
+  <svg className="w-full h-full" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+  </svg>
+);
+
+// 将自定义平台数据转换为PlatformInfo - 带缓存
+const customPlatformToPlatformInfo = (custom: CustomPlatformData): PlatformInfo => {
+  // 检查缓存
+  const cached = platformInfoCache.get(custom.id);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < PLATFORM_INFO_CACHE_TTL) {
+    return cached.info;
+  }
+
+  // 创建图标元素
+  let icon: React.ReactNode;
+
+  if (custom.iconType === 'react-icons' && custom.iconLibrary && custom.iconName) {
+    // 使用react-icons（已经有缓存）
+    icon = getReactIcon(custom.iconLibrary, custom.iconName);
+  } else if (custom.iconUrl) {
+    // 使用外部URL - 生成带缓存键的图片
+    icon = <img src={custom.iconUrl} alt={custom.name} className="w-full h-full object-contain" loading="lazy" />;
+  }
+
+  // 如果没有图标，使用默认图标
+  if (!icon) {
+    icon = DEFAULT_ICON;
+  }
+
+  // 预先创建 getUserUrl 函数，避免每次调用创建闭包
+  const linkPattern = custom.linkPattern;
+  const linkType = custom.linkType;
+  const hasUsername = custom.username && custom.username.trim() !== '';
+  const getUserUrl = linkType === 'url' && linkPattern
+    ? hasUsername
+      ? (userId: string) => linkPattern.replace('{username}', userId)
+      : () => linkPattern // 无用户名时直接返回URL模式
+    : () => '#';
+
+  const info: PlatformInfo = {
+    id: custom.id,
+    name: custom.name,
+    icon,
+    color: custom.color,
+    darkColor: custom.darkColor,
+    getUserUrl,
+    configKey: `custom_${custom.id}`,
+    isCustom: true,
+  };
+
+  // 存入缓存
+  platformInfoCache.set(custom.id, { info, timestamp: now });
+
+  return info;
 };
 
-const GLOW_TRANSITION_STATIC = {
-  duration: 0,
+// 获取所有平台（包括预设和自定义）
+const getAllPlatforms = (): PlatformInfo[] => {
+  const customPlatforms = customPlatformsData.map(customPlatformToPlatformInfo);
+  return [...PLATFORMS, ...customPlatforms];
 };
 
 // 全局设置弹窗管理器 - 确保只有一个弹窗实例
@@ -237,7 +492,8 @@ const fetchPlatformUserIds = async (): Promise<PlatformUserIds> => {
 
   fetchPromise = (async () => {
     try {
-      const response = await fetch(`${API_URL}/api/config`);
+      // 使用公开端点，不需要登录认证
+      const response = await fetch(`${API_URL}/api/config/public`);
       if (!response.ok) return cachedPlatformUserIds || {};
       
       const data = await response.json();
@@ -275,10 +531,328 @@ const fetchPlatformUserIds = async (): Promise<PlatformUserIds> => {
   return fetchPromise;
 };
 
+// 自定义平台表单组件
+const CustomPlatformForm = memo(({
+  formData,
+  onChange,
+  onSubmit,
+  onCancel,
+  isGenerating
+}: {
+  formData: {
+    name: string;
+    username: string;
+    linkType: 'url' | 'popup';
+    linkPattern: string;
+    popupText: string;
+  };
+  onChange: (data: any) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  isGenerating: boolean;
+}) => {
+  return (
+    <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+      {/* 平台名称 */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          平台名称 *
+        </label>
+        <input
+          type="text"
+          value={formData.name}
+          onChange={(e) => onChange({ ...formData, name: e.target.value })}
+          placeholder="例如: 微博、微信"
+          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+        />
+      </div>
+
+      {/* 链接类型 */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          链接类型
+        </label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onChange({ ...formData, linkType: 'url' })}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              formData.linkType === 'url'
+                ? 'bg-[var(--color-primary)] text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            URL链接
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange({ ...formData, linkType: 'popup' })}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              formData.linkType === 'popup'
+                ? 'bg-[var(--color-primary)] text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            信息弹窗
+          </button>
+        </div>
+      </div>
+
+      {/* URL类型显示用户名和URL模式 */}
+      {formData.linkType === 'url' ? (
+        <>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              用户名/ID <span className="text-gray-400 dark:text-gray-500">(可选)</span>
+            </label>
+            <input
+              type="text"
+              value={formData.username}
+              onChange={(e) => onChange({ ...formData, username: e.target.value })}
+              placeholder="例如: your_username"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              URL模式 {!formData.username && <span className="text-amber-500">*</span>}
+            </label>
+            <input
+              type="text"
+              value={formData.linkPattern}
+              onChange={(e) => onChange({ ...formData, linkPattern: e.target.value })}
+              placeholder={formData.username ? "留空则自动生成" : "请填写完整链接"}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {formData.username ? '使用 {\'{username}\'} 作为用户名占位符' : '无用户名时直接访问此链接'}
+            </p>
+          </div>
+        </>
+      ) : (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            显示内容
+          </label>
+          <textarea
+            value={formData.popupText}
+            onChange={(e) => onChange({ ...formData, popupText: e.target.value })}
+            placeholder="输入文本、图片链接等&#10;例如:&#10;微信号: wxid_123&#10;https://example.com/qrcode.png"
+            rows={4}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none resize-none"
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            支持图片URL自动识别(http/https开头的.jpg/.png/.gif等)
+          </p>
+        </div>
+      )}
+
+      {/* 按钮 */}
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={
+            isGenerating ||
+            !formData.name ||
+            (formData.linkType === 'url' && !formData.username && !formData.linkPattern) ||
+            (formData.linkType === 'popup' && !formData.popupText)
+          }
+          className="flex-1 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        >
+          {isGenerating ? '生成中...' : '创建'}
+        </button>
+      </div>
+    </div>
+  );
+});
+
+CustomPlatformForm.displayName = 'CustomPlatformForm';
+
+// 解析弹窗内容 - 自动识别图片URL
+// ✅ 安全验证图片 URL
+const isValidImageUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    // 只允许 http 和 https 协议
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return false;
+    }
+    // 检查是否有可疑的路径
+    if (parsed.pathname.includes('..') || parsed.search.includes('<') || parsed.search.includes('>')) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const parsePopupContent = (text?: string): { textContent: string; imageUrls: string[] } => {
+  if (!text) return { textContent: '', imageUrls: [] };
+
+  // 匹配图片URL的正则表达式
+  const imageUrlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg))/gi;
+  const rawImageUrls = text.match(imageUrlRegex) || [];
+  
+  // ✅ 过滤不安全的图片 URL
+  const imageUrls = rawImageUrls.filter(isValidImageUrl);
+
+  // 移除图片URL后的纯文本
+  const textContent = text.replace(imageUrlRegex, '').trim();
+
+  return { textContent, imageUrls };
+};
+
+// Tooltip 动画配置常量
+const TOOLTIP_ANIMATION = {
+  initial: { opacity: 0, y: -4, x: "-50%", scale: 0.96 },
+  animate: { opacity: 1, y: 0, x: "-50%", scale: 1 },
+  exit: { opacity: 0, y: -4, x: "-50%", scale: 0.96 },
+  transition: { duration: 0.12, ease: 'easeOut' as const },
+};
+
+// 信息提示组件 - hover 时在小组件下方显示，点击复制
+const InfoTooltip = memo(({
+  isVisible,
+  popupData,
+  anchorRef,
+}: {
+  isVisible: boolean;
+  popupData: CustomPlatformPopupData;
+  anchorRef: React.RefObject<HTMLDivElement | null>;
+}) => {
+  const [copied, setCopied] = useState(false);
+  
+  // 解析内容
+  const { textContent, imageUrls } = useMemo(() => 
+    parsePopupContent(popupData.text),
+    [popupData.text]
+  );
+
+  // 计算位置 - 基于小组件中心对齐
+  const position = useMemo(() => {
+    if (!isVisible || !anchorRef.current) return { top: 0, left: 0 };
+    const rect = anchorRef.current.getBoundingClientRect();
+    return {
+      top: rect.bottom + 6,
+      left: rect.left + rect.width / 2,
+    };
+  }, [isVisible, anchorRef]);
+
+  // 复制文本
+  const handleCopy = useCallback(async () => {
+    if (!textContent) return;
+    try {
+      await navigator.clipboard.writeText(textContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error('Failed to copy:', e);
+    }
+  }, [textContent]);
+
+  if (!isVisible) return null;
+
+  const hasContent = textContent || imageUrls.length > 0 || popupData.qrcodeUrl;
+
+  return createPortal(
+    <motion.div
+      {...TOOLTIP_ANIMATION}
+      className="fixed z-[10001] pointer-events-auto w-fit h-fit"
+      style={{ top: position.top, left: position.left }}
+    >
+      <div 
+        className="glass rounded-xl shadow-lg overflow-hidden border border-white/20 dark:border-white/10 w-fit h-fit max-w-xs mx-auto"
+        style={{ minWidth: '120px' }}
+        onClick={handleCopy}
+      >
+        {hasContent ? (
+          <div className="p-3 space-y-2">
+            {/* 文本内容 - 点击可复制 */}
+            {textContent && (
+              <div className="cursor-pointer text-center">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words whitespace-pre-wrap leading-relaxed">
+                  {textContent}
+                </p>
+              </div>
+            )}
+            
+            {/* 图片 - 紧凑显示 */}
+            {imageUrls.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {imageUrls.map((url, index) => (
+                  <img
+                    key={index}
+                    src={url}
+                    alt=""
+                    className="max-h-24 rounded-lg object-contain"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            
+            {/* 二维码 - 紧凑显示 */}
+            {popupData.qrcodeUrl && (
+              <img
+                src={popupData.qrcodeUrl}
+                alt="QR"
+                className="w-32 h-32 rounded-lg object-contain mx-auto"
+                loading="lazy"
+              />
+            )}
+          </div>
+        ) : (
+          <div className="p-3 text-center">
+            <span className="text-xs text-gray-400">暂无内容</span>
+          </div>
+        )}
+      </div>
+    </motion.div>,
+    document.body
+  );
+});
+
+InfoTooltip.displayName = 'InfoTooltip';
+
 // 全局设置弹窗组件 - 单例模式
 const GlobalSettingsModal = memo(() => {
   // 订阅全局状态
   const [, forceUpdate] = useState({});
+
+  // 加载自定义平台
+  const [allPlatforms, setAllPlatforms] = useState<PlatformInfo[]>(() => {
+    return getAllPlatforms();
+  });
+
+  // 异步加载自定义平台
+  useEffect(() => {
+    loadCustomPlatformsAsync().then(() => {
+      setAllPlatforms(getAllPlatforms());
+    });
+  }, []);
+
+  // 自定义平台表单状态
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customFormData, setCustomFormData] = useState({
+    name: '',
+    username: '',
+    linkType: 'url' as 'url' | 'popup',
+    linkPattern: '',
+    popupText: '',
+  });
+  const [isGeneratingIcon, setIsGeneratingIcon] = useState(false);
 
   useEffect(() => {
     return subscribeToModalState(() => {
@@ -349,6 +923,137 @@ const GlobalSettingsModal = memo(() => {
     closeSettingsModal();
   }, [onSelect]);
 
+  // 处理自定义平台表单提交
+  const handleCustomFormSubmit = useCallback(async () => {
+    if (!customFormData.name) {
+      alert('请填写平台名称');
+      return;
+    }
+    
+    // URL类型需要用户名或URL模式其一，弹窗类型需要显示内容
+    if (customFormData.linkType === 'url' && !customFormData.username && !customFormData.linkPattern) {
+      alert('请填写用户名/ID 或 URL模式（至少填写一项）');
+      return;
+    }
+    if (customFormData.linkType === 'popup' && !customFormData.popupText) {
+      alert('请填写显示内容');
+      return;
+    }
+
+    // ✅ 安全验证：检查 URL 模式
+    const urlPattern = customFormData.linkPattern || '';
+    if (customFormData.linkType === 'url' && urlPattern && !isValidUrlPattern(urlPattern)) {
+      alert('URL 模式不合法\n\n要求：\n• 必须以 http:// 或 https:// 或 mailto: 开头\n• 不能包含特殊字符 < > " \' ` \\');
+      return;
+    }
+
+    setIsGeneratingIcon(true);
+
+    try {
+      // 生成唯一ID
+      const customId = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+      // 调用AI推荐图标API
+      let iconData: {
+        iconType?: 'react-icons' | 'url';
+        iconLibrary?: string;
+        iconName?: string;
+        iconUrl?: string;
+        recommendedColor?: string;
+        urlPattern?: string;
+      } = {};
+
+      try {
+        const response = await fetch(`${API_URL}/api/ai/recommend-icon`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            platform_name: customFormData.name,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          iconData = {
+            iconType: data.icon_type as 'react-icons' | 'url',
+            iconLibrary: data.icon_library,
+            iconName: data.icon_name,
+            iconUrl: data.icon_url,
+            recommendedColor: data.color_suggestion,
+            urlPattern: data.url_pattern, // AI 生成的 URL 模式
+          };
+        }
+      } catch (error) {
+        console.error('Failed to get AI icon recommendation:', error);
+        // 继续使用用户选择的颜色
+      }
+
+      // 确定最终使用的 URL 模式：优先使用用户填写的，否则使用 AI 推荐的
+      const rawLinkPattern = customFormData.linkPattern || iconData.urlPattern || '';
+      // ✅ 安全处理：消毒 URL 模式
+      const finalLinkPattern = sanitizeUrlPattern(rawLinkPattern);
+      
+      // ✅ 再次验证消毒后的 URL（AI 推荐的也需要验证）
+      if (customFormData.linkType === 'url' && finalLinkPattern && !isValidUrlPattern(finalLinkPattern)) {
+        console.warn('AI recommended URL pattern is invalid, using empty pattern');
+      }
+
+      const newPlatform: CustomPlatformData = {
+        id: customId,
+        name: sanitizePlatformName(customFormData.name), // ✅ 消毒平台名称
+        username: customFormData.linkType === 'url' ? sanitizeUsername(customFormData.username) : '', // ✅ 消毒用户名
+        iconType: iconData.iconType || 'react-icons',
+        iconLibrary: iconData.iconLibrary,
+        iconName: iconData.iconName,
+        iconUrl: iconData.iconUrl,
+        color: iconData.recommendedColor || '#6366f1', // 使用AI推荐的颜色或默认颜色
+        darkColor: iconData.recommendedColor || '#6366f1',
+        linkType: customFormData.linkType,
+        linkPattern: customFormData.linkType === 'url' && isValidUrlPattern(finalLinkPattern) ? finalLinkPattern : undefined, // ✅ 验证后存储
+        popupData: customFormData.linkType === 'popup' ? {
+          type: 'text',
+          text: sanitizePopupText(customFormData.popupText), // ✅ 消毒弹窗文本
+        } : undefined,
+      };
+
+      await addCustomPlatform(newPlatform);
+
+      // 刷新平台列表
+      setAllPlatforms(getAllPlatforms());
+
+      // 重置表单
+      setCustomFormData({
+        name: '',
+        username: '',
+        linkType: 'url',
+        linkPattern: '',
+        popupText: '',
+      });
+      setShowCustomForm(false);
+
+      // 自动选择新建的平台
+      if (onSelect) {
+        onSelect(customId);
+      }
+      closeSettingsModal();
+    } catch (error) {
+      console.error('Failed to create custom platform:', error);
+      alert('创建自定义平台失败');
+    } finally {
+      setIsGeneratingIcon(false);
+    }
+  }, [customFormData, onSelect]);
+
+  // 删除自定义平台
+  const handleDeleteCustomPlatform = useCallback(async (platformId: string) => {
+    if (confirm('确定要删除这个自定义平台吗？')) {
+      await removeCustomPlatform(platformId);
+      setAllPlatforms(getAllPlatforms());
+    }
+  }, []);
+
   // 提前返回，不渲染任何东西
   if (!isOpen) return null;
 
@@ -388,17 +1093,54 @@ const GlobalSettingsModal = memo(() => {
           </button>
         </div>
 
-        {/* 平台列表 - 使用优化后的 PlatformButton */}
-        <div className="p-3 space-y-1.5">
-          {PLATFORMS.map((platform) => (
-            <PlatformButton
-              key={platform.id}
-              platform={platform}
-              isSelected={selectedPlatformId === platform.id}
-              onSelect={handleSelect}
-            />
-          ))}
-        </div>
+        {/* 平台列表或自定义表单 */}
+        {!showCustomForm ? (
+          <>
+            {/* 平台列表 - 使用优化后的 PlatformButton */}
+            <div className="p-3 space-y-1.5 max-h-80 overflow-y-auto">
+              {allPlatforms.map((platform) => (
+                <PlatformButton
+                  key={platform.id}
+                  platform={platform}
+                  isSelected={selectedPlatformId === platform.id}
+                  onSelect={handleSelect}
+                  onDelete={platform.isCustom ? handleDeleteCustomPlatform : undefined}
+                />
+              ))}
+            </div>
+
+            {/* 添加自定义平台按钮 */}
+            <div className="p-3 pt-0">
+              <button
+                type="button"
+                onClick={() => setShowCustomForm(true)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[var(--color-primary)] hover:opacity-90 text-white font-medium transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                添加自定义平台
+              </button>
+            </div>
+          </>
+        ) : (
+          <CustomPlatformForm
+            formData={customFormData}
+            onChange={setCustomFormData}
+            onSubmit={handleCustomFormSubmit}
+            onCancel={() => {
+              setShowCustomForm(false);
+              setCustomFormData({
+                name: '',
+                username: '',
+                linkType: 'url',
+                linkPattern: '',
+                popupText: '',
+              });
+            }}
+            isGenerating={isGeneratingIcon}
+          />
+        )}
       </motion.div>
     </motion.div>,
     document.body
@@ -408,44 +1150,68 @@ const GlobalSettingsModal = memo(() => {
 GlobalSettingsModal.displayName = 'GlobalSettingsModal';
 
 // 平台按钮组件 - 单独 memo 避免列表重渲染
-const PlatformButton = memo(({ 
-  platform, 
-  isSelected, 
-  onSelect 
-}: { 
-  platform: PlatformInfo; 
-  isSelected: boolean; 
+const PlatformButton = memo(({
+  platform,
+  isSelected,
+  onSelect,
+  onDelete
+}: {
+  platform: PlatformInfo;
+  isSelected: boolean;
   onSelect: (platformId: string) => void;
+  onDelete?: (platformId: string) => void;
 }) => {
   const handleClick = useCallback(() => {
     onSelect(platform.id);
   }, [onSelect, platform.id]);
 
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete) {
+      onDelete(platform.id);
+    }
+  }, [onDelete, platform.id]);
+
   return (
     <button
+      type="button"
       onClick={handleClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
         isSelected
-          ? 'bg-black/5 dark:bg-white/10 ring-1 ring-black/10 dark:ring-white/20'
-          : 'hover:bg-black/8 dark:hover:bg-white/8 hover:shadow-sm active:scale-[0.98]'
+          ? 'bg-black/5 dark:bg-white/10 ring-1 ring-black/10 dark:ring-white/20 hover:bg-black/10 dark:hover:bg-white/15'
+          : 'hover:bg-black/5 dark:hover:bg-white/8 hover:shadow-sm active:scale-[0.98]'
       }`}
     >
-      <div 
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-lg"
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-lg flex-shrink-0"
         style={{ backgroundColor: platform.color }}
       >
         {platform.icon}
       </div>
-      <span className="font-medium text-sm text-gray-800 dark:text-gray-200">
+      <span className="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">
         {platform.name}
       </span>
-      {isSelected && (
+      {isSelected && !onDelete && (
         <div
-          className="ml-auto w-5 h-5 rounded-full flex items-center justify-center"
+          className="ml-auto w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: platform.color }}
         >
           <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      )}
+      {onDelete && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={handleDelete}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDelete(e as any); } }}
+          className="ml-auto w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500 transition-colors flex-shrink-0 cursor-pointer"
+          title="删除"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         </div>
       )}
@@ -455,11 +1221,9 @@ const PlatformButton = memo(({
 
 PlatformButton.displayName = 'PlatformButton';
 
-// 已移除旧的 SettingsModal 组件，现在使用全局单例 GlobalSettingsModal
-
 // 主组件
 export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
-  const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
+  const { containerRef, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const anim = useAnimationLevel();
   // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）
   const localRef = useRef<HTMLDivElement | null>(null);
@@ -498,26 +1262,78 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   const [platformUserIds, setPlatformUserIds] = useState<PlatformUserIds>({});
   const [isHovered, setIsHovered] = useState(false);
 
+  // 信息提示状态 - hover 触发
+  const [showInfoTooltip, setShowInfoTooltip] = useState(false);
+  
+  // 自定义平台加载状态
+  const [customPlatformsReady, setCustomPlatformsReady] = useState(customPlatformsLoaded);
+
   // 长按检测 - 使用 ReturnType<typeof setTimeout> 兼容浏览器和 Node 环境
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
+  
+  // hover 延迟计时器
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 获取当前选中的平台信息 - 使用索引查找优化性能
+  // 异步加载自定义平台数据
+  useEffect(() => {
+    if (!customPlatformsLoaded) {
+      loadCustomPlatformsAsync().then(() => {
+        setCustomPlatformsReady(true);
+      });
+    }
+  }, []);
+
+  // 获取当前选中的平台信息 - 支持自定义平台
   const selectedPlatform = useMemo(() => {
+    // 先检查是否是预设平台
     const index = PLATFORM_INDEX_MAP[selectedPlatformId];
-    return index !== undefined ? PLATFORMS[index] : PLATFORMS[0];
-  }, [selectedPlatformId]);
+    if (index !== undefined) {
+      return PLATFORMS[index];
+    }
 
-  // 获取用户ID
+    // 检查是否是自定义平台（确保数据已加载）
+    if (customPlatformsReady) {
+      const customPlatform = customPlatformsData.find(p => p.id === selectedPlatformId);
+      if (customPlatform) {
+        return customPlatformToPlatformInfo(customPlatform);
+      }
+    }
+
+    // 默认返回第一个平台
+    return PLATFORMS[0];
+  }, [selectedPlatformId, customPlatformsReady]);
+
+  // 获取用户ID - 支持自定义平台
   const userId = useMemo(() => {
+    // 预设平台
     switch (selectedPlatformId) {
       case 'bilibili': return platformUserIds.bilibili_uid;
       case 'steam': return platformUserIds.steam_id;
       case 'github': return platformUserIds.github_username;
       case 'netease': return platformUserIds.netease_user_id;
-      default: return undefined;
+      default: {
+        // 自定义平台（确保数据已加载）
+        if (customPlatformsReady) {
+          const customPlatform = customPlatformsData.find(p => p.id === selectedPlatformId);
+          if (customPlatform) {
+            // 信息弹窗类型返回特殊标识，表示已配置
+            if (customPlatform.linkType === 'popup') {
+              return '__popup__';
+            }
+            // 有用户名则返回用户名，否则如果有linkPattern则返回特殊标识表示直接访问
+            if (customPlatform.username && customPlatform.username.trim() !== '') {
+              return customPlatform.username;
+            }
+            if (customPlatform.linkPattern) {
+              return '__direct_url__';
+            }
+          }
+        }
+        return undefined;
+      }
     }
-  }, [selectedPlatformId, platformUserIds]);
+  }, [selectedPlatformId, platformUserIds, customPlatformsReady]);
 
   // 加载平台用户ID
   useEffect(() => {
@@ -561,7 +1377,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   }, [selectedPlatformId, handleSelectPlatform]);
 
   // 长按开始
-  const handlePressStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handlePressStart = useCallback(() => {
     if (!isEditMode) return;
 
     isLongPressRef.current = false;
@@ -579,8 +1395,24 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     }
   }, []);
 
-  // 点击处理（跳转到用户页面）
-  const handleClick = useCallback((e: React.MouseEvent) => {
+  // 获取弹窗类型平台数据（合并查找逻辑避免重复）
+  const popupPlatformData = useMemo(() => {
+    loadCustomPlatforms();
+    const customPlatform = customPlatformsData.find(p => p.id === selectedPlatformId);
+    if (customPlatform?.linkType === 'popup') {
+      return {
+        popupData: customPlatform.popupData || { type: 'text' as const, text: '' },
+        color: customPlatform.color,
+      };
+    }
+    return null;
+  }, [selectedPlatformId]);
+
+  // 是否为弹窗类型（直接从 popupPlatformData 派生）
+  const isPopupType = popupPlatformData !== null;
+
+  // 点击处理（跳转到用户页面或复制信息）
+  const handleClick = useCallback(async () => {
     // 如果是长按触发的设置弹窗，不处理点击
     if (isLongPressRef.current) {
       isLongPressRef.current = false;
@@ -590,18 +1422,40 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     // 编辑模式下不跳转
     if (isEditMode) return;
 
-    // 如果有用户ID，则跳转
-    if (userId) {
-      const url = selectedPlatform.getUserUrl(userId);
-      window.open(url, '_blank', 'noopener,noreferrer');
+    // 信息弹窗类型：点击复制文本
+    if (popupPlatformData?.popupData.text) {
+      try {
+        const { textContent } = parsePopupContent(popupPlatformData.popupData.text);
+        if (textContent) {
+          await navigator.clipboard.writeText(textContent);
+        }
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+      return;
     }
-  }, [isEditMode, userId, selectedPlatform]);
+
+    // 如果有用户ID，则跳转
+    if (userId && userId !== '__popup__') {
+      // __direct_url__ 表示直接访问URL模式（无用户名占位符）
+      const url = selectedPlatform.getUserUrl(userId === '__direct_url__' ? '' : userId);
+      if (url !== '#') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    }
+  }, [isEditMode, userId, selectedPlatform, popupPlatformData]);
 
   // 清理定时器
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
+      }
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
+      if (tooltipHideTimerRef.current) {
+        clearTimeout(tooltipHideTimerRef.current);
       }
     };
   }, []);
@@ -622,7 +1476,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
             className="text-3xl"
             style={{ color: iconColor }}
             animate={isHovered ? ICON_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-            transition={isHovered ? ICON_HOVER_TRANSITION : ICON_STATIC_TRANSITION}
+            transition={isHovered ? LOOP_TRANSITION_NORMAL : ICON_STATIC_TRANSITION}
           >
             {selectedPlatform.icon}
           </motion.div>
@@ -637,15 +1491,8 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           <motion.div
             className="text-2xl flex-shrink-0"
             style={{ color: iconColor }}
-            animate={isHovered ? {
-              scale: [1, 1.1, 1],
-              rotate: [0, 8, -8, 0],
-            } : ICON_STATIC_ANIMATION}
-            transition={isHovered ? {
-              duration: 0.5,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            } : ICON_STATIC_TRANSITION}
+            animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
+            transition={isHovered ? LOOP_TRANSITION_FAST : ICON_STATIC_TRANSITION}
           >
             {selectedPlatform.icon}
           </motion.div>
@@ -655,41 +1502,95 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           >
             {selectedPlatform.name}
           </span>
-          {/* 箭头指示 */}
-          {userId && !isEditMode && (
-            <motion.div 
-              className="ml-auto text-gray-400 dark:text-gray-500"
-              animate={{ x: [0, 3, 0] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </motion.div>
-          )}
         </div>
       );
     }
 
-    // 2x2 尺寸 - 图标 + 平台名称 + 描述
+    // 2x2 尺寸 - popup 类型重视内容显示
+    const popupContent = popupPlatformData ? parsePopupContent(popupPlatformData.popupData.text) : null;
+    const is2x2Popup = userId === '__popup__' && popupContent && popupPlatformData;
+    
+    // 2x2 popup 类型：内容为主的布局
+    if (is2x2Popup) {
+      // 判断是否只有图片内容（没有文本）
+      const hasOnlyImages = !popupContent.textContent && (popupContent.imageUrls.length > 0 || popupPlatformData.popupData.qrcodeUrl);
+      
+      return (
+        <div className="h-full w-full relative flex flex-col p-3 cursor-pointer group">
+          {/* 右上角：复制提示 - 仅在有文本内容时显示 */}
+          {popupContent.textContent && (
+            <div className="absolute top-2 right-2 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+              <span>复制</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </div>
+          )}
+          
+          {/* 顶部：小图标 + 平台名 */}
+          <div className="flex items-center gap-2 mb-1">
+            <div 
+              className="text-lg flex-shrink-0"
+              style={{ color: iconColor }}
+            >
+              {selectedPlatform.icon}
+            </div>
+            <span 
+              className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate"
+            >
+              {selectedPlatform.name}
+            </span>
+          </div>
+          
+          {/* 中间：主要内容区域 - 扩大显示 */}
+          <div className="flex-1 flex flex-col justify-center overflow-hidden">
+            {popupContent.textContent && (
+              <p 
+                className="text-base font-medium text-gray-800 dark:text-gray-100 break-words whitespace-pre-wrap leading-snug line-clamp-4 text-center"
+              >
+                {popupContent.textContent}
+              </p>
+            )}
+            {popupContent.imageUrls.length > 0 && (
+              <div className={`flex justify-center gap-2 ${popupContent.textContent ? 'mt-2' : ''}`}>
+                {popupContent.imageUrls.slice(0, 2).map((url, index) => (
+                  <img
+                    key={index}
+                    src={url}
+                    alt=""
+                    className={`rounded-lg object-contain ${hasOnlyImages ? 'max-h-24 max-w-[48%]' : 'max-h-20 max-w-[48%]'}`}
+                    loading="lazy"
+                  />
+                ))}
+              </div>
+            )}
+            {popupPlatformData.popupData.qrcodeUrl && (
+              <div className={`flex justify-center ${popupContent.textContent || popupContent.imageUrls.length > 0 ? 'mt-2' : ''}`}>
+                <img
+                  src={popupPlatformData.popupData.qrcodeUrl}
+                  alt="QR"
+                  className={`rounded-lg object-contain ${hasOnlyImages ? 'w-24 h-24' : 'w-20 h-20'}`}
+                  loading="lazy"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    // 2x2 尺寸 - 普通类型：图标 + 平台名称 + 描述
     return (
       <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4">
         <motion.div
           className="text-4xl"
           style={{ color: iconColor }}
-          animate={isHovered ? {
-            scale: [1, 1.1, 1],
-            rotate: [0, 10, -10, 0],
-          } : ICON_STATIC_ANIMATION}
-          transition={isHovered ? {
-            duration: 0.5,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          } : ICON_STATIC_TRANSITION}
+          animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
+          transition={isHovered ? LOOP_TRANSITION_FAST : ICON_STATIC_TRANSITION}
         >
           {selectedPlatform.icon}
         </motion.div>
-        <div className="text-center">
+        <div className="text-center w-full">
           <div 
             className="font-bold text-gray-800 dark:text-gray-100"
             style={{ fontSize: `${16 * fontScale}px` }}
@@ -699,16 +1600,14 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           <motion.div 
             className={`mt-1 flex items-center justify-center gap-1 ${userId ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500 dark:text-amber-400'}`}
             style={{ fontSize: `${10 * fontScale}px` }}
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            {...HINT_ANIMATION}
           >
             {userId ? (
               <>
                 <span>点击访问个人主页</span>
                 <motion.span
-                  animate={{ x: [0, 2, 0] }}
-                  transition={{ duration: 1, repeat: Infinity }}
+                  animate={HINT_ARROW_ANIMATION}
+                  transition={HINT_LOOP_TRANSITION}
                 >
                   →
                 </motion.span>
@@ -725,7 +1624,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
         </div>
       </div>
     );
-  }, [config.size, iconColor, isHovered, selectedPlatform, fontScale, userId, isEditMode]);
+  }, [config.size, iconColor, isHovered, selectedPlatform, fontScale, userId, popupPlatformData]);
 
   // 缓存容器的 hover/tap 动画配置 - 条件判断移到外部避免创建空对象
   const hasInteraction = !isEditMode && !!userId;
@@ -739,17 +1638,45 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   // 背景光晕动画 - 直接使用条件渲染，无需 useMemo
   const shouldAnimateGlow = anim.loop;
 
+  // tooltip 隐藏延迟计时器
+  const tooltipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // 缓存 onMouseLeave 和 onMouseEnter 回调
   const handleMouseLeave = useCallback(() => {
     handlePressEnd();
     setIsHovered(false);
+    // 清除 hover 延迟计时器
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    // 延迟隐藏 tooltip，给用户一点时间移动到 tooltip 上
+    if (tooltipHideTimerRef.current) {
+      clearTimeout(tooltipHideTimerRef.current);
+    }
+    tooltipHideTimerRef.current = setTimeout(() => {
+      setShowInfoTooltip(false);
+      tooltipHideTimerRef.current = null;
+    }, 100);
   }, [handlePressEnd]);
 
   const handleMouseEnter = useCallback(() => {
     if (!isEditMode && userId) {
       setIsHovered(true);
     }
-  }, [isEditMode, userId]);
+    // 对于 popup 类型，hover 延迟显示 tooltip（仅非 2x2 尺寸）
+    // 2x2 尺寸直接在小组件内显示内容
+    if (!isEditMode && isPopupType && popupPlatformData && config.size !== '2x2') {
+      // 清除之前的计时器
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
+      // 300ms 延迟后显示 tooltip
+      hoverTimerRef.current = setTimeout(() => {
+        setShowInfoTooltip(true);
+      }, 300);
+    }
+  }, [isEditMode, userId, isPopupType, popupPlatformData, config.size]);
 
   // 合并 ref 回调
   const mergedRef = useCallback((node: HTMLDivElement | null) => {
@@ -782,23 +1709,11 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
         onTouchEnd={handlePressEnd}
         onTouchCancel={handlePressEnd}
       >
-        {/* 背景装饰 - 平台色微光效果 */}
-        <motion.div
-          className={`absolute -right-8 -top-8 w-32 h-32 rounded-full pointer-events-none ${
-            anim.level === 'standard' ? 'blur-3xl' : 'blur-2xl'
-          }`}
-          style={{ backgroundColor: selectedPlatform.color }}
-          animate={shouldAnimateGlow ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
-          transition={shouldAnimateGlow ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
-        />
-        {/* 第二个光晕 */}
-        <motion.div
-          className={`absolute -left-6 -bottom-6 w-24 h-24 rounded-full pointer-events-none ${
-            anim.level === 'standard' ? 'blur-3xl' : 'blur-2xl'
-          }`}
-          style={{ backgroundColor: selectedPlatform.color }}
-          animate={shouldAnimateGlow ? GLOW_ANIMATION_2 : GLOW_ANIMATION_2_STATIC}
-          transition={shouldAnimateGlow ? GLOW_TRANSITION_2 : GLOW_TRANSITION_STATIC}
+        {/* 背景装饰 - 平台色微光效果 (Memoized 组件避免重渲染) */}
+        <GlowBackground
+          color={selectedPlatform.color}
+          animLevel={anim.level}
+          shouldAnimate={shouldAnimateGlow}
         />
 
         {/* 内容区域 */}
@@ -825,6 +1740,17 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           </motion.div>
         )}
       </motion.div>
+
+      {/* 信息提示 - hover 触发，点击复制 */}
+      <AnimatePresence>
+        {showInfoTooltip && popupPlatformData && (
+          <InfoTooltip
+            isVisible={showInfoTooltip}
+            popupData={popupPlatformData.popupData}
+            anchorRef={localRef}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 });

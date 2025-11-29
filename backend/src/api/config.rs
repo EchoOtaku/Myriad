@@ -1315,6 +1315,7 @@ pub async fn get_public_ui_config(State(db): State<DatabaseConnection>) -> (Stat
         ),
         "dashboard_layout": db_config.as_ref().and_then(|c| c.dashboard_layout.clone()),
         "dashboard_title": db_config.as_ref().and_then(|c| c.dashboard_title.clone()),
+        "custom_platforms": db_config.as_ref().and_then(|c| c.custom_platforms.clone()),
         "control_panel_layout": db_config.as_ref().and_then(|c| c.control_panel_layout.clone()),
         "control_panel_rows": db_config.as_ref().map(|c| c.control_panel_rows).unwrap_or(2),
     });
@@ -1326,6 +1327,7 @@ pub async fn get_public_ui_config(State(db): State<DatabaseConnection>) -> (Stat
 pub struct DashboardConfigPayload {
     pub layout: Option<String>,
     pub title: Option<String>,
+    pub custom_platforms: Option<String>,
 }
 
 pub async fn update_dashboard_config(
@@ -1341,6 +1343,10 @@ pub async fn update_dashboard_config(
 
     if let Some(title) = payload.title {
         updates.insert("dashboard_title".to_string(), json!(title));
+    }
+
+    if let Some(custom_platforms) = payload.custom_platforms {
+        updates.insert("custom_platforms".to_string(), json!(custom_platforms));
     }
 
     if let Err(e) = config_service.update_configs(updates).await {

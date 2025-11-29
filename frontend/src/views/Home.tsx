@@ -326,6 +326,36 @@ export default function Home() {
     }
   };
 
+  // 监听自定义平台更新事件
+  useEffect(() => {
+    const handleCustomPlatformsUpdate = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ platforms: any[] }>;
+      // 只有管理员可以保存
+      if (!userInfo?.is_admin) return;
+
+      try {
+        await fetch(`${API_URL}/api/config/dashboard`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            custom_platforms: JSON.stringify(customEvent.detail.platforms)
+          }),
+        });
+      } catch (err) {
+        console.error('保存自定义平台失败:', err);
+      }
+    };
+
+    window.addEventListener('custom-platforms-update', handleCustomPlatformsUpdate);
+    return () => {
+      window.removeEventListener('custom-platforms-update', handleCustomPlatformsUpdate);
+    };
+  }, [userInfo?.is_admin, csrfToken]);
+
   return (
     <AnimatedView className="min-h-screen lg:h-screen lg:overflow-hidden">
       <div className="h-full flex flex-col pt-20 pb-6 px-3 xs:px-4 sm:px-6">

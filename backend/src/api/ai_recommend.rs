@@ -1,0 +1,668 @@
+use axum::{http::StatusCode, Json};
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize)]
+pub struct IconRecommendRequest {
+    pub platform_name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IconRecommendResponse {
+    pub icon_type: String,            // "react-icons" or "url"
+    pub icon_library: Option<String>, // 图标库名称，如 "fa", "si", "fa6"
+    pub icon_name: Option<String>,    // 图标名称，如 "FaWeibo"
+    pub icon_url: Option<String>,     // 如果图标库没有，返回外部URL
+    pub color_suggestion: String,     // 建议的主题色
+    pub url_pattern: Option<String>,  // URL模式建议，如 "https://weibo.com/u/{username}"
+}
+
+/// AI推荐图标API
+///
+/// 根据平台名称推荐合适的图标和URL模式
+/// 优先级：react-icons/si (品牌图标) > react-icons/fa (Font Awesome) > 外部URL
+pub async fn recommend_icon(
+    Json(payload): Json<IconRecommendRequest>,
+) -> Result<Json<IconRecommendResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let platform_name = payload.platform_name.to_lowercase();
+
+    // 简单的规则匹配 - 可以替换为真正的AI调用
+    let recommendation = match_platform_icon(&platform_name);
+
+    Ok(Json(recommendation))
+}
+
+/// 平台图标匹配规则
+fn match_platform_icon(platform: &str) -> IconRecommendResponse {
+    // 常见社交平台映射（Simple Icons - si）包含URL模式
+    // 注意：匹配顺序很重要！更具体的关键词（如 "xbox"）必须放在更通用的关键词（如 "x"）之前
+    // 因为匹配使用的是 contains() 方法
+    let social_platforms: Vec<(&str, &str, &str, &str)> = vec![
+        // (关键词, 图标名, 颜色, URL模式)
+        (
+            "微博",
+            "SiSinaweibo",
+            "#E6162D",
+            "https://weibo.com/u/{username}",
+        ),
+        (
+            "weibo",
+            "SiSinaweibo",
+            "#E6162D",
+            "https://weibo.com/u/{username}",
+        ),
+        (
+            "twitter",
+            "SiTwitter",
+            "#1DA1F2",
+            "https://twitter.com/{username}",
+        ),
+        // Xbox 必须放在 X 之前，否则 "xbox" 会被 "x" 匹配
+        (
+            "xbox",
+            "FaXbox",
+            "#107C10",
+            "https://account.xbox.com/profile?gamertag={username}",
+        ),
+        ("x", "SiX", "#000000", "https://x.com/{username}"),
+        (
+            "facebook",
+            "SiFacebook",
+            "#1877F2",
+            "https://facebook.com/{username}",
+        ),
+        (
+            "instagram",
+            "SiInstagram",
+            "#E4405F",
+            "https://instagram.com/{username}",
+        ),
+        (
+            "youtube",
+            "SiYoutube",
+            "#FF0000",
+            "https://youtube.com/@{username}",
+        ),
+        (
+            "tiktok",
+            "SiTiktok",
+            "#000000",
+            "https://tiktok.com/@{username}",
+        ),
+        (
+            "抖音",
+            "SiTiktok",
+            "#000000",
+            "https://www.douyin.com/user/{username}",
+        ),
+        (
+            "linkedin",
+            "SiLinkedin",
+            "#0A66C2",
+            "https://linkedin.com/in/{username}",
+        ),
+        (
+            "reddit",
+            "SiReddit",
+            "#FF4500",
+            "https://reddit.com/user/{username}",
+        ),
+        (
+            "discord",
+            "SiDiscord",
+            "#5865F2",
+            "https://discord.gg/{username}",
+        ),
+        (
+            "telegram",
+            "SiTelegram",
+            "#26A5E4",
+            "https://t.me/{username}",
+        ),
+        (
+            "whatsapp",
+            "SiWhatsapp",
+            "#25D366",
+            "https://wa.me/{username}",
+        ),
+        (
+            "snapchat",
+            "SiSnapchat",
+            "#FFFC00",
+            "https://snapchat.com/add/{username}",
+        ),
+        (
+            "pinterest",
+            "SiPinterest",
+            "#E60023",
+            "https://pinterest.com/{username}",
+        ),
+        (
+            "twitch",
+            "SiTwitch",
+            "#9146FF",
+            "https://twitch.tv/{username}",
+        ),
+        (
+            "spotify",
+            "SiSpotify",
+            "#1DB954",
+            "https://open.spotify.com/user/{username}",
+        ),
+        ("apple", "SiApple", "#000000", ""),
+        ("google", "SiGoogle", "#4285F4", ""),
+        ("microsoft", "SiMicrosoft", "#5E5E5E", ""),
+        (
+            "amazon",
+            "SiAmazon",
+            "#FF9900",
+            "https://amazon.com/shop/{username}",
+        ),
+        (
+            "douban",
+            "SiDouban",
+            "#007722",
+            "https://www.douban.com/people/{username}",
+        ),
+        (
+            "豆瓣",
+            "SiDouban",
+            "#007722",
+            "https://www.douban.com/people/{username}",
+        ),
+        (
+            "zhihu",
+            "SiZhihu",
+            "#0084FF",
+            "https://www.zhihu.com/people/{username}",
+        ),
+        (
+            "知乎",
+            "SiZhihu",
+            "#0084FF",
+            "https://www.zhihu.com/people/{username}",
+        ),
+        ("qq", "SiTencentqq", "#12B7F5", ""),     // QQ蓝色
+        ("腾讯qq", "SiTencentqq", "#12B7F5", ""), // QQ蓝色
+        ("wechat", "SiWechat", "#07C160", ""),
+        ("微信", "SiWechat", "#07C160", ""),
+        ("baidu", "SiBaidu", "#2932E1", ""), // 百度蓝色
+        ("百度", "SiBaidu", "#2932E1", ""),  // 百度蓝色
+        (
+            "xiaohongshu",
+            "SiXiaohongshu",
+            "#FF2442",
+            "https://www.xiaohongshu.com/user/profile/{username}",
+        ),
+        (
+            "小红书",
+            "SiXiaohongshu",
+            "#FF2442",
+            "https://www.xiaohongshu.com/user/profile/{username}",
+        ),
+        (
+            "gitlab",
+            "SiGitlab",
+            "#FC6D26",
+            "https://gitlab.com/{username}",
+        ),
+        (
+            "bitbucket",
+            "SiBitbucket",
+            "#0052CC",
+            "https://bitbucket.org/{username}",
+        ),
+        (
+            "codepen",
+            "SiCodepen",
+            "#000000",
+            "https://codepen.io/{username}",
+        ),
+        (
+            "dribbble",
+            "SiDribbble",
+            "#EA4C89",
+            "https://dribbble.com/{username}",
+        ),
+        (
+            "behance",
+            "SiBehance",
+            "#1769FF",
+            "https://behance.net/{username}",
+        ),
+        (
+            "deviantart",
+            "SiDeviantart",
+            "#05CC47",
+            "https://deviantart.com/{username}",
+        ),
+        (
+            "medium",
+            "SiMedium",
+            "#000000",
+            "https://medium.com/@{username}",
+        ),
+        (
+            "substack",
+            "SiSubstack",
+            "#FF6719",
+            "https://{username}.substack.com",
+        ),
+        (
+            "patreon",
+            "SiPatreon",
+            "#FF424D",
+            "https://patreon.com/{username}",
+        ),
+        ("ko-fi", "SiKofi", "#FF5E5B", "https://ko-fi.com/{username}"),
+        (
+            "buymeacoffee",
+            "SiBuymeacoffee",
+            "#FFDD00",
+            "https://buymeacoffee.com/{username}",
+        ),
+        (
+            "mastodon",
+            "SiMastodon",
+            "#6364FF",
+            "https://mastodon.social/@{username}",
+        ),
+        (
+            "threads",
+            "SiThreads",
+            "#000000",
+            "https://threads.net/@{username}",
+        ),
+        (
+            "bluesky",
+            "SiBluesky",
+            "#0085FF",
+            "https://bsky.app/profile/{username}",
+        ),
+        (
+            "misskey",
+            "SiMisskey",
+            "#86B300",
+            "https://misskey.io/@{username}",
+        ),
+        (
+            "soundcloud",
+            "SiSoundcloud",
+            "#FF5500",
+            "https://soundcloud.com/{username}",
+        ),
+        (
+            "bandcamp",
+            "SiBandcamp",
+            "#629AA9",
+            "https://{username}.bandcamp.com",
+        ),
+        (
+            "itch.io",
+            "SiItchdotio",
+            "#FA5C5C",
+            "https://{username}.itch.io",
+        ),
+        ("playstation", "SiPlaystation", "#003791", ""),
+        ("nintendo", "SiNintendoswitch", "#E60012", ""),
+        ("epic games", "SiEpicgames", "#313131", ""),
+        ("origin", "SiOrigin", "#F56C2D", ""),
+        (
+            "anilist",
+            "SiAnilist",
+            "#02A9FF",
+            "https://anilist.co/user/{username}",
+        ),
+        (
+            "myanimelist",
+            "SiMyanimelist",
+            "#2E51A2",
+            "https://myanimelist.net/profile/{username}",
+        ),
+        (
+            "letterboxd",
+            "SiLetterboxd",
+            "#00D735",
+            "https://letterboxd.com/{username}",
+        ),
+        (
+            "trakt",
+            "SiTrakt",
+            "#ED1C24",
+            "https://trakt.tv/users/{username}",
+        ),
+        (
+            "goodreads",
+            "SiGoodreads",
+            "#553B08",
+            "https://goodreads.com/{username}",
+        ),
+        (
+            "lastfm",
+            "SiLastdotfm",
+            "#D51007",
+            "https://last.fm/user/{username}",
+        ),
+        (
+            "last.fm",
+            "SiLastdotfm",
+            "#D51007",
+            "https://last.fm/user/{username}",
+        ),
+        (
+            "pixiv",
+            "SiPixiv",
+            "#0096FA",
+            "https://pixiv.net/users/{username}",
+        ),
+        (
+            "artstation",
+            "SiArtstation",
+            "#13AFF0",
+            "https://artstation.com/{username}",
+        ),
+        (
+            "flickr",
+            "SiFlickr",
+            "#0063DC",
+            "https://flickr.com/people/{username}",
+        ),
+        (
+            "500px",
+            "Si500px",
+            "#0099E5",
+            "https://500px.com/p/{username}",
+        ),
+        (
+            "unsplash",
+            "SiUnsplash",
+            "#000000",
+            "https://unsplash.com/@{username}",
+        ),
+        (
+            "producthunt",
+            "SiProducthunt",
+            "#DA552F",
+            "https://producthunt.com/@{username}",
+        ),
+        (
+            "hackernews",
+            "SiYcombinator",
+            "#FF6600",
+            "https://news.ycombinator.com/user?id={username}",
+        ),
+        (
+            "stackoverflow",
+            "SiStackoverflow",
+            "#F58025",
+            "https://stackoverflow.com/users/{username}",
+        ),
+        (
+            "dev.to",
+            "SiDevdotto",
+            "#0A0A0A",
+            "https://dev.to/{username}",
+        ),
+        (
+            "hashnode",
+            "SiHashnode",
+            "#2962FF",
+            "https://{username}.hashnode.dev",
+        ),
+        (
+            "kaggle",
+            "SiKaggle",
+            "#20BEFF",
+            "https://kaggle.com/{username}",
+        ),
+        (
+            "huggingface",
+            "SiHuggingface",
+            "#FFD21E",
+            "https://huggingface.co/{username}",
+        ),
+        (
+            "figma",
+            "SiFigma",
+            "#F24E1E",
+            "https://figma.com/@{username}",
+        ),
+        (
+            "notion",
+            "SiNotion",
+            "#000000",
+            "https://notion.so/{username}",
+        ),
+        (
+            "afdian",
+            "FaCoffee",
+            "#946CE6",
+            "https://afdian.com/a/{username}",
+        ),
+        (
+            "爱发电",
+            "FaCoffee",
+            "#946CE6",
+            "https://afdian.com/a/{username}",
+        ),
+        (
+            "acfun",
+            "FaPlayCircle",
+            "#FD4C5D",
+            "https://www.acfun.cn/u/{username}",
+        ),
+        (
+            "a站",
+            "FaPlayCircle",
+            "#FD4C5D",
+            "https://www.acfun.cn/u/{username}",
+        ),
+        (
+            "niconico",
+            "SiNiconico",
+            "#231F20",
+            "https://www.nicovideo.jp/user/{username}",
+        ),
+        (
+            "fc2",
+            "FaGlobe",
+            "#FF6600",
+            "https://{username}.blog.fc2.com",
+        ),
+        (
+            "line",
+            "SiLine",
+            "#00B900",
+            "https://line.me/ti/p/{username}",
+        ),
+        ("kakao", "SiKakaotalk", "#FFCD00", ""),
+        (
+            "naver",
+            "SiNaver",
+            "#03C75A",
+            "https://blog.naver.com/{username}",
+        ),
+        ("vk", "SiVk", "#4C75A3", "https://vk.com/{username}"),
+        (
+            "ok",
+            "SiOdnoklassniki",
+            "#EE8208",
+            "https://ok.ru/profile/{username}",
+        ),
+        (
+            "tumblr",
+            "SiTumblr",
+            "#36465D",
+            "https://{username}.tumblr.com",
+        ),
+        (
+            "wordpress",
+            "SiWordpress",
+            "#21759B",
+            "https://{username}.wordpress.com",
+        ),
+        (
+            "blogger",
+            "SiBlogger",
+            "#FF5722",
+            "https://{username}.blogspot.com",
+        ),
+        (
+            "lofter",
+            "FaBlog",
+            "#2B5F82",
+            "https://{username}.lofter.com",
+        ),
+        (
+            "网易lofter",
+            "FaBlog",
+            "#2B5F82",
+            "https://{username}.lofter.com",
+        ),
+        (
+            "v2ex",
+            "FaComments",
+            "#0A0A0A",
+            "https://v2ex.com/member/{username}",
+        ),
+        (
+            "nga",
+            "FaComments",
+            "#6B6B6B",
+            "https://bbs.nga.cn/nuke.php?func=ucp&uid={username}",
+        ),
+        (
+            "贴吧",
+            "SiBaidu",
+            "#4879BD",
+            "https://tieba.baidu.com/home/main?id={username}",
+        ),
+        (
+            "tieba",
+            "SiBaidu",
+            "#4879BD",
+            "https://tieba.baidu.com/home/main?id={username}",
+        ),
+        ("alipay", "FaAlipay", "#1677FF", ""),
+        ("支付宝", "FaAlipay", "#1677FF", ""),
+    ];
+
+    // 检查是否匹配社交平台
+    for (name, icon, color, url_pattern) in &social_platforms {
+        if platform.contains(name) {
+            // 根据图标名称前缀自动判断图标库
+            let icon_library = if icon.starts_with("Si") {
+                "si"
+            } else if icon.starts_with("Fa6") {
+                "fa6"
+            } else {
+                "fa"
+            };
+
+            return IconRecommendResponse {
+                icon_type: "react-icons".to_string(),
+                icon_library: Some(icon_library.to_string()),
+                icon_name: Some(icon.to_string()),
+                icon_url: None,
+                color_suggestion: color.to_string(),
+                url_pattern: if url_pattern.is_empty() {
+                    None
+                } else {
+                    Some(url_pattern.to_string())
+                },
+            };
+        }
+    }
+
+    // Font Awesome通用图标匹配
+    let fa_keywords: Vec<(&str, &str, &str, &str)> = vec![
+        ("音乐", "FaMusic", "#FF6B6B", ""),
+        ("music", "FaMusic", "#FF6B6B", ""),
+        ("视频", "FaVideo", "#4ECDC4", ""),
+        ("video", "FaVideo", "#4ECDC4", ""),
+        ("直播", "FaBroadcastTower", "#F7B731", ""),
+        ("live", "FaBroadcastTower", "#F7B731", ""),
+        ("博客", "FaAlignLeft", "var(--color-wallpaper)", ""),
+        ("blog", "FaAlignLeft", "var(--color-wallpaper)", ""),
+        ("论坛", "FaComments", "#0FB9B1", ""),
+        ("forum", "FaComments", "#0FB9B1", ""),
+        ("游戏", "FaGamepad", "#EE5A6F", ""),
+        ("game", "FaGamepad", "#EE5A6F", ""),
+        ("商店", "FaShoppingCart", "#F79F1F", ""),
+        ("shop", "FaShoppingCart", "#F79F1F", ""),
+        ("邮箱", "FaEnvelope", "#3867D6", "mailto:{username}"),
+        ("email", "FaEnvelope", "#3867D6", "mailto:{username}"),
+        ("新闻", "FaNewspaper", "#2C3E50", ""),
+        ("news", "FaNewspaper", "#2C3E50", ""),
+        ("照片", "FaCamera", "#FDA7DF", ""),
+        ("photo", "FaCamera", "#FDA7DF", ""),
+        ("书籍", "FaBook", "#C23616", ""),
+        ("book", "FaBook", "#C23616", ""),
+        ("教育", "FaGraduationCap", "#0652DD", ""),
+        ("education", "FaGraduationCap", "#0652DD", ""),
+        ("个人网站", "FaGlobe", "#6366F1", "https://{username}"),
+        ("website", "FaGlobe", "#6366F1", "https://{username}"),
+        ("主页", "FaHome", "#6366F1", "https://{username}"),
+        ("homepage", "FaHome", "#6366F1", "https://{username}"),
+    ];
+
+    for (keyword, icon, color, url_pattern) in &fa_keywords {
+        if platform.contains(keyword) {
+            return IconRecommendResponse {
+                icon_type: "react-icons".to_string(),
+                icon_library: Some("fa".to_string()),
+                icon_name: Some(icon.to_string()),
+                icon_url: None,
+                color_suggestion: color.to_string(),
+                url_pattern: if url_pattern.is_empty() {
+                    None
+                } else {
+                    Some(url_pattern.to_string())
+                },
+            };
+        }
+    }
+
+    // 未知平台：返回随机图标和随机颜色
+    let random_icons = [
+        "FaGlobe",
+        "FaStar",
+        "FaHeart",
+        "FaRocket",
+        "FaBolt",
+        "FaGem",
+        "FaCrown",
+        "FaFeather",
+        "FaLeaf",
+        "FaPaperPlane",
+        "FaCompass",
+        "FaAnchor",
+        "FaMoon",
+        "FaSun",
+        "FaCloud",
+        "FaFire",
+        "FaSnowflake",
+        "FaUmbrella",
+        "FaMountain",
+        "FaWater",
+    ];
+
+    let random_colors = [
+        "#6366F1", "#8B5CF6", "#EC4899", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#14B8A6",
+        "#06B6D4", "#3B82F6", "#A855F7", "#D946EF", "#F43F5E", "#FB7185", "#34D399", "#2DD4BF",
+        "#38BDF8", "#818CF8", "#C084FC", "#F472B6",
+    ];
+
+    let mut rng = rand::thread_rng();
+    let icon = random_icons[rng.gen_range(0..random_icons.len())];
+    let color = random_colors[rng.gen_range(0..random_colors.len())];
+
+    IconRecommendResponse {
+        icon_type: "react-icons".to_string(),
+        icon_library: Some("fa".to_string()),
+        icon_name: Some(icon.to_string()),
+        icon_url: None,
+        color_suggestion: color.to_string(),
+        url_pattern: None,
+    }
+}

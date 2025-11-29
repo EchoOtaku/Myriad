@@ -197,6 +197,7 @@ fn is_csrf_exempt(path: &str) -> bool {
         || path.starts_with("/api/setup/")
         || path.starts_with("/health")
         || path.starts_with("/api/proxy/") // 图片代理等公开接口
+        || path.starts_with("/api/ai/") // AI 推荐等公开接口
 }
 
 /// 生成并返回 CSRF Token 的接口

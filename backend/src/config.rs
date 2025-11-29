@@ -186,6 +186,7 @@ pub struct DynamicConfig {
     // 仪表盘配置
     pub dashboard_layout: Option<String>,
     pub dashboard_title: Option<String>,
+    pub custom_platforms: Option<String>, // 自定义社交平台数据 (JSON)
 
     // 控制面板小组件配置
     pub control_panel_layout: Option<String>,
@@ -249,6 +250,7 @@ impl Default for DynamicConfig {
 
             dashboard_layout: None,
             dashboard_title: None,
+            custom_platforms: None,
 
             control_panel_layout: None,
             control_panel_rows: 2,
