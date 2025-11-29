@@ -13,6 +13,7 @@
 
 # Backend Cache & Data (runtime generated)
 /backend/cache/
+!/backend/cache/.gitkeep
 /backend/data/*.json
 !/backend/data/.gitkeep
 
@@ -57,12 +58,11 @@ docker-compose.override.yml
 docker/data/
 docker/logs/
 docker/volumes/
-docker/nginx/certs/*.pem
-docker/nginx/certs/*.key
-docker/nginx/certs/*.crt
-docker/nginx/certs/*.csr
-!/docker/nginx/certs/README.md
+docker/nginx/certs/*
+!/docker/nginx/certs/.gitkeep
 docker/nginx/logs/*.log
+docker/nginx/conf.d/*
+!/docker/nginx/conf.d/.gitkeep
 
 # -------------------------------------------
 # IDE & Editor
@@ -114,9 +114,8 @@ out/
 *.pid
 
 # -------------------------------------------
-# Package Manager Lock Files
+# Package Manager Lock Files (keep package-lock.json for reproducible builds)
 # -------------------------------------------
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 /frontend/yarn.lock
@@ -155,4 +154,3 @@ temp/
 # -------------------------------------------
 /.claude/
 .claude/settings.local.json
-
