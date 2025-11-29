@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { extractColorsFromImage, applyColorPalette } from '../utils/colorExtractor';
 import { useWallpaper } from '../hooks/useWallpaper';
+import { wallpaperState } from '../utils/wallpaperState';
 import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
@@ -746,26 +747,49 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     
     if (wallpaperResult) {
-      const { actualUrl } = wallpaperResult;
+      const { actualUrl, verified } = wallpaperResult;
+      
+      // 如果URL未通过验证，记录警告但继续尝试
+      if (!verified) {
+        console.warn('壁纸URL验证失败，尝试使用返回的URL进行颜色提取');
+      }
+
+      // 🔒 再次验证：确保当前活跃壁纸与要提取颜色的URL一致
+      if (!wallpaperState.isUrlActive(actualUrl)) {
+        console.warn('壁纸URL在加载期间已变更，跳过颜色提取');
+        return;
+      }
 
       // 先检查缓存
       const cachedColors = getColorFromCache(actualUrl);
       if (cachedColors) {
-        applyColorPalette(cachedColors);
+        // 🔒 应用缓存颜色前再次验证
+        if (wallpaperState.isUrlActive(actualUrl)) {
+          applyColorPalette(cachedColors);
+        }
         return;
       }
 
-      // 检查是否为有效壁纸
+      // 检查是否为有效壁纸（包含一致性验证）
       const checkResult = await shouldApplyColorExtraction(actualUrl);
       if (!checkResult.shouldApply) {
+        if (checkResult.reason) {
+          console.debug('跳过颜色提取:', checkResult.reason);
+        }
         return;
       }
 
       // 提取颜色
       try {
         const colors = await extractColorsFromImage(actualUrl, { context: 'wallpaper' });
-        applyColorPalette(colors);
-        saveColorToCache(actualUrl, colors);
+        
+        // 🔒 应用颜色前验证壁纸是否仍然一致
+        if (wallpaperState.isUrlActive(actualUrl)) {
+          applyColorPalette(colors);
+          saveColorToCache(actualUrl, colors);
+        } else {
+          console.warn('颜色提取完成，但壁纸已变更，放弃应用');
+        }
       } catch (error) {
         console.error('颜色提取失败:', error);
       }
@@ -845,15 +869,21 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, []);
 
-  // 初始化：加载壁纸和检查认证
+  // 初始化：加载壁纸和检查认证（仅首次挂载执行）
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
+    // 防止重复初始化
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+    
     (async () => {
       await loadWallpaper();
     })();
     // ✅ 总是检查认证状态（静默模式），因为使用 HttpOnly Cookie 无法从 JavaScript 读取
     // 即使未登录也会返回 401，但静默处理，不显示错误
     checkAuth(true);
-  }, [checkAuth, loadWallpaper]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 初始化导航岛高度 - 仅在组件首次挂载时执行
   useEffect(() => {
@@ -884,24 +914,42 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       if (!newUrl) return;
 
-      // 先检查缓存
-      const cachedColors = getColorFromCache(newUrl);
-      if (cachedColors) {
-        applyColorPalette(cachedColors);
+      // 🔒 验证URL与当前活跃壁纸一致
+      if (!wallpaperState.isUrlActive(newUrl)) {
+        console.debug('壁纸变更事件URL与当前活跃壁纸不一致，可能是过时事件');
         return;
       }
 
-      // 检查是否为有效壁纸
+      // 先检查缓存
+      const cachedColors = getColorFromCache(newUrl);
+      if (cachedColors) {
+        // 🔒 应用前再次验证
+        if (wallpaperState.isUrlActive(newUrl)) {
+          applyColorPalette(cachedColors);
+        }
+        return;
+      }
+
+      // 检查是否为有效壁纸（包含一致性验证）
       const checkResult = await shouldApplyColorExtraction(newUrl);
       if (!checkResult.shouldApply) {
+        if (checkResult.reason) {
+          console.debug('壁纸变更事件跳过颜色提取:', checkResult.reason);
+        }
         return;
       }
 
       // 提取颜色
       try {
         const colors = await extractColorsFromImage(newUrl, { context: 'wallpaper' });
-        applyColorPalette(colors);
-        saveColorToCache(newUrl, colors);
+        
+        // 🔒 应用颜色前验证壁纸是否仍然一致
+        if (wallpaperState.isUrlActive(newUrl)) {
+          applyColorPalette(colors);
+          saveColorToCache(newUrl, colors);
+        } else {
+          console.debug('颜色提取完成，但壁纸已变更，放弃应用');
+        }
       } catch (error) {
         console.error('颜色提取失败:', error);
       }

@@ -2,17 +2,36 @@
  * 壁纸颜色缓存管理工具
  *
  * 功能：
- * - 30分钟缓存有效期
- * - 基于标准化URL的简单缓存
+ * - 6小时缓存有效期
+ * - 基于标准化URL的LRU缓存
  * - 自动清理过期缓存
+ * - 与当前活跃壁纸的一致性验证
+ * 
+ * @module wallpaperColorCache
+ * @version 2.0
  */
 
 import { ColorPalette } from './colorExtractor';
+import { 
+  wallpaperState, 
+  normalizeWallpaperUrl, 
+  areUrlsEquivalent,
+  extractBackgroundUrl,
+} from './wallpaperState';
+
+// ============================================================================
+// 类型定义
+// ============================================================================
 
 interface WallpaperColorCacheItem {
-  url: string; // 标准化后的URL
+  /** 标准化后的URL */
+  url: string;
+  /** 颜色配色 */
   palette: ColorPalette;
+  /** 缓存时间戳 */
   timestamp: number;
+  /** 访问次数（用于LRU） */
+  accessCount: number;
 }
 
 interface WallpaperColorCacheStore {
@@ -20,84 +39,28 @@ interface WallpaperColorCacheStore {
   items: WallpaperColorCacheItem[];
 }
 
-const CACHE_VERSION = 4;
-const CACHE_DURATION_MS = 30 * 60 * 1000; // 30分钟
-const CACHE_KEY = 'myriad_wallpaper_color_cache_v4';
-const MAX_CACHE_ITEMS = 10; // 最多缓存10张壁纸
-
-/**
- * 标准化URL：去除时间戳和缓存破坏参数
- */
-function normalizeUrl(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    // 删除常见的缓存破坏参数
-    urlObj.searchParams.delete('_t');
-    urlObj.searchParams.delete('t');
-    urlObj.searchParams.delete('timestamp');
-    urlObj.searchParams.delete('cache');
-    urlObj.searchParams.delete('v');
-    urlObj.searchParams.delete('cachebust');
-    urlObj.searchParams.delete('nocache');
-    return urlObj.toString();
-  } catch {
-    return url;
-  }
-}
-
-/**
- * 检查URL是否为有效壁纸
- */
-export async function shouldApplyColorExtraction(url: string): Promise<{
+interface ColorExtractionCheckResult {
   shouldApply: boolean;
   cacheKey?: string;
   reason?: string;
-}> {
-  if (!url) {
-    return { shouldApply: false, reason: 'URL 为空' };
-  }
-
-  // 快速排除明显不是壁纸的URL
-  if (url.includes('/api/proxy/music/')) {
-    return { shouldApply: false, reason: '音乐封面' };
-  }
-  if (url.startsWith('file://')) {
-    return { shouldApply: false, reason: 'file:// 协议不支持' };
-  }
-
-  try {
-    // 加载图片检查尺寸
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    const loaded = await new Promise<boolean>((resolve) => {
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      setTimeout(() => resolve(false), 10000);
-      img.src = url;
-    });
-
-    if (!loaded) {
-      return { shouldApply: false, reason: '图片加载失败' };
-    }
-
-    // 检查尺寸（排除小图标）
-    const isLargeEnough = img.width >= 400 && img.height >= 400;
-    if (!isLargeEnough) {
-      return { shouldApply: false, reason: `图片太小: ${img.width}x${img.height}` };
-    }
-
-    // 生成缓存key（标准化URL）
-    const cacheKey = normalizeUrl(url);
-    return { shouldApply: true, cacheKey };
-
-  } catch (error) {
-    return { shouldApply: false, reason: `检查失败: ${error}` };
-  }
 }
 
+// ============================================================================
+// 常量
+// ============================================================================
+
+const CACHE_VERSION = 5; // 升级版本号
+const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6小时
+const CACHE_KEY = 'myriad_wallpaper_color_cache_v5';
+const MAX_CACHE_ITEMS = 10;
+const MIN_IMAGE_SIZE = 400; // 最小图片尺寸
+
+// ============================================================================
+// 缓存存储操作
+// ============================================================================
+
 /**
- * 从缓存存储中读取
+ * 从localStorage读取缓存存储
  */
 function getCacheStore(): WallpaperColorCacheStore | null {
   try {
@@ -106,51 +69,185 @@ function getCacheStore(): WallpaperColorCacheStore | null {
 
     const store: WallpaperColorCacheStore = JSON.parse(cached);
     if (store.version !== CACHE_VERSION) {
+      // 版本不匹配，清除旧缓存
       localStorage.removeItem(CACHE_KEY);
       return null;
     }
 
     return store;
   } catch {
+    // 解析失败，清除损坏的缓存
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch { /* 忽略 */ }
     return null;
   }
 }
 
 /**
- * 保存缓存存储
+ * 保存缓存存储到localStorage
  */
-function saveCacheStore(store: WallpaperColorCacheStore): void {
+function saveCacheStore(store: WallpaperColorCacheStore): boolean {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(store));
-  } catch {
-    // 静默失败
+    return true;
+  } catch (error) {
+    // localStorage可能已满或不可用
+    console.warn('保存颜色缓存失败:', error);
+    return false;
   }
 }
 
 /**
- * 根据URL从缓存中获取颜色配色
+ * 清理过期和超出限制的缓存项
+ */
+function cleanupCacheStore(store: WallpaperColorCacheStore): void {
+  const now = Date.now();
+  
+  // 移除过期项
+  store.items = store.items.filter(
+    item => now - item.timestamp < CACHE_DURATION_MS
+  );
+  
+  // 如果仍超出限制，按访问次数和时间排序后裁剪
+  if (store.items.length > MAX_CACHE_ITEMS) {
+    store.items.sort((a, b) => {
+      // 优先保留访问次数高的
+      if (b.accessCount !== a.accessCount) {
+        return b.accessCount - a.accessCount;
+      }
+      // 次优先保留新的
+      return b.timestamp - a.timestamp;
+    });
+    store.items = store.items.slice(0, MAX_CACHE_ITEMS);
+  }
+}
+
+// ============================================================================
+// 公共API
+// ============================================================================
+
+/**
+ * 检查URL是否适合进行颜色提取，并验证与当前壁纸的一致性
+ */
+export async function shouldApplyColorExtraction(url: string): Promise<ColorExtractionCheckResult> {
+  if (!url) {
+    return { shouldApply: false, reason: 'URL为空' };
+  }
+
+  // 快速排除
+  if (url.includes('/api/proxy/music/')) {
+    return { shouldApply: false, reason: '音乐封面URL' };
+  }
+  if (url.startsWith('file://')) {
+    return { shouldApply: false, reason: 'file://协议不支持' };
+  }
+
+  // 验证与当前活跃壁纸的一致性
+  if (!wallpaperState.isUrlActive(url)) {
+    const activeUrl = wallpaperState.getActiveUrl();
+    return { 
+      shouldApply: false, 
+      reason: activeUrl 
+        ? `URL与当前壁纸不一致` 
+        : '没有活跃壁纸',
+    };
+  }
+  
+  // 验证DOM一致性
+  const domUrl = extractBackgroundUrl();
+  if (domUrl && !areUrlsEquivalent(domUrl, url)) {
+    return { 
+      shouldApply: false, 
+      reason: 'URL与DOM显示壁纸不一致',
+    };
+  }
+
+  // 加载图片检查尺寸
+  try {
+    const imageValid = await validateImage(url);
+    if (!imageValid.valid) {
+      return { shouldApply: false, reason: imageValid.reason };
+    }
+
+    // 图片加载完成后再次验证壁纸一致性
+    if (!wallpaperState.isUrlActive(url)) {
+      return { 
+        shouldApply: false, 
+        reason: '图片加载期间壁纸已变更',
+      };
+    }
+
+    return { 
+      shouldApply: true, 
+      cacheKey: normalizeWallpaperUrl(url),
+    };
+  } catch (error) {
+    return { 
+      shouldApply: false, 
+      reason: `验证失败: ${error instanceof Error ? error.message : '未知错误'}`,
+    };
+  }
+}
+
+/**
+ * 验证图片是否有效
+ */
+async function validateImage(url: string): Promise<{ valid: boolean; reason?: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    const timeout = setTimeout(() => {
+      img.src = '';
+      resolve({ valid: false, reason: '图片加载超时' });
+    }, 10000);
+    
+    img.onload = () => {
+      clearTimeout(timeout);
+      if (img.width < MIN_IMAGE_SIZE || img.height < MIN_IMAGE_SIZE) {
+        resolve({ valid: false, reason: `图片太小: ${img.width}x${img.height}` });
+      } else {
+        resolve({ valid: true });
+      }
+    };
+    
+    img.onerror = () => {
+      clearTimeout(timeout);
+      resolve({ valid: false, reason: '图片加载失败' });
+    };
+    
+    img.src = url;
+  });
+}
+
+/**
+ * 从缓存获取颜色配色
  */
 export function getColorFromCache(url: string): ColorPalette | null {
   try {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeWallpaperUrl(url);
     const store = getCacheStore();
     if (!store) return null;
 
-    // 查找匹配的URL
-    const item = store.items.find((item) => item.url === normalizedUrl);
+    const item = store.items.find(i => i.url === normalizedUrl);
     if (!item) return null;
 
     // 检查是否过期
     const age = Date.now() - item.timestamp;
     if (age > CACHE_DURATION_MS) {
-      // 移除过期项
-      store.items = store.items.filter((i) => i.url !== normalizedUrl);
+      // 异步清理过期项
+      store.items = store.items.filter(i => i.url !== normalizedUrl);
       saveCacheStore(store);
       return null;
     }
 
+    // 更新访问次数
+    item.accessCount++;
+    saveCacheStore(store);
+
     return item.palette;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -160,72 +257,70 @@ export function getColorFromCache(url: string): ColorPalette | null {
  */
 export function saveColorToCache(url: string, palette: ColorPalette): void {
   try {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeWallpaperUrl(url);
     let store = getCacheStore();
+    
     if (!store) {
       store = { version: CACHE_VERSION, items: [] };
     }
 
-    // 移除已存在的相同URL
-    store.items = store.items.filter((item) => item.url !== normalizedUrl);
+    // 移除已存在的相同URL项
+    store.items = store.items.filter(item => item.url !== normalizedUrl);
 
     // 添加新项
     store.items.push({
       url: normalizedUrl,
       palette,
       timestamp: Date.now(),
+      accessCount: 1,
     });
 
-    // 清理过期项和超出数量限制的项
-    const now = Date.now();
-    store.items = store.items
-      .filter((item) => now - item.timestamp < CACHE_DURATION_MS)
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, MAX_CACHE_ITEMS);
-
+    // 清理
+    cleanupCacheStore(store);
     saveCacheStore(store);
-  } catch (error) {
+  } catch {
     // 静默失败
   }
 }
 
 /**
- * 清除壁纸颜色缓存
+ * 清除所有壁纸颜色缓存
  */
 export function clearColorCache(): void {
   try {
     localStorage.removeItem(CACHE_KEY);
-    console.log('🗑️  壁纸颜色缓存已清除');
-  } catch (error) {
-    console.warn('清除壁纸颜色缓存失败:', error);
+  } catch {
+    // 静默失败
   }
 }
 
 /**
- * 获取缓存信息（用于调试）
+ * 获取缓存调试信息
  */
 export function getCacheInfo(): {
   exists: boolean;
   count?: number;
-  items?: Array<{ url: string; age: number }>;
-} | null {
+  totalSize?: number;
+  items?: Array<{ url: string; age: number; accessCount: number }>;
+} {
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (!cached) return { exists: false };
 
     const store: WallpaperColorCacheStore = JSON.parse(cached);
     const now = Date.now();
-    const items = store.items.map(item => ({
-      url: item.url,
-      age: now - item.timestamp
-    }));
 
     return {
       exists: true,
       count: store.items.length,
-      items
+      totalSize: cached.length,
+      items: store.items.map(item => ({
+        url: item.url.length > 60 ? item.url.substring(0, 60) + '...' : item.url,
+        age: Math.round((now - item.timestamp) / 1000),
+        accessCount: item.accessCount,
+      })),
     };
   } catch {
-    return null;
+    return { exists: false };
   }
 }
