@@ -19,6 +19,7 @@ import { QuoteWidget } from '../components/widgets/QuoteWidget';
 import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget';
 import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget';
+import { getUserInfoWithCache, getCsrfTokenWithCache, UserInfo } from '../utils/userInfoCache';
 
 // 注册所有可用的小组件类型
 const AVAILABLE_WIDGETS: WidgetType[] = [
@@ -139,7 +140,7 @@ export default function Home() {
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [userInfo, setUserInfo] = useState<any>(null);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [dashboardTitle, setDashboardTitle] = useState('Dashboard');
   const [csrfToken, setCsrfToken] = useState<string>('');
 
@@ -165,71 +166,30 @@ export default function Home() {
     checkSetup();
   }, [navigate]);
 
-  // 获取用户信息
+  // 获取用户信息（使用缓存）
   useEffect(() => {
     async function fetchUserInfo() {
-      // 默认状态（访客/未加载）
-      let currentInfo = {
-        name: 'Myriad Dashboard',
-        avatar: `https://ui-avatars.com/api/?name=Myriad&background=random`,
-        bio: '欢迎访问我的个人仪表盘',
-        is_admin: false
-      };
-
       try {
-        // 1. 尝试获取登录信息 (确定权限)
-        const authResponse = await fetch(`${API_URL}/api/auth/me`, {
-          credentials: 'include',
-        });
+        // 并行获取用户信息和 CSRF Token（都带缓存）
+        const [info, token] = await Promise.all([
+          getUserInfoWithCache(),
+          getCsrfTokenWithCache(),
+        ]);
         
-        if (authResponse.ok) {
-          const authData = await authResponse.json();
-          // 登录后先使用账号信息
-          currentInfo = {
-            name: authData.display_name || authData.username,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(authData.username)}&background=random`,
-            bio: '这家伙很懒，没有介绍呢',
-            is_admin: authData.is_admin || false
-          };
-
-          // 获取 CSRF Token (仅登录用户需要)
-          try {
-            const csrfResponse = await fetch(`${API_URL}/api/csrf-token`, {
-              credentials: 'include',
-            });
-            if (csrfResponse.ok) {
-              const csrfData = await csrfResponse.json();
-              if (csrfData.csrf_token) {
-                setCsrfToken(csrfData.csrf_token);
-              }
-            }
-          } catch (e) {
-            console.warn('获取 CSRF Token 失败', e);
-          }
+        setUserInfo(info);
+        if (token) {
+          setCsrfToken(token);
         }
       } catch (error) {
-        // 忽略 401 等错误，保持默认访客状态
-        console.debug('未登录或验证失败:', error);
+        console.debug('获取用户信息失败:', error);
+        // 设置默认访客信息
+        setUserInfo({
+          name: 'Myriad Dashboard',
+          avatar: 'https://ui-avatars.com/api/?name=Myriad&background=random',
+          bio: '欢迎访问我的个人仪表盘',
+          is_admin: false,
+        });
       }
-
-      // 2. 获取公开的个人资料 (作为介绍展示)
-      // 无论是否登录，都尝试获取这个信息来丰富展示
-      try {
-        const profileResponse = await fetch(`${API_URL}/api/profile/user-info`);
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
-          if (profileData.success && profileData.user_info) {
-            // 覆盖显示信息（优先显示站长/公开资料）
-            if (profileData.user_info.name) currentInfo.name = profileData.user_info.name;
-            if (profileData.user_info.avatar) currentInfo.avatar = profileData.user_info.avatar;
-            if (profileData.user_info.bio) currentInfo.bio = profileData.user_info.bio;
-          }
-        }
-      } catch (e) {
-        console.warn('获取详细资料失败', e);
-      }
-
-      setUserInfo(currentInfo);
     }
     fetchUserInfo();
   }, []);

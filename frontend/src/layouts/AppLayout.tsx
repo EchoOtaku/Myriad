@@ -13,6 +13,7 @@ import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget';
+import { invalidateAuthCache, getUserAvatarWithCache } from '../utils/userInfoCache';
 import {
   shouldApplyColorExtraction,
   getColorFromCache,
@@ -702,19 +703,10 @@ export function AppLayout({ children }: AppLayoutProps) {
         setIsAuthenticated(true);
         setIsAdmin(user.is_admin || false);
         
-        // 获取头像
+        // 获取头像（使用缓存）
         try {
-          const profileResponse = await fetch(`${API_URL}/api/profile/user-info`, {
-            credentials: 'include',
-          });
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json();
-            if (profileData.success && profileData.user_info?.avatar) {
-              setUserAvatar(profileData.user_info.avatar);
-            } else {
-              setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
-            }
-          }
+          const avatar = await getUserAvatarWithCache(user.username);
+          setUserAvatar(avatar);
         } catch {
           setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`);
         }
@@ -975,7 +967,8 @@ export function AppLayout({ children }: AppLayoutProps) {
       setIsAuthenticated(isAuth);
       
       if (isAuth) {
-        // 登录成功，重新检查认证
+        // 登录成功，清除缓存并重新检查认证
+        invalidateAuthCache();
         checkAuth().then(() => {
           // 认证检查完成后，再次触发事件，携带管理员状态
           const adminStatus = e.detail?.isAdmin ?? false;

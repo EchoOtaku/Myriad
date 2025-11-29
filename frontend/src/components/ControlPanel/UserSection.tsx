@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '../../config';
 import { clearPlaylistCache } from '../../utils/musicPlayer';
+import { invalidateAuthCache, invalidateUserInfoCache, clearAllUserCache } from '../../utils/userInfoCache';
 import LoginForm from '../LoginForm';
 import { UserModal } from './UserModal';
 
@@ -101,6 +102,9 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
   useEffect(() => {
     const handleLoginSuccess = () => {
       handleUserModalClose();
+      // 登录成功后清除缓存，强制刷新用户信息
+      invalidateAuthCache();
+      invalidateUserInfoCache();
       checkAuthRef.current();
     };
 
@@ -158,6 +162,9 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     } catch (error) {
       // 静默处理退出错误
     }
+    
+    // 清除用户信息缓存
+    clearAllUserCache();
     
     // 彻底清理所有本地状态和存储
     localStorage.clear();

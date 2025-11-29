@@ -9,6 +9,7 @@ import { getCSRFToken } from '../utils/csrf';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import TokenManager from '../utils/tokenManager';
+import { getUserAvatarWithCache } from '../utils/userInfoCache';
 
 interface User {
   username: string;
@@ -43,20 +44,13 @@ export default function Account() {
         const userData = await response.json();
         setUser(userData);
 
-        // 获取头像
-        let avatar = `https://ui-avatars.com/api/?name=${userData.username}`;
+        // 获取头像（使用缓存）
         try {
-          const profileResponse = await fetch(`${API_URL}/api/profile/user-info`);
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json();
-            if (profileData.success && profileData.user_info?.avatar) {
-              avatar = profileData.user_info.avatar;
-            }
-          }
+          const avatar = await getUserAvatarWithCache(userData.username);
+          setAvatarUrl(avatar);
         } catch (e) {
-          // 使用默认头像
+          setAvatarUrl(`https://ui-avatars.com/api/?name=${userData.username}`);
         }
-        setAvatarUrl(avatar);
 
         // 只有本地账户且未绑定 GitHub 才显示修改密码
         setShowChangePassword(userData.auth_provider === 'local' && !userData.linked_github_id);
