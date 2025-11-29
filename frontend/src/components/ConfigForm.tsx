@@ -1313,9 +1313,6 @@ const ModernConfigForm: React.FC = () => {
                   <p className="info-text">
                     在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐。播放有歌词的歌曲时，收缩状态下会自动显示实时歌词。
                   </p>
-                  <p className="info-text warning-text">
-                    ⚠️ 注意：网易云音乐API有地理位置限制，海外IP可能无法播放部分歌曲。建议海外用户使用QQ音乐。
-                  </p>
                 </div>
 
                 {/* 开关和平台选择 - 横向布局 */}

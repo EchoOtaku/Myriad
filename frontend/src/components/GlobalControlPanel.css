@@ -576,8 +576,8 @@ html.dark .nav-dot:hover {
 }
 
 html.dark .control-item {
-  background: rgba(55, 65, 81, 0.4);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 12%, transparent);
 }
 
 .control-item:hover {
@@ -586,8 +586,8 @@ html.dark .control-item {
 }
 
 html.dark .control-item:hover {
-  background: rgba(55, 65, 81, 0.6);
-  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent);
 }
 
 .control-item-info {
