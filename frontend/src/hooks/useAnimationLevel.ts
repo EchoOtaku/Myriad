@@ -30,6 +30,8 @@ export function useAnimationLevel(): AnimationConfig {
 
   // 根据性能级别自动配置动画调度器
   useEffect(() => {
+    const isMobile = perf.isMobile;
+    
     switch (config.level) {
       case 'none':
         // 完全禁用动画时，只允许 1 个同时运行（基本的 UI 反馈）
@@ -42,21 +44,21 @@ export function useAnimationLevel(): AnimationConfig {
       case 'light':
         // 低端设备，限制同时动画数量
         configureAnimationScheduler({ 
-          maxConcurrent: 4, 
-          minInterval: 100,
+          maxConcurrent: isMobile ? 2 : 4,  // 移动端低端: 2, 桌面端低端: 4
+          minInterval: isMobile ? 120 : 100,
           defaultDuration: 400,
         });
         break;
       case 'standard':
         // 标准设备，允许较多动画
         configureAnimationScheduler({ 
-          maxConcurrent: 8, 
-          minInterval: 50,
+          maxConcurrent: isMobile ? 6 : 8,  // 移动端中高端: 6, 桌面端: 8
+          minInterval: isMobile ? 60 : 50,
           defaultDuration: 500,
         });
         break;
     }
-  }, [config.level]);
+  }, [config.level, perf.isMobile]);
 
   return config;
 }

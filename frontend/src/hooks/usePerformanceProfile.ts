@@ -44,12 +44,28 @@ function detectPerformanceProfile(): PerformanceProfile {
     const hardwareConcurrency = (navigator as any).hardwareConcurrency ?? null;
     const deviceMemory = (navigator as any).deviceMemory ?? null;
 
-    const lowEndDevice = (
-      (hardwareConcurrency !== null && hardwareConcurrency <= 4) ||
-      (deviceMemory !== null && deviceMemory <= 4) ||
-      reduceMotion ||
-      isMobile
-    );
+    // 🔧 优化低端设备判定逻辑
+    // 移动端不再一刀切判定为低端，而是根据实际硬件能力判断
+    let lowEndDevice = reduceMotion; // 用户偏好优先
+
+    if (!lowEndDevice) {
+      if (isMobile) {
+        // 移动端：只有真正低配的设备才判定为低端
+        // CPU核心 <= 4 且 内存 <= 4GB 才认为是低端移动设备
+        const isLowEndMobile = (
+          (hardwareConcurrency !== null && hardwareConcurrency <= 4) &&
+          (deviceMemory !== null && deviceMemory <= 4)
+        );
+        // 如果无法获取硬件信息，假设是中高端设备（现代手机大多性能不错）
+        lowEndDevice = isLowEndMobile;
+      } else {
+        // 桌面端：CPU <= 4核 或 内存 <= 4GB 判定为低端
+        lowEndDevice = (
+          (hardwareConcurrency !== null && hardwareConcurrency <= 4) ||
+          (deviceMemory !== null && deviceMemory <= 4)
+        );
+      }
+    }
 
     cachedProfile = { isMobile, reduceMotion, lowEndDevice, hardwareConcurrency, deviceMemory };
     return cachedProfile;
