@@ -4,14 +4,14 @@ Welcome to Myriad documentation! This is your central hub for all project docume
 
 ## 🎯 Quick Navigation
 
-| I want to...              | Go to                                                 |
-| ------------------------- | ----------------------------------------------------- |
-| **Deploy Myriad now!**    | [Getting Started →](../deployment/GETTING_STARTED.md) |
-| **Understand the system** | [Architecture →](../development/ARCHITECTURE.md)      |
-| **Use the API**           | [API Docs →](../API.md)                               |
-| **Build Docker images**   | [Docker Guide →](../deployment/DOCKER_GUIDE.md)       |
-| **Build from source**     | [Build Guide →](../development/BUILD.md)              |
-| **See what changed**      | [Changelog →](../CHANGELOG.md)                        |
+| I want to...              | Go to                                                     |
+| ------------------------- | --------------------------------------------------------- |
+| **Deploy Myriad now!**    | [Quick Start →](../QUICKSTART.md)                         |
+| **Understand the system** | [Architecture →](../development/ARCHITECTURE.md)          |
+| **Use the API**           | [API Docs →](../API.md)                                   |
+| **Deploy with Docker**    | [Docker Deployment →](../deployment/DOCKER_DEPLOYMENT.md) |
+| **Build from source**     | [Build Guide →](../development/BUILD.md)                  |
+| **See what changed**      | [Changelog →](../CHANGELOG.md)                            |
 
 ---
 
@@ -20,17 +20,19 @@ Welcome to Myriad documentation! This is your central hub for all project docume
 ```
 docs/
 ├── API.md                    # Complete API reference with examples
-├── API_USAGE.md              # (Merged into API.md)
 ├── CHANGELOG.md              # Version history and release notes
+├── QUICKSTART.md             # ⭐ Quick start guide (START HERE)
 │
 ├── deployment/               # Deployment Documentation
-│   ├── GETTING_STARTED.md   # ⭐ Quick start guide (START HERE)
-│   ├── DOCKER_GUIDE.md      # Docker image build & publish
-│   └── DOCKER_DEPLOYMENT.md # Advanced Docker configuration
+│   ├── DOCKER_DEPLOYMENT.md # Docker deployment & configuration
+│   └── DEPLOYMENT_1PANEL.md # 1Panel deployment guide
 │
 ├── development/              # Development Documentation
 │   ├── ARCHITECTURE.md      # System architecture & design
 │   └── BUILD.md             # Build from source instructions
+│
+├── features/                 # Feature Documentation
+│   └── LIBRARY.md           # Library feature guide
 │
 ├── guides/                   # User Guides
 │   ├── EXTENSIONS.md        # Browser extensions
@@ -50,7 +52,7 @@ docs/
 
 ```
 1. Install Docker Desktop
-2. Read: deployment/GETTING_STARTED.md
+2. Read: QUICKSTART.md
 3. Run: scripts/docker/deploy.ps1 -Mode prebuilt
 4. Visit: http://localhost:4321
 5. Complete setup wizard
@@ -73,11 +75,10 @@ docs/
 **Goal:** Deploy and manage in production
 
 ```
-1. Read: deployment/DOCKER_GUIDE.md
-2. Read: deployment/DOCKER_DEPLOYMENT.md
-3. Set up CI/CD with GitHub Actions
-4. Configure monitoring and backups
-5. Review: guides/SECURITY_HEADERS.md
+1. Read: deployment/DOCKER_DEPLOYMENT.md
+2. Set up CI/CD with GitHub Actions
+3. Configure monitoring and backups
+4. Review: guides/SECURITY_HEADERS.md
 ```
 
 ### Path 4: API Consumer (15 minutes)
@@ -179,15 +180,18 @@ frontend/
 docs/
 ├── API.md                      # 📡 Complete API reference
 ├── CHANGELOG.md                # 📝 Version history
+├── QUICKSTART.md               # ⭐ Quick start guide
 │
 ├── deployment/                 # 🚀 Deployment Guides
-│   ├── GETTING_STARTED.md     # Quick start (5 min)
-│   ├── DOCKER_GUIDE.md        # Image build & publish
-│   └── DOCKER_DEPLOYMENT.md   # Advanced configuration
+│   ├── DOCKER_DEPLOYMENT.md   # Docker deployment
+│   └── DEPLOYMENT_1PANEL.md   # 1Panel guide
 │
 ├── development/                # 💻 Developer Guides
 │   ├── ARCHITECTURE.md        # System design
 │   └── BUILD.md               # Build instructions
+│
+├── features/                   # 📖 Feature Docs
+│   └── LIBRARY.md             # Library feature
 │
 ├── guides/                     # 📚 User Guides
 │   ├── EXTENSIONS.md          # Browser extensions
@@ -260,13 +264,13 @@ make backup      # Backup database
 
 ### 🚀 Deployment
 
-| Document                                                   | Description                   | Audience              |
-| ---------------------------------------------------------- | ----------------------------- | --------------------- |
-| [GETTING_STARTED.md](../deployment/GETTING_STARTED.md)     | Complete quick start guide    | Everyone              |
-| [DOCKER_GUIDE.md](../deployment/DOCKER_GUIDE.md)           | Docker image build & publish  | Maintainers, DevOps   |
-| [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) | Advanced Docker configuration | DevOps, System Admins |
+| Document                                                   | Description                | Audience              |
+| ---------------------------------------------------------- | -------------------------- | --------------------- |
+| [QUICKSTART.md](../QUICKSTART.md)                          | Quick start guide          | Everyone              |
+| [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) | Docker deployment & config | DevOps, System Admins |
+| [DEPLOYMENT_1PANEL.md](../DEPLOYMENT_1PANEL.md)            | 1Panel deployment guide    | 1Panel Users          |
 
-**Start with:** GETTING_STARTED.md
+**Start with:** QUICKSTART.md
 
 ### 💻 Development
 
@@ -305,15 +309,15 @@ make backup      # Backup database
 
 ### "How do I deploy Myriad?"
 
-→ [deployment/GETTING_STARTED.md](../deployment/GETTING_STARTED.md)
+→ [QUICKSTART.md](../QUICKSTART.md)
 
 ### "I want to use pre-built Docker images"
 
-→ [deployment/DOCKER_GUIDE.md](../deployment/DOCKER_GUIDE.md) - "For Users" section
+→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Quick Start section
 
 ### "How do I build Docker images?"
 
-→ [deployment/DOCKER_GUIDE.md](../deployment/DOCKER_GUIDE.md) - "For Maintainers" section
+→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Building section
 
 ### "What configuration options are available?"
 
@@ -353,7 +357,7 @@ make backup      # Backup database
 
 ### For New Users
 
-1. **Start simple:** Read [GETTING_STARTED.md](../deployment/GETTING_STARTED.md)
+1. **Start simple:** Read [QUICKSTART.md](../QUICKSTART.md)
 2. **Try it:** Run deployment script
 3. **Explore:** Use the application
 4. **Deep dive:** Read other docs as needed
@@ -367,10 +371,9 @@ make backup      # Backup database
 
 ### For DevOps
 
-1. **Quick deploy:** [GETTING_STARTED.md](../deployment/GETTING_STARTED.md)
+1. **Quick deploy:** [QUICKSTART.md](../QUICKSTART.md)
 2. **Production setup:** [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md)
-3. **Image management:** [DOCKER_GUIDE.md](../deployment/DOCKER_GUIDE.md)
-4. **Security:** [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md)
+3. **Security:** [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md)
 
 ---
 
@@ -403,14 +406,14 @@ Found an error or want to improve documentation?
 
 ## 📈 Documentation Statistics
 
-| Category        | Files  | Total Lines     |
-| --------------- | ------ | --------------- |
-| **Deployment**  | 3      | ~1500           |
-| **Development** | 2      | ~800            |
-| **API**         | 1      | ~700            |
-| **Guides**      | 2      | ~400            |
-| **Reference**   | 2      | ~500            |
-| **Total**       | **10** | **~3900 lines** |
+| Category        | Files | Total Lines     |
+| --------------- | ----- | --------------- |
+| **Deployment**  | 2     | ~1200           |
+| **Development** | 2     | ~800            |
+| **API**         | 1     | ~700            |
+| **Guides**      | 2     | ~400            |
+| **Reference**   | 2     | ~500            |
+| **Total**       | **9** | **~3600 lines** |
 
 ---
 
@@ -418,7 +421,7 @@ Found an error or want to improve documentation?
 
 - [ ] Docker Desktop installed
 - [ ] Repository cloned
-- [ ] Read [GETTING_STARTED.md](../deployment/GETTING_STARTED.md)
+- [ ] Read [QUICKSTART.md](../QUICKSTART.md)
 - [ ] Run deployment script
 - [ ] Access http://localhost:4321
 - [ ] Complete setup wizard
