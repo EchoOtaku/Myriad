@@ -752,7 +752,8 @@ impl MetadataService {
         let mut result = HashMap::new();
         let mut seen_platforms = std::collections::HashSet::new();
         // 收集分片数据以便后续合并
-        let mut chunk_data: HashMap<String, Vec<(i32, Value)>> = HashMap::new();
+        // Key: (base_platform, chunk_index) -> Value: raw_data (只保留最新的)
+        let mut chunk_data: HashMap<String, HashMap<i32, Value>> = HashMap::new();
 
         for metadata in &all_metadata {
             // 检查是否是分片记录 (如 netease_chunk_1)
@@ -762,10 +763,12 @@ impl MetadataService {
                     // 提取分片索引
                     if let Some(idx_str) = metadata.platform_name.split("_chunk_").nth(1) {
                         if let Ok(idx) = idx_str.parse::<i32>() {
+                            // 由于数据按 fetched_at DESC 排序，只保留每个 chunk_index 的第一条（最新）
                             chunk_data
                                 .entry(base_platform.to_string())
                                 .or_default()
-                                .push((idx, metadata.raw_data.clone()));
+                                .entry(idx)
+                                .or_insert_with(|| metadata.raw_data.clone());
                         }
                     }
                 }
@@ -779,7 +782,7 @@ impl MetadataService {
         }
 
         // 🚀 合并分片数据到主记录
-        for (platform, mut chunks) in chunk_data {
+        for (platform, chunks) in chunk_data {
             if let Some(main_data) = result.get_mut(&platform) {
                 // 检查主记录是否标记为分片
                 let is_chunked = main_data
@@ -788,9 +791,10 @@ impl MetadataService {
                     .unwrap_or(false);
 
                 if is_chunked {
-                    // 按分片索引排序
-                    chunks.sort_by_key(|(idx, _)| *idx);
-                    let chunks_count = chunks.len();
+                    // 按分片索引排序 (HashMap -> Vec，按 key 排序)
+                    let mut sorted_chunks: Vec<_> = chunks.into_iter().collect();
+                    sorted_chunks.sort_by_key(|(idx, _)| *idx);
+                    let chunks_count = sorted_chunks.len();
 
                     // 合并所有分片的 songs 到 liked_songs
                     if let Some(main_songs) = main_data
@@ -798,7 +802,7 @@ impl MetadataService {
                         .and_then(|s| s.as_array_mut())
                     {
                         let original_count = main_songs.len();
-                        for (idx, chunk) in chunks {
+                        for (idx, chunk) in sorted_chunks {
                             if let Some(chunk_songs) = chunk.get("songs").and_then(|s| s.as_array())
                             {
                                 main_songs.extend(chunk_songs.iter().cloned());

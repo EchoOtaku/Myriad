@@ -2406,12 +2406,22 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                     "🎵 Processing {} netease songs for library",
                     songs_vec.len()
                 );
+
+                // 使用 HashSet 去重，防止分片合并时产生重复歌曲
+                let mut seen_song_ids = std::collections::HashSet::new();
+                let mut added_count = 0;
+
                 for song in &songs_vec {
                     if let (Some(id), Some(name)) = (
                         song.get("id").and_then(|i| i.as_i64()),
                         song.get("name").and_then(|n| n.as_str()),
                     ) {
-                        // 提取封面 - 支持多种字段格式
+                        // 跳过已处理的歌曲ID
+                        if !seen_song_ids.insert(id) {
+                            continue;
+                        }
+
+                        // 提取封面 - 支持多种字段格式，并通过代理
                         let cover = song
                             .get("al")
                             .or_else(|| song.get("album"))
@@ -2421,7 +2431,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                                     .or_else(|| al.get("cover"))
                             })
                             .and_then(|p| p.as_str())
-                            .map(|s| s.to_string());
+                            .map(|s| proxy_image_url(s));
 
                         // 规范化metadata确保包含所有必要字段
                         let mut normalized_metadata = song.clone();
@@ -2448,9 +2458,14 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                             platform: "Netease".to_string(),
                             metadata: normalized_metadata,
                         });
+                        added_count += 1;
                     }
                 }
-                tracing::info!("✓ Loaded {} Netease songs", songs_vec.len());
+                tracing::info!(
+                    "✓ Loaded {} Netease songs (deduplicated from {})",
+                    added_count,
+                    songs_vec.len()
+                );
             }
         }
         Ok(_) => {
@@ -2587,12 +2602,20 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                 .and_then(|n| n.get("liked_songs"))
                 .and_then(|s| s.as_array())
             {
+                // 使用 HashSet 去重
+                let mut seen_song_ids = std::collections::HashSet::new();
+
                 for song in songs {
                     if let (Some(id), Some(name)) = (
                         song.get("id").and_then(|i| i.as_i64()),
                         song.get("name").and_then(|n| n.as_str()),
                     ) {
-                        // 提取封面 - 支持多种字段格式
+                        // 跳过已处理的歌曲ID
+                        if !seen_song_ids.insert(id) {
+                            continue;
+                        }
+
+                        // 提取封面 - 支持多种字段格式，并通过代理
                         let cover = song
                             .get("al")
                             .or_else(|| song.get("album"))
@@ -2602,7 +2625,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                                     .or_else(|| al.get("cover"))
                             })
                             .and_then(|p| p.as_str())
-                            .map(|s| s.to_string());
+                            .map(|s| proxy_image_url(s));
 
                         // 规范化metadata确保包含所有必要字段
                         let mut normalized_metadata = song.clone();
