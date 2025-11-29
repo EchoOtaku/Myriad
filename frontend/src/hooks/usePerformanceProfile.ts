@@ -50,14 +50,19 @@ function detectPerformanceProfile(): PerformanceProfile {
 
     if (!lowEndDevice) {
       if (isMobile) {
-        // 移动端：只有真正低配的设备才判定为低端
-        // CPU核心 <= 4 且 内存 <= 4GB 才认为是低端移动设备
-        const isLowEndMobile = (
-          (hardwareConcurrency !== null && hardwareConcurrency <= 4) &&
-          (deviceMemory !== null && deviceMemory <= 4)
-        );
-        // 如果无法获取硬件信息，假设是中高端设备（现代手机大多性能不错）
-        lowEndDevice = isLowEndMobile;
+        // 移动端：更宽松的判定策略
+        // 只有在能确认硬件很差时才判定为低端
+        const hasLowCPU = hardwareConcurrency !== null && hardwareConcurrency <= 2;  // 2核及以下
+        const hasLowMemory = deviceMemory !== null && deviceMemory <= 2;  // 2GB及以下
+        
+        // 必须明确检测到低配硬件才判定为低端
+        // 如果 API 不支持（返回 null），默认认为是中高端设备
+        lowEndDevice = hasLowCPU || hasLowMemory;
+        
+        // Debug 日志（生产环境可移除）
+        if (import.meta.env?.DEV) {
+          console.log('[PerformanceProfile] Mobile:', { hardwareConcurrency, deviceMemory, lowEndDevice });
+        }
       } else {
         // 桌面端：CPU <= 4核 或 内存 <= 4GB 判定为低端
         lowEndDevice = (
