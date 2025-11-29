@@ -11,6 +11,7 @@ import { useWallpaper } from '../hooks/useWallpaper';
 import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
+import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget';
 import {
   shouldApplyColorExtraction,
   getColorFromCache,
@@ -1467,6 +1468,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       <main className="relative z-10">
         {children}
       </main>
+
+      {/* 全局设置弹窗 - 整个应用只渲染一次 */}
+      <SocialNetworkSettingsModal />
     </>
   );
 }

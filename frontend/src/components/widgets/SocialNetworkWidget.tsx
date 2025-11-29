@@ -3,19 +3,44 @@
  * 支持 1x1, 2x1, 2x2 三种尺寸
  * glass风格 + 微动态效果
  * 长按设置面板选择平台
- * 
- * 性能优化:
- * - 使用 memo 包裹组件和子组件
- * - 使用 useMemo 缓存计算结果
- * - 使用 useCallback 缓存事件处理器
- * - 条件渲染减少不必要的 DOM 节点
- * - 懒加载设置弹窗
- * - 使用 CSS 变量减少重渲染
+ *
+ * 性能优化策略:
+ * ✅ 组件级优化:
+ *   - 使用 React.memo 包裹所有组件和子组件
+ *   - 使用 useMemo 缓存复杂计算结果
+ *   - 使用 useCallback 缓存所有事件处理器
+ *   - 条件渲染减少不必要的 DOM 节点
+ *
+ * ✅ 数据优化:
+ *   - 全局缓存平台配置数据 (5分钟 TTL)
+ *   - 使用索引映射替代 find 查找
+ *   - 静态配置对象提取到组件外部
+ *
+ * ✅ 事件优化:
+ *   - 分离事件监听器避免类型检查
+ *   - 使用 passive 事件监听器
+ *   - 优化 MutationObserver 配置
+ *
+ * ✅ 动画优化:
+ *   - 静态动画配置提取为常量
+ *   - 使用 CSS filter 替代 box-shadow
+ *   - 条件动画避免不必要的计算
+ *
+ * ✅ 渲染优化:
+ *   - 移除 AnimatePresence 减少嵌套
+ *   - 合并 ref 回调避免重复设置
+ *   - 使用 createPortal 隔离弹窗渲染
+ *
+ * ✅ 多实例优化 (重要!):
+ *   - 使用全局单例模式管理设置弹窗
+ *   - 无论有多少个小组件实例,只渲染一个弹窗
+ *   - 弹窗在 AppLayout 层级渲染,确保全局唯一
+ *   - 使用发布/订阅模式同步弹窗状态
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, memo, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { FaSteam, FaGithub, FaTimes } from 'react-icons/fa';
@@ -80,6 +105,109 @@ const PLATFORM_INDEX_MAP: Record<string, number> = {
   steam: 1,
   github: 2,
   netease: 3,
+};
+
+// 静态动画配置常量 - 避免每次渲染创建新对象
+const ICON_HOVER_ANIMATION = {
+  scale: [1, 1.08, 1],
+  rotate: [0, 5, -5, 0],
+};
+
+const ICON_STATIC_ANIMATION = {
+  scale: 1,
+  rotate: 0,
+};
+
+const ICON_HOVER_TRANSITION = {
+  duration: 0.6,
+  repeat: Infinity,
+  ease: 'easeInOut' as const,
+};
+
+const ICON_STATIC_TRANSITION = {
+  duration: 0.3,
+};
+
+// 背景光晕动画配置 - 提取为常量
+const GLOW_ANIMATION_1 = {
+  opacity: [0.06, 0.15, 0.06],
+  scale: [1, 1.15, 1],
+};
+
+const GLOW_ANIMATION_1_STATIC = {
+  opacity: 0.1,
+  scale: 1,
+};
+
+const GLOW_TRANSITION_1 = {
+  duration: 4,
+  repeat: Infinity,
+  ease: 'easeInOut' as const,
+};
+
+const GLOW_ANIMATION_2 = {
+  opacity: [0.03, 0.08, 0.03],
+  scale: [1.1, 1, 1.1],
+};
+
+const GLOW_ANIMATION_2_STATIC = {
+  opacity: 0.05,
+  scale: 1,
+};
+
+const GLOW_TRANSITION_2 = {
+  duration: 5,
+  repeat: Infinity,
+  ease: 'easeInOut' as const,
+  delay: 1,
+};
+
+const GLOW_TRANSITION_STATIC = {
+  duration: 0,
+};
+
+// 全局设置弹窗管理器 - 确保只有一个弹窗实例
+interface SettingsModalState {
+  isOpen: boolean;
+  selectedPlatformId: string;
+  anchorRect?: DOMRect;
+  onSelect?: (platformId: string) => void;
+}
+
+let globalModalState: SettingsModalState = {
+  isOpen: false,
+  selectedPlatformId: 'bilibili',
+};
+
+let modalStateListeners: Set<() => void> = new Set();
+
+const openSettingsModal = (
+  selectedPlatformId: string,
+  anchorRect: DOMRect,
+  onSelect: (platformId: string) => void
+) => {
+  globalModalState = {
+    isOpen: true,
+    selectedPlatformId,
+    anchorRect,
+    onSelect,
+  };
+  modalStateListeners.forEach(listener => listener());
+};
+
+const closeSettingsModal = () => {
+  globalModalState = {
+    ...globalModalState,
+    isOpen: false,
+  };
+  modalStateListeners.forEach(listener => listener());
+};
+
+const subscribeToModalState = (listener: () => void) => {
+  modalStateListeners.add(listener);
+  return () => {
+    modalStateListeners.delete(listener);
+  };
 };
 
 // 缓存平台配置数据
@@ -147,14 +275,137 @@ const fetchPlatformUserIds = async (): Promise<PlatformUserIds> => {
   return fetchPromise;
 };
 
-// 设置弹窗组件 - 使用 memo 优化
-interface SettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  selectedPlatformId: string;
-  onSelectPlatform: (platformId: string) => void;
-  anchorRect?: DOMRect;
-}
+// 全局设置弹窗组件 - 单例模式
+const GlobalSettingsModal = memo(() => {
+  // 订阅全局状态
+  const [, forceUpdate] = useState({});
+
+  useEffect(() => {
+    return subscribeToModalState(() => {
+      forceUpdate({});
+    });
+  }, []);
+
+  const { isOpen, selectedPlatformId, anchorRect, onSelect } = globalModalState;
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // 使用 useMemo 计算位置，避免重复计算
+  const position = useMemo(() => {
+    if (!anchorRect) return { top: 0, left: 0 };
+
+    const modalWidth = 280;
+    const modalHeight = 280;
+    const padding = 16;
+
+    let top = anchorRect.bottom + 8;
+    let left = anchorRect.left + (anchorRect.width - modalWidth) / 2;
+
+    if (left + modalWidth > window.innerWidth - padding) {
+      left = window.innerWidth - modalWidth - padding;
+    }
+    if (left < padding) left = padding;
+    if (top + modalHeight > window.innerHeight - padding) {
+      top = anchorRect.top - modalHeight - 8;
+    }
+    if (top < padding) top = padding;
+
+    return { top, left };
+  }, [anchorRect]);
+
+  // 优化事件监听器 - 分离 mousedown 和 keydown 处理
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        closeSettingsModal();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeSettingsModal();
+      }
+    };
+
+    // 延迟添加事件监听，避免立即触发
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, { passive: true });
+      document.addEventListener('keydown', handleKeyDown);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  // 处理平台选择
+  const handleSelect = useCallback((platformId: string) => {
+    if (onSelect) {
+      onSelect(platformId);
+    }
+    closeSettingsModal();
+  }, [onSelect]);
+
+  // 提前返回，不渲染任何东西
+  if (!isOpen) return null;
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[10000]"
+      style={{ pointerEvents: 'none' }}
+    >
+      <motion.div
+        ref={modalRef}
+        initial={{ opacity: 0, scale: 0.95, y: -5 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: -5 }}
+        transition={{ duration: 0.15 }}
+        className="absolute glass rounded-2xl shadow-2xl overflow-hidden border border-white/20 dark:border-white/10"
+        style={{
+          top: position.top,
+          left: position.left,
+          width: 280,
+          pointerEvents: 'auto',
+        }}
+      >
+        {/* 标题栏 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/50 dark:border-white/10">
+          <span className="font-bold text-sm text-gray-800 dark:text-gray-200">选择平台</span>
+          <button
+            type="button"
+            onClick={closeSettingsModal}
+            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            title="关闭"
+            aria-label="关闭"
+          >
+            <FaTimes size={12} className="text-gray-500 dark:text-gray-400" />
+          </button>
+        </div>
+
+        {/* 平台列表 - 使用优化后的 PlatformButton */}
+        <div className="p-3 space-y-1.5">
+          {PLATFORMS.map((platform) => (
+            <PlatformButton
+              key={platform.id}
+              platform={platform}
+              isSelected={selectedPlatformId === platform.id}
+              onSelect={handleSelect}
+            />
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+});
+
+GlobalSettingsModal.displayName = 'GlobalSettingsModal';
 
 // 平台按钮组件 - 单独 memo 避免列表重渲染
 const PlatformButton = memo(({ 
@@ -204,144 +455,39 @@ const PlatformButton = memo(({
 
 PlatformButton.displayName = 'PlatformButton';
 
-const SettingsModal = memo(({ 
-  isOpen, 
-  onClose, 
-  selectedPlatformId, 
-  onSelectPlatform,
-  anchorRect,
-}: SettingsModalProps) => {
-  const modalRef = useRef<HTMLDivElement>(null);
-  
-  // 使用 useMemo 计算位置，避免重复计算
-  const position = useMemo(() => {
-    if (!anchorRect) return { top: 0, left: 0 };
-
-    const modalWidth = 280;
-    const modalHeight = 280;
-    const padding = 16;
-
-    let top = anchorRect.bottom + 8;
-    let left = anchorRect.left + (anchorRect.width - modalWidth) / 2;
-
-    if (left + modalWidth > window.innerWidth - padding) {
-      left = window.innerWidth - modalWidth - padding;
-    }
-    if (left < padding) left = padding;
-    if (top + modalHeight > window.innerHeight - padding) {
-      top = anchorRect.top - modalHeight - 8;
-    }
-    if (top < padding) top = padding;
-
-    return { top, left };
-  }, [anchorRect]);
-
-  // 合并事件监听器
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEvent = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent && e.key === 'Escape') {
-        onClose();
-      } else if (e instanceof MouseEvent && modalRef.current && !modalRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-
-    // 延迟添加事件监听，避免立即触发
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleEvent);
-      document.addEventListener('keydown', handleEvent);
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleEvent);
-      document.removeEventListener('keydown', handleEvent);
-    };
-  }, [isOpen, onClose]);
-
-  // 使用 useCallback 缓存选择处理器
-  const handleSelect = useCallback((platformId: string) => {
-    onSelectPlatform(platformId);
-    onClose();
-  }, [onSelectPlatform, onClose]);
-
-  if (!isOpen) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[10000]"
-        style={{ pointerEvents: 'none' }}
-      >
-        <motion.div
-          ref={modalRef}
-          initial={{ opacity: 0, scale: 0.95, y: -5 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -5 }}
-          transition={{ duration: 0.15 }}
-          className="absolute glass rounded-2xl shadow-2xl overflow-hidden border border-white/20 dark:border-white/10"
-          style={{ 
-            top: position.top, 
-            left: position.left,
-            width: 280,
-            pointerEvents: 'auto',
-          }}
-        >
-          {/* 标题栏 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/50 dark:border-white/10">
-            <span className="font-bold text-sm text-gray-800 dark:text-gray-200">选择平台</span>
-            <button
-              onClick={onClose}
-              className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-              title="关闭"
-              aria-label="关闭"
-            >
-              <FaTimes size={12} className="text-gray-500 dark:text-gray-400" />
-            </button>
-          </div>
-
-          {/* 平台列表 - 使用优化后的 PlatformButton */}
-          <div className="p-3 space-y-1.5">
-            {PLATFORMS.map((platform) => (
-              <PlatformButton
-                key={platform.id}
-                platform={platform}
-                isSelected={selectedPlatformId === platform.id}
-                onSelect={handleSelect}
-              />
-            ))}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>,
-    document.body
-  );
-});
-
-SettingsModal.displayName = 'SettingsModal';
+// 已移除旧的 SettingsModal 组件，现在使用全局单例 GlobalSettingsModal
 
 // 主组件
 export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const anim = useAnimationLevel();
-  const widgetRef = useRef<HTMLDivElement>(null);
+  // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）
+  const localRef = useRef<HTMLDivElement | null>(null);
 
-  // 深色模式检测
-  const [isDark, setIsDark] = useState(() => 
+  // 深色模式检测 - 优化 MutationObserver
+  const [isDark, setIsDark] = useState(() =>
     typeof window !== 'undefined' && document.documentElement.classList.contains('dark')
   );
 
-  // 监听主题变化
+  // 监听主题变化 - 使用 useCallback 优化回调函数
   useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains('dark'));
+    const handleThemeChange = (mutations: MutationRecord[]) => {
+      // 只处理 class 属性变化
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          setIsDark(document.documentElement.classList.contains('dark'));
+          break; // 找到后立即退出
+        }
+      }
+    };
+
+    const observer = new MutationObserver(handleThemeChange);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+      attributeOldValue: false, // 不需要旧值
     });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
     return () => observer.disconnect();
   }, []);
 
@@ -350,19 +496,17 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     config.config?.platformId || 'bilibili'
   );
   const [platformUserIds, setPlatformUserIds] = useState<PlatformUserIds>({});
-  const [showSettings, setShowSettings] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | undefined>();
   const [isHovered, setIsHovered] = useState(false);
 
-  // 长按检测
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // 长按检测 - 使用 ReturnType<typeof setTimeout> 兼容浏览器和 Node 环境
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
 
-  // 获取当前选中的平台信息
-  const selectedPlatform = useMemo(
-    () => PLATFORMS.find(p => p.id === selectedPlatformId) || PLATFORMS[0],
-    [selectedPlatformId]
-  );
+  // 获取当前选中的平台信息 - 使用索引查找优化性能
+  const selectedPlatform = useMemo(() => {
+    const index = PLATFORM_INDEX_MAP[selectedPlatformId];
+    return index !== undefined ? PLATFORMS[index] : PLATFORMS[0];
+  }, [selectedPlatformId]);
 
   // 获取用户ID
   const userId = useMemo(() => {
@@ -405,20 +549,27 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     }
   }, [config.id, config.config, onConfigChange]);
 
+  // 打开设置弹窗
+  const openSettings = useCallback(() => {
+    if (!localRef.current) return;
+
+    openSettingsModal(
+      selectedPlatformId,
+      localRef.current.getBoundingClientRect(),
+      handleSelectPlatform
+    );
+  }, [selectedPlatformId, handleSelectPlatform]);
+
   // 长按开始
   const handlePressStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!isEditMode) return;
-    
+
     isLongPressRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
-      // 获取组件位置
-      if (widgetRef.current) {
-        setAnchorRect(widgetRef.current.getBoundingClientRect());
-      }
-      setShowSettings(true);
+      openSettings();
     }, 500);
-  }, [isEditMode]);
+  }, [isEditMode, openSettings]);
 
   // 长按取消
   const handlePressEnd = useCallback(() => {
@@ -461,23 +612,6 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     [isDark, selectedPlatform.darkColor, selectedPlatform.color]
   );
 
-  // 静态动画配置 - 避免每次渲染创建新对象
-  const hoverAnimation = useMemo(() => ({
-    scale: [1, 1.08, 1],
-    rotate: [0, 5, -5, 0],
-  }), []);
-  
-  const staticAnimation = useMemo(() => ({
-    scale: 1,
-    rotate: 0,
-  }), []);
-  
-  const hoverTransition = useMemo(() => ({
-    duration: 0.6,
-    repeat: Infinity,
-    ease: 'easeInOut' as const,
-  }), []);
-
   // 使用 useMemo 渲染内容区域，避免不必要的重渲染
   const content = useMemo(() => {
     // 1x1 尺寸 - 仅图标
@@ -487,8 +621,8 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           <motion.div
             className="text-3xl"
             style={{ color: iconColor }}
-            animate={isHovered ? hoverAnimation : staticAnimation}
-            transition={isHovered ? hoverTransition : { duration: 0.3 }}
+            animate={isHovered ? ICON_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
+            transition={isHovered ? ICON_HOVER_TRANSITION : ICON_STATIC_TRANSITION}
           >
             {selectedPlatform.icon}
           </motion.div>
@@ -506,12 +640,12 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
             animate={isHovered ? {
               scale: [1, 1.1, 1],
               rotate: [0, 8, -8, 0],
-            } : staticAnimation}
+            } : ICON_STATIC_ANIMATION}
             transition={isHovered ? {
               duration: 0.5,
               repeat: Infinity,
               ease: 'easeInOut',
-            } : { duration: 0.3 }}
+            } : ICON_STATIC_TRANSITION}
           >
             {selectedPlatform.icon}
           </motion.div>
@@ -546,12 +680,12 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           animate={isHovered ? {
             scale: [1, 1.1, 1],
             rotate: [0, 10, -10, 0],
-          } : staticAnimation}
+          } : ICON_STATIC_ANIMATION}
           transition={isHovered ? {
             duration: 0.5,
             repeat: Infinity,
             ease: 'easeInOut',
-          } : { duration: 0.3 }}
+          } : ICON_STATIC_TRANSITION}
         >
           {selectedPlatform.icon}
         </motion.div>
@@ -591,37 +725,19 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
         </div>
       </div>
     );
-  }, [config.size, iconColor, isHovered, hoverAnimation, staticAnimation, hoverTransition, selectedPlatform, fontScale, userId, isEditMode]);
+  }, [config.size, iconColor, isHovered, selectedPlatform, fontScale, userId, isEditMode]);
 
-  // 缓存容器的 hover/tap 动画配置
-  const containerHoverProps = useMemo(() => ({
-    whileHover: !isEditMode && userId ? { filter: 'brightness(1.03)' } : {},
-    whileTap: !isEditMode && userId ? { scale: 0.98 } : {},
-  }), [isEditMode, userId]);
+  // 缓存容器的 hover/tap 动画配置 - 条件判断移到外部避免创建空对象
+  const hasInteraction = !isEditMode && !!userId;
+  const containerHoverProps = useMemo(() =>
+    hasInteraction ? {
+      whileHover: { filter: 'brightness(1.03)' },
+      whileTap: { scale: 0.98 },
+    } : {}
+  , [hasInteraction]);
 
-  // 缓存背景光晕动画配置
-  const glowAnimation1 = useMemo(() => anim.loop ? {
-    opacity: [0.06, 0.15, 0.06],
-    scale: [1, 1.15, 1],
-  } : { opacity: 0.1, scale: 1 }, [anim.loop]);
-
-  const glowTransition1 = useMemo(() => anim.loop ? {
-    duration: 4,
-    repeat: Infinity,
-    ease: 'easeInOut' as const,
-  } : { duration: 0 }, [anim.loop]);
-
-  const glowAnimation2 = useMemo(() => anim.loop ? {
-    opacity: [0.03, 0.08, 0.03],
-    scale: [1.1, 1, 1.1],
-  } : { opacity: 0.05, scale: 1 }, [anim.loop]);
-
-  const glowTransition2 = useMemo(() => anim.loop ? {
-    duration: 5,
-    repeat: Infinity,
-    ease: 'easeInOut' as const,
-    delay: 1,
-  } : { duration: 0 }, [anim.loop]);
+  // 背景光晕动画 - 直接使用条件渲染，无需 useMemo
+  const shouldAnimateGlow = anim.loop;
 
   // 缓存 onMouseLeave 和 onMouseEnter 回调
   const handleMouseLeave = useCallback(() => {
@@ -635,16 +751,22 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     }
   }, [isEditMode, userId]);
 
+  // 合并 ref 回调
+  const mergedRef = useCallback((node: HTMLDivElement | null) => {
+    // 设置本地 ref
+    localRef.current = node;
+    // 调用 containerRef 回调
+    if (typeof containerRef === 'function') {
+      containerRef(node);
+    }
+  }, [containerRef]);
+
   return (
     <>
       <motion.div
-        ref={(node) => {
-          // 同时设置两个 ref
-          (containerRef as unknown as React.MutableRefObject<HTMLDivElement | null>).current = node;
-          (widgetRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
-        }}
+        ref={mergedRef}
         className={`relative h-full w-full rounded-xl overflow-hidden glass ${
-          !isEditMode && userId ? 'cursor-pointer' : ''
+          hasInteraction ? 'cursor-pointer' : ''
         } ${isEditMode ? 'cursor-grab' : ''}`}
         style={{
           // 使用 filter 替代 box-shadow 避免布局影响
@@ -666,8 +788,8 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
             anim.level === 'standard' ? 'blur-3xl' : 'blur-2xl'
           }`}
           style={{ backgroundColor: selectedPlatform.color }}
-          animate={glowAnimation1}
-          transition={glowTransition1}
+          animate={shouldAnimateGlow ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
+          transition={shouldAnimateGlow ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
         />
         {/* 第二个光晕 */}
         <motion.div
@@ -675,8 +797,8 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
             anim.level === 'standard' ? 'blur-3xl' : 'blur-2xl'
           }`}
           style={{ backgroundColor: selectedPlatform.color }}
-          animate={glowAnimation2}
-          transition={glowTransition2}
+          animate={shouldAnimateGlow ? GLOW_ANIMATION_2 : GLOW_ANIMATION_2_STATIC}
+          transition={shouldAnimateGlow ? GLOW_TRANSITION_2 : GLOW_TRANSITION_STATIC}
         />
 
         {/* 内容区域 */}
@@ -687,23 +809,14 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           <div className="absolute inset-0 border-2 border-dashed border-blue-400/50 rounded-xl pointer-events-none" />
         )}
 
-        {/* 长按设置图标（编辑模式） */}
+        {/* 长按设置提示（编辑模式）- 仅视觉提示，不可点击 */}
         {isEditMode && (
           <motion.div
-            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md flex items-center justify-center bg-black/15 dark:bg-white/15 backdrop-blur-sm cursor-pointer hover:bg-black/30 dark:hover:bg-white/30 transition-all duration-200"
+            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md flex items-center justify-center bg-black/15 dark:bg-white/15 backdrop-blur-sm pointer-events-none"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            whileHover={{ rotate: 90 }}
-            whileTap={{ scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            title="长按进行设置"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (widgetRef.current) {
-                setAnchorRect(widgetRef.current.getBoundingClientRect());
-              }
-              setShowSettings(true);
-            }}
+            title="长按小组件进行设置"
           >
             <svg className="w-3 h-3 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -712,17 +825,11 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           </motion.div>
         )}
       </motion.div>
-
-      {/* 设置弹窗 */}
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        selectedPlatformId={selectedPlatformId}
-        onSelectPlatform={handleSelectPlatform}
-        anchorRect={anchorRect}
-      />
     </>
   );
 });
 
 SocialNetworkWidget.displayName = 'SocialNetworkWidget';
+
+// 导出全局弹窗组件供应用层级使用
+export { GlobalSettingsModal as SocialNetworkSettingsModal };

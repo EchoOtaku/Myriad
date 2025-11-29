@@ -153,7 +153,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
 
         {/* 主内容 - 左上角布局 */}
         <div 
-          className="relative h-full flex flex-col justify-center"
+          className="relative h-full flex flex-col justify-start"
           style={{ padding: `${16 * scale}px` }}
         >
           <motion.div
