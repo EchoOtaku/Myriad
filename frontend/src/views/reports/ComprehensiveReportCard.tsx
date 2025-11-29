@@ -2,7 +2,7 @@
  * 综合报告卡片组件
  */
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useId } from 'react';
 import { motion } from 'framer-motion';
 import {
   FaRobot,
@@ -15,6 +15,8 @@ import {
   FaRocket,
   FaLightbulb
 } from 'react-icons/fa';
+import { useAnimationLevel } from '../../hooks/useAnimationLevel';
+import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
 import type { ComprehensiveAnalysis } from './types';
 
 // 图标组件
@@ -71,6 +73,19 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
   index,
   onOpen
 }) => {
+  const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`comp-report-${uniqueId}`, {
+    priority: 2,
+    duration: 4000, // 装饰动画约4秒周期
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
+  
+  const canAnimate = anim.loop && isAnimating;
+  
   if (!compReport.综合分析) return null;
 
   const analysis = compReport.综合分析;
@@ -124,17 +139,17 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                     <motion.span
                       key={i}
                       className="absolute text-2xl opacity-25"
-                      style={{ ...pos, willChange: 'transform, opacity' }}
-                      animate={{
+                      style={{ ...pos, willChange: canAnimate ? 'transform, opacity' : 'auto' }}
+                      animate={canAnimate ? {
                         y: [0, -8, 0],
                         opacity: [0.2, 0.3, 0.2],
-                      }}
-                      transition={{
+                      } : { y: 0, opacity: 0.25 }}
+                      transition={canAnimate ? {
                         duration: 4 + i * 0.3,
                         repeat: Infinity,
                         delay: i * 0.5,
                         ease: "easeInOut"
-                      }}
+                      } : { duration: 0 }}
                     >
                       {emoji}
                     </motion.span>
@@ -150,25 +165,25 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                   style={{
                     background: themeColor,
                     opacity: 0.25,
-                    willChange: 'transform'
+                    willChange: canAnimate ? 'transform' : 'auto'
                   }}
-                  animate={{
+                  animate={canAnimate ? {
                     scale: [1, 1.15, 1],
                     opacity: [0.2, 0.35, 0.2]
-                  }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  } : { scale: 1, opacity: 0.25 }}
+                  transition={canAnimate ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
                 />
                 <motion.div
                   className="relative w-24 h-24 rounded-xl backdrop-blur-sm flex items-center justify-center shadow-2xl overflow-hidden"
                   style={{
                     background: 'var(--glass-bg)',
                     border: `2px solid ${themeColor}30`,
-                    willChange: 'transform'
+                    willChange: canAnimate ? 'transform' : 'auto'
                   }}
-                  animate={{
+                  animate={canAnimate ? {
                     y: [0, -5, 0],
-                  }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  } : { y: 0 }}
+                  transition={canAnimate ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
                 >
                   <div style={{ color: themeColor, fontSize: '56px' }}>
                     {getThemeIcon(analysis.icon_image_url, analysis.icon_prompt, analysis.theme_icon)}
@@ -235,17 +250,17 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                   <motion.span
                     key={i + 2}
                     className="absolute text-2xl opacity-25"
-                    style={{ ...pos, willChange: 'transform, opacity' }}
-                    animate={{
+                    style={{ ...pos, willChange: canAnimate ? 'transform, opacity' : 'auto' }}
+                    animate={canAnimate ? {
                       y: [0, -8, 0],
                       opacity: [0.2, 0.3, 0.2],
-                    }}
-                    transition={{
+                    } : { y: 0, opacity: 0.25 }}
+                    transition={canAnimate ? {
                       duration: 4 + i * 0.3,
                       repeat: Infinity,
                       delay: (i + 2) * 0.5,
                       ease: "easeInOut"
-                    }}
+                    } : { duration: 0 }}
                   >
                     {emoji}
                   </motion.span>

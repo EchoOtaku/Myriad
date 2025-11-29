@@ -6,10 +6,12 @@
  * 2. 使用 will-change 提示浏览器启用 GPU 加速
  * 3. 使用 transform3d 强制创建合成层
  * 4. 使用更长的动画周期减少重绘频率
+ * 5. 🆕 接入动画调度器，限制同时运行的动画数量
  */
 
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useId } from 'react';
 import { motion } from 'framer-motion';
+import { useAnimationSlot } from '../../../hooks/useAnimationScheduler';
 
 // ========== 动画配置常量 ==========
 // 使用较长的 duration 减少 CPU 开销
@@ -88,6 +90,17 @@ export const GlowBackground = memo(function GlowBackground({
   size = 'md',
   opacity,
 }: GlowBackgroundProps) {
+  // 🆕 接入动画调度器 - 光晕动画优先级较低(6)，持续时间长(12秒)
+  const uniqueId = useId();
+  const { isAnimating } = useAnimationSlot(`glow-${uniqueId}`, {
+    priority: 6, // 较低优先级装饰动画
+    duration: 12000, // 12秒一个周期
+    autoRequest: shouldAnimate,
+  });
+  
+  // 只有在调度器分配了槽位且允许动画时才真正动画
+  const canAnimate = shouldAnimate && isAnimating;
+  
   const blurClass = animLevel === 'standard' ? 'blur-3xl' : 'blur-xl';
 
   // 根据 size 确定尺寸类
@@ -105,10 +118,10 @@ export const GlowBackground = memo(function GlowBackground({
   // GPU 加速样式
   const gpuAccelStyle = useMemo(() => ({
     background: color,
-    willChange: shouldAnimate ? 'opacity, transform' : 'auto',
+    willChange: canAnimate ? 'opacity, transform' : 'auto',
     transform: 'translate3d(0, 0, 0)', // 强制创建合成层
     ...(opacity !== undefined && { opacity }),
-  }), [color, shouldAnimate, opacity]);
+  }), [color, canAnimate, opacity]);
 
   // 根据 variant 渲染不同布局
   if (variant === 'single-left') {
@@ -116,8 +129,8 @@ export const GlowBackground = memo(function GlowBackground({
       <motion.div
         className={`absolute -left-8 -bottom-8 ${sizeClasses.primary} rounded-full pointer-events-none ${blurClass}`}
         style={gpuAccelStyle}
-        animate={shouldAnimate ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
-        transition={shouldAnimate ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
+        animate={canAnimate ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
+        transition={canAnimate ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
       />
     );
   }
@@ -127,8 +140,8 @@ export const GlowBackground = memo(function GlowBackground({
       <motion.div
         className={`absolute -right-8 -top-8 ${sizeClasses.primary} rounded-full pointer-events-none ${blurClass}`}
         style={gpuAccelStyle}
-        animate={shouldAnimate ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
-        transition={shouldAnimate ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
+        animate={canAnimate ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
+        transition={canAnimate ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
       />
     );
   }
@@ -140,15 +153,15 @@ export const GlowBackground = memo(function GlowBackground({
       <motion.div
         className={`absolute -right-8 -top-8 ${sizeClasses.primary} rounded-full pointer-events-none ${blurClass}`}
         style={gpuAccelStyle}
-        animate={shouldAnimate ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
-        transition={shouldAnimate ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
+        animate={canAnimate ? GLOW_ANIMATION_1 : GLOW_ANIMATION_1_STATIC}
+        transition={canAnimate ? GLOW_TRANSITION_1 : GLOW_TRANSITION_STATIC}
       />
       {/* 第二个光晕 - 左下角 */}
       <motion.div
         className={`absolute -left-6 -bottom-6 ${sizeClasses.secondary} rounded-full pointer-events-none ${blurClass}`}
         style={gpuAccelStyle}
-        animate={shouldAnimate ? GLOW_ANIMATION_2 : GLOW_ANIMATION_2_STATIC}
-        transition={shouldAnimate ? GLOW_TRANSITION_2 : GLOW_TRANSITION_STATIC}
+        animate={canAnimate ? GLOW_ANIMATION_2 : GLOW_ANIMATION_2_STATIC}
+        transition={canAnimate ? GLOW_TRANSITION_2 : GLOW_TRANSITION_STATIC}
       />
     </>
   );

@@ -11,7 +11,7 @@
  * - 动画级别自适应
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetComponentProps } from '../WidgetGrid';
@@ -24,6 +24,7 @@ import { API_URL } from '../../config';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
+import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
 
 // ========== 安全验证工具函数 ==========
 
@@ -249,7 +250,7 @@ const ICON_STATIC_ANIMATION = {
 
 const ICON_STATIC_TRANSITION = { duration: 0.3 };
 
-// 通用循环动画过渡配置
+// 循环动画过渡配置 - 带循环
 const LOOP_TRANSITION_FAST = {
   duration: 0.5,
   repeat: Infinity,
@@ -259,6 +260,17 @@ const LOOP_TRANSITION_FAST = {
 const LOOP_TRANSITION_NORMAL = {
   duration: 0.6,
   repeat: Infinity,
+  ease: 'easeInOut' as const,
+};
+
+// 非循环版本 - 用于低端设备
+const NO_LOOP_TRANSITION_FAST = {
+  duration: 0.5,
+  ease: 'easeInOut' as const,
+};
+
+const NO_LOOP_TRANSITION_NORMAL = {
+  duration: 0.6,
   ease: 'easeInOut' as const,
 };
 
@@ -276,6 +288,7 @@ const HINT_ANIMATION = {
 };
 const HINT_ARROW_ANIMATION = { x: [0, 2, 0] };
 const HINT_LOOP_TRANSITION = { duration: 1, repeat: Infinity };
+const HINT_NO_LOOP_TRANSITION = { duration: 0.3 };
 
 // ========== 自定义平台 PlatformInfo 缓存 ==========
 // 注意：需要在 saveCustomPlatforms 之前声明
@@ -1225,6 +1238,16 @@ PlatformButton.displayName = 'PlatformButton';
 export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
   const { containerRef, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 图标动画优先级中等(5)
+  const { isAnimating } = useAnimationSlot(`social-icon-${uniqueId}`, {
+    priority: 5,
+    duration: 600, // hover动画约0.6秒
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 确保动画完整完成一轮
+  });
+  
   // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）
   const localRef = useRef<HTMLDivElement | null>(null);
 
@@ -1466,6 +1489,12 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
     [isDark, selectedPlatform.darkColor, selectedPlatform.color]
   );
 
+  // 根据动画级别和调度器状态选择过渡配置
+  const canLoopAnimate = anim.loop && isAnimating;
+  const loopTransitionFast = canLoopAnimate ? LOOP_TRANSITION_FAST : NO_LOOP_TRANSITION_FAST;
+  const loopTransitionNormal = canLoopAnimate ? LOOP_TRANSITION_NORMAL : NO_LOOP_TRANSITION_NORMAL;
+  const hintLoopTransition = canLoopAnimate ? HINT_LOOP_TRANSITION : HINT_NO_LOOP_TRANSITION;
+
   // 使用 useMemo 渲染内容区域，避免不必要的重渲染
   const content = useMemo(() => {
     // 1x1 尺寸 - 仅图标
@@ -1474,9 +1503,10 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
         <div className="h-full w-full flex items-center justify-center">
           <motion.div
             className="text-3xl"
+            layout={false}
             style={{ color: iconColor }}
             animate={isHovered ? ICON_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-            transition={isHovered ? LOOP_TRANSITION_NORMAL : ICON_STATIC_TRANSITION}
+            transition={isHovered ? loopTransitionNormal : ICON_STATIC_TRANSITION}
           >
             {selectedPlatform.icon}
           </motion.div>
@@ -1490,9 +1520,10 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
         <div className="h-full w-full flex items-center justify-center gap-3 px-4">
           <motion.div
             className="text-2xl flex-shrink-0"
+            layout={false}
             style={{ color: iconColor }}
             animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-            transition={isHovered ? LOOP_TRANSITION_FAST : ICON_STATIC_TRANSITION}
+            transition={isHovered ? loopTransitionFast : ICON_STATIC_TRANSITION}
           >
             {selectedPlatform.icon}
           </motion.div>
@@ -1584,9 +1615,10 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
       <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4">
         <motion.div
           className="text-4xl"
+          layout={false}
           style={{ color: iconColor }}
           animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-          transition={isHovered ? LOOP_TRANSITION_FAST : ICON_STATIC_TRANSITION}
+          transition={isHovered ? loopTransitionFast : ICON_STATIC_TRANSITION}
         >
           {selectedPlatform.icon}
         </motion.div>
@@ -1600,14 +1632,16 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           <motion.div 
             className={`mt-1 flex items-center justify-center gap-1 ${userId ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500 dark:text-amber-400'}`}
             style={{ fontSize: `${10 * fontScale}px` }}
+            layout={false}
             {...HINT_ANIMATION}
           >
             {userId ? (
               <>
                 <span>点击访问个人主页</span>
                 <motion.span
-                  animate={HINT_ARROW_ANIMATION}
-                  transition={HINT_LOOP_TRANSITION}
+                  layout={false}
+                  animate={anim.loop ? HINT_ARROW_ANIMATION : { x: 0 }}
+                  transition={hintLoopTransition}
                 >
                   →
                 </motion.span>
@@ -1624,7 +1658,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
         </div>
       </div>
     );
-  }, [config.size, iconColor, isHovered, selectedPlatform, fontScale, userId, popupPlatformData]);
+  }, [config.size, iconColor, isHovered, selectedPlatform, fontScale, userId, popupPlatformData, loopTransitionFast, hintLoopTransition, anim.loop]);
 
   // 缓存容器的 hover/tap 动画配置 - 条件判断移到外部避免创建空对象
   const hasInteraction = !isEditMode && !!userId;

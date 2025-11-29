@@ -54,6 +54,36 @@
   }
 }
 
+/* ============================================
+   动画可见性控制 - 视口外暂停动画
+   配合 useAnimationVisibility hook 使用
+   ============================================ */
+
+/* 暂停动画类 */
+.animation-paused,
+.animation-paused *,
+.animation-paused::before,
+.animation-paused::after {
+  animation-play-state: paused !important;
+}
+
+/* 视口外元素优化 */
+.offscreen-optimize {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100px;
+}
+
+/* 低优先级动画 - 可以被暂停的装饰性动画 */
+.animation-decorative {
+  animation-play-state: running;
+}
+
+.reduce-animations .animation-decorative,
+.animation-paused .animation-decorative {
+  animation-play-state: paused !important;
+  animation: none !important;
+}
+
 /* 虚拟滚动容器 */
 .virtual-scroll-container {
   overflow-y: auto;

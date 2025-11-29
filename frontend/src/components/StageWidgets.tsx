@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, memo, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_URL } from '../config';
+import { useAnimationLevel } from '../hooks/useAnimationLevel';
+import { useAnimationSlot } from '../hooks/useAnimationScheduler';
 
 // 🔧 工具函数：处理B站图片URL，使用后端代理
 export const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
@@ -19,6 +21,16 @@ export const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
 // 迷你组件：B站弹幕云
 export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
   const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
+  const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`danmaku-${uniqueId}`, {
+    priority: 2,
+    duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
   
   const animations = useMemo(() => {
     const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
@@ -41,9 +53,14 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
     });
   }, [texts]);
   
+  // 低端设备、禁用动画、或调度器未分配槽位时不渲染动画
+  if (!anim.loop || !isAnimating) {
+    return null;
+  }
+  
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {animations.map((anim, i) => (
+      {animations.map((a, i) => (
         <motion.div
           key={`${texts[i]}-${i}`}
           initial={{ x: '100%', opacity: 0 }}
@@ -53,15 +70,15 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
           }}
           transition={{
             repeat: Infinity, 
-            duration: anim.duration,
-            delay: anim.delay,
+            duration: a.duration,
+            delay: a.delay,
             ease: "linear"
           }}
           className="absolute whitespace-nowrap text-base font-bold"
           style={{ 
-            top: anim.top,
+            top: a.top,
             color: '#B3E5FF',
-            opacity: anim.opacity,
+            opacity: a.opacity,
             willChange: 'transform'
           }}
         >
@@ -583,6 +600,19 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
   playlist_count?: number;
   level?: number;
 } }) => {
+  const animConfig = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`music-bubbles-${uniqueId}`, {
+    priority: 2,
+    duration: 5000, // 气泡浮动约5秒周期
+    autoRequest: animConfig.loop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
+  
+  const canAnimate = animConfig.loop && isAnimating;
+  
   const color = useMemo(() => data?.soul_color || "#ef4444", [data?.soul_color]);
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords]);
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count]);
@@ -692,7 +722,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
               animate={{ 
                 scale: 1, 
                 opacity: 1,
-                y: [0, -8, 0, 8, 0],
+                y: canAnimate ? [0, -8, 0, 8, 0] : 0,
                 boxShadow: `
                   0 8px 20px -6px ${bubble.color}60, 
                   inset 0 4px 10px rgba(255,255,255,0.3),
@@ -703,12 +733,12 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
               transition={{
                 scale: { type: "spring", stiffness: 260, damping: 20, delay: i * 0.1 },
                 opacity: { duration: 0.6, delay: i * 0.1 },
-                y: { 
+                y: canAnimate ? { 
                   duration: bubble.floatDuration, 
                   repeat: Infinity, 
                   ease: "easeInOut", 
                   delay: bubble.floatDelay 
-                },
+                } : { duration: 0.3 },
                 boxShadow: { duration: 0.3, ease: "easeInOut" },
                 zIndex: { delay: 0.1 }
               }}

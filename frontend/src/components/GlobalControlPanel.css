@@ -637,24 +637,38 @@ html.dark .control-item:hover {
 
 /* 动态图标动画 - 常驻且温和 */
 /* GPU优化：使用translateZ(0)内置于keyframes，避免持久will-change */
+/* 图标装饰动画 - 优化：hover 时才激活，减少持续运行的动画数量 */
 .icon-theme {
-  animation: icon-sway 4s ease-in-out infinite;
   transform-origin: bottom center;
+  transform: translateZ(0);
 }
 
 .icon-wallpaper {
-  animation: icon-float 3s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
 .icon-config {
+  transform: translateZ(0);
+}
+
+/* 只在 hover 时启用动画 */
+.control-item:hover .icon-theme {
+  animation: icon-sway 4s ease-in-out infinite;
+}
+
+.control-item:hover .icon-wallpaper {
+  animation: icon-float 3s ease-in-out infinite;
+}
+
+.control-item:hover .icon-config {
   animation: icon-spin 10s linear infinite;
 }
 
 /* 减少动效偏好时禁用装饰动画 */
 @media (prefers-reduced-motion: reduce) {
-  .icon-theme,
-  .icon-wallpaper,
-  .icon-config {
+  .control-item:hover .icon-theme,
+  .control-item:hover .icon-wallpaper,
+  .control-item:hover .icon-config {
     animation: none;
   }
 }
@@ -1363,8 +1377,16 @@ html.dark .music-song-artist {
   width: 20px;
   height: 20px;
   color: var(--music-base-primary);
-  animation: music-pulse 1.5s ease-in-out infinite;
+  /* 优化：默认暂停动画，只在 .is-playing 状态时运行 */
+  animation: music-pulse 1.5s ease-in-out infinite paused;
   transition: color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateZ(0);
+}
+
+/* 只在播放状态时激活动画 */
+.music-playing-indicator.is-playing,
+.music-player.is-playing .music-playing-indicator {
+  animation-play-state: running;
 }
 
 .music-playing-indicator svg {

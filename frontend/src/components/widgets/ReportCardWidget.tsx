@@ -3,13 +3,14 @@
  * 完全复用 Reports.tsx 中的所有子组件实现
  */
 
-import { useState, useEffect, useMemo, memo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback, useRef, useId } from 'react';
 import { API_URL } from '../../config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetConfig } from '../WidgetGrid';
 import { FaSteam, FaGithub } from 'react-icons/fa';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
+import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
 
 export interface ReportCardWidgetProps {
   config: WidgetConfig;
@@ -47,6 +48,18 @@ function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
 // ==================== B站组件（完整版）====================
 const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: string[] }, allowLoop?: boolean }) => {
   const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`widget-danmaku-${uniqueId}`, {
+    priority: 2,
+    duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
+    autoRequest: allowLoop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
+  
+  const canAnimate = allowLoop && isAnimating;
+  
   const animations = useMemo(() => {
     const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
     const lanes = 5;
@@ -63,6 +76,11 @@ const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: str
     }));
   }, [texts]);
   
+  // 低端设备或调度器未分配槽位时不渲染动画
+  if (!canAnimate) {
+    return null;
+  }
+  
   return (
     <div className="relative h-full w-full overflow-hidden">
       {animations.map((anim, i) => (
@@ -70,7 +88,7 @@ const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: str
           key={`${texts[i]}-${i}`}
           initial={{ x: '100%', opacity: 0 }}
           animate={{ x: '-100%', opacity: [0, 1, 1, 0] }}
-          transition={{ repeat: allowLoop ? Infinity : 0, duration: anim.duration, delay: anim.delay, ease: "linear" }}
+          transition={{ repeat: Infinity, duration: anim.duration, delay: anim.delay, ease: "linear" }}
           className="absolute whitespace-nowrap text-base font-bold"
           style={{ 
             top: anim.top, 
@@ -372,6 +390,18 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
 
 // ==================== Netease组件（完整版）====================
 const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`widget-music-${uniqueId}`, {
+    priority: 2,
+    duration: 5000,
+    autoRequest: allowLoop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
+  
+  const canAnimate = allowLoop && isAnimating;
+  
   const color = useMemo(() => data?.soul_color || "#ef4444", [data?.soul_color]);
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords]);
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count]);
@@ -463,7 +493,7 @@ const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
               transition={{
                 scale: { type: "spring", stiffness: 260, damping: 20, delay: i * 0.1 },
                 opacity: { duration: 0.6, delay: i * 0.1 },
-                y: { duration: bubble.floatDuration, repeat: allowLoop ? Infinity : 0, ease: "easeInOut", delay: bubble.floatDelay },
+                y: { duration: bubble.floatDuration, repeat: canAnimate ? Infinity : 0, ease: "easeInOut", delay: bubble.floatDelay },
               }}
               whileHover={{ scale: 1.15, zIndex: 50, transition: { duration: 0.3, ease: "easeOut" } }}>
               <div className="absolute top-[15%] left-[15%] w-[20%] h-[10%] bg-white/30 rounded-full blur-[1px] transform -rotate-45" />

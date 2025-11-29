@@ -3,13 +3,14 @@
  * Glass风格设计，2x2紧凑布局
  */
 
-import { useState, useEffect, useCallback, memo, useRef } from 'react';
+import { useState, useEffect, useCallback, memo, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Song, getNeteaseLyrics, getQQLyrics, LyricLine, getCurrentLyricIndex, audioManager } from '../../utils/musicPlayer';
 import { WidgetConfig } from '../WidgetGrid';
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel, AnimationConfig } from '../../hooks/useAnimationLevel';
+import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
 
 export interface MusicPlayerWidgetProps {
   config: WidgetConfig;
@@ -129,6 +130,17 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const playerControl = useMusicPlayerControl();
   const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 音乐播放器动画优先级中上(4)
+  const { isAnimating } = useAnimationSlot(`music-player-${uniqueId}`, {
+    priority: 4,
+    duration: 4000, // 光效动画约4秒周期
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 确保动画完整完成一轮
+  });
+  
+  const canAnimate = anim.loop && isAnimating;
   
   const currentSong = isPreview ? { 
     name: '示例歌曲', 
@@ -328,8 +340,8 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
               <div className="absolute inset-0 bg-white/40 dark:bg-black/40 mix-blend-overlay" />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white/10 dark:to-black/10" />
               
-              {/* 动态光斑效果 - 低端设备完全禁用 */}
-              {isPlaying && anim.level === 'standard' && (
+              {/* 动态光斑效果 - 低端设备完全禁用，受调度器控制 */}
+              {isPlaying && canAnimate && (
                 <motion.div 
                   className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr from-white/20 to-transparent rounded-full blur-xl mix-blend-overlay"
                   animate={{ 
@@ -460,8 +472,8 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
       className="relative h-full w-full rounded-xl overflow-hidden glass cursor-pointer group"
       onClick={handleClick}
     >
-      {/* 背景光效 - 低端设备禁用动画和减少 blur */}
-      {anim.level === 'standard' ? (
+      {/* 背景光效 - 低端设备禁用动画和减少 blur，受调度器控制 */}
+      {canAnimate ? (
         <motion.div 
           className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-xl"
           style={{ background: themeColor }}

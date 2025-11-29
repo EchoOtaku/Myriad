@@ -90,6 +90,11 @@ export function useWallpaperParallax(
 
     el.style.transformOrigin = 'center';
     el.style.willChange = 'transform';
+    
+    // 🔧 初始化时立即设置 transform，避免鼠标进入时闪现
+    const initialTf = `scale(${scale}) translate3d(0,0,0)`;
+    el.style.transform = initialTf;
+    s.lastTf = initialTf;
 
     // 动画帧
     const tick = (t: number) => {

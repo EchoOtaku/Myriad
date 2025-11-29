@@ -3,7 +3,7 @@
  * 使用glass毛玻璃效果和现代化设计
  */
 
-import { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import { useState, useEffect, memo, useCallback, useMemo, useId } from 'react';
 import { motion } from 'framer-motion';
 import { getWeatherInfo, WeatherData } from '../../utils/dynamicContent';
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile';
@@ -11,6 +11,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
+import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
 
 // 缓存配置
 const CACHE_KEY = 'weather_data_cache';
@@ -26,6 +27,18 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const perf = usePerformanceProfile();
   const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 天气图标动画优先级低(3)
+  const { isAnimating } = useAnimationSlot(`weather-${uniqueId}`, {
+    priority: 3,
+    duration: 3000, // 天气图标摇摆约3秒周期
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 确保动画完整完成一轮
+  });
+  
+  const canAnimate = anim.loop && isAnimating;
+  
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -361,8 +374,8 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         <motion.div 
           className="text-3xl mb-1"
           initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-          animate={anim.loop ? { scale: 1, opacity: 1, rotate: [-2, 2, -2] } : { scale: 1, opacity: 1 }}
-          transition={anim.loop ? {
+          animate={canAnimate ? { scale: 1, opacity: 1, rotate: [-2, 2, -2] } : { scale: 1, opacity: 1 }}
+          transition={canAnimate ? {
             scale: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
             opacity: { duration: 0.6 },
             rotate: { duration: 3, repeat: Infinity, ease: "easeInOut" }
@@ -391,8 +404,8 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             <motion.span 
               className="text-sm text-gray-600 dark:text-gray-400 font-medium"
               initial={{ opacity: 0 }}
-              animate={anim.loop ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }}
-              transition={anim.loop ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+              animate={canAnimate ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }}
+              transition={canAnimate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
             >
               {weatherData.weather}
             </motion.span>

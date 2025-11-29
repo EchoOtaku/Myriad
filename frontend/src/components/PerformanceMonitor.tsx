@@ -7,6 +7,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { globalResourceLoader } from '../utils/resourceLoader';
 import { clearPlaylistCache, clearLyricsCache } from '../utils/musicPlayer';
+import { globalAnimationScheduler, configureAnimationScheduler } from '../hooks/useAnimationScheduler';
 import './PerformanceMonitor.css';
 
 interface PerformanceMetrics {
@@ -431,8 +432,42 @@ export default function PerformanceMonitor() {
     });
   }, []);
 
-  // FPS监控
+  // FPS监控 - 只在展开时运行，减少 RAF 开销
   useEffect(() => {
+    // 折叠时使用低频率轮询
+    if (!isExpanded) {
+      // 简单的采样：每2秒测一次，使用 setTimeout 而不是 RAF
+      const sampleFPS = () => {
+        const startTime = performance.now();
+        let frames = 0;
+        
+        const countFrame = () => {
+          frames++;
+          if (performance.now() - startTime < 200) {
+            rafIdRef.current = requestAnimationFrame(countFrame);
+          } else {
+            // 200ms 采样，外推到 1 秒
+            const estimatedFPS = Math.round(frames * 5);
+            setMetrics(prev => ({ ...prev, fps: estimatedFPS }));
+            rafIdRef.current = undefined;
+          }
+        };
+        
+        rafIdRef.current = requestAnimationFrame(countFrame);
+      };
+      
+      sampleFPS();
+      const interval = setInterval(sampleFPS, 3000);
+      
+      return () => {
+        clearInterval(interval);
+        if (rafIdRef.current) {
+          cancelAnimationFrame(rafIdRef.current);
+        }
+      };
+    }
+    
+    // 展开时使用持续测量以获得精确 FPS
     const measureFPS = () => {
       frameCountRef.current++;
       const currentTime = performance.now();
@@ -460,7 +495,7 @@ export default function PerformanceMonitor() {
         cancelAnimationFrame(rafIdRef.current);
       }
     };
-  }, []);
+  }, [isExpanded]);
 
   // 内存监控
   useEffect(() => {
@@ -1099,10 +1134,60 @@ export default function PerformanceMonitor() {
                   </div>
                 </div>
 
+                {/* 动画调度器状态 */}
+                <div>
+                  <div className="font-bold mb-2 text-gray-300">🎬 动画调度器</div>
+                  {(() => {
+                    const schedulerStats = globalAnimationScheduler.getStats();
+                    return (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+                          <div className="bg-white/5 rounded px-2 py-1.5 text-center">
+                            <div className="text-gray-400">活跃</div>
+                            <div className={schedulerStats.activeCount >= schedulerStats.maxConcurrent ? 'text-orange-400 font-bold' : 'text-cyan-400'}>
+                              {schedulerStats.activeCount}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded px-2 py-1.5 text-center">
+                            <div className="text-gray-400">队列</div>
+                            <div className={schedulerStats.queueLength > 5 ? 'text-yellow-400 font-bold' : 'text-gray-400'}>
+                              {schedulerStats.queueLength}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded px-2 py-1.5 text-center">
+                            <div className="text-gray-400">上限</div>
+                            <div className="text-gray-400">{schedulerStats.maxConcurrent}</div>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => configureAnimationScheduler({ maxConcurrent: 4 })}
+                            className="flex-1 px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 rounded text-[9px] text-orange-300 transition-colors"
+                          >
+                            节能模式 (4)
+                          </button>
+                          <button
+                            onClick={() => configureAnimationScheduler({ maxConcurrent: 8 })}
+                            className="flex-1 px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-[9px] text-gray-300 transition-colors"
+                          >
+                            默认 (8)
+                          </button>
+                          <button
+                            onClick={() => configureAnimationScheduler({ maxConcurrent: 16 })}
+                            className="flex-1 px-2 py-1 bg-green-500/20 hover:bg-green-500/30 rounded text-[9px] text-green-300 transition-colors"
+                          >
+                            性能模式 (16)
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* 优化建议 */}
                 <div>
-                  <div className="font-bold mb-2 text-gray-300">优化建议</div>
-                  <div className="space-y-1 text-[10px]">
+                  <div className="font-bold mb-2 text-gray-300">快速优化</div>
+                  <div className="space-y-1.5 text-[10px]">
                     {jsAnimationStats.activeRAFs > 3 && (
                       <div className="bg-purple-500/10 text-purple-300 rounded px-2 py-1">
                         💡 使用单一 RAF 循环管理多个动画
@@ -1110,10 +1195,15 @@ export default function PerformanceMonitor() {
                     )}
                     {jsAnimationStats.framerMotionElements > 10 && (
                       <div className="bg-blue-500/10 text-blue-300 rounded px-2 py-1">
-                        💡 减少同时进行的 Framer Motion 动画
+                        💡 为 Framer Motion 元素添加 layout={false}
                       </div>
                     )}
-                    {jsAnimationStats.totalJsAnimations === 0 && jsAnimationStats.rafCallsPerSecond < 120 && (
+                    {jsAnimationStats.webAnimationsRunning > 10 && (
+                      <div className="bg-orange-500/10 text-orange-300 rounded px-2 py-1">
+                        💡 使用 IntersectionObserver 暂停视口外动画
+                      </div>
+                    )}
+                    {jsAnimationStats.totalJsAnimations <= 10 && jsAnimationStats.rafCallsPerSecond <= 120 && (
                       <div className="bg-green-500/10 text-green-300 rounded px-2 py-1">
                         ✅ JS 动画性能良好
                       </div>

@@ -3,13 +3,14 @@
  * Glass风格设计，左右布局，动态引导内容
  */
 
-import { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import { useState, useEffect, memo, useCallback, useMemo, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { GlowBackground } from './shared/GlowBackground';
+import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
 
 interface NavigationGuide {
   title: string;
@@ -44,6 +45,18 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   // 如果是预览模式，强制 scale 为 1，因为外部容器已经进行了缩放
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 欢迎动画优先级低(4)
+  const { isAnimating } = useAnimationSlot(`welcome-${uniqueId}`, {
+    priority: 4,
+    duration: 1500, // 箭头动画约1.5秒周期
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 确保动画完整完成一轮
+  });
+  
+  const canAnimate = anim.loop && isAnimating;
+  
   const navigate = useNavigate();
   const [currentGuideIndex, setCurrentGuideIndex] = useState(0);
   const [greeting, setGreeting] = useState('');
@@ -345,8 +358,8 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                     style={{ width: `${12 * scale}px`, height: `${12 * scale}px` }}
                     fill="currentColor" 
                     viewBox="0 0 20 20"
-                    animate={anim.loop ? { x: [0, 3, 0] } : { x: 0 }}
-                    transition={anim.loop ? {
+                    animate={canAnimate ? { x: [0, 3, 0] } : { x: 0 }}
+                    transition={canAnimate ? {
                       duration: 1.5,
                       repeat: Infinity,
                       ease: "easeInOut"

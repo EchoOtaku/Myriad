@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, memo, useRef, lazy, Suspense } from 'react';
+﻿import { useState, useEffect, useMemo, useCallback, memo, useRef, lazy, Suspense, useId } from 'react';
 import { API_URL } from '../config';
 import { getCSRFToken } from '../utils/csrf';
 import AnimatedView from '../components/AnimatedView';
@@ -22,6 +22,8 @@ import {
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard';
 import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport';
+import { useAnimationLevel } from '../hooks/useAnimationLevel';
+import { useAnimationSlot } from '../hooks/useAnimationScheduler';
 
 // 🚀 性能优化：防抖Hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -186,9 +188,19 @@ const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
   return cover;
 };
 
-// 迷你组件：B站弹幕云 (优化：使用 memo + 优化动画性能)
+// 迷你组件：B站弹幕云 (优化：使用 memo + 优化动画性能 + 调度器)
 const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
   const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
+  const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`reports-danmaku-${uniqueId}`, {
+    priority: 2,
+    duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
   
   // 🚀 性能优化：预计算随机化的动画参数，避免弹幕重叠
   const animations = useMemo(() => {
@@ -211,9 +223,14 @@ const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
     }));
   }, [texts]);
   
+  // 低端设备或调度器未分配槽位时不渲染动画
+  if (!anim.loop || !isAnimating) {
+    return null;
+  }
+  
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {animations.map((anim, i) => (
+      {animations.map((a, i) => (
         <motion.div
           key={`${texts[i]}-${i}`}
           initial={{ x: '100%', opacity: 0 }}
@@ -223,15 +240,15 @@ const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
           }}
           transition={{
             repeat: Infinity, 
-            duration: anim.duration,
-            delay: anim.delay,
+            duration: a.duration,
+            delay: a.delay,
             ease: "linear"
           }}
           className="absolute whitespace-nowrap text-base font-bold"
           style={{ 
-            top: anim.top,
+            top: a.top,
             color: '#B3E5FF',
-            opacity: anim.opacity,
+            opacity: a.opacity,
             willChange: 'transform' // 🚀 GPU加速
           }}
         >
@@ -781,7 +798,7 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
   );
 });
 
-// 迷你组件：网易云音乐卡片展示（统计信息展示）
+// 迷你组件：网易云音乐卡片展示（统计信息展示）+ 调度器
 const MusicStatsWidget = memo(({ data }: { data?: { 
   soul_color?: string; 
   mood_keywords?: Array<{ tag: string; color: string }>;
@@ -789,6 +806,19 @@ const MusicStatsWidget = memo(({ data }: { data?: {
   playlist_count?: number;
   level?: number;
 } }) => {
+  const anim = useAnimationLevel();
+  const uniqueId = useId();
+  
+  // 🆕 接入动画调度器 - 报告组件高优先级(2)
+  const { isAnimating } = useAnimationSlot(`reports-music-${uniqueId}`, {
+    priority: 2,
+    duration: 5000,
+    autoRequest: anim.loop,
+    releaseOnUnmount: false, // 内容切换前不强制移除
+  });
+  
+  const canAnimate = anim.loop && isAnimating;
+  
   const color = useMemo(() => data?.soul_color || "#ef4444", [data?.soul_color]);
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords]);
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count]);
@@ -918,7 +948,7 @@ const MusicStatsWidget = memo(({ data }: { data?: {
               animate={{ 
                 scale: 1, 
                 opacity: 1,
-                y: [0, -8, 0, 8, 0],
+                y: canAnimate ? [0, -8, 0, 8, 0] : 0,
                 boxShadow: `
                   0 8px 20px -6px ${bubble.color}60, 
                   inset 0 4px 10px rgba(255,255,255,0.3),
@@ -929,12 +959,12 @@ const MusicStatsWidget = memo(({ data }: { data?: {
               transition={{
                 scale: { type: "spring", stiffness: 260, damping: 20, delay: i * 0.1 },
                 opacity: { duration: 0.6, delay: i * 0.1 },
-                y: { 
+                y: canAnimate ? { 
                   duration: bubble.floatDuration, 
                   repeat: Infinity, 
                   ease: "easeInOut", 
                   delay: bubble.floatDelay 
-                },
+                } : { duration: 0.3 },
                 boxShadow: { duration: 0.3, ease: "easeInOut" },
                 zIndex: { delay: 0.1 }
               }}
@@ -1133,6 +1163,8 @@ export default function Reports() {
   const [customStyle, setCustomStyle] = useState<string>('');
   // 🚀 性能优化：防抖处理用户输入
   const debouncedCustomStyle = useDebounce(customStyle, 300);
+  // 🆕 动画级别控制，用于装饰性动画
+  const anim = useAnimationLevel();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isComprehensiveExpanded, setIsComprehensiveExpanded] = useState(false);
   const [comprehensiveReports, setComprehensiveReports] = useState<any[]>([]); // 所有综合报告列表
@@ -2415,13 +2447,13 @@ export default function Reports() {
                         {isAdmin ? (
                           <>
                             <motion.div
-                              animate={{ 
+                              animate={anim.loop ? { 
                                 rotate: [0, 10, -10, 10, 0],
                                 scale: [1, 1.1, 1.1, 1.1, 1]
-                              }}
+                              } : {}}
                               transition={{ 
                                 duration: 2,
-                                repeat: Infinity,
+                                repeat: anim.loop ? Infinity : 0,
                                 repeatDelay: 3,
                                 ease: 'easeInOut'
                               }}
@@ -2462,13 +2494,13 @@ export default function Reports() {
                             ) : (
                               <>
                                 <motion.div
-                                  animate={{ 
+                                  animate={anim.loop ? { 
                                     scale: [1, 1.2, 1],
                                     rotate: [0, 5, -5, 0]
-                                  }}
+                                  } : {}}
                                   transition={{ 
                                     duration: 1.5,
-                                    repeat: Infinity,
+                                    repeat: anim.loop ? Infinity : 0,
                                     repeatDelay: 2
                                   }}
                                 >
