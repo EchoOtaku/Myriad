@@ -636,6 +636,7 @@ html.dark .control-item:hover {
 }
 
 /* 动态图标动画 - 常驻且温和 */
+/* GPU优化：使用translateZ(0)内置于keyframes，避免持久will-change */
 .icon-theme {
   animation: icon-sway 4s ease-in-out infinite;
   transform-origin: bottom center;
@@ -649,19 +650,28 @@ html.dark .control-item:hover {
   animation: icon-spin 10s linear infinite;
 }
 
+/* 减少动效偏好时禁用装饰动画 */
+@media (prefers-reduced-motion: reduce) {
+  .icon-theme,
+  .icon-wallpaper,
+  .icon-config {
+    animation: none;
+  }
+}
+
 @keyframes icon-sway {
-  0%, 100% { transform: rotate(-8deg); }
-  50% { transform: rotate(8deg); }
+  0%, 100% { transform: rotate(-8deg) translateZ(0); }
+  50% { transform: rotate(8deg) translateZ(0); }
 }
 
 @keyframes icon-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
+  0%, 100% { transform: translateY(0) translateZ(0); }
+  50% { transform: translateY(-2px) translateZ(0); }
 }
 
 @keyframes icon-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from { transform: rotate(0deg) translateZ(0); }
+  to { transform: rotate(360deg) translateZ(0); }
 }
 
 .control-item-title {

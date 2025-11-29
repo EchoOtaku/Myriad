@@ -47,3 +47,76 @@ div[data-width="91"], div[data-width="92"], div[data-width="93"],
 div[data-width="94"], div[data-width="95"] { width: 95%; }
 div[data-width="96"], div[data-width="97"], div[data-width="98"], 
 div[data-width="99"], div[data-width="100"] { width: 100%; }
+
+/* 性能监控面板滚动条样式 */
+[data-perf-monitor] ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+[data-perf-monitor] ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+}
+
+[data-perf-monitor] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+[data-perf-monitor] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 动效高亮样式（由 JS 动态注入）*/
+/* 这里不需要定义，因为样式由组件动态创建 */
+
+/* 面板过渡动画 */
+[data-perf-monitor] {
+  transition: max-width 0.2s ease-out;
+}
+
+/* 选项卡切换动画 */
+[data-perf-monitor] button {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* 警告图标脉冲动画 */
+[data-perf-monitor] .animate-pulse {
+  animation: perf-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes perf-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 列表项进入动画 */
+[data-perf-monitor] .space-y-1 > div {
+  animation: perf-slide-in 0.2s ease-out;
+}
+
+@keyframes perf-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 统计卡片悬停效果 */
+[data-perf-monitor] .grid > div {
+  transition: background-color 0.15s ease;
+}
+
+[data-perf-monitor] .grid > div:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
