@@ -140,6 +140,11 @@ impl ConfigService {
                 config.ui_wallpaper_blur = n as i32;
             }
         }
+        if let Some(v) = map.get("ui_wallpaper_parallax") {
+            if let Some(b) = v.as_bool() {
+                config.ui_wallpaper_parallax = b;
+            }
+        }
         if let Some(v) = map.get("pet_enabled") {
             if let Some(b) = v.as_bool() {
                 config.pet_enabled = b;

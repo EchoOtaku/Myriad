@@ -1193,16 +1193,31 @@ const ModernConfigForm: React.FC = () => {
                           {field.label}
                           {field.required && <span className="required">*</span>}
                         </label>
-                        <input
-                          id={`ui-${field.key}`}
-                          type={field.field_type}
-                          value={field.value}
-                          onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                          placeholder={field.placeholder}
-                          min={field.field_type === 'number' ? '0' : undefined}
-                          max={field.field_type === 'number' ? '10' : undefined}
-                          className="field-input"
-                        />
+                        {field.field_type === 'checkbox' ? (
+                          <div className="checkbox-wrapper">
+                            <input
+                              id={`ui-${field.key}`}
+                              type="checkbox"
+                              checked={field.value === 'true'}
+                              onChange={(e) => updateUiFieldValue(field.key, e.target.checked ? 'true' : 'false')}
+                              className="field-checkbox"
+                            />
+                            <span className="checkbox-hint">
+                              {field.key === 'wallpaper_parallax' && '启用后壁纸会根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感'}
+                            </span>
+                          </div>
+                        ) : (
+                          <input
+                            id={`ui-${field.key}`}
+                            type={field.field_type}
+                            value={field.value}
+                            onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                            placeholder={field.placeholder}
+                            min={field.field_type === 'number' ? '0' : undefined}
+                            max={field.field_type === 'number' ? '10' : undefined}
+                            className="field-input"
+                          />
+                        )}
                       </div>
                     ))}
                 </div>

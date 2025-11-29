@@ -12,6 +12,7 @@ import { wallpaperState } from '../utils/wallpaperState';
 import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
+import { useWallpaperParallax } from '../hooks/useWallpaperParallax';
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget';
 import { invalidateAuthCache, getUserAvatarWithCache } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,6 +48,18 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 壁纸管理 Hook
   const { loadWallpaper: loadWallpaperFromHook } = useWallpaper();
+
+  // 壁纸视差效果配置状态
+  const [wallpaperParallaxEnabled, setWallpaperParallaxEnabled] = useState(true);
+
+  // 🎨 壁纸视差效果 Hook - 创造立体空间感
+  useWallpaperParallax('wallpaper', {
+    enabled: wallpaperParallaxEnabled,
+    enableGyroscope: true,
+    enableMouse: true,
+    maxOffset: 8,
+    scale: 1.02,
+  });
 
   // 导航岛状态管理
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all');
@@ -709,6 +722,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (!wallpaperResult) {
       return;
     }
+    
+    // 更新视差效果配置
+    setWallpaperParallaxEnabled(wallpaperResult.parallaxEnabled);
     
     if (wallpaperResult) {
       const { actualUrl, verified } = wallpaperResult;

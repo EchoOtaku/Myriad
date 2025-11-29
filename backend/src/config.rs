@@ -148,6 +148,7 @@ pub struct DynamicConfig {
     // UI 配置
     pub ui_wallpaper_url: Option<String>,
     pub ui_wallpaper_blur: i32,
+    pub ui_wallpaper_parallax: bool,
     pub ui_theme: Option<String>,
     pub ui_primary_color: Option<String>,
     pub ui_secondary_color: Option<String>,
@@ -218,6 +219,7 @@ impl Default for DynamicConfig {
 
             ui_wallpaper_url: None,
             ui_wallpaper_blur: 3,
+            ui_wallpaper_parallax: true,
             ui_theme: None,
             ui_primary_color: None,
             ui_secondary_color: None,

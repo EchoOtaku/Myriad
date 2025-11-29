@@ -2431,7 +2431,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                                     .or_else(|| al.get("cover"))
                             })
                             .and_then(|p| p.as_str())
-                            .map(|s| proxy_image_url(s));
+                            .map(proxy_image_url);
 
                         // 规范化metadata确保包含所有必要字段
                         let mut normalized_metadata = song.clone();
@@ -2625,7 +2625,7 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                                     .or_else(|| al.get("cover"))
                             })
                             .and_then(|p| p.as_str())
-                            .map(|s| proxy_image_url(s));
+                            .map(proxy_image_url);
 
                         // 规范化metadata确保包含所有必要字段
                         let mut normalized_metadata = song.clone();

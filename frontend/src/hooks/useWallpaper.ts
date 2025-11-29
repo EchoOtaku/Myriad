@@ -40,6 +40,7 @@ export {
 interface WallpaperConfig {
   wallpaper_url: string;
   wallpaper_blur: number;
+  wallpaper_parallax?: boolean;
 }
 
 interface LoadWallpaperResult {
@@ -49,6 +50,8 @@ interface LoadWallpaperResult {
   blur: number;
   /** URL是否经过验证 */
   verified: boolean;
+  /** 是否启用视差效果 */
+  parallaxEnabled: boolean;
 }
 
 // ============================================================================
@@ -283,6 +286,7 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
       return {
         wallpaper_url: data.wallpaper_url,
         wallpaper_blur: data.wallpaper_blur ?? 3,
+        wallpaper_parallax: data.wallpaper_parallax ?? true,
       };
     }
     return null;
@@ -345,6 +349,7 @@ export function useWallpaper() {
         actualUrl: verifiedUrl, 
         blur: config.wallpaper_blur,
         verified: areUrlsEquivalent(verifiedUrl, actualUrl),
+        parallaxEnabled: config.wallpaper_parallax ?? true,
       };
     } catch (error) {
       console.error('加载壁纸失败:', error);

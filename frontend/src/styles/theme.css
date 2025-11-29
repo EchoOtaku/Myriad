@@ -67,6 +67,25 @@ body {
   transition: background 0.5s ease-out;
 }
 
+/* 壁纸视差效果样式 */
+#wallpaper {
+  /* 确保放大后的壁纸不会露出边缘 */
+  transform-origin: center center;
+  /* GPU 加速 */
+  will-change: transform;
+  backface-visibility: hidden;
+  /* 禁用 CSS transition，由 JS 控制平滑动画 */
+  transition: background-image 0.7s ease-in-out, opacity 0.7s ease-in-out !important;
+}
+
+/* 低端设备禁用视差动画 */
+@media (prefers-reduced-motion: reduce) {
+  #wallpaper {
+    transform: scale(1.02) !important;
+    will-change: auto;
+  }
+}
+
 /* Glass effect */
 .glass {
   background: rgba(255, 255, 255, 0.7);

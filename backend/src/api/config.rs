@@ -57,6 +57,7 @@ pub struct PersonaConfig {
 pub struct UiConfig {
     pub wallpaper_url: String,
     pub wallpaper_blur: u32,
+    pub wallpaper_parallax: bool,
     pub theme: String,
     pub primary_color: String,
     pub secondary_color: String,
@@ -359,6 +360,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         ui_config: UiConfig {
             wallpaper_url: get_value(db_config.as_ref().and_then(|c| c.ui_wallpaper_url.clone()), "UI_WALLPAPER_URL"),
             wallpaper_blur: db_config.as_ref().map(|c| c.ui_wallpaper_blur as u32).unwrap_or_else(|| std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()).parse::<u32>().unwrap_or(3)),
+            wallpaper_parallax: db_config.as_ref().map(|c| c.ui_wallpaper_parallax).unwrap_or_else(|| std::env::var("UI_WALLPAPER_PARALLAX").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)),
             theme: db_config.as_ref().and_then(|c| c.ui_theme.clone()).unwrap_or_else(|| std::env::var("UI_THEME").unwrap_or_else(|_| "dark".to_string())),
             primary_color: db_config.as_ref().and_then(|c| c.ui_primary_color.clone()).unwrap_or_else(|| std::env::var("UI_PRIMARY_COLOR").unwrap_or_else(|_| "#6366f1".to_string())),
             secondary_color: db_config.as_ref().and_then(|c| c.ui_secondary_color.clone()).unwrap_or_else(|| std::env::var("UI_SECONDARY_COLOR").unwrap_or_else(|_| "#8b5cf6".to_string())),
@@ -379,6 +381,14 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     field_type: "number".to_string(),
                     value: db_config.as_ref().map(|c| c.ui_wallpaper_blur.to_string()).unwrap_or_else(|| std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string())),
                     placeholder: "3".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "wallpaper_parallax".to_string(),
+                    label: "壁纸视差效果".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config.as_ref().map(|c| c.ui_wallpaper_parallax.to_string()).unwrap_or_else(|| std::env::var("UI_WALLPAPER_PARALLAX").unwrap_or_else(|_| "true".to_string())),
+                    placeholder: "true".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -688,6 +698,10 @@ async fn save_to_database(
                     continue;
                 }
             }
+            "wallpaper_parallax" => {
+                let enabled = field.value == "true";
+                ("ui_wallpaper_parallax", JsonValue::Bool(enabled))
+            }
             "pet_enabled" => {
                 let enabled = field.value == "true";
                 ("pet_enabled", JsonValue::Bool(enabled))
@@ -836,6 +850,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         let key = match field.key.as_str() {
             "wallpaper_url" => "UI_WALLPAPER_URL",
             "wallpaper_blur" => "UI_WALLPAPER_BLUR",
+            "wallpaper_parallax" => "UI_WALLPAPER_PARALLAX",
             "image_gen_enabled" => "IMAGE_GEN_ENABLED",
             "image_gen_model" => "IMAGE_GEN_MODEL",
             "image_gen_width" => "IMAGE_GEN_WIDTH",
@@ -1300,6 +1315,9 @@ pub async fn get_public_ui_config(State(db): State<DatabaseConnection>) -> (Stat
         ),
         "wallpaper_blur": db_config.as_ref().map(|c| c.ui_wallpaper_blur as u32).unwrap_or_else(|| 
             std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()).parse::<u32>().unwrap_or(3)
+        ),
+        "wallpaper_parallax": db_config.as_ref().map(|c| c.ui_wallpaper_parallax).unwrap_or_else(|| 
+            std::env::var("UI_WALLPAPER_PARALLAX").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
         ),
         "music_enabled": get_value(
             db_config.as_ref().and_then(|c| c.music_enabled.clone()),
