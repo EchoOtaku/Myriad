@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+﻿import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaTimes, FaSteam, FaGithub } from 'react-icons/fa';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
@@ -263,7 +263,7 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
           
           <div className="absolute bottom-0 left-0 right-0 p-4">
             <div className="inline-flex max-w-full">
-              <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm rounded-lg p-3 shadow-lg">
+              <div className="bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm rounded-lg p-3 shadow-lg">
                 <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 mb-2">
                   {currentItem.title}
                 </h3>
@@ -788,7 +788,7 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
                 <div className="h-[65%] md:h-[45%] relative">
                   {/* 篇章指示器 - 右上角 */}
                   <div className="absolute top-0 right-0 z-50">
-                    <div className="bg-white/80 dark:bg-gray-800/80 rounded-xl px-4 py-2 backdrop-blur-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                    <div className="bg-white/80 dark:bg-neutral-900/80 rounded-xl px-4 py-2 backdrop-blur-xl shadow-lg border border-gray-100 dark:border-neutral-700">
                       <div className="flex items-center gap-3">
                         <div className="flex flex-col items-end">
                           <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
@@ -805,7 +805,7 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
                               className={`w-1.5 h-1.5 rounded-full transition-all ${
                                 i <= currentChapter
                                   ? 'bg-gray-900 dark:bg-gray-100 shadow-sm'
-                                  : 'bg-gray-300 dark:bg-gray-600'
+                                  : 'bg-gray-300 dark:bg-neutral-700'
                               }`}
                             />
                           ))}

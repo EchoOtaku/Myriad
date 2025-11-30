@@ -576,7 +576,7 @@ const CustomPlatformForm = memo(({
           value={formData.name}
           onChange={(e) => onChange({ ...formData, name: e.target.value })}
           placeholder="例如: 微博、微信"
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
         />
       </div>
 
@@ -592,7 +592,7 @@ const CustomPlatformForm = memo(({
             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               formData.linkType === 'url'
                 ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
             }`}
           >
             URL链接
@@ -603,7 +603,7 @@ const CustomPlatformForm = memo(({
             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               formData.linkType === 'popup'
                 ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
             }`}
           >
             信息弹窗
@@ -623,7 +623,7 @@ const CustomPlatformForm = memo(({
               value={formData.username}
               onChange={(e) => onChange({ ...formData, username: e.target.value })}
               placeholder="例如: your_username"
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
             />
           </div>
           <div>
@@ -635,7 +635,7 @@ const CustomPlatformForm = memo(({
               value={formData.linkPattern}
               onChange={(e) => onChange({ ...formData, linkPattern: e.target.value })}
               placeholder={formData.username ? "留空则自动生成" : "请填写完整链接"}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {formData.username ? '使用 {\'{username}\'} 作为用户名占位符' : '无用户名时直接访问此链接'}
@@ -652,7 +652,7 @@ const CustomPlatformForm = memo(({
             onChange={(e) => onChange({ ...formData, popupText: e.target.value })}
             placeholder="输入文本、图片链接等&#10;例如:&#10;微信号: wxid_123&#10;https://example.com/qrcode.png"
             rows={4}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none resize-none"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none resize-none"
           />
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             支持图片URL自动识别(http/https开头的.jpg/.png/.gif等)
@@ -665,7 +665,7 @@ const CustomPlatformForm = memo(({
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          className="flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
         >
           取消
         </button>

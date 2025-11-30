@@ -64,12 +64,12 @@ const SkeletonCard = memo(() => (
     <div className="absolute inset-0 p-3.5 flex flex-col justify-between">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-gray-300 dark:bg-gray-700 rounded" />
-          <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded" />
+          <div className="w-4 h-4 bg-gray-300 dark:bg-neutral-800 rounded" />
+          <div className="w-16 h-3 bg-gray-300 dark:bg-neutral-800 rounded" />
         </div>
       </div>
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-20 h-20 bg-gray-300 dark:bg-gray-700 rounded-full" />
+        <div className="w-20 h-20 bg-gray-300 dark:bg-neutral-800 rounded-full" />
       </div>
     </div>
   </div>
@@ -145,9 +145,9 @@ const PLATFORMS = [
     name: 'Steam', 
     icon: <FaSteam />, 
     color: 'from-gray-700 to-gray-800',
-    bg: 'bg-gray-50/10 dark:bg-gray-800/10',
+    bg: 'bg-gray-50/10 dark:bg-neutral-900/10',
     text: 'text-gray-700 dark:text-gray-300',
-    border: 'border-gray-200/20 dark:border-gray-700/20',
+    border: 'border-gray-200/20 dark:border-neutral-700/20',
     widgetType: 'gauge'
   },
   { 
@@ -155,9 +155,9 @@ const PLATFORMS = [
     name: 'GitHub', 
     icon: <FaGithub />, 
     color: 'from-gray-700 to-gray-900',
-    bg: 'bg-gray-50/10 dark:bg-gray-800/10',
+    bg: 'bg-gray-50/10 dark:bg-neutral-900/10',
     text: 'text-gray-600 dark:text-gray-400',
-    border: 'border-gray-200/20 dark:border-gray-700/20',
+    border: 'border-gray-200/20 dark:border-neutral-700/20',
     widgetType: 'terminal'
   },
   { 
@@ -1761,7 +1761,7 @@ export default function Reports() {
                 {/* 关闭按钮 */}
                 <button
                   onClick={() => setSelectedPlatform(null)}
-                  className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors shadow-lg"
+                  className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-neutral-900 dark:hover:bg-neutral-700 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors shadow-lg"
                   title="关闭"
                   aria-label="关闭"
                 >
@@ -1771,7 +1771,7 @@ export default function Reports() {
                 {/* 平台报告详情 */}
                 <div className="h-full flex flex-col md:flex-row overflow-hidden rounded-2xl">
                 {/* 左侧：概览 */}
-                <div className="w-full md:w-1/3 p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl overflow-y-auto">
+                <div className="w-full md:w-1/3 p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-gray-100 dark:border-neutral-800 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-xl overflow-y-auto">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4 ${PLATFORMS.find(p => p.id === selectedReport.platform)?.bg} ${PLATFORMS.find(p => p.id === selectedReport.platform)?.text}`}>
                     {PLATFORMS.find(p => p.id === selectedReport.platform)?.icon}
                   </div>
@@ -1787,7 +1787,7 @@ export default function Reports() {
                         generatePlatformReport(selectedReport.platform);
                       }}
                       disabled={loadingPlatform === selectedReport.platform}
-                      className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-500 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-neutral-700/50 transition-colors text-gray-500 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="重新生成报告"
                       aria-label="重新生成报告"
                     >
@@ -1809,7 +1809,7 @@ export default function Reports() {
                     </div>
 
                     {/* 动态可视化展示区 */}
-                    <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 h-32">
+                    <div className="p-3 rounded-xl bg-gray-50 dark:bg-neutral-900 border border-gray-100 dark:border-neutral-700 h-32">
                       <div className="w-full h-full">
                         {selectedReport.platform === 'bilibili' && <BilibiliWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
                         {selectedReport.platform === 'steam' && <SteamWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
@@ -1821,7 +1821,7 @@ export default function Reports() {
                 </div>
 
                 {/* 右侧：详细洞察 */}
-                <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-white dark:bg-gray-900">
+                <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-white dark:bg-neutral-950">
                   <div className="flex items-center gap-2 mb-6">
                     <FaRobot className="text-indigo-500 text-lg" />
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">深度洞察报告</h3>
@@ -1930,7 +1930,7 @@ export default function Reports() {
                         {/* 播放全部按钮 */}
                         <button
                           onClick={startPlayAll}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
+                          className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
                           title="播放所有平台报告"
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -1948,7 +1948,7 @@ export default function Reports() {
                           <button
                             onClick={refreshStageReport}
                             disabled={refreshingStage}
-                            className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             title={refreshingStage ? '正在刷新...' : '刷新当前报告'}
                           >
                             <motion.svg 
@@ -1970,7 +1970,7 @@ export default function Reports() {
                             // 触发StageMode内部的暂停状态切换
                             window.dispatchEvent(new CustomEvent('stage-toggle-pause'));
                           }}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
+                          className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
                           title={stagePaused ? '继续播放' : '暂停'}
                         >
                           {stagePaused ? (
@@ -1987,7 +1987,7 @@ export default function Reports() {
                         {/* 关闭按钮 */}
                         <button
                           onClick={closeStageMode}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
+                          className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
                           title="关闭舞台"
                         >
                           <FaTimes size={14} />
@@ -2415,7 +2415,7 @@ export default function Reports() {
                                 const event = new CustomEvent('stage-toggle-pause');
                                 window.dispatchEvent(event);
                               }}
-                              className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
+                              className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
                               title={stagePaused ? '继续播放' : '暂停'}
                             >
                               {stagePaused ? (
@@ -2430,7 +2430,7 @@ export default function Reports() {
                             </button>
                             <button
                               onClick={handleUserCloseStage}
-                              className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
+                              className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
                               title="关闭舞台"
                             >
                               <FaTimes size={14} />

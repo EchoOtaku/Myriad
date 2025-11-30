@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 import { FaCheck, FaDatabase, FaUser, FaExclamationTriangle } from 'react-icons/fa';
 import { Spinner } from './Spinner';
@@ -330,7 +330,7 @@ const SetupWizard: React.FC = () => {
             <div
               className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
                 !dbConfigured
-                  ? 'bg-white dark:bg-gray-800 shadow-sm setup-step-active'
+                  ? 'bg-white dark:bg-neutral-900 shadow-sm setup-step-active'
                   : 'setup-step-completed'
               }`}
             >
@@ -341,7 +341,7 @@ const SetupWizard: React.FC = () => {
             <div
               className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
                 dbConfigured && !adminCreated
-                  ? 'bg-white dark:bg-gray-800 shadow-sm setup-step-active'
+                  ? 'bg-white dark:bg-neutral-900 shadow-sm setup-step-active'
                   : dbConfigured && adminCreated
                     ? 'setup-step-completed'
                     : 'setup-step-disabled'

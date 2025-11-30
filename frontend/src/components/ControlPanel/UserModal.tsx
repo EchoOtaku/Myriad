@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { API_URL } from '../../config';
 import { getCSRFToken } from '../../utils/csrf';
 
@@ -204,7 +204,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                         id="old-password"
                         name="old-password"
                         required
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         placeholder="请输入当前密码"
                       />
                     </div>
@@ -218,7 +218,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                         name="new-password"
                         required
                         minLength={8}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         placeholder="至少 8 个字符"
                       />
                     </div>
@@ -232,7 +232,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                         name="confirm-password"
                         required
                         minLength={8}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         placeholder="再次输入新密码"
                       />
                     </div>
@@ -255,7 +255,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                           setShowChangePassword(false);
                           setPasswordError('');
                         }}
-                        className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-all"
+                        className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-neutral-800 dark:hover:bg-neutral-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-all"
                       >
                         取消
                       </button>

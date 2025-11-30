@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 可视化编辑的网格小组件系统
  * 16x4 网格布局，支持拖拽编辑
  */
@@ -1107,7 +1107,7 @@ export default function WidgetGrid({
                 <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
 
                 {/* 悬浮提示 */}
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-neutral-900/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
                   {widgetType.name}
                 </div>
               </motion.div>

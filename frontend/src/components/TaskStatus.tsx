@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 后台任务状态显示组件
  * 
  * 功能：
@@ -159,7 +159,7 @@ export function TaskStatus({
 
   if (!task) {
     return (
-      <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-lg p-4">
         <div className="flex items-center gap-3">
           <FaSpinner className="w-5 h-5 text-gray-400 animate-spin" />
           <span className="text-gray-600 dark:text-gray-300">加载任务信息...</span>
@@ -240,7 +240,7 @@ export function TaskStatus({
             <span>处理进度</span>
             <span>{task.progress.toFixed(0)}%</span>
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-gray-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
             <div
               className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
               style={{ width: `${task.progress}%` }}

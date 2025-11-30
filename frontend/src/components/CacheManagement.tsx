@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 缓存管理面板组件
  * 
  * 功能：
@@ -139,7 +139,7 @@ export function CacheManagement() {
       )}
 
       {/* 总览 */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-700 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">缓存管理</h2>
           <div className="flex items-center gap-4">
@@ -174,8 +174,8 @@ export function CacheManagement() {
               key={cache.platform}
               className={`border rounded-lg p-4 transition-all ${
                 cache.exists
-                  ? 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+                  ? 'border-gray-300 dark:border-neutral-600 bg-gray-50 dark:bg-neutral-800/50'
+                  : 'border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900'
               }`}
             >
               <div className="flex items-start justify-between">
@@ -189,7 +189,7 @@ export function CacheManagement() {
                         已缓存
                       </span>
                     ) : (
-                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs rounded-full">
+                      <span className="px-2 py-1 bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
                         未缓存
                       </span>
                     )}

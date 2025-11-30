@@ -146,7 +146,7 @@ export default function Account() {
                 </div>
 
                 {user && (
-                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4 border border-gray-200/50 dark:border-gray-700/50">
+                  <div className="bg-white/50 dark:bg-neutral-900/50 rounded-lg p-3 md:p-4 border border-gray-200/50 dark:border-neutral-700/50">
                     <div className="flex items-center gap-4">
                       <img 
                         src={avatarUrl} 
@@ -211,7 +211,7 @@ export default function Account() {
                 </div>
               </div>
 
-              <form onSubmit={handleChangePassword} className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4 border border-gray-200/50 dark:border-gray-700/50">
+              <form onSubmit={handleChangePassword} className="bg-white/50 dark:bg-neutral-900/50 rounded-lg p-3 md:p-4 border border-gray-200/50 dark:border-neutral-700/50">
                 <div className="space-y-3 md:space-y-4">
                   <div>
                     <label htmlFor="old-password" className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -222,7 +222,7 @@ export default function Account() {
                       id="old-password"
                       name="old-password"
                       required
-                      className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-h-[44px]"
+                      className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-h-[44px]"
                       placeholder="请输入当前密码"
                     />
                   </div>
@@ -237,7 +237,7 @@ export default function Account() {
                       name="new-password"
                       required
                       minLength={8}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-h-[44px]"
+                      className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-h-[44px]"
                       placeholder="至少 8 个字符"
                     />
                   </div>
@@ -252,7 +252,7 @@ export default function Account() {
                       name="confirm-password"
                       required
                       minLength={8}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-h-[44px]"
+                      className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-h-[44px]"
                       placeholder="再次输入新密码"
                     />
                   </div>

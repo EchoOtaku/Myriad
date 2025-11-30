@@ -1,4 +1,4 @@
-/**
+﻿/**
  * React 版主布局组件
  * 包含导航栏、背景、全局控制面板
  */
@@ -973,76 +973,203 @@ export function AppLayout({ children }: AppLayoutProps) {
     const navContainer = document.querySelector('.nav-container') as HTMLElement;
     if (!navContainer) return;
 
+    // ===== 状态 =====
     let lastScrollY = window.scrollY;
-    let ticking = false;
-    let hideTimeout: NodeJS.Timeout;
+    let rafId = 0;
+    let inactivityTimeoutId = 0;
+    let isHovering = false;
+    let isNavVisible = true;
+    let hiddenByScroll = false; // 是否因滚动而隐藏
+    let cachedIsDesktop = window.innerWidth >= 768;
+    let cachedWindowHeight = window.innerHeight;
+    
+    // ===== 配置 =====
+    const INACTIVITY_DELAY = 5000;
+    const SCROLL_THRESHOLD = 50;
+    const PAGE_TOP_THRESHOLD = 100;
+    const EDGE_THRESHOLD = 100;
 
-    const updateNavVisibility = () => {
+    // ===== 预计算 CSS 变换 =====
+    const TRANSFORM_SHOW_DESKTOP = 'translateY(-50%)';
+    const TRANSFORM_SHOW_MOBILE = 'translateX(-50%)';
+    const TRANSFORM_HIDE_DESKTOP = 'translateY(-50%) translateX(-20px)';
+    const TRANSFORM_HIDE_MOBILE = 'translateX(-50%) translateY(20px)';
+
+    // ===== CSS 样式应用 =====
+    const applyVisibility = (visible: boolean) => {
+      if (visible) {
+        navContainer.style.cssText = `
+          opacity: 1;
+          transform: ${cachedIsDesktop ? TRANSFORM_SHOW_DESKTOP : TRANSFORM_SHOW_MOBILE};
+          pointer-events: auto;
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        `;
+      } else {
+        navContainer.style.cssText = `
+          opacity: 0;
+          transform: ${cachedIsDesktop ? TRANSFORM_HIDE_DESKTOP : TRANSFORM_HIDE_MOBILE};
+          pointer-events: none;
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        `;
+      }
+    };
+
+    // ===== 核心显示/隐藏函数 =====
+    const showNav = () => {
+      if (isNavVisible) return;
+      isNavVisible = true;
+      hiddenByScroll = false;
+      applyVisibility(true);
+    };
+
+    const hideNav = () => {
+      if (!isNavVisible || isHovering) return;
+      isNavVisible = false;
+      applyVisibility(false);
+    };
+
+    // 因滚动隐藏（标记状态）
+    const hideNavByScroll = () => {
+      if (!isNavVisible || isHovering) return;
+      isNavVisible = false;
+      hiddenByScroll = true;
+      applyVisibility(false);
+    };
+
+    // ===== 无操作计时器 =====
+    const clearInactivityTimer = () => {
+      if (inactivityTimeoutId) {
+        clearTimeout(inactivityTimeoutId);
+        inactivityTimeoutId = 0;
+      }
+    };
+
+    const startInactivityTimer = () => {
+      clearInactivityTimer();
+      // 只有导航岛可见时才启动无操作计时
+      if (isNavVisible) {
+        inactivityTimeoutId = window.setTimeout(hideNav, INACTIVITY_DELAY);
+      }
+    };
+
+    // ===== 滚动处理 =====
+    const processScroll = () => {
       const currentScrollY = window.scrollY;
-      const scrollingDown = currentScrollY > lastScrollY;
-      const scrollDistance = Math.abs(currentScrollY - lastScrollY);
+      const delta = currentScrollY - lastScrollY;
+      const isDown = delta > 0;
 
-      // 滚动距离超过50px时才触发隐藏
-      if (scrollingDown && scrollDistance > 50 && currentScrollY > 100) {
-        navContainer.style.opacity = '0';
-        navContainer.style.transform = window.innerWidth >= 768
-          ? 'translateY(-50%) translateX(-20px)'
-          : 'translateX(-50%) translateY(20px)';
-        navContainer.style.pointerEvents = 'none';
-      } else if (!scrollingDown || currentScrollY < 100) {
-        navContainer.style.opacity = '1';
-        navContainer.style.transform = window.innerWidth >= 768
-          ? 'translateY(-50%) translateX(0)'
-          : 'translateX(-50%) translateY(0)';
-        navContainer.style.pointerEvents = 'auto';
+      // 向下滚动：隐藏（标记为滚动隐藏）
+      if (isDown && delta > SCROLL_THRESHOLD && currentScrollY > PAGE_TOP_THRESHOLD) {
+        clearInactivityTimer();
+        hideNavByScroll();
+      }
+      // 向上滚动或页面顶部：显示
+      else if (!isDown || currentScrollY < PAGE_TOP_THRESHOLD) {
+        showNav();
+        startInactivityTimer();
       }
 
       lastScrollY = currentScrollY;
-      ticking = false;
+      rafId = 0;
     };
 
     const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(updateNavVisibility);
-        ticking = true;
+      if (!rafId) {
+        rafId = requestAnimationFrame(processScroll);
       }
-
-      // 停止滚动3秒后自动显示
-      clearTimeout(hideTimeout);
-      hideTimeout = setTimeout(() => {
-        navContainer.style.opacity = '1';
-        navContainer.style.transform = window.innerWidth >= 768
-          ? 'translateY(-50%) translateX(0)'
-          : 'translateX(-50%) translateY(0)';
-        navContainer.style.pointerEvents = 'auto';
-      }, 3000);
     };
 
-    // 鼠标移动到屏幕边缘时显示
-    const handleMouseMove = (e: MouseEvent) => {
-      const isNearEdge = window.innerWidth >= 768
-        ? e.clientX < 100  // 桌面端：靠近左边缘
-        : e.clientY > window.innerHeight - 100; // 移动端：靠近底部
+    // ===== 鼠标移动处理 =====
+    let pendingMouseMove: MouseEvent | null = null;
+    let mouseRafId = 0;
 
+    const processMouseMove = () => {
+      if (!pendingMouseMove) return;
+      const e = pendingMouseMove;
+      pendingMouseMove = null;
+      mouseRafId = 0;
+
+      const isNearEdge = cachedIsDesktop
+        ? e.clientX < EDGE_THRESHOLD
+        : e.clientY > cachedWindowHeight - EDGE_THRESHOLD;
+
+      // 靠近边缘时显示（即使因滚动隐藏也显示）
       if (isNearEdge) {
-        navContainer.style.opacity = '1';
-        navContainer.style.transform = window.innerWidth >= 768
-          ? 'translateY(-50%) translateX(0)'
-          : 'translateX(-50%) translateY(0)';
-        navContainer.style.pointerEvents = 'auto';
+        showNav();
+        startInactivityTimer();
       }
     };
 
-    // 添加过渡效果
-    navContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    const handleMouseMove = (e: MouseEvent) => {
+      pendingMouseMove = e;
+      if (!mouseRafId) {
+        mouseRafId = requestAnimationFrame(processMouseMove);
+      }
+    };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    // ===== 交互处理 =====
+    const handleInteraction = () => {
+      // 只有非滚动隐藏状态才响应交互显示
+      // 滚动隐藏需要向上滚动或移到边缘才能恢复
+      if (!hiddenByScroll) {
+        showNav();
+        startInactivityTimer();
+      }
+    };
 
+    // ===== 导航岛悬停 =====
+    const handleNavEnter = () => {
+      isHovering = true;
+      clearInactivityTimer();
+      showNav();
+    };
+
+    const handleNavLeave = () => {
+      isHovering = false;
+      startInactivityTimer();
+    };
+
+    // ===== 响应式处理 =====
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const handleMediaChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      cachedIsDesktop = e.matches;
+      if (isNavVisible) {
+        applyVisibility(true);
+      }
+    };
+
+    const handleResize = () => {
+      cachedWindowHeight = window.innerHeight;
+    };
+
+    // ===== 初始化 =====
+    applyVisibility(true);
+
+    // ===== 事件注册 =====
+    const controller = new AbortController();
+    const { signal } = controller;
+    const passive = { passive: true, signal };
+
+    window.addEventListener('scroll', handleScroll, passive);
+    window.addEventListener('mousemove', handleMouseMove, passive);
+    window.addEventListener('keydown', handleInteraction, passive);
+    window.addEventListener('click', handleInteraction, passive);
+    window.addEventListener('touchstart', handleInteraction, passive);
+    window.addEventListener('resize', handleResize, passive);
+    navContainer.addEventListener('mouseenter', handleNavEnter, { signal });
+    navContainer.addEventListener('mouseleave', handleNavLeave, { signal });
+    mediaQuery.addEventListener('change', handleMediaChange, { signal });
+
+    // 初始化媒体查询状态
+    handleMediaChange(mediaQuery);
+    startInactivityTimer();
+
+    // ===== 清理 =====
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('mousemove', handleMouseMove);
-      clearTimeout(hideTimeout);
+      controller.abort();
+      if (rafId) cancelAnimationFrame(rafId);
+      if (mouseRafId) cancelAnimationFrame(mouseRafId);
+      clearInactivityTimer();
     };
   }, []);
 
@@ -1092,7 +1219,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
                 {/* 分隔符 */}
                 <div className="nav-group nav-group-spaced" data-group="divider">
-                  <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                  <div className="w-px h-6 bg-gray-300/50 dark:bg-neutral-700/50 md:w-6 md:h-px md:my-0"></div>
                 </div>
 
                 {/* 平台报告标签 */}
@@ -1142,7 +1269,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
                 {/* 分隔符 */}
                 <div className="nav-group nav-group-spaced" data-group="divider">
-                  <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                  <div className="w-px h-6 bg-gray-300/50 dark:bg-neutral-700/50 md:w-6 md:h-px md:my-0"></div>
                 </div>
 
                 {/* 资料库筛选标签 */}
@@ -1300,14 +1427,14 @@ export function AppLayout({ children }: AppLayoutProps) {
                 {/* 分隔符 - 仅在资料库页面且未显示筛选时显示 */}
                 {location.pathname === '/library' && !showLibraryFilters && (
                   <div className="nav-group nav-group-spaced" data-group="divider">
-                    <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                    <div className="w-px h-6 bg-gray-300/50 dark:bg-neutral-700/50 md:w-6 md:h-px md:my-0"></div>
                   </div>
                 )}
 
                 {/* 分隔符 - 仅在报告页面且未显示标签时显示 */}
                 {location.pathname === '/reports' && !showReportsTabs && (
                   <div className="nav-group nav-group-spaced" data-group="divider">
-                    <div className="w-px h-6 bg-gray-300/50 dark:bg-gray-600/50 md:w-6 md:h-px md:my-0"></div>
+                    <div className="w-px h-6 bg-gray-300/50 dark:bg-neutral-700/50 md:w-6 md:h-px md:my-0"></div>
                   </div>
                 )}
 
@@ -1453,7 +1580,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {notifications.map(notification => (
           <div key={notification.id} className="pointer-events-auto animate-fade-in">
             <div className={`glass rounded-xl px-4 py-3 shadow-lg border backdrop-blur-md ${
-              notification.type === 'loading' ? 'border-gray-200/50 dark:border-gray-700/50' :
+              notification.type === 'loading' ? 'border-gray-200/50 dark:border-neutral-700/50' :
               notification.type === 'error' ? 'border-red-200/50 dark:border-red-800/50 bg-red-50/80 dark:bg-red-950/80' :
               'border-blue-200/50 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/80'
             }`}>
