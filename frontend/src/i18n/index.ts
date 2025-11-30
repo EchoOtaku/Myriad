@@ -1,9 +1,9 @@
 /**
  * 国际化 (i18n) 模块
- * 支持中文和英文，默认根据用户浏览器语言设置
+ * 支持中文、英文和日文，默认根据用户浏览器语言设置
  */
 
-export type Locale = 'zh-CN' | 'en-US';
+export type Locale = 'zh-CN' | 'en-US' | 'ja-JP';
 
 export interface TranslationKeys {
   // 通用
@@ -927,7 +927,7 @@ export function getDefaultLocale(): Locale {
   // 1. 先检查本地存储
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('locale');
-    if (saved === 'zh-CN' || saved === 'en-US') {
+    if (saved === 'zh-CN' || saved === 'en-US' || saved === 'ja-JP') {
       return saved;
     }
   }
@@ -939,6 +939,10 @@ export function getDefaultLocale(): Locale {
       // 中文环境
       if (browserLang.startsWith('zh')) {
         return 'zh-CN';
+      }
+      // 日文环境
+      if (browserLang.startsWith('ja')) {
+        return 'ja-JP';
       }
     }
   }

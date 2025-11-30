@@ -7,11 +7,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Locale, TranslationKeys, getDefaultLocale, saveLocale } from '../i18n';
 import { zhCN } from '../i18n/zh-CN';
 import { enUS } from '../i18n/en-US';
+import { jaJP } from '../i18n/ja-JP';
 
 // 翻译映射
 const translations: Record<Locale, TranslationKeys> = {
   'zh-CN': zhCN,
   'en-US': enUS,
+  'ja-JP': jaJP,
 };
 
 // Context 类型

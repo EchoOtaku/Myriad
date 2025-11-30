@@ -724,20 +724,20 @@ const GlobalControlPanel: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="control-item-title">{t.controlPanel.language}</h4>
-                        <p className="control-item-desc">{locale === 'zh-CN' ? '简体中文' : 'English'}</p>
+                        <p className="control-item-desc">{locale === 'zh-CN' ? '简体中文' : locale === 'ja-JP' ? '日本語' : 'English'}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => {
                         // 循环切换语言列表
-                        const locales = ['zh-CN', 'en-US'] as const;
+                        const locales = ['zh-CN', 'en-US', 'ja-JP'] as const;
                         const currentIndex = locales.indexOf(locale);
                         const nextIndex = (currentIndex + 1) % locales.length;
                         setLocale(locales[nextIndex]);
                       }}
                       onWheel={(e) => {
                         e.preventDefault();
-                        const locales = ['zh-CN', 'en-US'] as const;
+                        const locales = ['zh-CN', 'en-US', 'ja-JP'] as const;
                         const currentIndex = locales.indexOf(locale);
                         // 向下滚动 = 下一个，向上滚动 = 上一个
                         const nextIndex = e.deltaY > 0 
@@ -748,7 +748,7 @@ const GlobalControlPanel: React.FC = () => {
                       className="language-switch-btn"
                       aria-label={t.controlPanel.languageSwitch}
                     >
-                      <span className="language-code">{locale === 'zh-CN' ? '中' : 'En'}</span>
+                      <span className="language-code">{locale === 'zh-CN' ? '中' : locale === 'ja-JP' ? '日' : 'En'}</span>
                     </button>
                   </div>
 
