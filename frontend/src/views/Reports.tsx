@@ -1763,6 +1763,7 @@ export default function Reports() {
                   onClick={() => setSelectedPlatform(null)}
                   className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors shadow-lg"
                   title="关闭"
+                  aria-label="关闭"
                 >
                   <FaTimes size={14} />
                 </button>
@@ -1788,6 +1789,7 @@ export default function Reports() {
                       disabled={loadingPlatform === selectedReport.platform}
                       className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-500 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="重新生成报告"
+                      aria-label="重新生成报告"
                     >
                       <motion.div
                         animate={loadingPlatform === selectedReport.platform ? { rotate: 360 } : {}}

@@ -19,7 +19,6 @@ import { preloadCriticalRoutes } from './utils/codeSplitting';
 import './styles/fonts.css';
 import './styles/theme.css';
 import './styles/animations.css';
-import './styles/performance.css';
 import './styles/page-transitions.css';
 import './styles/navigation-island.css';
 import './styles/utility.css';

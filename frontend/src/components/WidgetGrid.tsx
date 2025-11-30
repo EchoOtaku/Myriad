@@ -1019,6 +1019,7 @@ export default function WidgetGrid({
                 disabled={historyIndex <= 0}
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="撤销 (Ctrl+Z)"
+                aria-label="撤销"
               >
                 <span className="text-sm font-bold">↶ 撤销</span>
               </button>
@@ -1027,6 +1028,7 @@ export default function WidgetGrid({
                 disabled={historyIndex >= widgetHistory.length - 1}
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="重做 (Ctrl+Shift+Z)"
+                aria-label="重做"
               >
                 <span className="text-sm font-bold">↷ 重做</span>
               </button>

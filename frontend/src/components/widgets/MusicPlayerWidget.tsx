@@ -446,13 +446,14 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
              <motion.button
                 onClick={handleTogglePlay}
                 className="rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10"
-                style={{ 
+                style={{
                   color: themeColor,
                   width: `${34 * scale}px`,
                   height: `${34 * scale}px`
                 }}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
+                aria-label={isPlaying ? '暂停' : '播放'}
               >
                 {isPlaying ? (
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
