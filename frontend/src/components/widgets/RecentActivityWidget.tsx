@@ -15,8 +15,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { useAuth } from '../../contexts/AuthContext';
 import { hasSessionHint } from '../../utils/sessionDetection';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { API_URL } from '../../config';
 
 // 缓存配置
 const CACHE_KEY = 'recent_activities_cache';
@@ -369,7 +368,9 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
     // 创建新的请求
     globalFetchPromise = (async () => {
       try {
-        const response = await fetch(`${API_URL}/api/activities?limit=8`, {
+        // 使用相对路径或完整 URL（优先使用相对路径以避免 CORS 问题）
+        const apiEndpoint = API_URL ? `${API_URL}/api/activities?limit=8` : '/api/activities?limit=8';
+        const response = await fetch(apiEndpoint, {
           credentials: 'include',
           signal: AbortSignal.timeout(10000), // 10秒超时
         });
