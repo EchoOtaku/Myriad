@@ -126,12 +126,17 @@ fn get_memory_info() -> serde_json::Value {
                 }
             }
 
-            return json!({
+            json!({
                 "rss_kb": vm_rss,
                 "rss_mb": vm_rss / 1024,
                 "virtual_kb": vm_size,
                 "virtual_mb": vm_size / 1024,
-            });
+            })
+        } else {
+            json!({
+                "platform": "linux",
+                "note": "Unable to read /proc/self/status"
+            })
         }
     }
 
@@ -139,19 +144,19 @@ fn get_memory_info() -> serde_json::Value {
     {
         // Windows: 使用 GetProcessMemoryInfo (需要 winapi crate)
         // 简化版本：返回基础信息
-        return json!({
+        json!({
             "platform": "windows",
             "note": "Detailed memory metrics require additional dependencies"
-        });
+        })
     }
 
     #[cfg(target_os = "macos")]
     {
         // macOS: 可以使用 mach API
-        return json!({
+        json!({
             "platform": "macos",
             "note": "Detailed memory metrics require additional dependencies"
-        });
+        })
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
