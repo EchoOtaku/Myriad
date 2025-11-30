@@ -157,8 +157,7 @@ impl BackgroundProcessor {
             .await;
     }
 
-    /// 清理旧任务（保留最近的100个）
-    #[allow(dead_code)]
+    /// 清理旧任务（保留最近的50个已完成任务）
     pub async fn cleanup_old_tasks(&self) {
         let mut tasks = self.tasks.write().await;
 
@@ -182,6 +181,27 @@ impl BackgroundProcessor {
         }
 
         tracing::info!("Cleaned up {} old tasks", to_remove);
+    }
+
+    /// 获取任务统计信息（用于监控）
+    pub async fn get_task_stats(&self) -> (usize, usize, usize, usize, usize) {
+        let tasks = self.tasks.read().await;
+
+        let mut pending = 0;
+        let mut processing = 0;
+        let mut completed = 0;
+        let mut failed = 0;
+
+        for task in tasks.values() {
+            match task.status {
+                TaskStatus::Pending => pending += 1,
+                TaskStatus::Processing => processing += 1,
+                TaskStatus::Completed => completed += 1,
+                TaskStatus::Failed => failed += 1,
+            }
+        }
+
+        (tasks.len(), pending, processing, completed, failed)
     }
 }
 

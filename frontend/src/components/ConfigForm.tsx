@@ -303,7 +303,7 @@ const ModernConfigForm: React.FC = () => {
         const reloadCsrfToken = await getCSRFToken(true);
         await fetchJson(
           `${API_URL}/api/system/reload-config`,
-          { 
+          {
             method: 'POST',
             headers: {
               'X-CSRF-Token': reloadCsrfToken || '',

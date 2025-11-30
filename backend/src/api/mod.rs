@@ -8,6 +8,7 @@ pub mod auth_local;
 pub mod bilibili;
 pub mod cache;      // ✅ 缓存管理 API
 pub mod config;
+pub mod metrics;    // ✅ 系统监控指标 API (P2优化)
 pub mod persona;
 pub mod platforms;
 pub mod profile;

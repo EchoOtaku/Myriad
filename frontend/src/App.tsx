@@ -13,6 +13,7 @@ import RouteLoader from './components/RouteLoader';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext';
 import CustomScrollbar from './components/CustomScrollbar';
 import { preloadCriticalRoutes } from './utils/codeSplitting';
 import './styles/fonts.css';
@@ -181,25 +182,27 @@ export function App() {
 
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <NotificationProvider>
-          <MusicPlayerProvider>
-            <RouteLoader />
-            <CustomScrollbar />
-            <AppLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <AppRoutes />
-              </Suspense>
-            </AppLayout>
-            {/* 开发环境下显示合并的性能监控工具 */}
-            {import.meta.env.DEV && (
-              <Suspense fallback={null}>
-                {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
-              </Suspense>
-            )}
-          </MusicPlayerProvider>
-        </NotificationProvider>
-      </AuthProvider>
+      <AnimationPreferenceProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <MusicPlayerProvider>
+              <RouteLoader />
+              <CustomScrollbar />
+              <AppLayout>
+                <Suspense fallback={<LoadingFallback />}>
+                  <AppRoutes />
+                </Suspense>
+              </AppLayout>
+              {/* 开发环境下显示合并的性能监控工具 */}
+              {import.meta.env.DEV && (
+                <Suspense fallback={null}>
+                  {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+                </Suspense>
+              )}
+            </MusicPlayerProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      </AnimationPreferenceProvider>
     </BrowserRouter>
   );
 }

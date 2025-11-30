@@ -75,10 +75,49 @@ const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: str
       opacity: 0.4 + Math.random() * 0.3,
     }));
   }, [texts]);
-  
-  // 低端设备或调度器未分配槽位时不渲染动画
+
+  // 🆕 低性能模式：显示静态弹幕（随机固定位置）
+  const staticDanmaku = useMemo(() => {
+    const count = 3; // 固定显示3条弹幕
+    const lanes = 5;
+    const usedLanes: number[] = [];
+
+    return texts.slice(0, count).map((text, i) => {
+      let lane: number;
+      do {
+        lane = Math.floor(Math.random() * lanes);
+      } while (usedLanes.includes(lane));
+      usedLanes.push(lane);
+
+      return {
+        text,
+        top: `${10 + lane * 18}%`,
+        left: `${15 + i * 30}%`, // 水平分散排列
+        opacity: 0.5 + Math.random() * 0.2,
+      };
+    });
+  }, [texts]);
+
+  // 低端设备或调度器未分配槽位时显示静态弹幕
   if (!canAnimate) {
-    return null;
+    return (
+      <div className="relative h-full w-full overflow-hidden">
+        {staticDanmaku.map((item, i) => (
+          <div
+            key={`static-${item.text}-${i}`}
+            className="absolute whitespace-nowrap text-base font-bold"
+            style={{
+              top: item.top,
+              left: item.left,
+              color: '#B3E5FF',
+              opacity: item.opacity,
+            }}
+          >
+            {item.text}
+          </div>
+        ))}
+      </div>
+    );
   }
   
   return (

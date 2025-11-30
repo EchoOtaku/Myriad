@@ -59,6 +59,7 @@ export default function DataManagement() {
   const [refreshingPlatform, setRefreshingPlatform] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const [processingPlatform, setProcessingPlatform] = useState<string | null>(null);
+  const [clearingPlatform, setClearingPlatform] = useState<string | null>(null);
 
   const {
     getCacheStatus,
@@ -192,15 +193,20 @@ export default function DataManagement() {
   const handleClearCache = async (platformId: string, platformName: string) => {
     if (!confirm(`确定要清除 ${platformName} 的智能过滤缓存吗？`)) return;
 
-    const success = await clearPlatformCache(platformId);
-    
-    if (success) {
-      setMessage(`✓ ${platformName} 缓存已清除`);
-      await loadAllStatuses();
-    } else {
-      setMessage(`✗ 清除 ${platformName} 缓存失败`);
+    setClearingPlatform(platformId);
+    try {
+      const success = await clearPlatformCache(platformId);
+
+      if (success) {
+        setMessage(`✓ ${platformName} 缓存已清除`);
+        await loadAllStatuses();
+      } else {
+        setMessage(`✗ 清除 ${platformName} 缓存失败`);
+      }
+    } finally {
+      setClearingPlatform(null);
+      setTimeout(() => setMessage(''), 3000);
     }
-    setTimeout(() => setMessage(''), 3000);
   };
 
   const handleTaskComplete = () => {
@@ -392,15 +398,24 @@ export default function DataManagement() {
                       <button
                         type="button"
                         onClick={() => handleClearCache(platform.id, platform.name)}
-                        disabled={statusLoading}
+                        disabled={clearingPlatform === platform.id || statusLoading}
                         className="btn-base btn-sm btn-danger"
                         title="清除缓存"
                         style={{ minWidth: '4rem' }}
                       >
-                        <svg style={{ width: '0.875rem', height: '0.875rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        <span>清除</span>
+                        {clearingPlatform === platform.id ? (
+                          <>
+                            <ButtonSpinner size="sm" />
+                            <span>清除中</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg style={{ width: '0.875rem', height: '0.875rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>清除</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>

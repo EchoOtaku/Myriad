@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { FaTimes, FaCheckCircle, FaExclamationCircle, FaSpinner } from 'react-icons/fa';
+import { useManagedFetch } from '../hooks/useManagedFetch';
 
 export interface Task {
   id: string;
@@ -42,28 +43,37 @@ export function TaskStatus({
   const [task, setTask] = useState<Task | null>(null);
   const [isPolling, setIsPolling] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
+  const { fetch: managedFetch } = useManagedFetch();
 
   const fetchTaskStatus = useCallback(async () => {
     try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        credentials: 'include',
-      });
+      const data = await managedFetch<{ success: boolean; task?: Task; error?: string }>(
+        `/api/tasks/${taskId}`,
+        {
+          credentials: 'include',
+        },
+        {
+          key: `task-status-${taskId}`,
+          priority: 1, // 任务状态查询有较高优先级
+        }
+      );
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!data) {
+        // 请求被取消或组件已卸载
+        return;
       }
 
-      const data = await response.json();
-      
       if (data.success && data.task) {
         const updatedTask = data.task as Task;
         setTask(updatedTask);
+        setPollCount(prev => prev + 1);
 
         // 任务完成或失败时停止轮询
         if (updatedTask.status === 'Completed') {
           setIsPolling(false);
           onComplete?.(updatedTask);
-          
+
           if (autoClose) {
             setTimeout(() => {
               onClose?.();
@@ -77,11 +87,37 @@ export function TaskStatus({
         throw new Error(data.error || 'Failed to fetch task status');
       }
     } catch (err) {
+      // 静默处理取消错误
+      if (err instanceof Error && err.message.includes('cancelled')) {
+        return;
+      }
+
       console.error('Error fetching task status:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       setIsPolling(false);
     }
-  }, [taskId, onComplete, onError, onClose, autoClose, autoCloseDelay]);
+  }, [taskId, onComplete, onError, onClose, autoClose, autoCloseDelay, managedFetch]);
+
+  // 智能轮询间隔：根据轮询次数和任务状态动态调整
+  const getPollingInterval = useCallback(() => {
+    if (!task) return 1000; // 初始：1秒
+
+    // 根据任务状态调整
+    if (task.status === 'Processing') {
+      // 处理中：根据进度调整频率
+      if (task.progress < 10) return 1000;      // 刚开始：1秒
+      if (task.progress < 50) return 1500;      // 进行中：1.5秒
+      if (task.progress < 90) return 2000;      // 快完成：2秒
+      return 1000;                               // 即将完成：1秒（加快检测）
+    } else if (task.status === 'Pending') {
+      // 等待中：逐渐降低频率避免过多请求
+      if (pollCount < 5) return 1000;           // 前5次：1秒
+      if (pollCount < 15) return 2000;          // 6-15次：2秒
+      return 3000;                               // 15次后：3秒
+    }
+
+    return 1000; // 默认1秒
+  }, [task, pollCount]);
 
   useEffect(() => {
     // 立即执行一次
@@ -89,11 +125,11 @@ export function TaskStatus({
 
     if (!isPolling) return;
 
-    // 每秒轮询一次
-    const interval = setInterval(fetchTaskStatus, 1000);
+    // 使用动态间隔轮询
+    const interval = setInterval(fetchTaskStatus, getPollingInterval());
 
     return () => clearInterval(interval);
-  }, [fetchTaskStatus, isPolling]);
+  }, [fetchTaskStatus, isPolling, getPollingInterval]);
 
   if (error) {
     return (

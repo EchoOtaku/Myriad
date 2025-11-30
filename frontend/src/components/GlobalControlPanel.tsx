@@ -18,6 +18,7 @@ import { UserSection, User } from './ControlPanel/UserSection';
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAuth } from '../contexts/AuthContext';
+import { useAnimationPreference } from '../contexts/AnimationPreferenceContext';
 
 interface DynamicContent {
   type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
@@ -59,6 +60,7 @@ const GlobalControlPanel: React.FC = () => {
   const volumeControlRef = useRef<HTMLDivElement>(null);
   const perf = usePerformanceProfile();
   const anim = useAnimationLevel();
+  const { preference: animPreference, togglePerformanceMode } = useAnimationPreference();
 
   useEffect(() => {
     // 检查当前主题
@@ -655,6 +657,31 @@ const GlobalControlPanel: React.FC = () => {
                       onClick={toggleTheme}
                       className={`control-toggle ${isDark ? 'active' : ''}`}
                       aria-label="切换主题"
+                    >
+                      <span className="control-toggle-slider"></span>
+                    </button>
+                  </div>
+
+                  {/* 动效等级切换 */}
+                  <div className="control-item control-item-compact">
+                    <div className="control-item-info">
+                      <div className="control-item-icon icon-performance">
+                        {animPreference === 'light' ? '🐌' : animPreference === 'standard' ? '⚡' : '🔄'}
+                      </div>
+                      <div>
+                        <h4 className="control-item-title">动效</h4>
+                        <p className="control-item-desc">
+                          {animPreference === 'auto'
+                            ? (anim.level === 'light' ? '低性能' : anim.level === 'standard' ? '中高性能' : '无动效')
+                            : animPreference === 'light' ? '低性能' : '中高性能'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={togglePerformanceMode}
+                      className={`control-toggle ${(animPreference === 'standard' || (animPreference === 'auto' && anim.level === 'standard')) ? 'active' : ''}`}
+                      aria-label="切换动效等级"
                     >
                       <span className="control-toggle-slider"></span>
                     </button>

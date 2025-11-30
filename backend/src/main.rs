@@ -26,6 +26,7 @@ mod services;
 use config::{AppConfig, DynamicConfig};
 use services::config_service::ConfigService;
 use std::sync::atomic::{AtomicBool, Ordering};
+use sea_orm::ConnectionTrait; // P1: 用于数据库健康检查
 
 // Global flag to indicate if server is running in configuration mode
 pub static CONFIG_MODE: AtomicBool = AtomicBool::new(false);
@@ -814,6 +815,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 // ✅ P1 修复：配置重载应该只有 admin 可以触发
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
+        // ✅ P2: 系统监控指标端点（内存、任务、连接等）- 🔒 需要管理员权限
+        .route(
+            "/api/metrics",
+            get(api::metrics::get_metrics)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
         // Authentication routes (use wrapper for dynamic DB access)
         .route("/api/auth/login", post(local_login_wrapper))
         .route("/api/auth/me", get(get_current_user_wrapper))
@@ -1113,6 +1120,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .layer(from_fn(config_mode_middleware))
         .layer(from_fn(middleware::csrf::csrf_middleware)) // ✅ 安全修复 P0: CSRF 防护
         .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
+        .layer(axum::extract::DefaultBodyLimit::max(50 * 1024 * 1024)) // 🛡️ 防止OOM: 限制请求体最大50MB
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
@@ -1124,6 +1132,16 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         tracing::warn!("Frontend dist path not found, serving API only");
         api_router
     };
+
+    // Spawn background task to clean up old tasks (防止内存泄漏)
+    tokio::spawn(async {
+        let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // 每5分钟
+        loop {
+            cleanup_interval.tick().await;
+            services::background_processor::BACKGROUND_PROCESSOR.cleanup_old_tasks().await;
+            tracing::info!("🧹 Background task cleanup completed");
+        }
+    });
 
     // Spawn background task to monitor for config reload
     tokio::spawn(async move {
@@ -1205,6 +1223,47 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     }
                     Err(e) => {
                         tracing::error!("❌ Failed to reload configuration: {}", e);
+                    }
+                }
+            }
+        }
+    });
+
+    // Spawn database health check task (P1优化：定期健康检查和自动重连)
+    tokio::spawn(async {
+        let mut health_check_interval = tokio::time::interval(tokio::time::Duration::from_secs(60)); // 每分钟检查一次
+        loop {
+            health_check_interval.tick().await;
+
+            let db_opt = DB_CONNECTION.read().await;
+            if let Some(db) = db_opt.as_ref() {
+                // 执行简单查询测试连接
+                match db.execute(sea_orm::Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    "SELECT 1".to_owned(),
+                )).await {
+                    Ok(_) => {
+                        tracing::debug!("💚 Database health check passed");
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Database health check failed: {}", e);
+
+                        // 尝试重新连接
+                        drop(db_opt); // 释放读锁
+
+                        let config = GLOBAL_CONFIG.read().await;
+                        if !config.database_url.is_empty() {
+                            tracing::info!("🔄 Attempting to reconnect to database...");
+                            match crate::db::connection::establish_connection(&config.database_url).await {
+                                Ok(new_db) => {
+                                    *DB_CONNECTION.write().await = Some(new_db);
+                                    tracing::info!("✅ Database reconnected successfully");
+                                }
+                                Err(e) => {
+                                    tracing::error!("❌ Failed to reconnect to database: {}", e);
+                                }
+                            }
+                        }
                     }
                 }
             }

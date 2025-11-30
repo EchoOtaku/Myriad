@@ -113,7 +113,7 @@ impl BatchSaver {
         let task_id = format!("{}_{}", platform_name, Utc::now().timestamp_millis());
         let db_clone = self.db.clone();
         let progress_map_clone = self.progress_map.clone();
-        let full_data_clone = full_data.clone();
+        let full_data_arc = Arc::new(full_data); // 使用Arc避免大数据克隆
         let platform_name_clone = platform_name.to_string();
 
         // 计算总chunk数（向上取整），再减去主记录
@@ -141,7 +141,7 @@ impl BatchSaver {
                 task_id,
                 user_id,
                 &platform_name_clone,
-                full_data_clone,
+                full_data_arc,
                 chunk_size,
             )
             .await
@@ -153,14 +153,14 @@ impl BatchSaver {
         Ok((metadata_id, task_id_for_return))
     }
 
-    /// 后台任务:保存剩余的chunks
+    /// 后台任务:保存剩余的chunks（使用Arc避免大数据克隆）
     async fn save_chunks_background(
         db: DatabaseConnection,
         progress_map: Arc<RwLock<HashMap<String, SaveProgress>>>,
         task_id: String,
         user_id: i32,
         platform_name: &str,
-        full_data: Value,
+        full_data: Arc<Value>, // 使用Arc避免克隆
         chunk_size: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let songs = full_data

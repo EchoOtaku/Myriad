@@ -108,10 +108,11 @@ static RATE_LIMITER: once_cell::sync::Lazy<RateLimiter> = once_cell::sync::Lazy:
     };
 
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(300)); // Cleanup every 5 minutes
+        let mut interval = tokio::time::interval(Duration::from_secs(120)); // 每2分钟清理一次（优化内存）
         loop {
             interval.tick().await;
             limiter_clone.cleanup().await;
+            tracing::debug!("🧹 Rate limiter cleanup completed");
         }
     });
 

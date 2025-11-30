@@ -1,6 +1,7 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useContext } from 'react';
 import { usePerformanceProfile } from './usePerformanceProfile';
 import { configureAnimationScheduler } from './useAnimationScheduler';
+import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext';
 
 export type AnimationLevel = 'none' | 'light' | 'standard';
 
@@ -14,19 +15,30 @@ export interface AnimationConfig {
 
 export function useAnimationLevel(): AnimationConfig {
   const perf = usePerformanceProfile();
-  
+  const prefContext = useContext(AnimationPreferenceContext);
+
   const config = useMemo(() => {
-    // prefers-reduced-motion 优先
+    // prefers-reduced-motion 优先（无法被手动覆盖）
     if (perf.reduceMotion) {
       return { level: 'none' as const, loop: false, spring: false, durationScale: 0.0 };
     }
-    // 低端设备
+
+    // 如果有手动设置的偏好，使用手动偏好
+    if (prefContext?.preference && prefContext.preference !== 'auto') {
+      if (prefContext.preference === 'light') {
+        return { level: 'light' as const, loop: false, spring: false, durationScale: 0.6 };
+      } else if (prefContext.preference === 'standard') {
+        return { level: 'standard' as const, loop: true, spring: true, durationScale: 1.0 };
+      }
+    }
+
+    // 自动检测：低端设备
     if (perf.lowEndDevice) {
       return { level: 'light' as const, loop: false, spring: false, durationScale: 0.6 };
     }
-    // 标准设备
+    // 自动检测：标准设备
     return { level: 'standard' as const, loop: true, spring: true, durationScale: 1.0 };
-  }, [perf.reduceMotion, perf.lowEndDevice]);
+  }, [perf.reduceMotion, perf.lowEndDevice, prefContext?.preference]);
 
   // Debug 日志
   useEffect(() => {

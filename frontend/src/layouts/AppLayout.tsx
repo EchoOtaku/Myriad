@@ -53,8 +53,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [wallpaperParallaxEnabled, setWallpaperParallaxEnabled] = useState(true);
 
   // 🎨 壁纸视差效果 Hook - 创造立体空间感
+  // ⚠️ 低性能模式下强制禁用视差效果
   useWallpaperParallax('wallpaper', {
-    enabled: wallpaperParallaxEnabled,
+    enabled: wallpaperParallaxEnabled && anim.level !== 'light' && anim.level !== 'none',
     enableGyroscope: true,
     enableMouse: true,
     maxOffset: 8,

@@ -28,16 +28,20 @@ static CSRF_TOKENS: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, CsrfToken>>
         let store_clone = store.clone();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(600)); // 每10分钟清理一次
+            let mut interval = tokio::time::interval(Duration::from_secs(180)); // 每3分钟清理一次（优化内存）
             loop {
                 interval.tick().await;
                 let mut tokens = store_clone.write().await;
                 let now = Instant::now();
+                let before_count = tokens.len();
                 tokens.retain(|_, csrf_token| {
                     now.duration_since(csrf_token.created_at) < Duration::from_secs(3600)
                     // Token 有效期 1 小时
                 });
-                tracing::debug!("CSRF tokens cleanup: {} active tokens", tokens.len());
+                let removed = before_count - tokens.len();
+                if removed > 0 {
+                    tracing::info!("🧹 CSRF cleanup: removed {} expired tokens, {} remaining", removed, tokens.len());
+                }
             }
         });
 
@@ -224,11 +228,26 @@ pub async fn get_csrf_token(headers: HeaderMap) -> impl IntoResponse {
         created_at: Instant::now(),
     };
 
-    // 存储 Token
+    // 存储 Token（带大小限制防止内存泄漏）
     let mut tokens = CSRF_TOKENS.write().await;
+
+    // 如果超过限制（10000个token），清理最旧的token
+    const MAX_CSRF_TOKENS: usize = 10000;
+    if tokens.len() >= MAX_CSRF_TOKENS {
+        // 找出最旧的token并删除
+        if let Some(oldest_key) = tokens
+            .iter()
+            .min_by_key(|(_, v)| v.created_at)
+            .map(|(k, _)| k.clone())
+        {
+            tokens.remove(&oldest_key);
+            tracing::warn!("🧹 CSRF token limit reached, removed oldest token");
+        }
+    }
+
     tokens.insert(session_id, csrf_token);
 
-    tracing::debug!("✅ CSRF token generated");
+    tracing::debug!("✅ CSRF token generated (total: {})", tokens.len());
 
     (
         StatusCode::OK,
