@@ -10,7 +10,9 @@ import { useEffect, useRef } from 'react';
 const SCALE = 1.02;
 const MAX_OFFSET = 8;
 const SMOOTH = 0.08;
+const SMOOTH_RETURN = 0.03;  // 归正时使用更慢的速度
 const FRAME_MS = 33;        // ~30fps
+const MAX_DELTA = 100;      // 最大时间间隔，防止长时间暂停后位置超调
 const GYRO_SENS = 0.5;
 const THRESHOLD = 0.05;
 const THROTTLE_MS = 50;     // 节流间隔，降低事件处理频率
@@ -41,6 +43,7 @@ interface State {
   gyroMult: number;
   permissionRequested: boolean;
   reqHandler: (() => void) | null;
+  returning: boolean;  // 是否正在归正（鼠标离开窗口后）
 }
 
 export function useWallpaperParallax(
@@ -62,6 +65,7 @@ export function useWallpaperParallax(
     lastRx: 0, lastRy: 0,
     offsetMult: 0, gyroMult: 0,
     permissionRequested: false, reqHandler: null,
+    returning: false,
   });
 
   useEffect(() => {
@@ -88,6 +92,7 @@ export function useWallpaperParallax(
     s.offsetMult = maxOffset * 2;
     s.gyroMult = maxOffset * GYRO_SENS * 2;
     s.permissionRequested = false;
+    s.returning = false;
 
     el.style.transformOrigin = 'center';
     el.style.willChange = 'transform';
@@ -96,10 +101,15 @@ export function useWallpaperParallax(
     // 动画帧 - 优化：减少对象创建和字符串操作
     const tick = (t: number) => {
       if (!s.active) return;
-      
-      const delta = t - s.lt;
+
+      let delta = t - s.lt;
       if (delta >= FRAME_MS) {
-        const factor = delta * SMOOTH * 0.0625; // delta/16 * SMOOTH
+        // 限制 delta 上限，防止长时间暂停后位置超调
+        if (delta > MAX_DELTA) delta = MAX_DELTA;
+
+        // 归正模式使用更慢的速度
+        const smoothFactor = s.returning ? SMOOTH_RETURN : SMOOTH;
+        const factor = delta * smoothFactor * 0.0625; // delta/16 * SMOOTH
         const dx = (s.tx - s.cx) * factor;
         const dy = (s.ty - s.cy) * factor;
         
@@ -155,15 +165,17 @@ export function useWallpaperParallax(
       const now = performance.now();
       if (now - lastMouseTime < THROTTLE_MS) return;
       lastMouseTime = now;
+      s.returning = false;  // 鼠标移动时退出归正模式
       s.tx = -(e.clientX / innerWidth - 0.5) * s.offsetMult;
       s.ty = -(e.clientY / innerHeight - 0.5) * s.offsetMult;
       wake();
     };
-    
-    const onMouseLeave = () => { 
+
+    const onMouseLeave = () => {
       if (s.gyroEnabled) return;
-      s.tx = s.ty = 0; 
-      wake(); 
+      s.returning = true;  // 进入归正模式，使用更慢的动画
+      s.tx = s.ty = 0;
+      wake();
     };
 
     // 陀螺仪事件
