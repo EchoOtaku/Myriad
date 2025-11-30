@@ -29,6 +29,11 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   const uniqueId = useId();
   const { t, locale } = useI18n();
   
+  // 非中文语言时减小标题字体（英文等语言单词较长）
+  const isNonChinese = !locale.startsWith('zh');
+  const titleFontScale = isNonChinese ? fontScale * 0.88 : fontScale; // 标题减少约12%
+  const infoFontScale = isNonChinese ? fontScale * 0.92 : fontScale;  // 信息类减少约8%
+  
   // 🆕 接入动画调度器 - 欢迎动画优先级低(4)
   const { isAnimating } = useAnimationSlot(`welcome-${uniqueId}`, {
     priority: 4,
@@ -181,13 +186,13 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
             </div>
             <h2 
               className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none mb-1.5"
-              style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${6 * scale}px` }}
+              style={{ fontSize: `${30 * titleFontScale}px`, marginBottom: `${6 * scale}px` }}
             >
               {greeting}
             </h2>
             <p 
               className="text-xs text-gray-500 dark:text-gray-400"
-              style={{ fontSize: `${12 * fontScale}px` }}
+              style={{ fontSize: `${12 * infoFontScale}px` }}
             >
               {formattedDate}
             </p>
@@ -232,13 +237,13 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
             <div className="text-3xl mb-2" style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${8 * scale}px` }}>👋</div>
             <h2 
               className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none mb-1.5"
-              style={{ fontSize: `${30 * fontScale}px`, marginBottom: `${6 * scale}px` }}
+              style={{ fontSize: `${30 * titleFontScale}px`, marginBottom: `${6 * scale}px` }}
             >
               {greeting}
             </h2>
             <p 
               className="text-xs text-gray-500 dark:text-gray-400"
-              style={{ fontSize: `${12 * fontScale}px` }}
+              style={{ fontSize: `${12 * infoFontScale}px` }}
             >
               {formattedDate}
             </p>
@@ -304,13 +309,13 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                   <div className="flex-1 min-w-0">
                     <h3 
                       className="text-lg font-black mb-0.5 leading-tight text-gray-800 dark:text-gray-100"
-                      style={{ fontSize: `${18 * fontScale}px`, marginBottom: `${2 * scale}px` }}
+                      style={{ fontSize: `${18 * titleFontScale}px`, marginBottom: `${2 * scale}px` }}
                     >
                       {currentGuide.title}
                     </h3>
                     <p 
                       className="text-[10px] text-gray-500 dark:text-gray-400"
-                      style={{ fontSize: `${10 * fontScale}px` }}
+                      style={{ fontSize: `${10 * infoFontScale}px` }}
                     >
                       {currentGuide.description}
                     </p>

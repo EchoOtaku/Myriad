@@ -94,6 +94,11 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   const uniqueId = useId();
   const { t, locale } = useI18n();
   
+  // 非中文语言时减小标题字体（英文等语言单词较长）
+  const isNonChinese = !locale.startsWith('zh');
+  const titleFontScale = isNonChinese ? fontScale * 0.9 : fontScale; // 温度等标题减少约6-8px
+  const infoFontScale = isNonChinese ? fontScale * 0.8 : fontScale;  // 城市等信息减少约4px
+  
   // 🆕 接入动画调度器 - 天气图标动画优先级低(3)
   const { isAnimating } = useAnimationSlot(`weather-${uniqueId}`, {
     priority: 3,
@@ -158,7 +163,8 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         city: t.weatherWidget.sampleCity,
         icon: '☀️',
         humidity: 45,
-        windSpeed: 12
+        windSpeed: 12,
+        weatherCode: 0
       });
       setLoading(false);
       return;
@@ -247,7 +253,10 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
           <div className="w-[60%] flex flex-col justify-between border-r border-gray-200/10 dark:border-white/10">
             {/* 顶部：城市 */}
             <div className="flex justify-between items-start">
-               <div className="font-bold text-gray-700 dark:text-gray-200 truncate text-base">
+               <div 
+                 className="font-bold text-gray-700 dark:text-gray-200 truncate"
+                 style={{ fontSize: isNonChinese ? '0.75rem' : '1rem' }}
+               >
                  {weatherData.city}
                </div>
             </div>
@@ -264,20 +273,22 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
               <div className="flex flex-col justify-center min-w-0">
                 <div className="flex items-baseline gap-2 overflow-hidden">
                   <span
-                    className="font-black text-gray-800 dark:text-gray-100 leading-none tracking-tight truncate text-4xl"
+                    className="font-black text-gray-800 dark:text-gray-100 leading-none tracking-tight truncate"
+                    style={{ fontSize: isNonChinese ? '1.75rem' : '2.25rem' }}
                   >
                     {weatherData.temperature}
                   </span>
                 </div>
-                <div className="flex items-baseline gap-2 mt-1">
+                <div className="flex items-baseline gap-2 mt-1 overflow-hidden whitespace-nowrap">
                   <span
-                    className="text-sm text-gray-600 dark:text-gray-400 font-medium truncate"
+                    className="text-gray-600 dark:text-gray-400 font-medium truncate"
+                    style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
                   >
                     {weatherText}
                   </span>
                   {weatherData.feelsLike !== undefined && (
                     <span
-                      className="text-xs text-gray-500 dark:text-gray-500"
+                      className="text-xs text-gray-500 dark:text-gray-500 flex-shrink-0"
                     >
                       {t.weather.feelsLike} {weatherData.feelsLike}°
                     </span>
@@ -373,10 +384,16 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
              <div className="flex items-center gap-2 flex-shrink-0">
                 <div className="text-3xl">{weatherData.icon}</div>
                 <div className="flex flex-col justify-center">
-                    <div className="font-black text-gray-800 dark:text-gray-100 leading-none text-2xl">
+                    <div 
+                      className="font-black text-gray-800 dark:text-gray-100 leading-none"
+                      style={{ fontSize: isNonChinese ? '1.25rem' : '1.5rem' }}
+                    >
                       {weatherData.temperature}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
+                    <div 
+                      className="text-gray-500 dark:text-gray-400 mt-0.5 font-medium"
+                      style={{ fontSize: isNonChinese ? '0.625rem' : '0.75rem' }}
+                    >
                       {weatherText}
                     </div>
                 </div>
@@ -384,7 +401,10 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
 
              {/* 城市 & 详情 */}
              <div className="flex flex-col justify-center gap-1 min-w-0 flex-1">
-                <div className="font-bold text-gray-700 dark:text-gray-200 truncate text-sm">
+                <div 
+                  className="font-bold text-gray-700 dark:text-gray-200 truncate"
+                  style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
+                >
                    {weatherData.city}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -464,12 +484,14 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             }}
           >
             <span 
-              className="text-4xl font-black text-gray-800 dark:text-gray-100 leading-none"
+              className="font-black text-gray-800 dark:text-gray-100 leading-none"
+              style={{ fontSize: isNonChinese ? '1.75rem' : '2.25rem' }}
             >
               {weatherData.temperature}
             </span>
             <motion.span 
-              className="text-sm text-gray-600 dark:text-gray-400 font-medium"
+              className="text-gray-600 dark:text-gray-400 font-medium"
+              style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
               initial={{ opacity: 0 }}
               animate={canAnimate ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }}
               transition={canAnimate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
