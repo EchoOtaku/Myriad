@@ -22,6 +22,7 @@ import {
   isWallpaperUrlActive,
   getDOMWallpaperUrl,
 } from '../utils/wallpaperState';
+import { getCacheInfo } from '../utils/wallpaperColorCache';
 
 // 重新导出向后兼容函数
 export { 
@@ -93,6 +94,48 @@ const DYNAMIC_EXTENSIONS = ['.php', '.jsp', '.asp', '.aspx', '.py'] as const;
 // ============================================================================
 // 工具函数
 // ============================================================================
+
+/**
+ * 从颜色缓存中获取一个不同于当前URL的已缓存壁纸
+ * 利用 wallpaperColorCache 的缓存信息，避免重复维护缓存
+ * @param currentUrl 当前壁纸URL
+ * @returns 缓存中的其他壁纸URL，如果没有则返回null
+ */
+function getCachedAlternativeWallpaper(currentUrl: string | null): string | null {
+  try {
+    const cacheInfo = getCacheInfo();
+    if (!cacheInfo.exists || !cacheInfo.items || cacheInfo.items.length < 2) {
+      return null;
+    }
+    
+    // 从颜色缓存中提取完整URL（getCacheInfo返回的是截断的URL用于调试）
+    // 需要直接读取localStorage获取完整URL
+    const cached = localStorage.getItem('myriad_wallpaper_color_cache_v5');
+    if (!cached) return null;
+    
+    const store = JSON.parse(cached);
+    if (!store.items || store.items.length < 2) return null;
+    
+    // 过滤掉当前URL和过期项
+    const now = Date.now();
+    const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6小时
+    const alternatives = store.items.filter((item: { url: string; timestamp: number }) => {
+      // 过滤过期项
+      if (now - item.timestamp > CACHE_DURATION_MS) return false;
+      // 过滤当前URL
+      if (areUrlsEquivalent(item.url, currentUrl)) return false;
+      return true;
+    });
+    
+    if (alternatives.length === 0) return null;
+    
+    // 随机选择一个
+    const randomIndex = Math.floor(Math.random() * alternatives.length);
+    return alternatives[randomIndex].url;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 判断URL是否为单一静态图片链接
@@ -358,7 +401,8 @@ export function useWallpaper() {
   }, []);
 
   /**
-   * 刷新壁纸（添加时间戳避免缓存）
+   * 刷新壁纸
+   * 优先从颜色缓存中选择不同于当前的壁纸，如果缓存不足则请求新图片
    */
   const refreshWallpaper = useCallback(async (): Promise<string | null> => {
     try {
@@ -366,16 +410,42 @@ export function useWallpaper() {
       if (!config) {
         return null;
       }
-
-      const actualUrl = await resolveImageUrl(config.wallpaper_url, true);
-
-      // 验证URL有效性
-      if (!actualUrl || actualUrl.includes('/api/proxy/music/')) {
-        return null;
+      
+      // 获取当前壁纸URL
+      const currentUrl = wallpaperUrl || extractBackgroundUrl(WALLPAPER_ELEMENT_ID);
+      
+      // 优先尝试从颜色缓存获取不同的壁纸（复用已缓存的颜色信息）
+      const cachedAlternative = getCachedAlternativeWallpaper(currentUrl);
+      
+      let targetUrl: string;
+      
+      if (cachedAlternative) {
+        // 使用缓存中的壁纸（已有颜色缓存，切换更快）
+        targetUrl = cachedAlternative;
+      } else {
+        // 缓存不足，请求新图片（添加时间戳避免缓存）
+        targetUrl = await resolveImageUrl(config.wallpaper_url, true);
+        
+        // 验证URL有效性
+        if (!targetUrl || targetUrl.includes('/api/proxy/music/')) {
+          return null;
+        }
+        
+        // 检查新URL是否与当前相同
+        if (areUrlsEquivalent(targetUrl, currentUrl)) {
+          // 如果API返回了相同的URL，再尝试一次
+          await new Promise(resolve => setTimeout(resolve, 100));
+          targetUrl = await resolveImageUrl(config.wallpaper_url, true);
+          
+          // 如果还是相同，直接返回
+          if (areUrlsEquivalent(targetUrl, currentUrl)) {
+            return currentUrl;
+          }
+        }
       }
 
       // 应用到DOM并验证（强制刷新）
-      const verifiedUrl = await applyWallpaperToDOM(actualUrl, config.wallpaper_blur, true);
+      const verifiedUrl = await applyWallpaperToDOM(targetUrl, config.wallpaper_blur, true);
       
       if (!verifiedUrl) {
         return null;
@@ -391,6 +461,7 @@ export function useWallpaper() {
           detail: { 
             url: verifiedUrl, 
             timestamp: wallpaperState.getAppliedTimestamp(),
+            fromCache: !!cachedAlternative,
           },
         })
       );
@@ -400,7 +471,7 @@ export function useWallpaper() {
       console.error('刷新壁纸失败:', error);
       return null;
     }
-  }, []);
+  }, [wallpaperUrl]);
 
   return {
     wallpaperUrl,
