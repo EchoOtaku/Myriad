@@ -205,6 +205,13 @@ const GlobalControlPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 仅在组件挂载时运行一次
 
+  // 确保 currentContentIndex 在有效范围内
+  useEffect(() => {
+    if (dynamicContents.length > 0 && currentContentIndex >= dynamicContents.length) {
+      setCurrentContentIndex(0);
+    }
+  }, [dynamicContents.length, currentContentIndex]);
+
   // 动态内容轮播（带淡入淡出效果）
   useEffect(() => {
     // 在以下情况禁用轮播：展开面板 / 悬停 / 动态内容为空 / 页面隐藏
