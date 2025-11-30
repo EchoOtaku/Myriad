@@ -14,8 +14,7 @@ import { getCSRFToken } from '../utils/csrf';
 import { clearPlaylistCache } from '../utils/musicPlayer';
 import './ConfigForm.css';
 
-// 注意：懒加载配置组件已创建但暂未使用，以保持稳定性
-// 可在后续迭代中逐步替换现有实现
+// 懒加载配置组件（待后续优化时启用）
 // const PlatformConfigSection = lazy(() => import('./config/PlatformConfigSection'));
 // const AiConfigSection = lazy(() => import('./config/AiConfigSection'));
 // const GenericConfigSection = lazy(() => import('./config/GenericConfigSection'));

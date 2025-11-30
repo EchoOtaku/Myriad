@@ -30,11 +30,7 @@ async function fetchCSRFTokenFromServer(): Promise<string | null> {
     
     const data = await response.json();
     const token = data.csrf_token || null;
-    
-    if (token) {
-      console.log('✅ CSRF token fetched successfully');
-    }
-    
+
     return token;
   } catch (error) {
     console.error('Error fetching CSRF token:', error);

@@ -488,12 +488,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
   const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count]);
   const langs = useMemo(() => data?.languages || [], [data?.languages]);
   const contributionCalendar = useMemo(() => {
-    const calendar = data?.contribution_calendar || [];
-    console.log('📊 GitHub contribution calendar data:', calendar.length, 'days');
-    if (calendar.length > 0) {
-      console.log('First 3 days:', calendar.slice(0, 3));
-    }
-    return calendar;
+    return data?.contribution_calendar || [];
   }, [data?.contribution_calendar]);
   
   // 根据contribution_level设置颜色

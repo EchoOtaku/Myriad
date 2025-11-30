@@ -46,8 +46,6 @@ function detectPerformanceProfile(): PerformanceProfile {
       );
     }
 
-    console.log('[PerformanceProfile]', { isMobile, hardwareConcurrency, deviceMemory, reduceMotion, lowEndDevice });
-
     return { isMobile, reduceMotion, lowEndDevice, hardwareConcurrency, deviceMemory };
   } catch (e) {
     console.warn('Failed to detect performance profile:', e);

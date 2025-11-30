@@ -1,6 +1,6 @@
 /**
  * 详情页视图组件
- * TODO: 需要根据具体的详情页内容进行实现
+ * 占位页面，待后续版本实现具体功能
  */
 
 import AnimatedView from '../components/AnimatedView';

@@ -279,10 +279,6 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
       throw new Error('歌单为空或无可用歌曲');
     }
 
-    // 统计VIP歌曲
-    const vipCount = tracks.filter((t: any) => t.isVip).length;
-    console.log(`📋 歌单加载完成: ${tracks.length} 首歌曲，${vipCount} 首VIP`);
-    
     const songs = tracks.map((track: any) => {
       // 网易云音乐API v6返回格式：ar(艺术家数组), al(专辑对象), dt(时长毫秒)
       // 兼容旧格式：artists, album, duration
@@ -660,16 +656,16 @@ class GlobalAudioManager {
       if (handlers.play) {
         try {
           navigator.mediaSession.setActionHandler('play', handlers.play);
-        } catch (error) {
-          console.log('Media Session action "play" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
 
       if (handlers.pause) {
         try {
           navigator.mediaSession.setActionHandler('pause', handlers.pause);
-        } catch (error) {
-          console.log('Media Session action "pause" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
 
@@ -677,16 +673,16 @@ class GlobalAudioManager {
       if (handlers.previoustrack) {
         try {
           navigator.mediaSession.setActionHandler('previoustrack', handlers.previoustrack);
-        } catch (error) {
-          console.log('Media Session action "previoustrack" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
 
       if (handlers.nexttrack) {
         try {
           navigator.mediaSession.setActionHandler('nexttrack', handlers.nexttrack);
-        } catch (error) {
-          console.log('Media Session action "nexttrack" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
 
@@ -694,16 +690,16 @@ class GlobalAudioManager {
       if (handlers.seekbackward) {
         try {
           navigator.mediaSession.setActionHandler('seekbackward', handlers.seekbackward);
-        } catch (error) {
-          console.log('Media Session action "seekbackward" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
 
       if (handlers.seekforward) {
         try {
           navigator.mediaSession.setActionHandler('seekforward', handlers.seekforward);
-        } catch (error) {
-          console.log('Media Session action "seekforward" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
 
@@ -715,8 +711,8 @@ class GlobalAudioManager {
               handlers.seekto({ seekTime: details.seekTime });
             }
           });
-        } catch (error) {
-          console.log('Media Session action "seekto" is not supported');
+        } catch {
+          // Media Session action not supported
         }
       }
     }

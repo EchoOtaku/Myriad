@@ -15,7 +15,9 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         scope: '/'
       });
 
-      console.log('[SW] Service Worker registered successfully:', registration.scope);
+      if (import.meta.env.DEV) {
+        console.log('[SW] Service Worker registered successfully:', registration.scope);
+      }
 
       // 监听更新
       registration.addEventListener('updatefound', () => {
@@ -24,7 +26,9 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               // 新版本可用
-              console.log('[SW] New version available! Refresh to update.');
+              if (import.meta.env.DEV) {
+                console.log('[SW] New version available! Refresh to update.');
+              }
 
               // 可以在这里通知用户有新版本
               const event = new CustomEvent('sw-update-available', {
@@ -58,7 +62,9 @@ export async function unregisterServiceWorker(): Promise<boolean> {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
         const success = await registration.unregister();
-        console.log('[SW] Service Worker unregistered:', success);
+        if (import.meta.env.DEV) {
+          console.log('[SW] Service Worker unregistered:', success);
+        }
         return success;
       }
     } catch (error) {
@@ -76,7 +82,9 @@ export async function clearServiceWorkerCache(): Promise<void> {
     try {
       const keys = await caches.keys();
       await Promise.all(keys.map(key => caches.delete(key)));
-      console.log('[SW] All caches cleared');
+      if (import.meta.env.DEV) {
+        console.log('[SW] All caches cleared');
+      }
     } catch (error) {
       console.error('[SW] Failed to clear caches:', error);
     }
