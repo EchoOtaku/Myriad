@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface ConfigField {
   key: string;
@@ -23,6 +24,7 @@ interface AiConfigSectionProps {
 }
 
 const AiConfigSection = React.memo<AiConfigSectionProps>(({ aiConfig, onUpdateField }) => {
+  const { t } = useI18n();
   const providerField = aiConfig.config_fields.find(f => f.key === 'provider');
   const otherFields = aiConfig.config_fields.filter(f => f.key !== 'provider');
 
@@ -32,8 +34,8 @@ const AiConfigSection = React.memo<AiConfigSectionProps>(({ aiConfig, onUpdateFi
         <div className="section-header-left">
           <span className="section-icon icon-ai">🤖</span>
           <div>
-            <h2 className="section-title">AI配置</h2>
-            <p className="section-description">配置AI模型和API密钥</p>
+            <h2 className="section-title">{t.config.ai}</h2>
+            <p className="section-description">{t.config.aiDesc}</p>
           </div>
         </div>
       </div>

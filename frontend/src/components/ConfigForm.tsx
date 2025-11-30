@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { API_URL } from '@/config';
@@ -12,6 +12,7 @@ import { fetchConfig } from '../lib/api';
 import { useDebounce } from '../hooks/useDebounce';
 import { getCSRFToken } from '../utils/csrf';
 import { clearPlaylistCache } from '../utils/musicPlayer';
+import { useI18n } from '../contexts/I18nContext';
 import './ConfigForm.css';
 
 // 懒加载配置组件（待后续优化时启用）
@@ -128,6 +129,7 @@ QuickAccessCard.displayName = 'QuickAccessCard';
 
 const ModernConfigForm: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
@@ -141,19 +143,49 @@ const ModernConfigForm: React.FC = () => {
     return saved ? JSON.parse(saved) : ['platforms', 'ai'];
   });
 
+  // 获取翻译后的字段标签（覆盖后端返回的标签）
+  const getFieldLabel = useCallback((fieldKey: string, originalLabel: string): string => {
+    const fieldLabels: Record<string, string> = {
+      'wallpaper_url': t.config.fieldWallpaperUrl,
+      'wallpaper_blur': t.config.fieldWallpaperBlur,
+      'wallpaper_parallax': t.config.fieldWallpaperParallax,
+      'pet_enabled': t.config.fieldPetEnabled,
+      'pet_image_url': t.config.fieldPetImageUrl,
+      'site_title': t.config.fieldSiteTitle,
+      'site_description': t.config.fieldSiteDescription,
+      'site_favicon': t.config.fieldSiteFavicon,
+      'music_enabled': t.config.fieldMusicEnabled,
+      'music_source': t.config.fieldMusicSource,
+      'music_playlist_id': t.config.fieldMusicPlaylistId,
+    };
+    return fieldLabels[fieldKey] || originalLabel;
+  }, [t]);
+
+  // 获取翻译后的占位符
+  const getFieldPlaceholder = useCallback((fieldKey: string, originalPlaceholder: string): string => {
+    const placeholders: Record<string, string> = {
+      'wallpaper_url': t.config.placeholderWallpaperUrl,
+      'site_title': t.config.placeholderSiteTitle,
+      'site_description': t.config.placeholderSiteDescription,
+      'site_favicon': t.config.placeholderSiteFavicon,
+      'pet_image_url': t.config.placeholderPetImageUrl,
+    };
+    return placeholders[fieldKey] || originalPlaceholder;
+  }, [t]);
+
   // 使用防抖优化搜索性能 - 避免频繁搜索
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   // 快速访问项（使用 useMemo 避免每次渲染重新创建数组）
   const quickAccessItems: QuickAccessItem[] = useMemo(() => [
-    { id: 'platforms', label: '数据平台', icon: '🌐', section: 'platforms' },
-    { id: 'data', label: '数据管理', icon: '💾', section: 'data' },
-    { id: 'ai', label: 'AI配置', icon: '🤖', section: 'ai' },
-    { id: 'persona', label: '虚拟人设', icon: '🎭', section: 'persona' },
-    { id: 'ui', label: 'UI界面', icon: '🎨', section: 'ui' },
-    { id: 'music', label: '音乐播放器', icon: '🎵', section: 'music' },
-    { id: 'oauth', label: 'OAuth登录', icon: '🔐', section: 'oauth' },
-  ], []);
+    { id: 'platforms', label: t.config.platforms, icon: '🌐', section: 'platforms' },
+    { id: 'data', label: t.config.data, icon: '💾', section: 'data' },
+    { id: 'ai', label: t.config.ai, icon: '🤖', section: 'ai' },
+    { id: 'persona', label: t.config.persona, icon: '🎭', section: 'persona' },
+    { id: 'ui', label: t.config.ui, icon: '🎨', section: 'ui' },
+    { id: 'music', label: t.config.music, icon: '🎵', section: 'music' },
+    { id: 'oauth', label: t.config.oauth, icon: '🔐', section: 'oauth' },
+  ], [t]);
 
   // 搜索功能
   const searchableContent = useMemo(() => {
@@ -176,8 +208,8 @@ const ModernConfigForm: React.FC = () => {
     items.push({
       type: 'section',
       section: 'ai',
-      title: 'AI配置',
-      description: 'AI模型和API密钥配置',
+      title: t.config.ai,
+      description: t.config.aiDesc,
       keywords: ['ai', 'gemini', 'openai', 'api', '模型', '智能']
     });
     
@@ -185,8 +217,8 @@ const ModernConfigForm: React.FC = () => {
     items.push({
       type: 'section',
       section: 'persona',
-      title: '虚拟人设配置',
-      description: '配置虚拟人设图片生成服务',
+      title: t.config.persona,
+      description: t.config.personaDesc,
       keywords: ['虚拟', '人设', 'persona', '图片', '生成', 'ai']
     });
     
@@ -194,8 +226,8 @@ const ModernConfigForm: React.FC = () => {
     items.push({
       type: 'section',
       section: 'ui',
-      title: 'UI界面配置',
-      description: '自定义背景、主题等界面样式',
+      title: t.config.ui,
+      description: t.config.uiDesc,
       keywords: ['ui', '界面', '主题', '背景', '样式', 'theme']
     });
     
@@ -203,8 +235,8 @@ const ModernConfigForm: React.FC = () => {
     items.push({
       type: 'section',
       section: 'oauth',
-      title: 'GitHub OAuth配置',
-      description: '配置GitHub OAuth应用以启用社交登录',
+      title: t.config.oauth,
+      description: t.config.oauthDesc,
       keywords: ['oauth', 'github', '登录', 'auth', '认证']
     });
     
@@ -212,13 +244,13 @@ const ModernConfigForm: React.FC = () => {
     items.push({
       type: 'section',
       section: 'music',
-      title: '音乐播放器',
-      description: '配置歌单播放',
+      title: t.config.music,
+      description: t.config.musicDesc,
       keywords: ['音乐', 'music', '歌单', '播放器', '网易云', 'qq音乐']
     });
 
     return items;
-  }, [config]);
+  }, [config, t]);
 
   // 使用防抖后的搜索查询优化性能
   const filteredContent = useMemo(() => {
@@ -260,19 +292,19 @@ const ModernConfigForm: React.FC = () => {
     if (!config) {
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
-          detail: { success: false, message: '配置为空，无法保存' },
+          detail: { success: false, message: t.config.configEmpty },
         })
       );
       return;
     }
 
-    setMessage('保存中...');
+    setMessage(t.config.savingConfig);
 
     try {
       // 获取 CSRF Token
       const csrfToken = await getCSRFToken(true);
       if (!csrfToken) {
-        throw new Error('无法获取 CSRF Token，请刷新页面后重试');
+        throw new Error(t.userModal.cannotGetCsrf);
       }
 
       const result = await fetchJson(
@@ -286,14 +318,14 @@ const ModernConfigForm: React.FC = () => {
           credentials: 'include',
           body: JSON.stringify(config),
         },
-        '保存配置失败'
+        t.config.configSaveFailed
       );
       
-      setMessage('✓ 配置已保存！正在刷新...');
+      setMessage(`✓ ${t.config.configSaved} ${t.config.refreshing}`);
       notifyDirtyState(false);
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
-          detail: { success: true, message: result.message || '配置已保存' },
+          detail: { success: true, message: result.message || t.config.configSaved },
         })
       );
 
@@ -309,24 +341,24 @@ const ModernConfigForm: React.FC = () => {
             },
             credentials: 'include'
           },
-          '刷新配置失败'
+          t.config.refreshFailed
         );
 
-        setMessage('✓ 配置已保存成功！');
+        setMessage(`✓ ${t.config.savedSuccess}`);
         
         // 等待后端完成配置保存和环境变量重新加载，然后刷新页面
         setTimeout(() => {
           window.location.reload();
         }, 2000);
       } catch (restartError) {
-        setMessage('✓ 配置已保存成功！');
+        setMessage(`✓ ${t.config.savedSuccess}`);
         // 即使刷新配置失败，仍然刷新页面以应用数据库中的新配置
         setTimeout(() => {
           window.location.reload();
         }, 2000);
       }
     } catch (error) {
-      const errorMsg = '✗ 保存配置失败：' + (error instanceof Error ? error.message : '网络错误');
+      const errorMsg = `✗ ${t.config.configSaveFailed}: ` + (error instanceof Error ? error.message : t.errors.networkError);
       setMessage(errorMsg);
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
@@ -337,7 +369,7 @@ const ModernConfigForm: React.FC = () => {
   }, [config]);
 
   const handleReset = React.useCallback(async () => {
-    setMessage('正在重置配置...');
+    setMessage(t.config.resettingConfig);
     
     try {
       const data = await fetchConfig();
@@ -390,12 +422,12 @@ const ModernConfigForm: React.FC = () => {
       
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      setMessage('正在保存默认配置...');
+      setMessage(t.config.savingDefault);
       
       // 获取 CSRF Token
       const resetCsrfToken = await getCSRFToken(true);
       if (!resetCsrfToken) {
-        throw new Error('无法获取 CSRF Token，请刷新页面后重试');
+        throw new Error(t.userModal.cannotGetCsrf);
       }
       
       const saveResult = await fetchJson(
@@ -409,19 +441,19 @@ const ModernConfigForm: React.FC = () => {
           credentials: 'include',
           body: JSON.stringify(clearedData),
         },
-        '保存配置失败'
+        t.config.configSaveFailed
       );
 
-      setMessage('✓ 配置已重置并保存！');
+      setMessage(`✓ ${t.config.configReset}`);
       setTimeout(() => setMessage(''), 5000);
       
       window.dispatchEvent(
         new CustomEvent('config-reset-result', {
-          detail: { success: true, message: saveResult.message || '配置已重置为默认值并保存' },
+          detail: { success: true, message: saveResult.message || t.config.configReset },
         })
       );
     } catch (error) {
-      const errorMsg = '重置配置失败：' + (error instanceof Error ? error.message : '未知错误');
+      const errorMsg = `${t.config.resetFailed}` + (error instanceof Error ? error.message : t.errors.unknown);
       setMessage(errorMsg);
       window.dispatchEvent(
         new CustomEvent('config-reset-result', {
@@ -449,7 +481,7 @@ const ModernConfigForm: React.FC = () => {
       const event = new CustomEvent('config-loaded', { detail: data });
       window.dispatchEvent(event);
     } catch (error) {
-      setMessage('Failed to load configuration');
+      setMessage(t.config.loadConfigFailed);
     } finally {
       setLoading(false);
     }
@@ -488,7 +520,7 @@ const ModernConfigForm: React.FC = () => {
       // 获取 CSRF Token
       const testCsrfToken = await getCSRFToken(true);
       if (!testCsrfToken) {
-        throw new Error('无法获取 CSRF Token，请刷新页面后重试');
+        throw new Error(t.userModal.cannotGetCsrf);
       }
 
       const result = await fetchJson(
@@ -505,13 +537,13 @@ const ModernConfigForm: React.FC = () => {
             config: configObj,
           }),
         },
-        '测试连接失败'
+        t.config.testFailed
       );
 
       setMessage(result.message);
       setTimeout(() => setMessage(''), 5000);
     } catch (error) {
-      setMessage('✗ 连接测试失败');
+      setMessage(`✗ ${t.config.testFailed}`);
     } finally {
       setTesting(null);
     }
@@ -609,7 +641,7 @@ const ModernConfigForm: React.FC = () => {
     return (
       <div className="modern-config-error">
         <span className="error-icon">⚠️</span>
-        <p>加载配置失败</p>
+        <p>{t.config.loadConfigFailed}</p>
       </div>
     );
   }
@@ -636,30 +668,30 @@ const ModernConfigForm: React.FC = () => {
           <div className="nav-header-left">
             <span className="nav-icon">🛠️</span>
             <div>
-              <h3 className="nav-title">配置项目</h3>
-              <p className="nav-subtitle">选择要配置的项目</p>
+              <h3 className="nav-title">{t.config.title}</h3>
+              <p className="nav-subtitle">{t.config.selectProject}</p>
             </div>
           </div>
           <div className="nav-header-actions">
             <button
               onClick={handleReset}
               className="btn-base btn-danger nav-action-button reset-button"
-              aria-label="重置配置"
+              aria-label={t.config.resetConfigLabel}
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>重置配置</span>
+              <span>{t.config.resetConfig}</span>
             </button>
             <button
               onClick={handleSave}
               className="btn-base btn-primary nav-action-button save-button"
-              aria-label="保存配置"
+              aria-label={t.config.saveConfigLabel}
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>保存配置</span>
+              <span>{t.config.saveConfig}</span>
             </button>
           </div>
         </div>
@@ -670,7 +702,7 @@ const ModernConfigForm: React.FC = () => {
             <FaSearch className="search-icon" />
             <input
               type="text"
-              placeholder="搜索配置项..."
+              placeholder={t.config.searchConfig}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="search-input"
@@ -691,7 +723,7 @@ const ModernConfigForm: React.FC = () => {
         {searchQuery ? (
           <div className="search-results">
             <h4 className="search-results-title">
-              搜索结果 ({filteredContent.length})
+              {t.config.searchResults} ({filteredContent.length})
             </h4>
             <div className="search-results-list">
               {filteredContent.length > 0 ? (
@@ -712,7 +744,7 @@ const ModernConfigForm: React.FC = () => {
                 ))
               ) : (
                 <div className="search-no-results">
-                  <p>未找到匹配的配置项</p>
+                  <p>{t.config.noMatchingConfig}</p>
                 </div>
               )}
             </div>
@@ -724,7 +756,7 @@ const ModernConfigForm: React.FC = () => {
               <div className="nav-section">
                 <div className="nav-section-header">
                   <FaStar className="nav-section-icon" />
-                  <span className="nav-section-title">收藏夹</span>
+                  <span className="nav-section-title">{t.config.favorites}</span>
                 </div>
                 <div className="quick-access-grid">
                   {favorites.map(fav => {
@@ -747,7 +779,7 @@ const ModernConfigForm: React.FC = () => {
             {/* 所有配置 */}
             <div className="nav-section">
               <div className="nav-section-header">
-                <span className="nav-section-title">所有配置</span>
+                <span className="nav-section-title">{t.config.allConfig}</span>
               </div>
               <div className="quick-access-grid">
                 {quickAccessItems.map(item => (
@@ -776,8 +808,8 @@ const ModernConfigForm: React.FC = () => {
                 <div className="section-header-left">
                   <span className="section-icon icon-platforms">🌐</span>
                   <div>
-                    <h2 className="section-title">数据平台配置</h2>
-                    <p className="section-description">配置各个数据源平台的访问凭证</p>
+                    <h2 className="section-title">{t.config.platforms}</h2>
+                    <p className="section-description">{t.config.platformsDesc}</p>
                   </div>
                 </div>
               </div>
@@ -813,9 +845,9 @@ const ModernConfigForm: React.FC = () => {
                               {(() => {
                                 if (platform.name.toLowerCase() === 'github') {
                                   const usernameField = platform.config_fields.find(f => f.key === 'username');
-                                  return platform.enabled && usernameField?.value ? '✓ 已配置' : '⚠ 未配置';
+                                  return platform.enabled && usernameField?.value ? `✓ ${t.config.configured}` : `⚠ ${t.config.notConfigured}`;
                                 }
-                                return platform.enabled && platform.has_token ? '✓ 已配置' : '⚠ 未配置';
+                                return platform.enabled && platform.has_token ? `✓ ${t.config.configured}` : `⚠ ${t.config.notConfigured}`;
                               })()}
                             </span>
                           </div>
@@ -852,8 +884,8 @@ const ModernConfigForm: React.FC = () => {
                 <div className="section-header-left">
                   <span className="section-icon icon-ai">🤖</span>
                   <div>
-                    <h2 className="section-title">AI配置</h2>
-                    <p className="section-description">配置AI模型和API密钥</p>
+                    <h2 className="section-title">{t.config.aiConfigTitle}</h2>
+                    <p className="section-description">{t.config.aiConfigDesc}</p>
                   </div>
                 </div>
               </div>
@@ -861,19 +893,19 @@ const ModernConfigForm: React.FC = () => {
               <div className="config-form">
                 {/* 功能介绍 */}
                 <div className="info-card">
-                  <p className="info-title">💡 AI 服务配置说明</p>
+                  <p className="info-title">{t.config.aiServiceInfoTitle}</p>
                   <p className="info-text">
-                    支持 Google Gemini 和 OpenAI 兼容格式的 API。<br/>
-                    <strong>Google Gemini</strong>: 免费额度，适合个人使用。<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">获取 API Key</a><br/>
-                    <strong>OpenAI 兼容</strong>: 支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）
+                    {t.config.aiServiceInfoDescription}<br/>
+                    <strong>Google Gemini</strong>: {t.config.geminiDescription}<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">{t.config.getApiKey}</a><br/>
+                    <strong>{t.config.openaiCompatible}</strong>: {t.config.openaiDescription}
                   </p>
                 </div>
 
                 {/* Provider选择和状态 - 横向布局 */}
                 <div className="config-field-row">
                   <div className="field-label-inline">
-                    <span>AI Provider <span className="required">*</span></span>
-                    <span className="field-hint">选择 AI 服务提供商后，下方会显示对应的配置项</span>
+                    <span>{t.config.aiProvider} <span className="required">*</span></span>
+                    <span className="field-hint">{t.config.aiProviderHint}</span>
                   </div>
                   <div className="field-control" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <div className="provider-selector">
@@ -958,27 +990,27 @@ const ModernConfigForm: React.FC = () => {
                 <div className="section-header-left">
                   <span className="section-icon icon-persona">🎭</span>
                   <div>
-                    <h2 className="section-title">虚拟人设配置</h2>
-                    <p className="section-description">配置虚拟人设图片生成服务</p>
+                    <h2 className="section-title">{t.config.personaConfigTitle}</h2>
+                    <p className="section-description">{t.config.personaConfigDesc}</p>
                   </div>
                 </div>
               </div>
 
               <div className="config-form">
                 <div className="info-card">
-                  <p className="info-title">使用说明</p>
+                  <p className="info-title">{t.config.personaUsageTitle}</p>
                   <p className="info-text">
-                    <strong>Pollinations AI</strong>：完全免费，响应快速（&lt;1秒），适合开发测试和快速迭代<br/>
-                    <strong>ImaginePro</strong>：专业 Midjourney API，图片质量极高，适合生产环境（需付费订阅）<br/>
-                    AI 会根据你的数据生成独特的虚拟人设，点击首页右上角的圆形头像查看
+                    <strong>Pollinations AI</strong>：{t.config.pollinationsDescription}<br/>
+                    <strong>ImaginePro</strong>：{t.config.imagineproDescription}<br/>
+                    {t.config.personaUsageDescription}
                   </p>
                 </div>
 
                 {/* 开关和Provider选择 - 横向布局 */}
                 <div className="config-field-row">
                   <div className="field-label-inline">
-                    <span>启用虚拟人设</span>
-                    <span className="field-hint">根据个人数据生成虚拟人物设定</span>
+                    <span>{t.config.enableVirtualPersona}</span>
+                    <span className="field-hint">{t.config.virtualPersonaDesc}</span>
                   </div>
                   <div className="field-control">
                     <label className="toggle-switch">
@@ -995,7 +1027,7 @@ const ModernConfigForm: React.FC = () => {
 
                 <div className="config-field-row">
                   <div className="field-label-inline">
-                    <span>图片生成服务</span>
+                    <span>{t.config.imageGenService}</span>
                   </div>
                   <div className="field-control">
                     <div className="provider-selector">
@@ -1010,7 +1042,7 @@ const ModernConfigForm: React.FC = () => {
                       >
                         <span className="provider-icon">🆓</span>
                         <span className="provider-name">Pollinations</span>
-                        <span className="provider-badge">免费</span>
+                        <span className="provider-badge">{t.config.pollinationsFree}</span>
                       </button>
                       <button
                         type="button"
@@ -1032,21 +1064,21 @@ const ModernConfigForm: React.FC = () => {
                 {config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'pollinations' && (
                   <div className="config-compact-group">
                     <div className="config-field">
-                      <label htmlFor="persona-model" className="field-label">AI 模型</label>
+                      <label htmlFor="persona-model" className="field-label">{t.config.aiModel}</label>
                       <select
                         id="persona-model"
                         value={config.persona_config.config_fields.find(f => f.key === 'persona_image_model')?.value || 'flux-anime'}
                         onChange={(e) => updatePersonaFieldValue('persona_image_model', e.target.value)}
                         className="field-select"
                       >
-                        <option value="flux-anime">Flux Anime (推荐)</option>
-                        <option value="flux">Flux (默认)</option>
-                        <option value="flux-realism">Flux Realism (写实)</option>
-                        <option value="flux-3d">Flux 3D (3D风格)</option>
+                        <option value="flux-anime">{t.config.fluxAnimeRecommend}</option>
+                        <option value="flux">{t.config.fluxDefault}</option>
+                        <option value="flux-realism">{t.config.fluxRealism}</option>
+                        <option value="flux-3d">{t.config.flux3D}</option>
                       </select>
                     </div>
                     <div className="config-field">
-                      <label htmlFor="persona-width" className="field-label">宽度 (px)</label>
+                      <label htmlFor="persona-width" className="field-label">{t.config.width}</label>
                       <input
                         id="persona-width"
                         type="number"
@@ -1059,7 +1091,7 @@ const ModernConfigForm: React.FC = () => {
                       />
                     </div>
                     <div className="config-field">
-                      <label htmlFor="persona-height" className="field-label">高度 (px)</label>
+                      <label htmlFor="persona-height" className="field-label">{t.config.height}</label>
                       <input
                         id="persona-height"
                         type="number"
@@ -1091,14 +1123,14 @@ const ModernConfigForm: React.FC = () => {
                             e.target.select();
                           }
                         }}
-                        placeholder="从 imaginepro.ai 获取"
+                        placeholder={t.config.imagineproPlaceholder}
                         className="field-input"
                       />
                     </div>
 
                     <div className="config-compact-group">
                       <div className="config-field">
-                        <label htmlFor="persona-width-mj" className="field-label">宽度 (px)</label>
+                        <label htmlFor="persona-width-mj" className="field-label">{t.config.width}</label>
                         <input
                           id="persona-width-mj"
                           type="number"
@@ -1111,7 +1143,7 @@ const ModernConfigForm: React.FC = () => {
                         />
                       </div>
                       <div className="config-field">
-                        <label htmlFor="persona-height-mj" className="field-label">高度 (px)</label>
+                        <label htmlFor="persona-height-mj" className="field-label">{t.config.height}</label>
                         <input
                           id="persona-height-mj"
                           type="number"
@@ -1142,21 +1174,21 @@ const ModernConfigForm: React.FC = () => {
                 <div className="section-header-left">
                   <span className="section-icon icon-ui">🎨</span>
                   <div>
-                    <h2 className="section-title">UI界面配置</h2>
-                    <p className="section-description">自定义背景、主题等界面样式</p>
+                    <h2 className="section-title">{t.config.uiConfigTitle}</h2>
+                    <p className="section-description">{t.config.uiConfigDesc}</p>
                   </div>
                 </div>
               </div>
 
               <div className="config-form">
                 <div className="metadata-section">
-                  <h3 className="section-subtitle">🌐 网站元数据</h3>
+                  <h3 className="section-subtitle">🌐 {t.config.siteMetadata}</h3>
                   {config.ui_config.config_fields
                     .filter((field) => ['site_title', 'site_description', 'site_favicon'].includes(field.key))
                     .map((field) => (
                       <div key={field.key} className="config-field">
                         <label htmlFor={`ui-${field.key}`} className="field-label">
-                          {field.label}
+                          {getFieldLabel(field.key, field.label)}
                           {field.required && <span className="required">*</span>}
                         </label>
                         {field.key === 'site_description' ? (
@@ -1164,7 +1196,7 @@ const ModernConfigForm: React.FC = () => {
                             id={`ui-${field.key}`}
                             value={field.value}
                             onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                            placeholder={field.placeholder}
+                            placeholder={getFieldPlaceholder(field.key, field.placeholder)}
                             rows={2}
                             className="field-input resizable-textarea"
                           />
@@ -1174,7 +1206,7 @@ const ModernConfigForm: React.FC = () => {
                             type={field.field_type}
                             value={field.value}
                             onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                            placeholder={field.placeholder}
+                            placeholder={getFieldPlaceholder(field.key, field.placeholder)}
                             className="field-input"
                           />
                         )}
@@ -1183,13 +1215,13 @@ const ModernConfigForm: React.FC = () => {
                 </div>
 
                 <div>
-                  <h3 className="section-subtitle">🎨 背景和主题</h3>
+                  <h3 className="section-subtitle">🎨 {t.config.backgroundAndTheme}</h3>
                   {config.ui_config.config_fields
                     .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !['site_title', 'site_description', 'site_favicon'].includes(field.key))
                     .map((field) => (
                       <div key={field.key} className="config-field">
                         <label htmlFor={`ui-${field.key}`} className="field-label">
-                          {field.label}
+                          {getFieldLabel(field.key, field.label)}
                           {field.required && <span className="required">*</span>}
                         </label>
                         {field.field_type === 'checkbox' ? (
@@ -1202,7 +1234,7 @@ const ModernConfigForm: React.FC = () => {
                               className="field-checkbox"
                             />
                             <span className="checkbox-hint">
-                              {field.key === 'wallpaper_parallax' && '启用后壁纸会根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感'}
+                              {field.key === 'wallpaper_parallax' && t.config.wallpaperParallaxHint}
                             </span>
                           </div>
                         ) : (
@@ -1211,7 +1243,7 @@ const ModernConfigForm: React.FC = () => {
                             type={field.field_type}
                             value={field.value}
                             onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                            placeholder={field.placeholder}
+                            placeholder={getFieldPlaceholder(field.key, field.placeholder)}
                             min={field.field_type === 'number' ? '0' : undefined}
                             max={field.field_type === 'number' ? '10' : undefined}
                             className="field-input"
@@ -1236,40 +1268,40 @@ const ModernConfigForm: React.FC = () => {
                 <div className="section-header-left">
                   <span className="section-icon icon-oauth">🔐</span>
                   <div>
-                    <h2 className="section-title">GitHub OAuth配置</h2>
-                    <p className="section-description">配置GitHub OAuth应用以启用社交登录</p>
+                    <h2 className="section-title">{t.config.oauthConfigTitle}</h2>
+                    <p className="section-description">{t.config.oauthConfigDesc}</p>
                   </div>
                 </div>
               </div>
 
               <div className="config-form">
                 <div className="info-card info-card-spaced">
-                  <p className="info-title">如何获取 GitHub OAuth 凭证</p>
+                  <p className="info-title">{t.config.oauthGuideTitle}</p>
                   <p className="info-text">
-                    1. 访问 <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer">GitHub Developer Settings</a><br/>
-                    2. 点击 "New OAuth App" 创建新应用<br/>
-                    3. 填写应用信息，Callback URL 填写：<code className="inline-code">{API_URL}/api/auth/github/callback</code><br/>
-                    4. 创建后复制 Client ID 和生成 Client Secret
+                    1. {t.config.oauthGuideStep1} <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer">GitHub Developer Settings</a><br/>
+                    2. {t.config.oauthGuideStep2}<br/>
+                    3. {t.config.oauthGuideStep3} <code className="inline-code">{API_URL}/api/auth/github/callback</code><br/>
+                    4. {t.config.oauthGuideStep4}
                   </p>
                 </div>
 
                 <div className="config-field">
                   <label htmlFor="github-client-id" className="field-label">
-                    GitHub Client ID <span className="required">*</span>
+                    {t.config.githubClientId} <span className="required">*</span>
                   </label>
                   <input
                     id="github-client-id"
                     type="text"
                     value={config.ui_config.config_fields.find(f => f.key === 'github_client_id')?.value || ''}
                     onChange={(e) => updateUiFieldValue('github_client_id', e.target.value)}
-                    placeholder="GitHub OAuth App 的 Client ID"
+                    placeholder={t.config.githubClientIdPlaceholder}
                     className="field-input"
                   />
                 </div>
 
                 <div className="config-field">
                   <label htmlFor="github-client-secret" className="field-label">
-                    GitHub Client Secret <span className="required">*</span>
+                    {t.config.githubClientSecret} <span className="required">*</span>
                   </label>
                   <input
                     id="github-client-secret"
@@ -1283,13 +1315,13 @@ const ModernConfigForm: React.FC = () => {
                         e.target.select();
                       }
                     }}
-                    placeholder="GitHub OAuth App 的 Client Secret"
+                    placeholder={t.config.githubClientSecretPlaceholder}
                     className="field-input"
                   />
                 </div>
 
                 <div className="config-field">
-                  <label htmlFor="github-redirect-url" className="field-label">Redirect URL</label>
+                  <label htmlFor="github-redirect-url" className="field-label">{t.config.redirectUrl}</label>
                   <input
                     id="github-redirect-url"
                     type="text"
@@ -1315,25 +1347,25 @@ const ModernConfigForm: React.FC = () => {
                 <div className="section-header-left">
                   <span className="section-icon icon-music">🎵</span>
                   <div>
-                    <h2 className="section-title">音乐播放器</h2>
-                    <p className="section-description">配置歌单播放</p>
+                    <h2 className="section-title">{t.config.musicConfigTitle}</h2>
+                    <p className="section-description">{t.config.musicConfigDesc}</p>
                   </div>
                 </div>
               </div>
 
               <div className="config-form">
                 <div className="info-card">
-                  <p className="info-title">音乐播放器说明</p>
+                  <p className="info-title">{t.config.musicUsageTitle}</p>
                   <p className="info-text">
-                    在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐。播放有歌词的歌曲时，收缩状态下会自动显示实时歌词。
+                    {t.config.musicUsageInfo}
                   </p>
                 </div>
 
                 {/* 开关和平台选择 - 横向布局 */}
                 <div className="config-field-row">
                   <div className="field-label-inline">
-                    <span>启用音乐播放器</span>
-                    <span className="field-hint">在控制岛中显示音乐播放器</span>
+                    <span>{t.config.enableMusicPlayer}</span>
+                    <span className="field-hint">{t.config.musicPlayerDesc}</span>
                   </div>
                   <div className="field-control">
                     <label className="toggle-switch">
@@ -1350,7 +1382,7 @@ const ModernConfigForm: React.FC = () => {
 
                 <div className="config-field-row">
                   <div className="field-label-inline">
-                    <span>音乐平台</span>
+                    <span>{t.config.musicPlatform}</span>
                   </div>
                   <div className="field-control">
                     <div className="provider-selector">
@@ -1364,7 +1396,7 @@ const ModernConfigForm: React.FC = () => {
                         }`}
                       >
                         <span className="provider-icon"><SiNeteasecloudmusic /></span>
-                        <span className="provider-name">网易云</span>
+                        <span className="provider-name">{t.config.neteaseMusic}</span>
                       </button>
                       <button
                         type="button"
@@ -1376,7 +1408,7 @@ const ModernConfigForm: React.FC = () => {
                         }`}
                       >
                         <span className="provider-icon">🎧</span>
-                        <span className="provider-name">QQ音乐</span>
+                        <span className="provider-name">{t.config.qqMusic}</span>
                       </button>
                     </div>
                   </div>
@@ -1384,7 +1416,7 @@ const ModernConfigForm: React.FC = () => {
 
                 <div className="config-field">
                   <label htmlFor="music-playlist-id" className="field-label">
-                    歌单ID <span className="required">*</span>
+                    {t.config.playlistId} <span className="required">*</span>
                   </label>
                   <input
                     id="music-playlist-id"
@@ -1392,35 +1424,35 @@ const ModernConfigForm: React.FC = () => {
                     value={config.ui_config.config_fields.find(f => f.key === 'music_playlist_id')?.value || ''}
                     onChange={(e) => updateUiFieldValue('music_playlist_id', e.target.value)}
                     placeholder={config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
-                      ? '例如: 2884035'
-                      : '例如: 8039305244'}
+                      ? t.config.neteasePlaylistExample
+                      : t.config.qqPlaylistExample}
                     className="field-input"
                   />
                   <p className="field-hint">
                     {config.ui_config.config_fields.find(f => f.key === 'music_source')?.value === 'netease'
-                      ? '网易云音乐歌单链接中的数字ID，如 https://music.163.com/#/playlist?id=2884035'
-                      : 'QQ音乐歌单链接中的数字ID，如 https://y.qq.com/n/ryqq/playlist/8039305244'}
+                      ? t.config.neteasePlaylistHint
+                      : t.config.qqPlaylistHint}
                   </p>
                 </div>
 
                 {/* 清理音乐缓存按钮 */}
                 <div className="config-field" style={{ marginTop: '1.5rem' }}>
-                  <label className="field-label">缓存管理</label>
+                  <label className="field-label">{t.config.cacheManagement}</label>
                   <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-                    清空本地音乐缓存，强制重新加载歌单数据
+                    {t.config.clearMusicCacheDesc}
                   </p>
                   <button
                     type="button"
                     onClick={() => {
                       clearPlaylistCache();
-                      setMessage('✓ 音乐缓存已清空，下次加载时将重新获取数据');
+                      setMessage(t.config.musicCacheCleared);
                       setTimeout(() => setMessage(''), 3000);
                     }}
                     className="btn-base btn-secondary"
                     style={{ width: 'auto' }}
                   >
                     <span>🗑️</span>
-                    <span>清空音乐缓存</span>
+                    <span>{t.config.clearMusicCacheBtn}</span>
                   </button>
                 </div>
               </div>
@@ -1453,7 +1485,7 @@ const ModernConfigForm: React.FC = () => {
                 <button
                   onClick={() => setPlatformModalOpen(null)}
                   className="modal-close-button"
-                  aria-label="关闭"
+                  aria-label={t.config.closeLabel}
                 >
                   <FaTimes />
                 </button>

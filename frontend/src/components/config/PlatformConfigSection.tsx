@@ -1,5 +1,6 @@
 import React from 'react';
 import PlatformIcon from '../PlatformIcon';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface ConfigField {
   key: string;
@@ -36,14 +37,16 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
   onTest,
   onOpenModal
 }) => {
+  const { t } = useI18n();
+  
   return (
     <div className="config-section">
       <div className="section-header">
         <div className="section-header-left">
           <span className="section-icon icon-platforms">🌐</span>
           <div>
-            <h2 className="section-title">数据平台配置</h2>
-            <p className="section-description">配置各个数据源平台的访问凭证</p>
+            <h2 className="section-title">{t.config.platformsConfigTitle}</h2>
+            <p className="section-description">{t.config.platformsConfigDesc}</p>
           </div>
         </div>
       </div>
@@ -60,7 +63,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
                   <div className="platform-title-row">
                     <h3 className="platform-name">{platform.name}</h3>
                     <span className={`status-badge ${platform.enabled && platform.has_token ? 'configured' : 'unconfigured'}`}>
-                      {platform.enabled && platform.has_token ? '✓ 已配置' : '⚠ 未配置'}
+                      {platform.enabled && platform.has_token ? t.config.configuredStatus : t.config.unconfiguredStatus}
                     </span>
                   </div>
                   <p className="platform-desc">{platform.description}</p>
@@ -72,7 +75,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
                     type="checkbox"
                     checked={platform.enabled}
                     onChange={() => onTogglePlatform(index)}
-                    aria-label={`启用 ${platform.name} 平台`}
+                    aria-label={t.config.enablePlatform.replace('{platform}', platform.name)}
                   />
                   <span className="toggle-slider"></span>
                 </label>
@@ -102,7 +105,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
                           className="test-button-inline"
                           type="button"
                         >
-                          {testing === platform.name ? '测试中...' : '测试连接'}
+                          {testing === platform.name ? t.config.testingConnection : t.config.testConnection}
                         </button>
                       )}
                     </div>
@@ -113,7 +116,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
                   className="help-button"
                   type="button"
                 >
-                  如何获取 Token？
+                  {t.config.howToGetToken}
                 </button>
               </div>
             )}

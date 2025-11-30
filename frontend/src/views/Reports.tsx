@@ -24,6 +24,7 @@ import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard';
 import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAnimationSlot } from '../hooks/useAnimationScheduler';
+import { useI18n } from '../contexts/I18nContext';
 
 // 🚀 性能优化：防抖Hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -189,8 +190,8 @@ const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
 };
 
 // 迷你组件：B站弹幕云 (优化：使用 memo + 优化动画性能 + 调度器)
-const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
-  const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
+const DanmakuWidget = memo(({ data, defaultDanmaku }: { data?: { danmaku?: string[] }; defaultDanmaku: string[] }) => {
+  const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku]);
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
@@ -260,10 +261,11 @@ const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
 });
 
 // 新组件：B站综合展示组件 (弹幕 + 资料库内容切换)
-const BilibiliWidget = memo(({ data, onContentChange, showOverview }: { 
+const BilibiliWidget = memo(({ data, onContentChange, showOverview, defaultDanmaku }: { 
   data?: { danmaku?: string[]; library_items?: Array<{ title: string; cover?: string; type: string }> };
   onContentChange?: (item: { title: string; type: string } | null) => void;
   showOverview: boolean;
+  defaultDanmaku: string[];
 }) => {
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
   const { currentItem, currentItemIndex } = useLibraryItemRotation(libraryItems, showOverview);
@@ -288,7 +290,7 @@ const BilibiliWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full"
         >
-          <DanmakuWidget data={data} />
+          <DanmakuWidget data={data} defaultDanmaku={defaultDanmaku} />
         </motion.div>
       ) : (
         <motion.div
@@ -319,20 +321,22 @@ const BilibiliWidget = memo(({ data, onContentChange, showOverview }: {
 });
 
 // 迷你组件：Steam统计展示
-const SteamStatsWidget = memo(({ data }: { data?: { 
+const SteamStatsWidget = memo(({ data, defaultPlayerType }: { data?: { 
   hardcore_score?: number; 
   player_type?: string;
   games_count?: number;
   total_playtime?: number;
-} }) => {
+}; defaultPlayerType: string }) => {
   const score = useMemo(() => data?.hardcore_score || 0, [data?.hardcore_score]);
-  const type = useMemo(() => data?.player_type || "休闲玩家", [data?.player_type]);
+  const type = useMemo(() => data?.player_type || defaultPlayerType, [data?.player_type, defaultPlayerType]);
   const gamesCount = useMemo(() => data?.games_count || 0, [data?.games_count]);
   const totalPlaytime = useMemo(() => {
     const hours = data?.total_playtime || 0;
     if (hours >= 1000) return `${(hours / 1000).toFixed(1)}k`;
     return hours.toString();
   }, [data?.total_playtime]);
+  
+  const { t } = useI18n();
   
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -385,7 +389,7 @@ const SteamStatsWidget = memo(({ data }: { data?: {
           transition={{ duration: 0.5, delay: 0.4 }}
         >
           <div className="flex flex-col items-end">
-            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">LIBRARY</span>
+            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">{t.reportsPage.library}</span>
             <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">{gamesCount}</span>
           </div>
         </motion.div>
@@ -398,7 +402,7 @@ const SteamStatsWidget = memo(({ data }: { data?: {
           transition={{ duration: 0.5, delay: 0.6 }}
         >
           <div className="flex flex-col items-end">
-            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">PLAYTIME</span>
+            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">{t.reportsPage.playtime}</span>
             <div className="flex items-baseline gap-0.5">
               <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">{totalPlaytime}</span>
               <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-1">H</span>
@@ -411,7 +415,7 @@ const SteamStatsWidget = memo(({ data }: { data?: {
 });
 
 // 新组件：Steam综合展示组件 (统计 + 资料库内容切换)
-const SteamWidget = memo(({ data, onContentChange, showOverview }: { 
+const SteamWidget = memo(({ data, onContentChange, showOverview, defaultPlayerType }: { 
   data?: { 
     hardcore_score?: number; 
     player_type?: string;
@@ -421,6 +425,7 @@ const SteamWidget = memo(({ data, onContentChange, showOverview }: {
   };
   onContentChange?: (item: { title: string; type: string } | null) => void;
   showOverview: boolean;
+  defaultPlayerType: string;
 }) => {
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
   const { currentItem, currentItemIndex } = useLibraryItemRotation(libraryItems, showOverview);
@@ -445,7 +450,7 @@ const SteamWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full"
         >
-          <SteamStatsWidget data={data} />
+          <SteamStatsWidget data={data} defaultPlayerType={defaultPlayerType} />
         </motion.div>
       ) : (
         <motion.div
@@ -476,14 +481,14 @@ const SteamWidget = memo(({ data, onContentChange, showOverview }: {
 });
 
 // 迷你组件：GitHub综合统计展示（热力图 + 语言统计的融合设计）
-const GithubStatsWidget = memo(({ data }: { data?: { 
+const GithubStatsWidget = memo(({ data, defaultLevel, levelKeywords }: { data?: { 
   contribution_level?: string;
   total_contributions?: number;
   repos_count?: number;
   languages?: { name: string, percentage: number }[];
   contribution_calendar?: Array<{ date: string; count: number }>;
-} }) => {
-  const level = useMemo(() => data?.contribution_level || "活跃开发者", [data?.contribution_level]);
+}; defaultLevel: string; levelKeywords: { legendary: string; core: string; senior: string; prolific: string; active: string } }) => {
+  const level = useMemo(() => data?.contribution_level || defaultLevel, [data?.contribution_level, defaultLevel]);
   const contributions = useMemo(() => data?.total_contributions || 0, [data?.total_contributions]);
   const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count]);
   const langs = useMemo(() => data?.languages || [], [data?.languages]);
@@ -491,11 +496,13 @@ const GithubStatsWidget = memo(({ data }: { data?: {
     return data?.contribution_calendar || [];
   }, [data?.contribution_calendar]);
   
+  const { t } = useI18n();
+  
   // 根据contribution_level设置颜色
   const getLevelColor = (level: string) => {
-    if (level.includes("传奇") || level.includes("核心")) return "#22c55e";
-    if (level.includes("资深") || level.includes("高产")) return "#3b82f6";
-    if (level.includes("活跃")) return "#8b5cf6";
+    if (level.includes(levelKeywords.legendary) || level.includes(levelKeywords.core)) return "#22c55e";
+    if (level.includes(levelKeywords.senior) || level.includes(levelKeywords.prolific)) return "#3b82f6";
+    if (level.includes(levelKeywords.active)) return "#8b5cf6";
     return "#6b7280";
   };
   
@@ -613,7 +620,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
                   transition={{ duration: 0.4, delay: 0.3 }}
                 >
                   <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">{contributions}</span>
-                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Commits</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">{t.reportsPage.commits}</span>
                 </motion.div>
                 
                 {/* 仓库数 */}
@@ -624,7 +631,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
                   transition={{ duration: 0.4, delay: 0.4 }}
                 >
                   <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">{reposCount}</span>
-                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Repos</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">{t.reportsPage.repos}</span>
                 </motion.div>
               </div>
             </div>
@@ -684,7 +691,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
           ))}
           {langs.length === 0 && (
             <div className="text-[8px] font-mono text-gray-400 text-center opacity-50">
-              &gt; Analyzing repositories_
+              {t.reportsPage.analyzingRepos}
             </div>
           )}
         </div>
@@ -694,7 +701,7 @@ const GithubStatsWidget = memo(({ data }: { data?: {
 });
 
 // 新组件：GitHub综合展示组件 (统计信息 + 项目卡片双态循环)
-const GithubWidget = memo(({ data, onContentChange, showOverview }: { 
+const GithubWidget = memo(({ data, onContentChange, showOverview, defaultLevel, levelKeywords }: { 
   data?: { 
     languages?: { name: string, percentage: number }[];
     contribution_level?: string;
@@ -711,6 +718,8 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
   };
   onContentChange?: (item: { title: string; type: string } | null) => void;
   showOverview: boolean;
+  defaultLevel: string;
+  levelKeywords: { legendary: string; core: string; senior: string; prolific: string; active: string };
 }) => {
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
   const { currentItem, currentItemIndex } = useLibraryItemRotation(libraryItems, showOverview);
@@ -724,6 +733,8 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
     }
   }, [showOverview, currentItem, onContentChange]);
 
+  const { t } = useI18n();
+
   return (
     <AnimatePresence mode="wait">
       {showOverview || !currentItem || libraryItems.length === 0 ? (
@@ -735,7 +746,7 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
           transition={{ duration: 0.5 }}
           className="h-full w-full"
         >
-          <GithubStatsWidget data={data} />
+          <GithubStatsWidget data={data} defaultLevel={defaultLevel} levelKeywords={levelKeywords} />
         </motion.div>
       ) : (
         <motion.div
@@ -783,7 +794,7 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
           ) : (
             <div className="h-full w-full flex items-center justify-center">
               <div className="text-[9px] font-mono text-gray-400 text-center">
-                &gt; No repos found_
+                {t.reportsPage.noReposFound}
               </div>
             </div>
           )}
@@ -794,13 +805,13 @@ const GithubWidget = memo(({ data, onContentChange, showOverview }: {
 });
 
 // 迷你组件：网易云音乐卡片展示（统计信息展示）+ 调度器
-const MusicStatsWidget = memo(({ data }: { data?: { 
+const MusicStatsWidget = memo(({ data, tenThousandSuffix }: { data?: { 
   soul_color?: string; 
   mood_keywords?: Array<{ tag: string; color: string }>;
   follower_count?: number;
   playlist_count?: number;
   level?: number;
-} }) => {
+}; tenThousandSuffix: string }) => {
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
@@ -813,6 +824,7 @@ const MusicStatsWidget = memo(({ data }: { data?: {
   });
   
   const canAnimate = anim.loop && isAnimating;
+  const { t } = useI18n();
   
   const color = useMemo(() => data?.soul_color || "#ef4444", [data?.soul_color]);
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords]);
@@ -822,7 +834,7 @@ const MusicStatsWidget = memo(({ data }: { data?: {
   
   // 格式化大数字
   const formatNumber = (num: number) => {
-    if (num >= 10000) return `${(num / 10000).toFixed(1)}万`;
+    if (num >= 10000) return `${(num / 10000).toFixed(1)}${tenThousandSuffix}`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
     return num.toString();
   };
@@ -1011,7 +1023,7 @@ const MusicStatsWidget = memo(({ data }: { data?: {
                 {formatNumber(followerCount)}
               </span>
               <div className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
-                Fans
+                {t.reportsPage.fans}
               </div>
             </div>
             <div className="w-px h-5 bg-gray-300 dark:bg-white/20" />
@@ -1020,7 +1032,7 @@ const MusicStatsWidget = memo(({ data }: { data?: {
                 {formatNumber(playlistCount)}
               </span>
               <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
-                Lists
+                {t.reportsPage.lists}
               </span>
             </div>
           </motion.div>
@@ -1034,11 +1046,13 @@ const MusicStatsWidget = memo(({ data }: { data?: {
 const NeteaseWidget = memo(({ 
   data,
   onContentChange,
-  showOverview
+  showOverview,
+  tenThousandSuffix
 }: { 
   data?: any; // 使用 any 兼容后端多种数据格式
   onContentChange?: (item: { titles: string[]; type: string } | null) => void;
   showOverview: boolean;
+  tenThousandSuffix: string;
 }) => {
   // 数据转换和类型安全处理
   const processedData = useMemo(() => {
@@ -1112,7 +1126,7 @@ const NeteaseWidget = memo(({
           transition={{ duration: 0.5 }}
           className="h-full w-full"
         >
-          <MusicStatsWidget data={processedData} />
+          <MusicStatsWidget data={processedData} tenThousandSuffix={tenThousandSuffix} />
         </motion.div>
       ) : (
         <motion.div
@@ -1151,6 +1165,7 @@ const NeteaseWidget = memo(({
 
 // 🚀 性能优化：将综合报告卡片提取为独立的 memo 组件
 export default function Reports() {
+  const { t } = useI18n();
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
   const [report, setReport] = useState<CrossPlatformReport | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
@@ -1188,6 +1203,33 @@ export default function Reports() {
   
   // 新增：全局卡片状态切换控制
   const [showOverview, setShowOverview] = useState(true);
+
+  // i18n: 翻译后的平台配置
+  const translatedPlatforms = useMemo(() => PLATFORMS.map(p => ({
+    ...p,
+    name: p.id === 'netease' ? t.reportsPage.neteaseMusic : 
+          p.id === 'bilibili' ? t.reportsPage.bilibili :
+          p.id === 'steam' ? t.reportsPage.steam :
+          p.id === 'github' ? t.reportsPage.github : p.name,
+  })), [t.reportsPage.neteaseMusic, t.reportsPage.bilibili, t.reportsPage.steam, t.reportsPage.github]);
+
+  // i18n: 默认弹幕文本
+  const defaultDanmaku = useMemo(() => t.reportsPage.danmakuDefaults, [t.reportsPage.danmakuDefaults]);
+
+  // i18n: 默认玩家类型
+  const defaultPlayerType = useMemo(() => t.reportsPage.casualPlayer, [t.reportsPage.casualPlayer]);
+
+  // i18n: 默认开发者级别
+  const defaultDevLevel = useMemo(() => t.reportsPage.activeDeveloper, [t.reportsPage.activeDeveloper]);
+
+  // i18n: 级别关键词（用于颜色匹配）
+  const levelKeywords = useMemo(() => ({
+    legendary: t.reportsPage.legendary,
+    core: t.reportsPage.core,
+    senior: t.reportsPage.senior,
+    prolific: t.reportsPage.prolific,
+    active: t.reportsPage.active,
+  }), [t.reportsPage.legendary, t.reportsPage.core, t.reportsPage.senior, t.reportsPage.prolific, t.reportsPage.active]);
 
   useEffect(() => {
     // 当舞台模式开启时，停止卡片轮播并保持在概览状态
@@ -1297,7 +1339,7 @@ export default function Reports() {
       .map(p => p.id);
     
     if (platformsWithReports.length === 0) {
-      setToastMessage('✗ 没有可用的平台报告');
+      setToastMessage('✗ ' + t.reportsPage.noPlatformReports);
       return;
     }
     
@@ -1327,7 +1369,7 @@ export default function Reports() {
     if (playAllQueueRef.current.length === 0) {
       // 所有平台播放完毕，退出舞台模式
       closeStageMode();
-      setToastMessage('✓ 所有平台播放完毕');
+      setToastMessage('✓ ' + t.reportsPage.allPlaybackComplete);
       return;
     }
     
@@ -1375,19 +1417,19 @@ export default function Reports() {
     }
     
     const platformId = stageReportData.platform;
-    const platformName = PLATFORMS.find(p => p.id === platformId)?.name || platformId;
+    const platformName = translatedPlatforms.find(p => p.id === platformId)?.name || platformId;
     
     setRefreshingStage(true);
     
     try {
       const csrfToken = await getCSRFToken(true);
       if (!csrfToken) {
-        setToastMessage('✗ 获取安全令牌失败');
+        setToastMessage('✗ ' + t.reportsPage.getTokenFailed);
         setRefreshingStage(false);
         return;
       }
 
-      setToastMessage(`✓ 正在刷新 ${platformName} 报告...`);
+      setToastMessage(`✓ ${t.reportsPage.refreshingReport.replace('{platform}', platformName)}`);
 
       // 1. 刷新该平台的数据
       try {
@@ -1401,7 +1443,7 @@ export default function Reports() {
           body: JSON.stringify({ platform: platformId }),
         });
       } catch (fetchErr) {
-        console.warn(`刷新 ${platformId} 数据请求出错:`, fetchErr);
+        console.warn(`Refresh ${platformId} data request error:`, fetchErr);
       }
 
       // 2. 生成新报告
@@ -1415,7 +1457,7 @@ export default function Reports() {
         body: JSON.stringify({ platforms: [platformId] }),
       });
 
-      if (!response.ok) throw new Error('生成失败');
+      if (!response.ok) throw new Error(t.reportsPage.generateFailed);
 
       // 3. 获取最新的平台报告
       const latestResponse = await fetch(`${API_URL}/api/reports/latest`, {
@@ -1444,19 +1486,19 @@ export default function Reports() {
               insights: updatedPlatformReport.insights,
               card_visuals: updatedPlatformReport.card_visuals,
             });
-            setToastMessage(`✓ ${platformName} 报告刷新成功！`);
+            setToastMessage(`✓ ${t.reportsPage.reportRefreshSuccess.replace('{platform}', platformName)}`);
           } else {
-            setToastMessage('✗ 报告刷新完成，但未找到更新数据');
+            setToastMessage('✗ ' + t.reportsPage.reportRefreshNoData);
           }
         } else {
-          setToastMessage('✗ 获取最新报告失败');
+          setToastMessage('✗ ' + t.reportsPage.getLatestReportFailed);
         }
       } else {
-        setToastMessage('✗ 获取最新报告失败');
+        setToastMessage('✗ ' + t.reportsPage.getLatestReportFailed);
       }
     } catch (err) {
-      console.error('刷新舞台报告失败:', err);
-      setToastMessage(`✗ 刷新 ${platformName} 报告失败`);
+      console.error('Refresh stage report failed:', err);
+      setToastMessage(`✗ ${t.reportsPage.refreshReportFailed.replace('{platform}', platformName)}`);
     } finally {
       setRefreshingStage(false);
     }
@@ -1584,7 +1626,7 @@ export default function Reports() {
         body: JSON.stringify({ platforms: [platformId] }),
       });
 
-      if (!response.ok) throw new Error('生成失败');
+      if (!response.ok) throw new Error(t.reportsPage.generateFailed);
 
       // 🚀 性能优化：只获取最新的平台报告列表，不重复获取综合报告
       const latestResponse = await fetch(`${API_URL}/api/reports/latest`, {
@@ -1602,11 +1644,11 @@ export default function Reports() {
         }
       }
     } catch (err) {
-      console.error('生成平台报告失败:', err);
+      console.error('Generate platform report failed:', err);
     } finally {
       setLoadingPlatform(null);
     }
-  }, []);
+  }, [t.reportsPage.generateFailed]);
 
   // 生成综合分析 (基于已有平台报告) - 性能优化：使用 useCallback
   const generateComprehensiveReport = useCallback(async () => {
@@ -1633,8 +1675,8 @@ export default function Reports() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('生成失败:', errorData);
-        throw new Error(errorData.message || '生成失败');
+        console.error('Generation failed:', errorData);
+        throw new Error(errorData.message || t.reportsPage.generateFailed);
       }
 
       const data = await response.json();
@@ -1663,7 +1705,7 @@ export default function Reports() {
                   }
                 }
               } catch (err) {
-                console.error(`获取报告 ${report.id} 详情失败:`, err);
+                console.error(`Get report ${report.id} details failed:`, err);
               }
               return report;
             });
@@ -1677,12 +1719,12 @@ export default function Reports() {
         alert(data.message);
       }
     } catch (err) {
-      console.error('生成综合报告失败:', err);
-      alert(err instanceof Error ? err.message : '生成失败,请稍后重试');
+      console.error('Generate comprehensive report failed:', err);
+      alert(err instanceof Error ? err.message : t.reportsPage.generateFailedRetry);
     } finally {
       setLoadingPlatform(null);
     }
-  }, [debouncedCustomStyle]);
+  }, [debouncedCustomStyle, t.reportsPage.generateFailed, t.reportsPage.generateFailedRetry]);
 
   // 🚀 性能优化：使用 useMemo 缓存计算结果
   const selectedReport = useMemo(() => 
@@ -1699,13 +1741,13 @@ export default function Reports() {
     } else if (isAdmin) {
       generatePlatformReport(platformId);
     } else {
-      setToastMessage('⛗ 仅管理员可生成报告');
+      setToastMessage('⛗ ' + t.reportsPage.adminOnlyGenerate);
     }
-  }, [generatePlatformReport, isAdmin]);
+  }, [generatePlatformReport, isAdmin, t.reportsPage.adminOnlyGenerate]);
 
   // 🚀 性能优化：缓存删除报告处理器
   const handleDeleteReport = useCallback(async (reportId: number) => {
-    if (!window.confirm('确定要删除这份综合报告吗？此操作不可恢复。')) {
+    if (!window.confirm(t.reportsPage.confirmDeleteReport)) {
       return;
     }
 
@@ -1729,13 +1771,13 @@ export default function Reports() {
         setComprehensiveReports(prev => prev.filter(r => r.id !== reportId));
         setReport(prev => prev ? { ...prev, 综合分析: null } : null);
       } else {
-        alert(data.message || '删除失败');
+        alert(data.message || t.reportsPage.deleteFailed);
       }
     } catch (err) {
-      console.error('删除报告失败:', err);
-      alert('删除失败，请稍后重试');
+      console.error('Delete report failed:', err);
+      alert(t.reportsPage.deleteFailedRetry);
     }
-  }, []);
+  }, [t.reportsPage.deleteFailed, t.reportsPage.deleteFailedRetry, t.reportsPage.confirmDeleteReport]);
 
   return (
     <AnimatedView className="h-screen overflow-hidden">
@@ -1762,8 +1804,8 @@ export default function Reports() {
                 <button
                   onClick={() => setSelectedPlatform(null)}
                   className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-neutral-900 dark:hover:bg-neutral-700 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors shadow-lg"
-                  title="关闭"
-                  aria-label="关闭"
+                  title={t.reportsPage.close}
+                  aria-label={t.reportsPage.close}
                 >
                   <FaTimes size={14} />
                 </button>
@@ -1772,11 +1814,11 @@ export default function Reports() {
                 <div className="h-full flex flex-col md:flex-row overflow-hidden rounded-2xl">
                 {/* 左侧：概览 */}
                 <div className="w-full md:w-1/3 p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-gray-100 dark:border-neutral-800 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-xl overflow-y-auto">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4 ${PLATFORMS.find(p => p.id === selectedReport.platform)?.bg} ${PLATFORMS.find(p => p.id === selectedReport.platform)?.text}`}>
-                    {PLATFORMS.find(p => p.id === selectedReport.platform)?.icon}
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4 ${translatedPlatforms.find(p => p.id === selectedReport.platform)?.bg} ${translatedPlatforms.find(p => p.id === selectedReport.platform)?.text}`}>
+                    {translatedPlatforms.find(p => p.id === selectedReport.platform)?.icon}
                   </div>
                   
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{selectedReport.platform}</h2>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{translatedPlatforms.find(p => p.id === selectedReport.platform)?.name || selectedReport.platform}</h2>
                   <div className="flex items-center gap-2 mb-6">
                     <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
                       {new Date(selectedReport.created_at).toLocaleDateString()}
@@ -1788,8 +1830,8 @@ export default function Reports() {
                       }}
                       disabled={loadingPlatform === selectedReport.platform}
                       className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-neutral-700/50 transition-colors text-gray-500 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="重新生成报告"
-                      aria-label="重新生成报告"
+                      title={t.reportsPage.regenerateReport}
+                      aria-label={t.reportsPage.regenerateReport}
                     >
                       <motion.div
                         animate={loadingPlatform === selectedReport.platform ? { rotate: 360 } : {}}
@@ -1802,7 +1844,7 @@ export default function Reports() {
 
                   <div className="space-y-4 flex-1">
                     <div>
-                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">AI 总结</h3>
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{t.reportsPage.aiSummary}</h3>
                       <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                         {selectedReport.summary}
                       </p>
@@ -1811,10 +1853,10 @@ export default function Reports() {
                     {/* 动态可视化展示区 */}
                     <div className="p-3 rounded-xl bg-gray-50 dark:bg-neutral-900 border border-gray-100 dark:border-neutral-700 h-32">
                       <div className="w-full h-full">
-                        {selectedReport.platform === 'bilibili' && <BilibiliWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
-                        {selectedReport.platform === 'steam' && <SteamWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
-                        {selectedReport.platform === 'github' && <GithubWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
-                        {selectedReport.platform === 'netease' && <NeteaseWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
+                        {selectedReport.platform === 'bilibili' && <BilibiliWidget data={selectedReport.card_visuals} showOverview={showOverview} defaultDanmaku={defaultDanmaku} />}
+                        {selectedReport.platform === 'steam' && <SteamWidget data={selectedReport.card_visuals} showOverview={showOverview} defaultPlayerType={defaultPlayerType} />}
+                        {selectedReport.platform === 'github' && <GithubWidget data={selectedReport.card_visuals} showOverview={showOverview} defaultLevel={defaultDevLevel} levelKeywords={levelKeywords} />}
+                        {selectedReport.platform === 'netease' && <NeteaseWidget data={selectedReport.card_visuals} showOverview={showOverview} tenThousandSuffix={t.reportsPage.tenThousandSuffix} />}
                       </div>
                     </div>
                   </div>
@@ -1824,7 +1866,7 @@ export default function Reports() {
                 <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-white dark:bg-neutral-950">
                   <div className="flex items-center gap-2 mb-6">
                     <FaRobot className="text-indigo-500 text-lg" />
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">深度洞察报告</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t.reportsPage.deepInsightReport}</h3>
                   </div>
 
                   <div className="grid gap-4">
@@ -1905,14 +1947,14 @@ export default function Reports() {
                       // 舞台模式：显示当前播放的平台
                       <>
                         <div className="text-base">
-                          {PLATFORMS.find(p => p.id === stageReportData.platform)?.icon}
+                          {translatedPlatforms.find(p => p.id === stageReportData.platform)?.icon}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate" style={{ color: 'var(--color-primary)' }}>
-                            {PLATFORMS.find(p => p.id === stageReportData.platform)?.name || stageReportData.platform}
+                            {translatedPlatforms.find(p => p.id === stageReportData.platform)?.name || stageReportData.platform}
                           </div>
                           <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                            舞台模式播放中
+                            {t.reportsPage.stagePlaying}
                           </div>
                         </div>
                       </>
@@ -1923,15 +1965,15 @@ export default function Reports() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z" />
                         </svg>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate" style={{ color: 'var(--color-primary)' }}>平台报告</div>
-                          <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">点击卡瑳查看</div>
+                          <div className="text-sm font-medium truncate" style={{ color: 'var(--color-primary)' }}>{t.reportsPage.platformReport}</div>
+                          <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{t.reportsPage.clickToView}</div>
                         </div>
                         
                         {/* 播放全部按钮 */}
                         <button
                           onClick={startPlayAll}
                           className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                          title="播放所有平台报告"
+                          title={t.reportsPage.playAllReports}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z" />
@@ -1949,7 +1991,7 @@ export default function Reports() {
                             onClick={refreshStageReport}
                             disabled={refreshingStage}
                             className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={refreshingStage ? '正在刷新...' : '刷新当前报告'}
+                            title={refreshingStage ? t.reportsPage.refreshing : t.reportsPage.refreshCurrentReport}
                           >
                             <motion.svg 
                               className="w-4 h-4" 
@@ -1971,7 +2013,7 @@ export default function Reports() {
                             window.dispatchEvent(new CustomEvent('stage-toggle-pause'));
                           }}
                           className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                          title={stagePaused ? '继续播放' : '暂停'}
+                          title={stagePaused ? t.reportsPage.continuePlay : t.reportsPage.pause}
                         >
                           {stagePaused ? (
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -1988,7 +2030,7 @@ export default function Reports() {
                         <button
                           onClick={closeStageMode}
                           className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                          title="关闭舞台"
+                          title={t.reportsPage.closeStage}
                         >
                           <FaTimes size={14} />
                         </button>
@@ -2037,7 +2079,7 @@ export default function Reports() {
                     } else if (isAdmin) {
                       generatePlatformReport(platform.id);
                     } else {
-                      setToastMessage('⛗ 仅管理员可生成报告');
+                      setToastMessage(`⛗ ${t.reportsPage.adminOnlyGenerate}`);
                     }
                   }}
                 >
@@ -2056,7 +2098,7 @@ export default function Reports() {
                             </motion.div>
                           ) : !platformReport ? (
                             <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
-                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? '点击生成' : '无报告'}</div>
+                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? t.reportsPage.clickToGenerate : t.reportsPage.noReport}</div>
                             </div>
                           ) : (
                             <div className="w-full h-full">
@@ -2064,6 +2106,7 @@ export default function Reports() {
                                 data={platformReport.card_visuals} 
                                 onContentChange={contentChangeHandlers[platform.id]}
                                 showOverview={showOverview}
+                                defaultDanmaku={defaultDanmaku}
                               />
                             </div>
                           )}
@@ -2114,7 +2157,7 @@ export default function Reports() {
                                       color: '#00A1D6'
                                     }}
                                   >
-                                    {cardContents[platform.id].type === 'anime' ? '追番' : cardContents[platform.id].type === 'tv_series' ? '追剧' : '视频'}
+                                    {cardContents[platform.id].type === 'anime' ? t.reportsPage.anime : cardContents[platform.id].type === 'tv_series' ? t.reportsPage.tvSeries : t.reportsPage.video}
                                   </span>
                                 </motion.div>
                               )}
@@ -2133,7 +2176,7 @@ export default function Reports() {
                             </motion.div>
                           ) : !platformReport ? (
                             <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
-                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? '点击生成' : '无报告'}</div>
+                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? t.reportsPage.clickToGenerate : t.reportsPage.noReport}</div>
                             </div>
                           ) : (
                             <div className="w-full h-full">
@@ -2141,6 +2184,7 @@ export default function Reports() {
                                 data={platformReport.card_visuals} 
                                 onContentChange={contentChangeHandlers[platform.id]}
                                 showOverview={showOverview}
+                                defaultPlayerType={defaultPlayerType}
                               />
                             </div>
                           )}
@@ -2201,7 +2245,7 @@ export default function Reports() {
                             </motion.div>
                           ) : !platformReport ? (
                             <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
-                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? '点击生成' : '无报告'}</div>
+                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? t.reportsPage.clickToGenerate : t.reportsPage.noReport}</div>
                             </div>
                           ) : (
                             <div className="w-full h-full">
@@ -2209,6 +2253,8 @@ export default function Reports() {
                                 data={platformReport.card_visuals} 
                                 onContentChange={contentChangeHandlers[platform.id]}
                                 showOverview={showOverview}
+                                defaultLevel={defaultDevLevel}
+                                levelKeywords={levelKeywords}
                               />
                             </div>
                           )}
@@ -2280,7 +2326,7 @@ export default function Reports() {
                             </motion.div>
                           ) : !platformReport ? (
                             <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
-                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? '点击生成' : '无报告'}</div>
+                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? t.reportsPage.clickToGenerate : t.reportsPage.noReport}</div>
                             </div>
                           ) : (
                             <div className="w-full h-full">
@@ -2288,6 +2334,7 @@ export default function Reports() {
                                 data={platformReport.card_visuals} 
                                 onContentChange={contentChangeHandlers[platform.id]}
                                 showOverview={showOverview}
+                                tenThousandSuffix={t.reportsPage.tenThousandSuffix}
                               />
                             </div>
                           )}
@@ -2366,11 +2413,11 @@ export default function Reports() {
                             </motion.div>
                           ) : !platformReport ? (
                             <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
-                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? '点击生成' : '无报告'}</div>
+                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? t.reportsPage.clickToGenerate : t.reportsPage.noReport}</div>
                             </div>
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <div className="text-[10px] text-gray-400">未知平台</div>
+                              <div className="text-[10px] text-gray-400">{t.reportsPage.unknownPlatform}</div>
                             </div>
                           )}
                         </div>
@@ -2416,7 +2463,7 @@ export default function Reports() {
                                 window.dispatchEvent(event);
                               }}
                               className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                              title={stagePaused ? '继续播放' : '暂停'}
+                              title={stagePaused ? t.reportsPage.continuePlay : t.reportsPage.pause}
                             >
                               {stagePaused ? (
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -2431,7 +2478,7 @@ export default function Reports() {
                             <button
                               onClick={handleUserCloseStage}
                               className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                              title="关闭舞台"
+                              title={t.reportsPage.closeStage}
                             >
                               <FaTimes size={14} />
                             </button>
@@ -2462,7 +2509,7 @@ export default function Reports() {
                                 type="text"
                                 value={customStyle}
                                 onChange={(e) => setCustomStyle(e.target.value)}
-                                placeholder="输入风格描述..."
+                                placeholder={t.reportsPage.styleDescPlaceholder}
                                 className="clean-input flex-1 min-w-0 text-sm"
                               />
                               <motion.button
@@ -2486,7 +2533,7 @@ export default function Reports() {
                                 <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
                                   <FaSync size={10} />
                                 </motion.div>
-                                <span>生成中</span>
+                                <span>{t.reportsPage.generating}</span>
                               </>
                             ) : (
                               <>
@@ -2503,7 +2550,7 @@ export default function Reports() {
                                 >
                                   <FaMagic size={10} />
                                 </motion.div>
-                                <span>生成</span>
+                                <span>{t.reportsPage.generate}</span>
                               </>
                             )}
                           </motion.button>
@@ -2514,8 +2561,8 @@ export default function Reports() {
                           <>
                             <FaMagic className="text-base flex-shrink-0 opacity-50" style={{ color: 'var(--color-accent)' }} />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">综合报告</div>
-                              <div className="text-[10px] text-gray-500 dark:text-gray-500">仅管理员可生成</div>
+                              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{t.reportsPage.comprehensiveReport}</div>
+                              <div className="text-[10px] text-gray-500 dark:text-gray-500">{t.reportsPage.adminOnlyGenerateHint}</div>
                             </div>
                           </>
                         )}
@@ -2565,7 +2612,7 @@ export default function Reports() {
                           type: 'comprehensive',
                           综合分析: analysis,
                           library_items: allLibraryItems,
-                          title: analysis.visual_style || '全平台综合报告',
+                          title: analysis.visual_style || t.reportsPage.allPlatformReport,
                         });
                         setIsStageMode(true);
                       }}

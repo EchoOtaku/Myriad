@@ -6,6 +6,7 @@ import { invalidateAuthCache, invalidateUserInfoCache, clearAllUserCache } from 
 import LoginForm from '../LoginForm';
 import { UserModal } from './UserModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface User {
   username: string;
@@ -32,6 +33,7 @@ interface UserSectionProps {
  */
 export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
   const { isAuthenticated: authIsAuthenticated, user: authUser } = useAuth();
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
@@ -68,9 +70,9 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
         const profileData = await profileResponse.json();
         if (profileData.success && profileData.user_info) {
           setUserInfo({
-            name: profileData.user_info.name || '未知用户',
+            name: profileData.user_info.name || t.userModal.unknownUser,
             avatar: profileData.user_info.avatar || '',
-            bio: profileData.user_info.bio || '这家伙很懒，没有介绍呢',
+            bio: profileData.user_info.bio || t.userModal.defaultBio,
             platform: profileData.user_info.platform || 'Unknown'
           });
         }
@@ -196,7 +198,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
             <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">请先登录</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">{t.userModal.pleaseLogin}</span>
           </>
         )}
       </button>
@@ -218,7 +220,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
               <button
                 onClick={handleUserModalClose}
                 className="login-close-btn"
-                aria-label="关闭"
+                aria-label={t.common.close}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -12,10 +12,74 @@ import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
 import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useI18n } from '../../contexts/I18nContext';
+import { TranslationKeys } from '../../i18n';
 
 // 缓存配置
 const CACHE_KEY = 'weather_data_cache';
 const CACHE_DURATION = 30 * 60 * 1000; // 30分钟
+
+/**
+ * 根据 WMO 天气代码返回对应的翻译键
+ * @param code WMO 天气代码
+ * @returns 翻译键名
+ */
+function getWeatherKeyFromCode(code: number): keyof TranslationKeys['weather'] {
+  const weatherKeyMap: Record<number, keyof TranslationKeys['weather']> = {
+    0: 'sunny',
+    1: 'sunny',
+    2: 'partlyCloudy',
+    3: 'cloudy',
+    45: 'foggy',
+    48: 'foggy',
+    51: 'lightRain',
+    53: 'lightRain',
+    55: 'lightRain',
+    56: 'freezingRain',
+    57: 'freezingRain',
+    61: 'lightRain',
+    63: 'moderateRain',
+    65: 'heavyRain',
+    66: 'freezingRain',
+    67: 'freezingRain',
+    71: 'lightSnow',
+    73: 'moderateSnow',
+    75: 'heavySnow',
+    77: 'sleet',
+    80: 'showers',
+    81: 'showers',
+    82: 'heavyShowers',
+    85: 'snowShowers',
+    86: 'heavySnowShowers',
+    95: 'thunderstorm',
+    96: 'thunderstorm',
+    99: 'thunderstorm'
+  };
+
+  return weatherKeyMap[code] || 'unknown';
+}
+
+/**
+ * 根据 WMO 天气代码返回对应的主题颜色
+ * @param code WMO 天气代码
+ * @returns 主题颜色
+ */
+function getThemeColorFromCode(code: number): string {
+  // 晴天
+  if (code === 0 || code === 1) return '#f59e0b';
+  // 多云/阴天
+  if (code === 2 || code === 3) return '#6b7280';
+  // 雾
+  if (code === 45 || code === 48) return '#9ca3af';
+  // 雨
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return '#3b82f6';
+  // 雪
+  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return '#6366f1';
+  // 雷暴
+  if (code >= 95 && code <= 99) return '#8b5cf6';
+  // 默认
+  return '#10b981';
+}
 
 export interface WeatherWidgetProps {
   config: WidgetConfig;
@@ -28,6 +92,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   const perf = usePerformanceProfile();
   const anim = useAnimationLevel();
   const uniqueId = useId();
+  const { t, locale } = useI18n();
   
   // 🆕 接入动画调度器 - 天气图标动画优先级低(3)
   const { isAnimating } = useAnimationSlot(`weather-${uniqueId}`, {
@@ -54,10 +119,10 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         }
       }
     } catch (err) {
-      console.error('加载天气缓存失败:', err);
+      console.error(t.weatherWidget.loadCacheFailed + ':', err);
     }
     return false;
-  }, []);
+  }, [t]);
 
   // 保存到缓存
   const saveToCache = useCallback((data: WeatherData) => {
@@ -67,9 +132,9 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         timestamp: Date.now()
       }));
     } catch (err) {
-      console.error('保存天气缓存失败:', err);
+      console.error(t.weatherWidget.saveCacheFailed + ':', err);
     }
-  }, []);
+  }, [t]);
 
   const fetchWeather = useCallback(async () => {
     try {
@@ -79,18 +144,18 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
         saveToCache(weather);
       }
     } catch (error) {
-      console.error('获取天气信息失败:', error);
+      console.error(t.weatherWidget.fetchWeatherFailed + ':', error);
     } finally {
       setLoading(false);
     }
-  }, [saveToCache]);
+  }, [saveToCache, t]);
 
   useEffect(() => {
     if (isPreview) {
       setWeatherData({
         temperature: '24°',
-        weather: '晴',
-        city: '示例城市',
+        weather: t.weatherWidget.sunny,
+        city: t.weatherWidget.sampleCity,
         icon: '☀️',
         humidity: 45,
         windSpeed: 12
@@ -138,13 +203,15 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   // 根据天气状况选择主题色 - 使用 useMemo 缓存
   const themeColor = useMemo(() => {
     if (!weatherData) return '#10b981';
-    const weather = weatherData.weather.toLowerCase();
-    if (weather.includes('晴')) return '#f59e0b';
-    if (weather.includes('雨')) return '#3b82f6';
-    if (weather.includes('雪')) return '#6366f1';
-    if (weather.includes('云') || weather.includes('阴')) return '#6b7280';
-    return '#10b981';
+    return getThemeColorFromCode(weatherData.weatherCode ?? 0);
   }, [weatherData]);
+
+  // 获取翻译后的天气状态文本
+  const weatherText = useMemo(() => {
+    if (!weatherData) return '';
+    const key = getWeatherKeyFromCode(weatherData.weatherCode ?? 0);
+    return t.weather[key] || weatherData.weather;
+  }, [weatherData, t]);
 
   if (loading) {
     return (
@@ -157,7 +224,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   if (!weatherData) {
     return (
       <div className="h-full w-full flex items-center justify-center text-gray-400">
-        <span>天气信息不可用</span>
+        <span>{t.weather.unavailable}</span>
       </div>
     );
   }
@@ -206,13 +273,13 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
                   <span
                     className="text-sm text-gray-600 dark:text-gray-400 font-medium truncate"
                   >
-                    {weatherData.weather}
+                    {weatherText}
                   </span>
                   {weatherData.feelsLike !== undefined && (
                     <span
                       className="text-xs text-gray-500 dark:text-gray-500"
                     >
-                      体感 {weatherData.feelsLike}°
+                      {t.weather.feelsLike} {weatherData.feelsLike}°
                     </span>
                   )}
                 </div>
@@ -222,19 +289,19 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             {/* 底部：详细信息 (一行排列) */}
             <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400 overflow-hidden whitespace-nowrap" style={{ fontSize: '0.6rem' }}>
               {weatherData.humidity !== undefined && (
-                <div className="flex items-center gap-1" title="湿度">
+                <div className="flex items-center gap-1" title={t.weather.humidity}>
                   <span>💧</span>
                   <span>{weatherData.humidity}%</span>
                 </div>
               )}
               {weatherData.windSpeed !== undefined && (
-                <div className="flex items-center gap-1" title="风速">
+                <div className="flex items-center gap-1" title={t.weather.windSpeed}>
                   <span>🍃</span>
                   <span>{Math.round(weatherData.windSpeed)}km/h</span>
                 </div>
               )}
               {weatherData.aqi !== undefined && (
-                <div className="flex items-center gap-1" title="空气质量">
+                <div className="flex items-center gap-1" title={t.weather.airQuality}>
                   <span>{
                     weatherData.aqi <= 50 ? '🌿' :
                     weatherData.aqi <= 100 ? '🌫️' :
@@ -263,7 +330,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
                   transition={{ delay: 0.1 * i }}
                 >
                   <div className="text-gray-500 dark:text-gray-400 w-8" style={{ fontSize: '0.6rem' }}>
-                    {new Date(day.date).toLocaleDateString('zh-CN', { weekday: 'short' })}
+                    {new Date(day.date).toLocaleDateString(locale, { weekday: 'short' })}
                   </div>
                   <div className="flex-shrink-0 leading-none mx-1 text-base">{day.icon}</div>
                   <div className="flex items-center gap-1 justify-end flex-1">
@@ -274,7 +341,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
               ))
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ fontSize: '0.6rem' }}>
-                更新中...
+                {t.weather.updating}
               </div>
             )}
           </div>
@@ -310,7 +377,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
                       {weatherData.temperature}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
-                      {weatherData.weather}
+                      {weatherText}
                     </div>
                 </div>
              </div>
@@ -339,7 +406,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
           <div className="w-[25%] pl-1 flex flex-col items-center justify-center h-full">
             {tomorrow ? (
                 <>
-                  <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5 scale-90 origin-bottom">明天</div>
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5 scale-90 origin-bottom">{t.weather.tomorrow}</div>
                   <div className="flex items-center gap-1.5">
                     <span className="leading-none text-base">{tomorrow.icon}</span>
                      <div className="flex flex-col items-end leading-none gap-0.5">
@@ -349,7 +416,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
                   </div>
                 </>
             ) : (
-              <div className="text-xs text-gray-400 text-center">暂无预报</div>
+              <div className="text-xs text-gray-400 text-center">{t.weather.noForecast}</div>
             )}
           </div>
         </div>
@@ -407,7 +474,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
               animate={canAnimate ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }}
               transition={canAnimate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
             >
-              {weatherData.weather}
+              {weatherText}
             </motion.span>
           </motion.div>
           <motion.div 
@@ -433,13 +500,13 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             transition={perf.lowEndDevice ? { duration: 0.2 } : { duration: 0.4, delay: 0.3 }}
           >
             {weatherData.humidity !== undefined && (
-              <div className="flex items-center gap-0.5" title="湿度">
+              <div className="flex items-center gap-0.5" title={t.weather.humidity}>
                 <span>💧</span>
                 <span className="text-gray-600 dark:text-gray-400">{weatherData.humidity}%</span>
               </div>
             )}
             {weatherData.windSpeed !== undefined && (
-              <div className="flex items-center gap-0.5" title="风速">
+              <div className="flex items-center gap-0.5" title={t.weather.windSpeed}>
                 <span>🍃</span>
                 <span className="text-gray-600 dark:text-gray-400">{Math.round(weatherData.windSpeed)}km/h</span>
               </div>

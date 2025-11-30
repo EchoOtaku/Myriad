@@ -11,7 +11,9 @@ import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { GlowBackground } from './shared/GlowBackground';
 import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useI18n } from '../../contexts/I18nContext';
 
+// Navigation guide type definition
 interface NavigationGuide {
   title: string;
   description: string;
@@ -20,32 +22,12 @@ interface NavigationGuide {
   color: string;
 }
 
-const navigationGuides: NavigationGuide[] = [
-  {
-    title: '资料库',
-    description: '多平台内容聚合',
-    features: [
-      '展示个性，在一个地方',
-    ],
-    path: '/library',
-    color: '#8b5cf6',
-  },
-  {
-    title: '数据报告',
-    description: '双层智能分析',
-    features: [
-      '平台画像 + AI综合分析',
-    ],
-    path: '/reports',
-    color: '#06b6d4',
-  },
-];
-
 export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
   // 如果是预览模式，强制 scale 为 1，因为外部容器已经进行了缩放
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const anim = useAnimationLevel();
   const uniqueId = useId();
+  const { t, locale } = useI18n();
   
   // 🆕 接入动画调度器 - 欢迎动画优先级低(4)
   const { isAnimating } = useAnimationSlot(`welcome-${uniqueId}`, {
@@ -61,21 +43,43 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   const [currentGuideIndex, setCurrentGuideIndex] = useState(0);
   const [greeting, setGreeting] = useState('');
 
+  // Navigation guides with i18n
+  const navigationGuides = useMemo(() => [
+    {
+      title: t.widgets.library,
+      description: t.widgets.multiPlatformAggregation,
+      features: [
+        t.widgets.showPersonality,
+      ],
+      path: '/library',
+      color: '#8b5cf6',
+    },
+    {
+      title: t.widgets.dataReport,
+      description: t.widgets.dualLayerAnalysis,
+      features: [
+        t.widgets.platformProfile,
+      ],
+      path: '/reports',
+      color: '#06b6d4',
+    },
+  ], [t]);
+
   // 动态问候语
   useEffect(() => {
     if (isPreview) {
-      setGreeting('欢迎回来');
+      setGreeting(t.greeting.welcome);
       return;
     }
     const hour = new Date().getHours();
-    if (hour < 6) setGreeting('夜深了');
-    else if (hour < 9) setGreeting('早上好');
-    else if (hour < 12) setGreeting('上午好');
-    else if (hour < 14) setGreeting('中午好');
-    else if (hour < 18) setGreeting('下午好');
-    else if (hour < 22) setGreeting('晚上好');
-    else setGreeting('夜深了');
-  }, [isPreview]);
+    if (hour < 6) setGreeting(t.greeting.lateNight);
+    else if (hour < 9) setGreeting(t.greeting.morning);
+    else if (hour < 12) setGreeting(t.greeting.morning);
+    else if (hour < 14) setGreeting(t.greeting.noon);
+    else if (hour < 18) setGreeting(t.greeting.afternoon);
+    else if (hour < 22) setGreeting(t.greeting.evening);
+    else setGreeting(t.greeting.night);
+  }, [isPreview, t]);
 
   // 轮播引导卡片 - 使用 timeout 链 + 可见性暂停
   useEffect(() => {
@@ -119,12 +123,12 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
 
   // 日期格式化 - 提取到 useMemo 避免每次渲染都格式化
   const formattedDate = useMemo(() => {
-    return new Date().toLocaleDateString('zh-CN', { 
+    return new Date().toLocaleDateString(locale, { 
       month: 'long', 
       day: 'numeric',
       weekday: 'long'
     });
-  }, []);
+  }, [locale]);
 
   // 判断是否为2x2布局
   const is2x2 = config.size === '2x2';
@@ -352,7 +356,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.4, delay: 0.4 }}
                 >
-                  <span>前往</span>
+                  <span>{t.common.go}</span>
                   <motion.svg 
                     className="w-3 h-3"
                     style={{ width: `${12 * scale}px`, height: `${12 * scale}px` }}

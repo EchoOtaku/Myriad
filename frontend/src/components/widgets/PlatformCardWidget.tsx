@@ -2,11 +2,13 @@
  * 平台卡片小组件 - 显示单个平台的快捷入口
  */
 
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { FaSteam, FaGithub } from 'react-icons/fa';
+import { useI18n } from '../../contexts/I18nContext';
 
 const PLATFORMS = [
   { 
@@ -32,7 +34,7 @@ const PLATFORMS = [
   },
   { 
     id: 'netease', 
-    name: '网易云', 
+    name: 'NetEase', 
     icon: <SiNeteasecloudmusic />, 
     color: 'from-red-500 to-red-600',
     emoji: '🎵'
@@ -41,10 +43,19 @@ const PLATFORMS = [
 
 export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   
   // 从配置中获取平台ID，默认为bilibili
   const platformId = config.config?.platformId || 'bilibili';
   const platform = PLATFORMS.find(p => p.id === platformId) || PLATFORMS[0];
+  
+  // 翻译的平台名称
+  const displayName = useMemo(() => {
+    if (platformId === 'netease') {
+      return t.platformCard.neteaseMusic;
+    }
+    return platform.name;
+  }, [platformId, platform.name, t]);
 
   const handleClick = () => {
     if (!isEditMode) {
@@ -73,7 +84,7 @@ export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps)
             {platform.icon}
           </div>
           <span className="text-white font-bold text-lg">
-            {platform.name}
+            {displayName}
           </span>
         </div>
         

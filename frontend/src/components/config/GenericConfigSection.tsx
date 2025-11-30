@@ -66,26 +66,6 @@ const GenericConfigSection = React.memo<GenericConfigSectionProps>(({
         )}
 
         {otherFields.map((field) => {
-          if (field.field_type === 'select' && field.key === 'topic_style') {
-            return (
-              <div key={field.key} className="form-group">
-                <label className="form-label">
-                  {field.label}
-                  {field.required && <span className="required-mark">*</span>}
-                </label>
-                <select
-                  value={field.value}
-                  onChange={(e) => onUpdateField(field.key, e.target.value)}
-                  className="form-select"
-                >
-                  <option value="balanced">平衡</option>
-                  <option value="professional">专业</option>
-                  <option value="casual">轻松</option>
-                </select>
-              </div>
-            );
-          }
-
           if (field.field_type === 'number') {
             return (
               <div key={field.key} className="form-group">

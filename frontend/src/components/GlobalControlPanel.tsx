@@ -19,6 +19,7 @@ import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAuth } from '../contexts/AuthContext';
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext';
+import { useI18n } from '../contexts/I18nContext';
 
 interface DynamicContent {
   type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
@@ -30,6 +31,7 @@ interface DynamicContent {
 const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
+  const { locale, setLocale, t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDynamicContent, setShowDynamicContent] = useState(true);
   const [showPanelContent, setShowPanelContent] = useState(false);
@@ -100,7 +102,14 @@ const GlobalControlPanel: React.FC = () => {
     const contents: DynamicContent[] = [];
 
     // 1. 问候语（始终显示，立即加载）
-    const greeting = getGreeting(user?.username);
+    const greetingTranslations = {
+      morning: t.greeting.morning,
+      noon: t.greeting.noon,
+      afternoon: t.greeting.afternoon,
+      evening: t.greeting.evening,
+      night: t.greeting.night,
+    };
+    const greeting = getGreeting(user?.username, greetingTranslations, locale);
     contents.push({
       type: 'greeting',
       icon: greeting.icon,
@@ -122,12 +131,25 @@ const GlobalControlPanel: React.FC = () => {
             const hasWeather = prev.some(c => c.type === 'weather');
             if (hasWeather) return prev;
             
+            // Helper to translate weather code
+            const getWeatherText = (code: number) => {
+              if (code === 0 || code === 1) return t.weather.sunny;
+              if (code === 2 || code === 3) return t.weather.cloudy;
+              if (code === 45 || code === 48) return t.weather.foggy;
+              if (code >= 51 && code <= 67) return t.weather.rainy;
+              if (code >= 80 && code <= 82) return t.weather.rainy;
+              if (code >= 71 && code <= 77) return t.weather.snowy;
+              if (code >= 85 && code <= 86) return t.weather.snowy;
+              if (code >= 95 && code <= 99) return t.weather.thunderstorm;
+              return t.weather.unavailable;
+            };
+
             // 在问候语后插入天气信息
             const newContents = [...prev];
             newContents.splice(1, 0, {
               type: 'weather',
               icon: weather.icon,
-              text: `${weather.temperature} ${weather.weather}`,
+              text: `${weather.temperature} ${getWeatherText(weather.weatherCode)}`,
               subtext: weather.city
             });
             return newContents;
@@ -141,7 +163,7 @@ const GlobalControlPanel: React.FC = () => {
     // 3. 一言警句（高优先级）
     loadResource.high('quote-info', async () => {
       try {
-        const quote = await getRandomQuote();
+        const quote = await getRandomQuote(locale);
         if (quote) {
           setQuoteData(quote);
           setDynamicContents(prev => {
@@ -166,9 +188,9 @@ const GlobalControlPanel: React.FC = () => {
     // 4. 主题状态 - 立即显示
     const theme = getThemeInfo();
     const themeTexts = [
-      '主题切换',
-      '壁纸切换',
-      '外观设置'
+      t.controlPanel.themeSwitch,
+      t.controlPanel.wallpaperSwitch,
+      t.controlPanel.appearanceSettings
     ];
     const randomText = themeTexts[Math.floor(Math.random() * themeTexts.length)];
     
@@ -176,9 +198,9 @@ const GlobalControlPanel: React.FC = () => {
       type: 'theme',
       icon: '⚙️',
       text: randomText,
-      subtext: '点击展开设置'
+      subtext: t.controlPanel.clickToExpand
     }]);
-  }, [user?.username]);
+  }, [user?.username, t, locale]);
 
   // 同步 AuthContext 的用户信息到本地状态
   useEffect(() => {
@@ -633,7 +655,7 @@ const GlobalControlPanel: React.FC = () => {
                   <button
                     onClick={handleClosePanel}
                     className="control-close-btn"
-                    aria-label="关闭"
+                    aria-label={t.common.close}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -656,14 +678,14 @@ const GlobalControlPanel: React.FC = () => {
                         {isDark ? '🌙' : '☀️'}
                       </div>
                       <div>
-                        <h4 className="control-item-title">外观</h4>
-                        <p className="control-item-desc">{isDark ? '深色' : '浅色'}</p>
+                        <h4 className="control-item-title">{t.controlPanel.appearance}</h4>
+                        <p className="control-item-desc">{isDark ? t.controlPanel.dark : t.controlPanel.light}</p>
                       </div>
                     </div>
                     <button
                       onClick={toggleTheme}
                       className={`control-toggle ${isDark ? 'active' : ''}`}
-                      aria-label="切换主题"
+                      aria-label={t.controlPanel.themeSwitch}
                     >
                       <span className="control-toggle-slider"></span>
                     </button>
@@ -676,11 +698,11 @@ const GlobalControlPanel: React.FC = () => {
                         {animPreference === 'light' ? '🐌' : animPreference === 'standard' ? '⚡' : '🔄'}
                       </div>
                       <div>
-                        <h4 className="control-item-title">动效</h4>
+                        <h4 className="control-item-title">{t.controlPanel.animation}</h4>
                         <p className="control-item-desc">
                           {animPreference === 'auto'
-                            ? (anim.level === 'light' ? '低性能' : anim.level === 'standard' ? '中高性能' : '无动效')
-                            : animPreference === 'light' ? '低性能' : '中高性能'
+                            ? (anim.level === 'light' ? t.controlPanel.lowPerformance : anim.level === 'standard' ? t.controlPanel.highPerformance : t.controlPanel.noAnimation)
+                            : animPreference === 'light' ? t.controlPanel.lowPerformance : t.controlPanel.highPerformance
                           }
                         </p>
                       </div>
@@ -688,9 +710,45 @@ const GlobalControlPanel: React.FC = () => {
                     <button
                       onClick={togglePerformanceMode}
                       className={`control-toggle ${(animPreference === 'standard' || (animPreference === 'auto' && anim.level === 'standard')) ? 'active' : ''}`}
-                      aria-label="切换动效等级"
+                      aria-label={t.controlPanel.animation}
                     >
                       <span className="control-toggle-slider"></span>
+                    </button>
+                  </div>
+
+                  {/* 语言切换 */}
+                  <div className="control-item control-item-compact">
+                    <div className="control-item-info">
+                      <div className="control-item-icon icon-language">
+                        🌐
+                      </div>
+                      <div>
+                        <h4 className="control-item-title">{t.controlPanel.language}</h4>
+                        <p className="control-item-desc">{locale === 'zh-CN' ? '简体中文' : 'English'}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        // 循环切换语言列表
+                        const locales = ['zh-CN', 'en-US'] as const;
+                        const currentIndex = locales.indexOf(locale);
+                        const nextIndex = (currentIndex + 1) % locales.length;
+                        setLocale(locales[nextIndex]);
+                      }}
+                      onWheel={(e) => {
+                        e.preventDefault();
+                        const locales = ['zh-CN', 'en-US'] as const;
+                        const currentIndex = locales.indexOf(locale);
+                        // 向下滚动 = 下一个，向上滚动 = 上一个
+                        const nextIndex = e.deltaY > 0 
+                          ? (currentIndex + 1) % locales.length
+                          : (currentIndex - 1 + locales.length) % locales.length;
+                        setLocale(locales[nextIndex]);
+                      }}
+                      className="language-switch-btn"
+                      aria-label={t.controlPanel.languageSwitch}
+                    >
+                      <span className="language-code">{locale === 'zh-CN' ? '中' : 'En'}</span>
                     </button>
                   </div>
 
@@ -703,14 +761,14 @@ const GlobalControlPanel: React.FC = () => {
                           🖼️
                         </div>
                         <div>
-                          <h4 className="control-item-title">壁纸</h4>
-                          <p className="control-item-desc">随机</p>
+                          <h4 className="control-item-title">{t.controlPanel.wallpaper}</h4>
+                          <p className="control-item-desc">{t.controlPanel.random}</p>
                         </div>
                       </div>
                       <button
                         onClick={refreshWallpaper}
                         className="control-action-btn"
-                        aria-label="刷新壁纸"
+                        aria-label={t.controlPanel.wallpaperSwitch}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -727,8 +785,8 @@ const GlobalControlPanel: React.FC = () => {
                           ⚙️
                         </div>
                         <div>
-                          <h4 className="control-item-title">配置</h4>
-                          <p className="control-item-desc">系统</p>
+                          <h4 className="control-item-title">{t.controlPanel.configuration}</h4>
+                          <p className="control-item-desc">{t.controlPanel.system}</p>
                         </div>
                       </div>
                       <button
@@ -737,7 +795,7 @@ const GlobalControlPanel: React.FC = () => {
                           navigate('/config');
                         }}
                         className="control-action-btn"
-                        aria-label="系统配置"
+                        aria-label={t.controlPanel.configuration}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />

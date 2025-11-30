@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { API_URL } from '../../config';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
+import { useI18n } from '../../contexts/I18nContext';
 
 // 缓存配置
 const CACHE_KEY = 'library_stats_cache';
@@ -105,6 +106,7 @@ StatCard.displayName = 'StatCard';
 
 export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
+  const { t } = useI18n();
   const [stats, setStats] = useState<LibraryStats>({
     total: 0,
     game: 0,
@@ -127,10 +129,10 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
         }
       }
     } catch (err) {
-      console.error('加载缓存失败:', err);
+      console.error(t.quickStats.loadCacheFailed + ':', err);
     }
     return false;
-  }, []);
+  }, [t]);
 
   // 保存到缓存
   const saveToCache = useCallback((data: LibraryStats) => {
@@ -140,9 +142,9 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
         timestamp: Date.now()
       }));
     } catch (err) {
-      console.error('保存缓存失败:', err);
+      console.error(t.quickStats.saveCacheFailed + ':', err);
     }
-  }, []);
+  }, [t]);
 
   const fetchLibraryStats = useCallback(async () => {
     try {
@@ -179,12 +181,12 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
       }
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
-        console.error('获取资料库统计失败:', err);
+        console.error(t.quickStats.fetchStatsFailed + ':', err);
       }
     } finally {
       setLoading(false);
     }
-  }, [saveToCache]);
+  }, [saveToCache, t]);
 
   useEffect(() => {
     if (isPreview) {
@@ -211,12 +213,12 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
   }, [loadFromCache, fetchLibraryStats, isPreview]);
 
   const categories = useMemo(() => [
-    { key: 'game', label: '游戏', color: '#1b2838' },
-    { key: 'video', label: '视频', color: '#00A1D6' },
-    { key: 'music', label: '音乐', color: '#d33a31' },
-    { key: 'anime', label: '动漫', color: '#fb7299' },
-    { key: 'tv_series', label: '剧集', color: '#6366f1' },
-  ], []);
+    { key: 'game', label: t.quickStats.game, color: '#1b2838' },
+    { key: 'video', label: t.quickStats.video, color: '#00A1D6' },
+    { key: 'music', label: t.quickStats.music, color: '#d33a31' },
+    { key: 'anime', label: t.quickStats.anime, color: '#fb7299' },
+    { key: 'tv_series', label: t.quickStats.tvSeries, color: '#6366f1' },
+  ], [t]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
@@ -232,7 +234,7 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
               className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5"
               style={{ fontSize: `${12 * fontScale}px`, marginBottom: `${2 * scale}px` }}
             >
-              内容总览
+              {t.quickStats.widgetTitle}
             </h3>
             <motion.div 
               className="flex items-baseline gap-1"

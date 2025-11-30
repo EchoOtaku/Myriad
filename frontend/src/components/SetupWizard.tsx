@@ -2,6 +2,7 @@
 import { API_URL } from '../config';
 import { FaCheck, FaDatabase, FaUser, FaExclamationTriangle } from 'react-icons/fa';
 import { Spinner } from './Spinner';
+import { useI18n } from '../contexts/I18nContext';
 import './SetupWizard.css';
 
 interface SetupStatus {
@@ -12,6 +13,7 @@ interface SetupStatus {
 }
 
 const SetupWizard: React.FC = () => {
+  const { t } = useI18n();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -93,7 +95,7 @@ const SetupWizard: React.FC = () => {
       setDbConfigured(healthData.database_connected);
       setAdminCreated(data.has_admin_user);
     } catch (err) {
-      setError('无法连接到后端服务，请确保服务器正在运行');
+      setError(t.setup.connectionFailedDesc);
     } finally {
       setLoading(false);
     }
@@ -101,7 +103,7 @@ const SetupWizard: React.FC = () => {
 
   const handleSaveDbConfig = async () => {
     if (!dbConfig.password) {
-      alert('请输入数据库密码');
+      alert(t.setup.enterDbPassword);
       return;
     }
 
@@ -123,21 +125,21 @@ const SetupWizard: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || '保存配置失败');
+        throw new Error(errorData.message || t.setup.saveConfigFailed);
       }
 
       const result = await response.json();
       
       if (result.reload_triggered) {
-        alert('数据库配置已保存！\n\n后端正在重新连接数据库...\n\n请稍候，页面将自动检测连接状态。');
+        alert(`${t.setup.dbConfigSaved}\n\n${t.setup.dbReconnecting}\n\n${t.setup.waitingForConnection}`);
         
         // 开始轮询检查数据库连接状态
         pollDatabaseConnection();
       } else {
-        alert('数据库配置已保存！\n\n请手动重启后端服务以应用更改。');
+        alert(`${t.setup.dbConfigSaved}\n\n${t.setup.restartRequired}`);
       }
     } catch (err: any) {
-      alert('❌ 保存配置失败: ' + err.message);
+      alert('❌ ' + t.setup.saveConfigFailed + ': ' + err.message);
       setSavingDb(false);
     }
   };
@@ -158,7 +160,7 @@ const SetupWizard: React.FC = () => {
           
           // 检查是否已经连接到数据库（不再是配置模式）
           if (healthData.database_connected && healthData.mode !== 'configuration') {
-            alert('数据库连接成功！\n\n系统已切换到正常模式，现在可以继续配置。');
+            alert(`${t.setup.dbConnectionSuccess}\n\n${t.setup.systemSwitchedToNormal}`);
             setSavingDb(false);
             setDbConfigured(true);
             checkSetupStatus();
@@ -174,7 +176,7 @@ const SetupWizard: React.FC = () => {
         setTimeout(checkConnection, pollInterval);
       } else {
         // 超时
-        alert('数据库连接超时\n\n配置已保存，但数据库连接可能失败。\n请检查配置是否正确，或手动重启后端服务。');
+        alert(`${t.setup.dbConnectionTimeout}\n\n${t.setup.dbConnectionTimeoutDesc}`);
         setSavingDb(false);
         checkSetupStatus();
       }
@@ -194,7 +196,7 @@ const SetupWizard: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || '数据库迁移失败');
+        throw new Error(errorData.message || t.setup.dbMigrationFailed);
       }
 
       const result = await response.json();
@@ -203,11 +205,11 @@ const SetupWizard: React.FC = () => {
       let message = result.message;
       if (result.verification) {
         const v = result.verification;
-        message += `\n\n验证结果：`;
-        message += `\n• 总表数：${v.total_tables}`;
-        message += `\n• users 表：${v.users_table ? '是' : '否'}`;
-        message += `\n• platforms 表：${v.platforms_table ? '是' : '否'}`;
-        message += `\n• configurations 表：${v.configurations_table ? '是' : '否'}`;
+        message += `\n\n${t.setup.verificationResult}:`;
+        message += `\n• ${t.setup.totalTables}: ${v.total_tables}`;
+        message += `\n• ${t.setup.usersTable}: ${v.users_table ? t.setup.yes : t.setup.no}`;
+        message += `\n• ${t.setup.platformsTable}: ${v.platforms_table ? t.setup.yes : t.setup.no}`;
+        message += `\n• ${t.setup.configurationsTable}: ${v.configurations_table ? t.setup.yes : t.setup.no}`;
       }
       
       alert(message);
@@ -215,7 +217,7 @@ const SetupWizard: React.FC = () => {
       // 重新检查状态以更新 UI
       await checkSetupStatus();
     } catch (err: any) {
-      alert('❌ 数据库迁移失败: ' + err.message);
+      alert('❌ ' + t.setup.dbMigrationFailed + ': ' + err.message);
     } finally {
       setMigratingDb(false);
     }
@@ -223,23 +225,23 @@ const SetupWizard: React.FC = () => {
 
   const handleCreateAdmin = async () => {
     if (adminForm.username.length < 3 || adminForm.username.length > 20) {
-      alert('用户名必须为 3-20 个字符');
+      alert(t.setup.usernameLengthError);
       return;
     }
 
     const usernameRegex = /^[a-zA-Z0-9_]+$/;
     if (!usernameRegex.test(adminForm.username)) {
-      alert('用户名只能包含字母、数字和下划线');
+      alert(t.setup.usernameFormatError);
       return;
     }
 
     if (adminForm.password.length < 8) {
-      alert('密码至少需要 8 个字符');
+      alert(t.setup.passwordLengthError);
       return;
     }
 
     if (adminForm.password !== adminForm.confirmPassword) {
-      alert('两次输入的密码不一致');
+      alert(t.setup.passwordMismatch);
       return;
     }
 
@@ -257,14 +259,14 @@ const SetupWizard: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || '创建管理员账户失败');
+        throw new Error(errorData.message || t.setup.createAdminFailed);
       }
 
-      alert('管理员账户创建成功！');
+      alert(t.setup.adminCreated);
       setAdminCreated(true);
       checkSetupStatus();
     } catch (err: any) {
-      alert('创建失败: ' + err.message);
+      alert(t.setup.createFailed + ': ' + err.message);
     } finally {
       setCreatingAdmin(false);
     }
@@ -281,13 +283,13 @@ const SetupWizard: React.FC = () => {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <FaExclamationTriangle className="text-2xl sm:text-3xl text-red-600 dark:text-red-400" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">连接失败</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{t.setup.connectionFailed}</h2>
           <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6">{error}</p>
           <button
             onClick={checkSetupStatus}
             className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-[44px] text-sm sm:text-base"
           >
-            重试
+            {t.setup.retry}
           </button>
         </div>
       </div>
@@ -305,15 +307,15 @@ const SetupWizard: React.FC = () => {
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
               <FaCheck className="text-3xl sm:text-4xl text-green-600 dark:text-green-400" />
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">系统配置完成！</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t.setup.complete}</h2>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6 sm:mb-8">
-              您的 Myriad 系统已经准备就绪，可以开始使用了。
+              {t.setup.completeDesc}
             </p>
             <a
               href="/login"
               className="inline-flex px-6 sm:px-8 py-3 text-sm sm:text-base text-white rounded-lg transition-colors setup-complete-link min-h-[44px] items-center justify-center"
             >
-              前往登录
+              {t.setup.goToLogin}
             </a>
           </div>
         </div>
@@ -335,8 +337,8 @@ const SetupWizard: React.FC = () => {
               }`}
             >
               {dbConfigured ? <FaCheck className="text-green-600 dark:text-green-400" /> : <FaDatabase />}
-              <span className="hidden sm:inline">数据库配置</span>
-              <span className="sm:hidden">数据库</span>
+              <span className="hidden sm:inline">{t.setup.databaseConfig}</span>
+              <span className="sm:hidden">{t.setup.database}</span>
             </div>
             <div
               className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
@@ -348,8 +350,8 @@ const SetupWizard: React.FC = () => {
               }`}
             >
               {adminCreated ? <FaCheck className="text-green-600 dark:text-green-400" /> : <FaUser />}
-              <span className="hidden sm:inline">管理员账户</span>
-              <span className="sm:hidden">管理员</span>
+              <span className="hidden sm:inline">{t.setup.adminAccount}</span>
+              <span className="sm:hidden">{t.auth.username}</span>
             </div>
           </div>
         </div>
@@ -367,8 +369,8 @@ const SetupWizard: React.FC = () => {
                       <FaDatabase />
                     </div>
                     <div>
-                      <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">数据库配置</h2>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">配置 PostgreSQL 数据库连接并运行迁移</p>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">{t.setup.databaseConfig}</h2>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.setup.databaseConfigDesc}</p>
                     </div>
                   </div>
 
@@ -380,10 +382,10 @@ const SetupWizard: React.FC = () => {
                           <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
                           <div>
                             <p className="text-sm font-semibold text-amber-800 mb-1">
-                              🔧 后端运行在配置模式
+                              🔧 {t.setup.configurationMode}
                             </p>
                             <p className="text-xs text-amber-700">
-                              数据库未连接。请配置数据库信息，保存后系统将自动重启并连接数据库。
+                              {t.setup.configurationModeDesc}
                             </p>
                           </div>
                         </div>
@@ -392,10 +394,10 @@ const SetupWizard: React.FC = () => {
                     
                     {/* 配置表单 */}
                     <div className="bg-white/50 rounded-lg p-4 border border-gray-200/50">
-                      <h3 className="font-semibold text-gray-800 mb-3 text-sm">连接信息</h3>
+                      <h3 className="font-semibold text-gray-800 mb-3 text-sm">{t.setup.connectionInfo}</h3>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">主机地址</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.host}</label>
                           <input
                             type="text"
                             value={dbConfig.host}
@@ -405,7 +407,7 @@ const SetupWizard: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">端口</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.port}</label>
                           <input
                             type="text"
                             value={dbConfig.port}
@@ -415,7 +417,7 @@ const SetupWizard: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">数据库名</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.database}</label>
                           <input
                             type="text"
                             value={dbConfig.database}
@@ -425,7 +427,7 @@ const SetupWizard: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">用户名</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.username}</label>
                           <input
                             type="text"
                             value={dbConfig.username}
@@ -435,13 +437,13 @@ const SetupWizard: React.FC = () => {
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">密码</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.auth.password}</label>
                           <input
                             type="password"
                             value={dbConfig.password}
                             onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder="输入数据库密码"
+                            placeholder={t.auth.enterPassword}
                           />
                         </div>
                       </div>
@@ -455,13 +457,13 @@ const SetupWizard: React.FC = () => {
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
                         {savingDb ? <Spinner size="sm" variant="white" /> : '💾'}
-                        <span>{savingDb ? '保存中...' : '保存并连接数据库'}</span>
+                        <span>{savingDb ? t.setup.saving : t.setup.saveAndConnect}</span>
                       </button>
                     </div>
                     
                     {/* 说明文字 */}
                     <div className="text-xs text-gray-500 text-center">
-                      💡 提示：保存配置后，后端将自动重新连接数据库
+                      💡 {t.setup.saveHint}
                     </div>
                   </div>
                 </div>
@@ -481,8 +483,8 @@ const SetupWizard: React.FC = () => {
                       <FaUser />
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-gray-800">管理员账户</h2>
-                      <p className="text-xs text-gray-500 mt-0.5">创建系统管理员账户</p>
+                      <h2 className="text-lg font-bold text-gray-800">{t.setup.adminAccount}</h2>
+                      <p className="text-xs text-gray-500 mt-0.5">{t.setup.adminAccountDesc}</p>
                     </div>
                   </div>
 
@@ -494,10 +496,10 @@ const SetupWizard: React.FC = () => {
                           <FaDatabase className="text-blue-600 mt-0.5 flex-shrink-0" />
                           <div className="flex-1">
                             <p className="text-sm font-semibold text-blue-800 mb-2">
-                              📋 需要初始化数据库表
+                              📋 {t.setup.initDatabase}
                             </p>
                             <p className="text-xs text-blue-700 mb-3">
-                              数据库连接成功，但表结构还未创建。请先初始化数据库。
+                              {t.setup.initDatabaseDesc}
                             </p>
                             <button
                               onClick={handleMigrateDatabase}
@@ -505,7 +507,7 @@ const SetupWizard: React.FC = () => {
                               className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
                             >
                               {migratingDb ? <Spinner size="sm" variant="white" /> : <FaDatabase />}
-                              <span>{migratingDb ? '初始化中...' : '初始化数据库表'}</span>
+                              <span>{migratingDb ? t.setup.initializing : t.setup.initDatabase}</span>
                             </button>
                           </div>
                         </div>
@@ -518,11 +520,11 @@ const SetupWizard: React.FC = () => {
                         {/* 说明 */}
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                           <p className="text-sm text-blue-800 mb-2">
-                            创建本地管理员账户，该账户拥有系统完整管理权限
+                            {t.setup.adminAccountFullDesc}
                           </p>
                           <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
-                            <li>用户名：3-20 个字符，仅支持字母、数字和下划线</li>
-                            <li>密码：至少 8 个字符</li>
+                            <li>{t.setup.adminUsernameHint}</li>
+                            <li>{t.setup.adminPasswordHint}</li>
                           </ul>
                         </div>
 
@@ -530,7 +532,7 @@ const SetupWizard: React.FC = () => {
                         <div className="bg-white/50 rounded-lg p-4 border border-gray-200/50">
                           <div className="space-y-3">
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">用户名 *</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">{t.auth.username} *</label>
                               <input
                                 type="text"
                                 value={adminForm.username}
@@ -541,24 +543,24 @@ const SetupWizard: React.FC = () => {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">密码 *</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">{t.auth.password} *</label>
                               <input
                                 type="password"
                                 value={adminForm.password}
                                 onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                placeholder="至少8个字符"
+                                placeholder={t.setup.atLeast8Chars}
                                 minLength={8}
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">确认密码 *</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">{t.auth.confirmPassword} *</label>
                               <input
                                 type="password"
                                 value={adminForm.confirmPassword}
                                 onChange={(e) => setAdminForm({ ...adminForm, confirmPassword: e.target.value })}
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                placeholder="再次输入密码"
+                                placeholder={t.setup.enterPasswordAgain}
                                 minLength={8}
                               />
                             </div>
@@ -572,7 +574,7 @@ const SetupWizard: React.FC = () => {
                           className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
                           {creatingAdmin ? <Spinner size="sm" variant="white" /> : <FaUser />}
-                          <span>{creatingAdmin ? '创建中...' : '创建管理员账户'}</span>
+                          <span>{creatingAdmin ? t.setup.creating : t.setup.createAdmin}</span>
                         </button>
                       </>
                     )}

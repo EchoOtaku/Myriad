@@ -17,13 +17,14 @@ import { useBackgroundTasks } from '../hooks/useBackgroundTasks';
 import { TaskStatus } from '../components/TaskStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
+import { useI18n } from '../contexts/I18nContext';
 import '../components/ConfigForm.css';
 
 // 平台定义
 const PLATFORMS = [
   { id: 'bilibili', name: 'Bilibili', icon: SiBilibili, color: '#00A1D6' },
   { id: 'github', name: 'GitHub', icon: FaGithub, color: '#181717' },
-  { id: 'netease', name: '网易云音乐', icon: SiNeteasecloudmusic, color: '#C20C0C' },
+  { id: 'netease', name: 'NetEase Music', nameKey: 'neteaseMusic', icon: SiNeteasecloudmusic, color: '#C20C0C' },
   { id: 'steam', name: 'Steam', icon: FaSteam, color: '#00ADEE' },
 ];
 
@@ -49,6 +50,7 @@ interface PlatformStatus {
 export default function DataManagement() {
   const navigate = useNavigate();
   const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [message, setMessage] = useState('');
@@ -130,7 +132,7 @@ export default function DataManagement() {
         setCacheStatuses(cacheData.caches);
       }
     } catch (error) {
-      setMessage('✗ 加载状态失败');
+      setMessage(t.dataManagement.loadStatusFailed);
       setTimeout(() => setMessage(''), 3000);
     } finally {
       setStatusLoading(false);
@@ -139,13 +141,13 @@ export default function DataManagement() {
 
   // 刷新单个平台原始数据
   const refreshSinglePlatform = async (platformId: string, platformName: string) => {
-    if (!confirm(`确定要刷新 ${platformName} 的原始数据吗？`)) return;
+    if (!confirm(t.dataManagement.confirmRefreshData.replace('{platform}', platformName))) return;
 
     setRefreshingPlatform(platformId);
     try {
       const csrfToken = await getCSRFToken(true);
       if (!csrfToken) {
-        setMessage('✗ 无法获取 CSRF Token');
+        setMessage(t.dataManagement.csrfTokenError);
         setTimeout(() => setMessage(''), 5000);
         return;
       }
@@ -163,13 +165,13 @@ export default function DataManagement() {
       const data = await response.json();
 
       if (data.success) {
-        setMessage(`✓ ${platformName} 数据已刷新`);
+        setMessage(t.dataManagement.dataRefreshed.replace('{platform}', platformName));
         setTimeout(() => loadAllStatuses(), 500);
       } else {
-        setMessage('✗ ' + (data.message || '刷新失败'));
+        setMessage(t.dataManagement.refreshFailed + (data.message ? ': ' + data.message : ''));
       }
     } catch (error: any) {
-      setMessage('✗ ' + (error.message || '刷新失败'));
+      setMessage(t.dataManagement.refreshFailed + (error.message ? ': ' + error.message : ''));
     } finally {
       setRefreshingPlatform(null);
       setTimeout(() => setMessage(''), 5000);
@@ -184,24 +186,24 @@ export default function DataManagement() {
       setActiveTask(taskId);
       setProcessingPlatform(platformId);
     } else {
-      setMessage(`✗ 提交 ${platformName} 处理任务失败`);
+      setMessage(t.dataManagement.submitTaskFailed.replace('{platform}', platformName));
       setTimeout(() => setMessage(''), 3000);
     }
   };
 
   // 清除平台过滤缓存
   const handleClearCache = async (platformId: string, platformName: string) => {
-    if (!confirm(`确定要清除 ${platformName} 的智能过滤缓存吗？`)) return;
+    if (!confirm(t.dataManagement.confirmClearCache.replace('{platform}', platformName))) return;
 
     setClearingPlatform(platformId);
     try {
       const success = await clearPlatformCache(platformId);
 
       if (success) {
-        setMessage(`✓ ${platformName} 缓存已清除`);
+        setMessage(t.dataManagement.cacheCleared.replace('{platform}', platformName));
         await loadAllStatuses();
       } else {
-        setMessage(`✗ 清除 ${platformName} 缓存失败`);
+        setMessage(t.dataManagement.clearCacheFailed.replace('{platform}', platformName));
       }
     } finally {
       setClearingPlatform(null);
@@ -229,7 +231,7 @@ export default function DataManagement() {
 
   // 辅助函数：格式化日期时间
   const formatDateTime = (dateStr: string | null): string => {
-    if (!dateStr) return '未知';
+    if (!dateStr) return t.dataManagement.unknown;
     return new Date(dateStr).toLocaleString('zh-CN');
   };
 
@@ -253,19 +255,19 @@ export default function DataManagement() {
           type="button"
           onClick={() => navigate('/config')}
           className="btn-base btn-secondary back-to-config-button"
-          title="返回配置页"
-          aria-label="返回配置页"
+          title={t.dataManagement.backToConfig}
+          aria-label={t.dataManagement.backToConfig}
         >
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
-          <span>返回配置</span>
+          <span>{t.dataManagement.backToConfig}</span>
         </button>
 
         {/* 页面标题 */}
         <div className="card-header" style={{ marginBottom: '1.25rem' }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>数据管理</h2>
-          <p>管理平台数据和智能过滤缓存</p>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{t.dataManagement.dataManagementTitle}</h2>
+          <p>{t.dataManagement.dataManagementDesc}</p>
         </div>
 
         {/* 后台任务状态显示 */}
@@ -322,7 +324,7 @@ export default function DataManagement() {
                         marginBottom: 0,
                         color: '#1f2937'
                       }} className="dark:text-gray-100">
-                        {platform.name}
+                        {(platform as any).nameKey ? t.dataManagement[(platform as any).nameKey as keyof typeof t.dataManagement] : platform.name}
                       </h3>
                     </div>
                   </div>
@@ -331,33 +333,33 @@ export default function DataManagement() {
                 {/* 原始数据 - 横向布局 */}
                 <div className="config-field-row" style={{ marginBottom: '0.5rem' }}>
                   <div className="field-label-inline" style={{ flex: 1, minWidth: 0 }}>
-                    <span>原始数据</span>
+                    <span>{t.dataManagement.rawData}</span>
                     {status?.has_raw_data ? (
                       <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>
                         {formatBytes(status.raw_data_size)} · {formatDateTime(status.raw_fetched_at)}
                       </span>
                     ) : (
-                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>暂无数据</span>
+                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>{t.dataManagement.noData}</span>
                     )}
                   </div>
                   <div className="field-control">
                     <button
                       type="button"
-                      onClick={() => refreshSinglePlatform(platform.id, platform.name)}
+                      onClick={() => refreshSinglePlatform(platform.id, (platform as any).nameKey ? t.dataManagement[(platform as any).nameKey as keyof typeof t.dataManagement] as string : platform.name)}
                       disabled={refreshingPlatform === platform.id || statusLoading}
                       className="btn-base btn-sm btn-secondary"
-                      title="刷新数据"
+                      title={t.dataManagement.refreshData}
                       style={{ minWidth: '4rem' }}
                     >
                       {refreshingPlatform === platform.id ? (
                         <>
                           <ButtonSpinner size="sm" />
-                          <span>刷新中</span>
+                          <span>{t.dataManagement.refreshing}</span>
                         </>
                       ) : (
                         <>
                           <FaSyncAlt />
-                          <span>刷新</span>
+                          <span>{t.dataManagement.refresh}</span>
                         </>
                       )}
                     </button>
@@ -367,53 +369,53 @@ export default function DataManagement() {
                 {/* 智能过滤 - 横向布局 */}
                 <div className="config-field-row" style={{ marginBottom: 0 }}>
                   <div className="field-label-inline" style={{ flex: 1, minWidth: 0 }}>
-                    <span>智能过滤</span>
+                    <span>{t.dataManagement.smartFilter}</span>
                     {cache ? (
                       <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>
                         {formatBytes(cache.size_bytes || 0)} · {formatDateTime(cache.modified_at || null)}
                       </span>
                     ) : (
-                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>暂无缓存</span>
+                      <span className="field-hint" style={{ marginTop: '0.25rem', display: 'block' }}>{t.dataManagement.noCache}</span>
                     )}
                   </div>
                   <div className="field-control" style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
                       type="button"
-                      onClick={() => handleProcessPlatform(platform.id, platform.name)}
+                      onClick={() => handleProcessPlatform(platform.id, (platform as any).nameKey ? t.dataManagement[(platform as any).nameKey as keyof typeof t.dataManagement] as string : platform.name)}
                       disabled={isProcessing || !status?.has_raw_data || statusLoading}
                       className="btn-base btn-sm btn-primary"
-                      title="处理数据"
+                      title={t.dataManagement.processData}
                       style={{ minWidth: '4rem' }}
                     >
                       {isProcessing ? (
                         <>
                           <ButtonSpinner size="sm" />
-                          <span>处理中</span>
+                          <span>{t.dataManagement.processing}</span>
                         </>
                       ) : (
-                        '处理'
+                        t.dataManagement.process
                       )}
                     </button>
                     {cache && (
                       <button
                         type="button"
-                        onClick={() => handleClearCache(platform.id, platform.name)}
+                        onClick={() => handleClearCache(platform.id, (platform as any).nameKey ? t.dataManagement[(platform as any).nameKey as keyof typeof t.dataManagement] as string : platform.name)}
                         disabled={clearingPlatform === platform.id || statusLoading}
                         className="btn-base btn-sm btn-danger"
-                        title="清除缓存"
+                        title={t.dataManagement.clearCache}
                         style={{ minWidth: '4rem' }}
                       >
                         {clearingPlatform === platform.id ? (
                           <>
                             <ButtonSpinner size="sm" />
-                            <span>清除中</span>
+                            <span>{t.dataManagement.clearing}</span>
                           </>
                         ) : (
                           <>
                             <svg style={{ width: '0.875rem', height: '0.875rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
-                            <span>清除</span>
+                            <span>{t.dataManagement.clear}</span>
                           </>
                         )}
                       </button>
@@ -427,11 +429,11 @@ export default function DataManagement() {
 
         {/* 使用说明 */}
         <div className="info-card" style={{ marginTop: '1rem', marginBottom: 0 }}>
-          <p className="info-title" style={{ marginBottom: '0.75rem' }}>💡 使用说明</p>
+          <p className="info-title" style={{ marginBottom: '0.75rem' }}>{t.dataManagement.usageTitle}</p>
           <div className="info-text" style={{ fontSize: '0.8125rem', lineHeight: '1.5' }}>
-            <p style={{ marginBottom: '0.5rem' }}><strong>原始数据:</strong> 从各平台 API 获取的未处理数据,点击刷新按钮可重新获取</p>
-            <p style={{ marginBottom: '0.5rem' }}><strong>智能过滤:</strong> 经过 AI 分析处理后的数据,点击处理按钮生成缓存</p>
-            <p style={{ marginBottom: 0 }}><strong>后台处理:</strong> 数据处理任务在后台异步执行,可在顶部查看进度</p>
+            <p style={{ marginBottom: '0.5rem' }}>{t.dataManagement.usageRawData}</p>
+            <p style={{ marginBottom: '0.5rem' }}>{t.dataManagement.usageSmartFilter}</p>
+            <p style={{ marginBottom: 0 }}>{t.dataManagement.usageBackground}</p>
           </div>
         </div>
       </div>

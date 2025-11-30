@@ -11,6 +11,7 @@ import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel, AnimationConfig } from '../../hooks/useAnimationLevel';
 import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useI18n } from '../../contexts/I18nContext';
 
 export interface MusicPlayerWidgetProps {
   config: WidgetConfig;
@@ -131,6 +132,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const playerControl = useMusicPlayerControl();
   const anim = useAnimationLevel();
   const uniqueId = useId();
+  const { t } = useI18n();
   
   // 🆕 接入动画调度器 - 音乐播放器动画优先级中上(4)
   const { isAnimating } = useAnimationSlot(`music-player-${uniqueId}`, {
@@ -143,8 +145,8 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const canAnimate = anim.loop && isAnimating;
   
   const currentSong = isPreview ? { 
-    name: '示例歌曲', 
-    artist: '示例歌手', 
+    name: t.musicPlayer.sampleSong, 
+    artist: t.musicPlayer.sampleArtist, 
     cover: '', 
     duration: 180, 
     id: '0', 
@@ -179,9 +181,9 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   useEffect(() => {
     if (isPreview) {
       setLyrics([
-        { time: 0, text: '示例歌词 - 上一句' },
-        { time: 5, text: '示例歌词 - 当前句' },
-        { time: 10, text: '示例歌词 - 下一句' },
+        { time: 0, text: t.musicPlayer.sampleLyricPrev },
+        { time: 5, text: t.musicPlayer.sampleLyricCurrent },
+        { time: 10, text: t.musicPlayer.sampleLyricNext },
       ]);
       setCurrentLyricIndex(1);
       return;
@@ -286,7 +288,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
             className="text-gray-500 dark:text-gray-400"
             style={{ fontSize: `${12 * fontScale}px` }}
           >
-            暂无播放
+            {t.music.noPlaying}
           </span>
         </div>
       </div>
@@ -373,7 +375,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                     {lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : '')}
                   </motion.div>
                 ) : (
-                  <div className="relative z-10 text-sm text-gray-500 dark:text-gray-400">暂无歌词</div>
+                  <div className="relative z-10 text-sm text-gray-500 dark:text-gray-400">{t.musicPlayer.noLyrics}</div>
                 )}
              </AnimatePresence>
            ) : (
@@ -384,7 +386,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
              >
                {lyrics.length > 0 
                  ? (lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : ''))
-                 : <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">暂无歌词</span>
+                 : <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">{t.musicPlayer.noLyrics}</span>
                }
              </div>
            )}
@@ -453,7 +455,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                 }}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
-                aria-label={isPlaying ? '暂停' : '播放'}
+                aria-label={isPlaying ? t.music.pause : t.music.play}
               >
                 {isPlaying ? (
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
@@ -573,7 +575,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
               width: `${32 * scale}px`,
               height: `${32 * scale}px`
             }}
-            aria-label={isPlaying ? '暂停' : '播放'}
+            aria-label={isPlaying ? t.music.pause : t.music.play}
           >
             {isPlaying ? (
               <svg style={{ width: `${14 * scale}px`, height: `${14 * scale}px` }} fill="currentColor" viewBox="0 0 24 24">

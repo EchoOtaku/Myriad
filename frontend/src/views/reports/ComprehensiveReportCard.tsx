@@ -17,6 +17,7 @@ import {
 } from 'react-icons/fa';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useI18n } from '../../contexts/I18nContext';
 import type { ComprehensiveAnalysis } from './types';
 
 // 图标组件
@@ -75,6 +76,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
 }) => {
   const anim = useAnimationLevel();
   const uniqueId = useId();
+  const { t } = useI18n();
   
   // 🆕 接入动画调度器 - 报告组件高优先级(2)
   const { isAnimating } = useAnimationSlot(`comp-report-${uniqueId}`, {
@@ -202,7 +204,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 }}
             >
-              {analysis.visual_style || '全平台综合报告'}
+              {analysis.visual_style || t.reportsPage.allPlatformReport}
             </motion.h2>
 
             {analysis.card_subtitle && (

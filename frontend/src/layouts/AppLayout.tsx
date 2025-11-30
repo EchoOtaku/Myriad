@@ -16,6 +16,7 @@ import { useWallpaperParallax } from '../hooks/useWallpaperParallax';
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget';
 import { invalidateAuthCache, getUserAvatarWithCache } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../contexts/I18nContext';
 import {
   shouldApplyColorExtraction,
   getColorFromCache,
@@ -38,6 +39,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, isAdmin, user, checkAuth: checkAuthFromContext } = useAuth();
+  const { t } = useI18n();
   const [userAvatar, setUserAvatar] = useState('');
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
@@ -278,9 +280,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             isActive = href === location.pathname || (location.pathname === '/' && href === '/');
           } else if (ariaLabel) {
             const labelToPathMap: Record<string, string> = {
-              '资料库': '/library',
-              '数据报告': '/reports',
-              '返回主页': '/',
+              [t.nav.library]: '/library',
+              [t.nav.reports]: '/reports',
+              [t.nav.backToHome]: '/',
             };
             const targetPath = labelToPathMap[ariaLabel];
             if (targetPath) {
@@ -349,9 +351,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             isActive = href === location.pathname || (location.pathname === '/' && href === '/');
           } else if (ariaLabel) {
             const labelToPathMap: Record<string, string> = {
-              '资料库': '/library',
-              '数据报告': '/reports',
-              '返回主页': '/',
+              [t.nav.library]: '/library',
+              [t.nav.reports]: '/reports',
+              [t.nav.backToHome]: '/',
             };
             const targetPath = labelToPathMap[ariaLabel];
             if (targetPath) {
@@ -539,9 +541,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             isActive = href === location.pathname || (location.pathname === '/' && href === '/');
           } else if (ariaLabel) {
             const labelToPathMap: Record<string, string> = {
-              '资料库': '/library',
-              '数据报告': '/reports',
-              '返回主页': '/',
+              [t.nav.library]: '/library',
+              [t.nav.reports]: '/reports',
+              [t.nav.backToHome]: '/',
             };
             const targetPath = labelToPathMap[ariaLabel];
             if (targetPath) {
@@ -628,9 +630,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             isActive = href === location.pathname || (location.pathname === '/' && href === '/');
           } else if (ariaLabel) {
             const labelToPathMap: Record<string, string> = {
-              '资料库': '/library',
-              '数据报告': '/reports',
-              '返回主页': '/',
+              [t.nav.library]: '/library',
+              [t.nav.reports]: '/reports',
+              [t.nav.backToHome]: '/',
             };
             const targetPath = labelToPathMap[ariaLabel];
             if (targetPath) {
@@ -792,9 +794,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       // 处理按钮元素（通过 aria-label 匹配路径）
       else if (ariaLabel) {
         const labelToPathMap: Record<string, string> = {
-          '资料库': '/library',
-          '数据报告': '/reports',
-          '返回主页': '/',
+          [t.nav.library]: '/library',
+          [t.nav.reports]: '/reports',
+          [t.nav.backToHome]: '/',
         };
         const targetPath = labelToPathMap[ariaLabel];
         if (targetPath) {
@@ -808,7 +810,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         item.removeAttribute('aria-current');
       }
     });
-  }, [location]);
+  }, [location, t.nav.library, t.nav.reports, t.nav.backToHome]);
 
 
   // 检查后端连接状态
@@ -1197,7 +1199,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* 导航栏 */}
-      <nav className="nav-container" aria-label="主导航">
+      <nav className="nav-container" aria-label={t.nav.mainNavigation}>
         <div className="dynamic-island shadow-2xl" role="navigation">
           <div className="flex flex-row md:flex-col items-center gap-1 relative">
             {(isAnimating ? renderModeRef.current === 'reports' : (location.pathname === '/reports' && showReportsTabs)) ? (
@@ -1208,8 +1210,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={handleExitReportsTabs}
                     className="nav-item"
-                    title="返回"
-                    aria-label="返回导航"
+                    title={t.nav.back}
+                    aria-label={t.nav.backToNav}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -1227,8 +1229,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={() => handleReportsTabChange('platform')}
                     className={`nav-item ${reportsTab === 'platform' ? 'active-secondary' : ''}`}
-                    title="平台报告"
-                    aria-label="显示平台报告"
+                    title={t.nav.platformReport}
+                    aria-label={t.nav.showPlatformReport}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z" />
@@ -1241,8 +1243,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={() => handleReportsTabChange('comprehensive')}
                     className={`nav-item ${reportsTab === 'comprehensive' ? 'active-secondary' : ''}`}
-                    title="综合报告"
-                    aria-label="显示综合报告"
+                    title={t.nav.comprehensiveReport}
+                    aria-label={t.nav.showComprehensiveReport}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
@@ -1258,8 +1260,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={handleExitToNormal}
                     className="nav-item"
-                    title="返回"
-                    aria-label="返回导航"
+                    title={t.nav.back}
+                    aria-label={t.nav.backToNav}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -1277,8 +1279,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={() => handleLibraryFilterChange('all')}
                     className={`nav-item ${libraryFilter === 'all' ? 'active-secondary' : ''}`}
-                    title="全部"
-                    aria-label="显示全部内容"
+                    title={t.nav.all}
+                    aria-label={t.nav.showAll}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
@@ -1289,8 +1291,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={() => handleLibraryFilterChange('game')}
                     className={`nav-item ${libraryFilter === 'game' ? 'active-secondary' : ''}`}
-                    title="游戏"
-                    aria-label="显示游戏"
+                    title={t.nav.game}
+                    aria-label={t.nav.showGame}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <rect x="2" y="6" width="20" height="12" rx="3" strokeWidth={2} />
@@ -1303,8 +1305,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button 
                     onClick={() => handleLibraryFilterChange('video')}
                     className={`nav-item ${libraryFilter === 'video' ? 'active-secondary' : ''}`}
-                    title="视频"
-                    aria-label="显示视频"
+                    title={t.nav.video}
+                    aria-label={t.nav.showVideo}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -1315,8 +1317,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button
                     onClick={() => handleLibraryFilterChange('music')}
                     className={`nav-item ${libraryFilter === 'music' ? 'active-secondary' : ''}`}
-                    title="音乐"
-                    aria-label="显示音乐"
+                    title={t.nav.music}
+                    aria-label={t.nav.showMusic}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
@@ -1327,8 +1329,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button
                     onClick={() => handleLibraryFilterChange('anime')}
                     className={`nav-item ${libraryFilter === 'anime' ? 'active-secondary' : ''}`}
-                    title="追番"
-                    aria-label="显示追番"
+                    title={t.nav.anime}
+                    aria-label={t.nav.showAnime}
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                       <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize="22" fontWeight="bold" className="font-sans">あ</text>
@@ -1339,8 +1341,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <button
                     onClick={() => handleLibraryFilterChange('tv_series')}
                     className={`nav-item ${libraryFilter === 'tv_series' ? 'active-secondary' : ''}`}
-                    title="追剧"
-                    aria-label="显示追剧"
+                    title={t.nav.tvSeries}
+                    aria-label={t.nav.showTvSeries}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" />
@@ -1353,7 +1355,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="normal-mode">
                 {/* 主页按钮 */}
                 <div className="nav-group" data-group="main">
-                  <a href="/" className="nav-item" title="主页" aria-label="返回主页" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+                  <a href="/" className="nav-item" title={t.nav.home} aria-label={t.nav.backToHome} onClick={(e) => { e.preventDefault(); navigate('/'); }}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                     </svg>
@@ -1364,8 +1366,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <div className="nav-group nav-group-spaced" data-group="library">
                   <button
                     className="nav-item"
-                    title="资料库"
-                    aria-label="资料库"
+                    title={t.nav.library}
+                    aria-label={t.nav.library}
                     onClick={() => {
                       if (location.pathname === '/library') {
                         // 已在资料库页面，直接触发展开动画
@@ -1396,8 +1398,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <div className="nav-group nav-group-spaced" data-group="reports">
                   <button
                     className="nav-item"
-                    title="报告"
-                    aria-label="数据报告"
+                    title={t.nav.reports}
+                    aria-label={t.nav.reports}
                     onClick={() => {
                       if (location.pathname === '/reports') {
                         // 已在报告页面，直接触发展开动画
@@ -1444,7 +1446,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {libraryFilter === 'all' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前筛选：全部 - 点击展开筛选"
+                        title={t.nav.currentFilterAll}
                         onClick={handleEnterFilters}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1455,7 +1457,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {libraryFilter === 'game' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前筛选：游戏 - 点击展开筛选"
+                        title={t.nav.currentFilterGame}
                         onClick={handleEnterFilters}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1468,7 +1470,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {libraryFilter === 'video' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前筛选：视频 - 点击展开筛选"
+                        title={t.nav.currentFilterVideo}
                         onClick={handleEnterFilters}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1479,7 +1481,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {libraryFilter === 'music' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前筛选：音乐 - 点击展开筛选"
+                        title={t.nav.currentFilterMusic}
                         onClick={handleEnterFilters}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1490,7 +1492,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {libraryFilter === 'anime' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前筛选：追番 - 点击展开筛选"
+                        title={t.nav.currentFilterAnime}
                         onClick={handleEnterFilters}
                       >
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -1501,7 +1503,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {libraryFilter === 'tv_series' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前筛选：追剧 - 点击展开筛选"
+                        title={t.nav.currentFilterTvSeries}
                         onClick={handleEnterFilters}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1518,7 +1520,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {reportsTab === 'platform' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前查看：平台报告 - 点击展开切换"
+                        title={t.nav.currentTabPlatform}
                         onClick={handleEnterReportsTabs}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1529,7 +1531,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {reportsTab === 'comprehensive' && (
                       <button 
                         className="nav-item opacity-60 hover:opacity-100 transition-opacity" 
-                        title="当前查看：综合报告 - 点击展开切换"
+                        title={t.nav.currentTabComprehensive}
                         onClick={handleEnterReportsTabs}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1568,8 +1570,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-red-900 dark:text-red-100">后端服务连接中断</p>
-                  <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">正在尝试重新连接...</p>
+                  <p className="text-sm font-medium text-red-900 dark:text-red-100">{t.setup.backendDisconnected}</p>
+                  <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">{t.setup.reconnecting}</p>
                 </div>
               </div>
             </div>

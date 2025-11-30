@@ -62,7 +62,7 @@ export interface UseMusicPlayerReturn {
   musicEnabled: boolean;
   musicSource: MusicSource;
   playlistId: string;
-  musicError: string;
+  musicErrorKey: string; // 翻译键名，由组件端使用 t.music[key] 翻译
   musicPlayerView: MusicPlayerView;
   playMode: PlayMode;
   musicColors: MusicColors | null;
@@ -105,7 +105,7 @@ export interface UseMusicPlayerReturn {
   setShowVolumePopup: (show: boolean) => void;
   
   // 播放模式相关
-  getPlayModeInfo: () => { icon: React.ReactNode; text: string };
+  getPlayModeInfo: () => { icon: React.ReactNode; textKey: 'singleRepeat' | 'shuffle' | 'listRepeat' };
 }
 
 // 全局状态恢复（跨页面切换）- SSR 安全
@@ -136,7 +136,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [musicSource, setMusicSource] = useState<MusicSource>('netease');
   const [playlistId, setPlaylistId] = useState('');
-  const [musicError, setMusicError] = useState<string>('');
+  const [musicErrorKey, setMusicErrorKey] = useState<string>('');
   const [musicPlayerView, setMusicPlayerView] = useState<MusicPlayerView>('info');
   const [playMode, setPlayMode] = useState<PlayMode>('loop');
   const [musicColors, setMusicColors] = useState<MusicColors | null>(null);
@@ -693,7 +693,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const loadPlaylist = useCallback(async (source: MusicSource, plistId: string) => {
     loadResource.medium(`music-playlist-${plistId}`, async () => {
       try {
-        setMusicError('');
+        setMusicErrorKey('');
         const songs = source === 'netease'
           ? await getNeteasePlaylist(plistId)
           : await getQQPlaylist(plistId);
@@ -711,16 +711,12 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           selectSong(songs[firstSongIndex], firstSongIndex);
         }
       } catch (error) {
-        let errorMessage = '加载歌单失败';
-        if (error instanceof Error) {
-          errorMessage = error.message;
-        }
         console.error('Failed to load music playlist:', error);
-        setMusicError(errorMessage);
+        setMusicErrorKey('loadPlaylistFailed');
         setPlaylist([]);
         
         setTimeout(() => {
-          setMusicError('');
+          setMusicErrorKey('');
         }, 3000);
       }
     });
@@ -777,8 +773,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           
           if (retries >= maxRetries) {
             console.error('播放失败，已达到最大重试次数:', error);
-            setMusicError('播放失败，请检查网络连接或歌曲是否可用');
-            setTimeout(() => setMusicError(''), 3000);
+            setMusicErrorKey('playFailed');
+            setTimeout(() => setMusicErrorKey(''), 3000);
             setIsPlaying(false);
           } else {
             await new Promise(resolve => setTimeout(resolve, 1000 * retries));
@@ -908,7 +904,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/>
             </svg>
           ),
-          text: '单曲循环'
+          textKey: 'singleRepeat' as const
         };
       case 'shuffle':
         return {
@@ -917,7 +913,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
             </svg>
           ),
-          text: '随机播放'
+          textKey: 'shuffle' as const
         };
       case 'loop':
       default:
@@ -927,7 +923,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
             </svg>
           ),
-          text: '列表循环'
+          textKey: 'listRepeat' as const
         };
     }
   }, [playMode]);
@@ -1343,7 +1339,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     musicEnabled,
     musicSource,
     playlistId,
-    musicError,
+    musicErrorKey,
     musicPlayerView,
     playMode,
     musicColors,

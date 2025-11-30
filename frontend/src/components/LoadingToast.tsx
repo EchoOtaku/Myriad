@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import './LoadingToast.css';
+import { useI18n } from '../contexts/I18nContext';
 
 interface LoadingToastProps {
     message?: string;
     show: boolean;
 }
 
-export default function LoadingToast({ message = '加载中...', show }: LoadingToastProps) {
+export default function LoadingToast({ message, show }: LoadingToastProps) {
+    const { t } = useI18n();
+    const displayMessage = message || t.common.loading;
     const [visible, setVisible] = useState(false);
 
     useEffect(() => {
@@ -30,7 +33,7 @@ export default function LoadingToast({ message = '加载中...', show }: Loading
 
                 {/* 加载文字 */}
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {message}
+                    {displayMessage}
                 </span>
             </div>
         </div>

@@ -16,6 +16,8 @@ import { WidgetComponentProps } from '../WidgetGrid';
 import { useAuth } from '../../contexts/AuthContext';
 import { hasSessionHint } from '../../utils/sessionDetection';
 import { API_URL } from '../../config';
+import { useI18n } from '../../contexts/I18nContext';
+import type { TranslationKeys } from '../../i18n';
 
 // 缓存配置
 const CACHE_KEY = 'recent_activities_cache';
@@ -66,9 +68,9 @@ const PlatformIcon = memo(({ platformName }: { platformName: string }) => {
 PlatformIcon.displayName = 'PlatformIcon';
 
 // 格式化值以便显示
-const formatValue = (value: any): string => {
+const formatValue = (value: any, t: TranslationKeys): string => {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'boolean') return value ? t.recentActivity.yes : t.recentActivity.no;
   if (typeof value === 'number') return value.toString();
   if (typeof value === 'string') {
     // 如果是时间戳或日期字符串
@@ -82,7 +84,7 @@ const formatValue = (value: any): string => {
   if (typeof value === 'object') {
     // 处理对象类型，如 {old: xxx, new: xxx}
     if (value.old !== undefined && value.new !== undefined) {
-      return `${formatValue(value.old)} → ${formatValue(value.new)}`;
+      return `${formatValue(value.old, t)} → ${formatValue(value.new, t)}`;
     }
     return JSON.stringify(value);
   }
@@ -135,58 +137,58 @@ const parseFieldName = (fieldStr: string): { name: string; skip: boolean } => {
 };
 
 // 生成详细的活动描述
-const getDetailedDescription = (activity: Activity): { title: string; details: string[] } => {
+const getDetailedDescription = (activity: Activity, t: TranslationKeys): { title: string; details: string[] } => {
   const changedFields = activity.changed_fields || {};
   const details: string[] = [];
   const seenFields = new Set<string>(); // 去重
 
   // 获取标题
-  let title = activity.item_title || '未知项目';
+  let title = activity.item_title || t.recentActivity.unknownProject;
 
   // 如果 changed_fields 是对象，尝试从中提取标题
   if (!Array.isArray(changedFields) && typeof changedFields === 'object') {
     title = activity.item_title ||
             changedFields.title ||
             changedFields.name ||
-            '未知项目';
+            t.recentActivity.unknownProject;
   }
 
-  // 字段名称映射（中文）
+  // 字段名称映射
   const fieldMap: Record<string, string> = {
-    play_time: '游玩时长',
-    playtime_2weeks: '近两周游玩',
-    playtime_forever: '总游玩时长',
-    achievement_count: '成就数量',
-    achievements: '成就',
-    last_played: '最后游玩时间',
-    status: '状态',
-    rating: '评分',
-    progress: '进度',
-    tags: '标签',
-    notes: '笔记',
-    note: '笔记',
-    favorite: '收藏状态',
-    img_icon_url: '图标',
-    last_sync: '同步时间',
-    description: '描述',
-    category: '分类',
-    genres: '游戏类型',
-    name: '名称',
-    title: '标题',
-    watchers_count: '关注数',
-    watchers: '关注者',
-    stargazers_count: '星标数',
-    forks_count: '分支数',
-    open_issues_count: '议题数',
-    liked_songs: '喜欢的歌曲',
-    playlists: '歌单',
-    picUrl: '封面图',
-    coverUrl: '封面',
-    sr: '采样率',
-    games: '游戏列表',
-    videos: '视频列表',
-    songs: '歌曲列表',
-    albums: '专辑列表',
+    play_time: t.recentActivity.playTime,
+    playtime_2weeks: t.recentActivity.playtime2weeks,
+    playtime_forever: t.recentActivity.playtimeForever,
+    achievement_count: t.recentActivity.achievementCount,
+    achievements: t.recentActivity.achievements,
+    last_played: t.recentActivity.lastPlayed,
+    status: t.recentActivity.status,
+    rating: t.recentActivity.rating,
+    progress: t.recentActivity.progress,
+    tags: t.recentActivity.tags,
+    notes: t.recentActivity.notes,
+    note: t.recentActivity.note,
+    favorite: t.recentActivity.favorite,
+    img_icon_url: t.recentActivity.iconUrl,
+    last_sync: t.recentActivity.lastSync,
+    description: t.recentActivity.description,
+    category: t.recentActivity.category,
+    genres: t.recentActivity.genres,
+    name: t.recentActivity.name,
+    title: t.recentActivity.title,
+    watchers_count: t.recentActivity.watchersCount,
+    watchers: t.recentActivity.watchers,
+    stargazers_count: t.recentActivity.stargazersCount,
+    forks_count: t.recentActivity.forksCount,
+    open_issues_count: t.recentActivity.openIssuesCount,
+    liked_songs: t.recentActivity.likedSongs,
+    playlists: t.recentActivity.playlists,
+    picUrl: t.recentActivity.picUrl,
+    coverUrl: t.recentActivity.coverUrl,
+    sr: t.recentActivity.sampleRate,
+    games: t.recentActivity.games,
+    videos: t.recentActivity.videos,
+    songs: t.recentActivity.songs,
+    albums: t.recentActivity.albums,
     // 可以根据实际字段继续添加
   };
 
@@ -224,7 +226,7 @@ const getDetailedDescription = (activity: Activity): { title: string; details: s
       if (!Array.isArray(changedFields) && typeof changedFields === 'object') {
         const value = changedFields[field];
         if (value !== null && value !== undefined) {
-          const formattedValue = formatValue(value);
+          const formattedValue = formatValue(value, t);
           // 如果有具体的值，显示出来；否则只显示字段名
           if (formattedValue && formattedValue.length > 0 && formattedValue.length < 30) {
             details.push(`${displayName}: ${formattedValue}`);
@@ -247,8 +249,8 @@ const ITEM_ANIMATE = { x: 0, opacity: 1 };
 const getItemTransition = (index: number) => ({ delay: index * 0.05 });
 
 // 活动项组件 - 优化渲染性能
-const ActivityItem = memo(({ activity, index }: { activity: Activity; index: number }) => {
-  const { title, details } = useMemo(() => getDetailedDescription(activity), [activity]);
+const ActivityItem = memo(({ activity, index, t }: { activity: Activity; index: number; t: TranslationKeys }) => {
+  const { title, details } = useMemo(() => getDetailedDescription(activity, t), [activity, t]);
 
   const timeAgo = useMemo(() => {
     const date = new Date(activity.change_date);
@@ -260,13 +262,13 @@ const ActivityItem = memo(({ activity, index }: { activity: Activity; index: num
     if (days > 7) {
       return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
     } else if (days > 0) {
-      return `${days}天前`;
+      return t.recentActivity.daysAgo.replace('{days}', String(days));
     } else if (hours > 0) {
-      return `${hours}小时前`;
+      return t.recentActivity.hoursAgo.replace('{hours}', String(hours));
     } else {
-      return '刚刚';
+      return t.recentActivity.justNow;
     }
-  }, [activity.change_date]);
+  }, [activity.change_date, t]);
 
   // 缓存 transition 对象
   const transition = useMemo(() => getItemTransition(index), [index]);
@@ -303,6 +305,7 @@ ActivityItem.displayName = 'ActivityItem';
 
 export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
   const { isAuthenticated, isLoading: authLoading, hasChecked, checkAuth } = useAuth();
+  const { t } = useI18n();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -318,10 +321,10 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
         }
       }
     } catch (err) {
-      console.error('加载缓存失败:', err);
+      console.error(t.recentActivity.loadCacheFailed + ':', err);
     }
     return false;
-  }, []);
+  }, [t]);
 
   // 保存到缓存
   const saveToCache = useCallback((data: Activity[]) => {
@@ -331,9 +334,9 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
         timestamp: Date.now()
       }));
     } catch (err) {
-      console.error('保存缓存失败:', err);
+      console.error(t.recentActivity.saveCacheFailed + ':', err);
     }
-  }, []);
+  }, [t]);
 
   const fetchActivities = useCallback(async () => {
     // 如果未登录，不请求数据
@@ -398,12 +401,12 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
       setActivities(data);
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
-        console.error('获取活动失败:', err);
+        console.error(t.recentActivity.fetchActivitiesFailed + ':', err);
       }
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, saveToCache]);
+  }, [isAuthenticated, saveToCache, t]);
 
   useEffect(() => {
     if (isPreview) {
@@ -434,7 +437,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
             'sr (deleted) +6682'
           ],
           change_date: new Date(Date.now() - 7200000).toISOString(),
-          item_title: '我的音乐收藏',
+          item_title: t.recentActivity.myMusicCollection,
           item_type: 'profile'
         },
         {
@@ -442,7 +445,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
           platform_name: 'bilibili',
           changed_fields: ['videos.0.title', 'status', 'progress'],
           change_date: new Date(Date.now() - 86400000).toISOString(),
-          item_title: '技术分享合集',
+          item_title: t.recentActivity.techShareCollection,
           item_type: 'collection'
         }
       ]);
@@ -477,7 +480,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
 
     // 然后获取最新数据
     fetchActivities();
-  }, [hasChecked, authLoading, isAuthenticated, checkAuth, loadFromCache, fetchActivities, isPreview]);
+  }, [hasChecked, authLoading, isAuthenticated, checkAuth, loadFromCache, fetchActivities, isPreview, t]);
 
 
 
@@ -489,7 +492,7 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
         {/* 标题 */}
         <div className="mb-2 ml-1.5">
           <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-            最近活动
+            {t.recentActivity.widgetTitle}
           </h3>
         </div>
         
@@ -497,18 +500,18 @@ export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: Wid
         <div className="flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-xs text-gray-500 dark:text-gray-400">加载中...</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{t.common.loading}</div>
             </div>
           ) : activities.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <svg className="w-8 h-8 text-gray-300 dark:text-gray-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
               </svg>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400">暂无活动记录</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.common.noResults}</p>
             </div>
           ) : (
             activities.map((activity, index) => (
-              <ActivityItem key={activity.id} activity={activity} index={index} />
+              <ActivityItem key={activity.id} activity={activity} index={index} t={t} />
             ))
           )}
         </div>

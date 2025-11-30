@@ -10,6 +10,7 @@ import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { GlowBackground } from './shared/GlowBackground';
+import { useI18n } from '../../contexts/I18nContext';
 
 // 缓存配置
 const CACHE_KEY = 'quote_data_cache';
@@ -24,6 +25,7 @@ export interface QuoteWidgetProps {
 export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
     const anim = useAnimationLevel();
+  const { t } = useI18n();
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [themeColor, setThemeColor] = useState('#a855f7');
@@ -40,10 +42,10 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
         }
       }
     } catch (err) {
-      console.error('加载一言缓存失败:', err);
+      console.error(t.quoteWidget.loadCacheFailed + ':', err);
     }
     return false;
-  }, []);
+  }, [t]);
 
   // 保存到缓存
   const saveToCache = useCallback((data: QuoteData) => {
@@ -53,9 +55,9 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
         timestamp: Date.now()
       }));
     } catch (err) {
-      console.error('保存一言缓存失败:', err);
+      console.error(t.quoteWidget.saveCacheFailed + ':', err);
     }
-  }, []);
+  }, [t]);
 
   const fetchQuote = useCallback(async () => {
     try {
@@ -65,15 +67,15 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
         saveToCache(quote);
       }
     } catch (error) {
-      console.error('获取一言失败:', error);
+      console.error(t.quoteWidget.fetchQuoteFailed + ':', error);
     } finally {
       setLoading(false);
     }
-  }, [saveToCache]);
+  }, [saveToCache, t]);
 
   useEffect(() => {
     if (isPreview) {
-      setQuoteData({ text: '生活明朗，万物可爱。', author: '佚名' });
+      setQuoteData({ text: t.quoteWidget.defaultQuote, author: t.quoteWidget.anonymous });
       setLoading(false);
       return;
     }
@@ -157,7 +159,7 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
   if (!quoteData) {
     return (
       <div className="h-full w-full flex items-center justify-center text-gray-400">
-        <span>一言不可用</span>
+        <span>{t.quoteWidget.unavailable}</span>
       </div>
     );
   }

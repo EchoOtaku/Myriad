@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FaTimes, FaSteam, FaGithub } from 'react-icons/fa';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { BilibiliWidget, SteamWidget, GithubWidget, NeteaseWidget } from './StageWidgets';
+import { useI18n } from '../contexts/I18nContext';
 
 const DARK_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(10, 10, 10, 0.3) 45%, rgba(10, 10, 10, 0.5) 55%, rgba(10, 10, 10, 0.75) 70%, rgba(10, 10, 10, 0.9) 85%, rgba(10, 10, 10, 0.95) 100%)';
 const LIGHT_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.4) 55%, rgba(255, 255, 255, 0.9) 85%, rgba(255, 255, 255, 0.9) 100%)';
@@ -168,6 +169,20 @@ const SubtitleDisplay = ({
 
 // 综合报告资料库卡片组件
 const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array<{ title: string; cover?: string; type: string; platform?: string }> }) => {
+  const { t } = useI18n();
+  
+  // 内容类型标签映射
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'game': return t.reportsPage.game;
+      case 'anime': return t.reportsPage.anime;
+      case 'tv_series': return t.reportsPage.tvSeries;
+      case 'video': return t.reportsPage.video;
+      case 'music': return t.reportsPage.music;
+      default: return t.reportsPage.content;
+    }
+  };
+  
   // 随机打乱数组并缓存
   const shuffledItems = useMemo(() => {
     const items = [...libraryItems];
@@ -280,11 +295,7 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
                     </div>
                   )}
                   <span className="px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
-                    {currentItem.type === 'game' ? '游戏' : 
-                     currentItem.type === 'anime' ? '追番' :
-                     currentItem.type === 'tv_series' ? '追剧' :
-                     currentItem.type === 'video' ? '视频' : 
-                     currentItem.type === 'music' ? '音乐' : '内容'}
+                    {getTypeLabel(currentItem.type)}
                   </span>
                 </div>
               </div>
@@ -388,7 +399,7 @@ const parseComprehensiveReportToChapters = (analysis: any): StageChapter[] => {
 const parseReportToChapters = (reportData: {
   summary: string;
   insights: string[];
-}): StageChapter[] => {
+}, chapterTitles: { dataEcho: string; deepInsight: string }): StageChapter[] => {
   const chapters: StageChapter[] = [];
 
   // 清理文本：移除特殊字符和多余空白
@@ -415,7 +426,7 @@ const parseReportToChapters = (reportData: {
     const sentences = splitByPunctuation(summaryText);
 
     chapters.push({
-      title: '数据回响',
+      title: chapterTitles.dataEcho,
       lines: sentences.map((sentence, i) => ({
         text: sentence,
         delay: i === 0 ? 800 : 1500, // 缩短间隔以适应更短的句子
@@ -442,7 +453,7 @@ const parseReportToChapters = (reportData: {
     });
 
     chapters.push({
-      title: '深度洞察',
+      title: chapterTitles.deepInsight,
       lines: allInsightLines,
     });
   }
@@ -452,6 +463,7 @@ const parseReportToChapters = (reportData: {
 
 // 舞台模式主组件
 export default function StageMode({ isOpen, onClose, reportData, onRefresh, playAllMode = false }: StageModeProps) {
+  const { t } = useI18n();
   const [currentChapter, setCurrentChapter] = useState(0);
   const [chapters, setChapters] = useState<StageChapter[]>([]);
   const [isPaused, setIsPaused] = useState(false); // 播放/暂停状态
@@ -468,8 +480,8 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
     if (!chapters[currentChapter]) return true;
     const title = chapters[currentChapter].title;
     // 只有在明确是"深度洞察"时才显示内容，其他情况（包括"数据回想"或未知）都显示概览
-    return title !== '深度洞察';
-  }, [currentChapter, chapters]);
+    return title !== t.reportsPage.deepInsight;
+  }, [currentChapter, chapters, t.reportsPage.deepInsight]);
 
   const renderWidget = () => {
     if (!reportData) return null;
@@ -516,6 +528,10 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
   useEffect(() => {
     if (reportData) {
       let parsedChapters: StageChapter[] = [];
+      const chapterTitles = {
+        dataEcho: t.reportsPage.dataEcho,
+        deepInsight: t.reportsPage.deepInsight,
+      };
       
       // 判断是综合报告还是平台报告
       if (reportData.type === 'comprehensive' && reportData.综合分析) {
@@ -524,13 +540,13 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
         parsedChapters = parseReportToChapters({
           summary: reportData.summary,
           insights: reportData.insights,
-        });
+        }, chapterTitles);
       }
       
       setChapters(parsedChapters);
       setCurrentChapter(0);
     }
-  }, [reportData]);
+  }, [reportData, t.reportsPage.dataEcho, t.reportsPage.deepInsight]);
 
   // 监听系统 / 应用主题切换，保持舞台模式背景同步
   useEffect(() => {
@@ -663,7 +679,7 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
     let bufferTime = 2500 + (currentChapterData.lines.length * 200);
 
     // 3. 特殊场景调整
-    if (currentChapterData.title === '深度洞察') {
+    if (currentChapterData.title === t.reportsPage.deepInsight) {
        // 深度洞察：为了配合右侧卡片轮播（5s一次），确保至少能展示 2-3 轮
        // 如果字幕很短，强制延长；如果字幕很长，就按字幕时间来
        const minDuration = 12000; // 至少12秒

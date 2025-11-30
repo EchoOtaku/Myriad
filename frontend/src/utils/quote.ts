@@ -8,7 +8,7 @@ export interface QuoteData {
 /**
  * 获取一言警句
  */
-export async function getRandomQuote(): Promise<QuoteData | null> {
+export async function getRandomQuote(locale?: string): Promise<QuoteData | null> {
   try {
     // 从 localStorage 读取缓存
     const cachedQuote = localStorage.getItem('quote_cache');
@@ -44,15 +44,24 @@ export async function getRandomQuote(): Promise<QuoteData | null> {
   } catch (error) {
     console.warn('Failed to fetch quote:', error);
     // 返回本地备用句子
-    return getLocalQuote();
+    return getLocalQuote(locale);
   }
 }
 
 /**
  * 本地备用句子库
  */
-function getLocalQuote(): QuoteData {
-  const quotes = [
+function getLocalQuote(locale?: string): QuoteData {
+  const isEnglish = locale === 'en-US';
+  
+  const quotes = isEnglish ? [
+    { text: 'Code is like humor. When you have to explain it, it’s bad.', author: 'Cory House' },
+    { text: 'Simplicity is the soul of efficiency.', author: 'Austin Freeman' },
+    { text: 'Make it work, make it right, make it fast.', author: 'Kent Beck' },
+    { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds' },
+    { text: 'Software is eating the world.', author: 'Marc Andreessen' },
+    { text: 'The best way to predict the future is to invent it.', author: 'Alan Kay' },
+  ] : [
     { text: '代码如诗，优雅至上', author: '程序员格言' },
     { text: '简洁是可靠的前提', author: 'Edsger Dijkstra' },
     { text: '过早优化是万恶之源', author: 'Donald Knuth' },

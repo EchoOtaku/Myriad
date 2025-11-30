@@ -22,130 +22,121 @@ import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget';
 import { getUserInfoWithCache, getCsrfTokenWithCache, UserInfo } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
-
-// 注册所有可用的小组件类型
-const AVAILABLE_WIDGETS: WidgetType[] = [
-  {
-    id: 'welcome',
-    name: '欢迎',
-    defaultSize: '4x2',
-    icon: '👋',
-    component: WelcomeWidget,
-    supportedSizes: ['2x2', '4x2'],
-  },
-  {
-    id: 'quick-stats',
-    name: '内容数据概览',
-    defaultSize: '4x2',
-    icon: '📊',
-    component: QuickStatsWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'recent-activity',
-    name: '最近活动',
-    defaultSize: '4x2',
-    icon: '🕐',
-    component: RecentActivityWidget,
-    supportedSizes: ['2x2', '4x2', '4x4'],
-  },
-  {
-    id: 'weather',
-    name: '天气',
-    defaultSize: '2x2',
-    icon: '🌤️',
-    component: WeatherWidget,
-    supportedSizes: ['2x2', '4x2', '4x1'],
-  },
-  {
-    id: 'quote',
-    name: '一言',
-    defaultSize: '2x2',
-    icon: '💭',
-    component: QuoteWidget,
-    supportedSizes: ['2x2', '4x2', '4x1'],
-  },
-  {
-    id: 'music-player',
-    name: '音乐播放器',
-    defaultSize: '2x2',
-    icon: '🎵',
-    component: MusicPlayerWidget,
-    supportedSizes: ['2x2', '4x2'],
-  },
-  {
-    id: 'report-bilibili',
-    name: 'Bilibili报告',
-    defaultSize: '4x2',
-    icon: '📊',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'report-steam',
-    name: 'Steam报告',
-    defaultSize: '4x2',
-    icon: '🎮',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'report-github',
-    name: 'GitHub报告',
-    defaultSize: '4x2',
-    icon: '💻',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'report-netease',
-    name: '网易云报告',
-    defaultSize: '4x2',
-    icon: '🎵',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'social-network',
-    name: '社交网络',
-    defaultSize: '1x1',
-    icon: '🌐',
-    component: SocialNetworkWidget,
-    supportedSizes: ['1x1', '2x1', '2x2'],
-  },
-];
-
-// 默认小组件布局
-const DEFAULT_WIDGETS: WidgetConfig[] = [
-  {
-    id: 'default-welcome',
-    type: 'welcome',
-    size: '4x2',
-    position: { x: 0, y: 0 },
-  },
-  {
-    id: 'default-weather',
-    type: 'weather',
-    size: '2x2',
-    position: { x: 4, y: 0 },
-  },
-  {
-    id: 'default-quote',
-    type: 'quote',
-    size: '2x2',
-    position: { x: 6, y: 0 },
-  },
-];
+import { useI18n } from '../contexts/I18nContext';
 
 export default function Home() {
   const navigate = useNavigate();
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth();
+  const { t } = useI18n();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [dashboardTitle, setDashboardTitle] = useState('Dashboard');
   const [csrfToken, setCsrfToken] = useState<string>('');
+
+  // 默认小组件布局
+  const DEFAULT_WIDGETS: WidgetConfig[] = useMemo(() => [
+    {
+      id: 'default-welcome',
+      type: 'welcome',
+      size: '4x2',
+      position: { x: 0, y: 0 },
+    },
+    {
+      id: 'default-weather',
+      type: 'weather',
+      size: '2x2',
+      position: { x: 4, y: 0 },
+    },
+    {
+      id: 'default-quote',
+      type: 'quote',
+      size: '2x2',
+      position: { x: 6, y: 0 },
+    },
+  ], []);
+
+  // 使用 useMemo 生成 AVAILABLE_WIDGETS 以支持 i18n
+  const AVAILABLE_WIDGETS: WidgetType[] = useMemo(() => [
+    {
+      id: 'welcome',
+      name: t.widgets.welcome,
+      defaultSize: '4x2',
+      component: WelcomeWidget,
+      supportedSizes: ['2x2', '4x2'],
+    },
+    {
+      id: 'quick-stats',
+      name: t.widgets.quickStats,
+      defaultSize: '4x2',
+      component: QuickStatsWidget,
+      supportedSizes: ['4x2'],
+    },
+    {
+      id: 'recent-activity',
+      name: t.widgets.recentActivity,
+      defaultSize: '4x2',
+      component: RecentActivityWidget,
+      supportedSizes: ['2x2', '4x2', '4x4'],
+    },
+    {
+      id: 'weather',
+      name: t.widgets.weather,
+      defaultSize: '2x2',
+      component: WeatherWidget,
+      supportedSizes: ['2x2', '4x2', '4x1'],
+    },
+    {
+      id: 'quote',
+      name: t.widgets.quote,
+      defaultSize: '2x2',
+      component: QuoteWidget,
+      supportedSizes: ['2x2', '4x2', '4x1'],
+    },
+    {
+      id: 'music-player',
+      name: t.widgets.musicPlayer,
+      defaultSize: '2x2',
+      component: MusicPlayerWidget,
+      supportedSizes: ['2x2', '4x2'],
+    },
+    {
+      id: 'report-bilibili',
+      name: t.widgets.reportBilibili,
+      defaultSize: '4x2',
+      component: ReportCardWidget,
+      supportedSizes: ['4x2'],
+    },
+    {
+      id: 'report-steam',
+      name: t.widgets.reportSteam,
+      defaultSize: '4x2',
+      component: ReportCardWidget,
+      supportedSizes: ['4x2'],
+    },
+    {
+      id: 'report-github',
+      name: t.widgets.reportGithub,
+      defaultSize: '4x2',
+      component: ReportCardWidget,
+      supportedSizes: ['4x2'],
+    },
+    {
+      id: 'report-netease',
+      name: t.widgets.reportNetease,
+      defaultSize: '4x2',
+      component: ReportCardWidget,
+      supportedSizes: ['4x2'],
+    },
+    {
+      id: 'social-network',
+      name: t.widgets.socialNetwork,
+      defaultSize: '1x1',
+      component: SocialNetworkWidget,
+      supportedSizes: ['1x1', '2x1', '2x2'],
+    },
+  ], [t]);
 
   // 检查是否需要初始化设置
   useEffect(() => {
@@ -185,18 +176,18 @@ export default function Home() {
         const info = await getUserInfoWithCache(true); // 跳过认证检查
         setUserInfo(info);
       } catch (error) {
-        console.debug('获取用户信息失败:', error);
+        console.debug(t.home.fetchUserInfoFailed, error);
         // 设置默认访客信息
         setUserInfo({
           name: 'Myriad Dashboard',
           avatar: 'https://ui-avatars.com/api/?name=Myriad&background=random',
-          bio: '欢迎访问我的个人仪表盘',
+          bio: t.home.defaultBio,
           is_admin: false,
         });
       }
     }
     fetchUserInfo();
-  }, []);
+  }, [t]);
 
   // 登录后获取 CSRF Token
   useEffect(() => {
@@ -441,7 +432,7 @@ export default function Home() {
                         }}
                       >
                         <FaEdit size={12} />
-                        {isEditMode ? '完成' : '编辑'}
+                        {isEditMode ? t.common.done : t.common.edit}
                       </button>
                     </>
                   )}

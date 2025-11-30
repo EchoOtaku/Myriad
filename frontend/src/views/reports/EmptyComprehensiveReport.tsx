@@ -3,12 +3,15 @@
  */
 
 import { motion } from 'framer-motion';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface EmptyComprehensiveReportProps {
   isAdmin: boolean;
 }
 
 export function EmptyComprehensiveReport({ isAdmin }: EmptyComprehensiveReportProps) {
+  const { t } = useI18n();
+  
   return (
     <motion.div
       className="flex-shrink-0 snap-center w-[280px] lg:w-full"
@@ -42,16 +45,16 @@ export function EmptyComprehensiveReport({ isAdmin }: EmptyComprehensiveReportPr
           {/* 右侧：文本信息区域 */}
           <div className="flex-1 min-w-0 flex flex-col justify-center pl-5 pr-2">
             <h2 className="text-lg font-bold mb-1.5 truncate leading-tight text-gray-500 dark:text-gray-400">
-              暂无综合报告
+              {t.reportsPage.noComprehensiveReport}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-2 leading-relaxed">
               {isAdmin
-                ? '使用上方的输入框生成你的第一份综合报告'
-                : '管理员还未生成综合报告'}
+                ? t.reportsPage.useInputToGenerate
+                : t.reportsPage.adminNotGenerated}
             </p>
             <div className="flex items-center">
               <div className="px-3 py-1.5 rounded-full backdrop-blur-sm font-medium text-xs text-gray-400 dark:text-gray-500 bg-gray-400/10">
-                等待生成
+                {t.reportsPage.waitingGenerate}
               </div>
             </div>
           </div>

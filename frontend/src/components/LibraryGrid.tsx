@@ -5,6 +5,7 @@ import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
 import { useNotification } from '../contexts/NotificationContext';
 import { useMusicPlayerControl } from '../contexts/MusicPlayerContext';
+import { useI18n } from '../contexts/I18nContext';
 import type { Song } from '../utils/musicPlayer';
 
 // 添加样式到页面
@@ -225,6 +226,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const { showInfo } = useNotification();
     const { playSong, currentSong, isPlaying: globalIsPlaying, musicColor } = useMusicPlayerControl();
+    const { t } = useI18n();
     
     // 使用 ref 存储回调函数，避免在依赖中频繁更新
     const showInfoRef = useRef(showInfo);
@@ -565,16 +567,16 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     // 显示错误通知 - 使用 ref 避免依赖变化
     useEffect(() => {
         if (error) {
-            showInfoRef.current('资料库为空，请先在配置页面获取平台数据');
+            showInfoRef.current(t.library.emptyLibrary);
         }
-    }, [error]);
+    }, [error, t]);
 
     // 显示空状态通知 - 使用 ref 避免依赖变化
     useEffect(() => {
         if (!loading && filteredAllItems.length === 0 && !error) {
-            showInfoRef.current('此分类暂无内容，试试切换其他分类');
+            showInfoRef.current(t.library.emptyCategory);
         }
-    }, [loading, filteredAllItems.length, error]);
+    }, [loading, filteredAllItems.length, error, t]);
 
     const getPlatformColor = useCallback((platform: string) => {
         switch (platform.toLowerCase()) {
@@ -601,7 +603,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const getExtraInfo = useCallback((item: LibraryItem) => {
         if (item.item_type === 'game' && item.metadata.playtime_forever) {
             const hours = Math.round(item.metadata.playtime_forever / 60);
-            return `游玩 ${hours} 小时`;
+            return t.library.playedHours.replace('{hours}', hours.toString());
         }
         if (item.item_type === 'music') {
             const artists = item.metadata.ar || item.metadata.artists || [];
@@ -616,24 +618,24 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             return item.metadata.progress;
         }
         return null;
-    }, []);
+    }, [t]);
 
     const handlePlayMusic = useCallback((item: LibraryItem) => {
         const songId = (item.metadata.id || item.id.replace('netease_song_', '')).toString();
         const musicState = (window as any).__musicPlayerState;
         if (musicState?.currentSong?.id === songId) {
             window.dispatchEvent(new CustomEvent('open-control-panel'));
-            showInfoRef.current('🎵 已在播放中，打开控制面板');
+            showInfoRef.current(t.library.alreadyPlaying);
             return;
         }
         
         const isVip = item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4;
         if (isVip) {
-            showInfoRef.current('⚠️ VIP歌曲可能无法完整播放');
+            showInfoRef.current(t.library.vipSongWarning);
         }
 
         const name = item.metadata.name || item.title;
-        let artist = '未知艺术家';
+        let artist = t.library.unknownArtist;
         const artists = item.metadata.ar || item.metadata.artists || [];
         if (Array.isArray(artists) && artists.length > 0) {
             artist = artists.map((a: any) => a.name || a).join(', ');
@@ -641,7 +643,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             artist = item.metadata.artist;
         }
 
-        let album = '未知专辑';
+        let album = t.library.unknownAlbum;
         let cover = item.cover || '';
         if (item.metadata.al) {
             album = item.metadata.al.name || album;
@@ -670,8 +672,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
         playSongRef.current(song);
         window.dispatchEvent(new CustomEvent('open-control-panel'));
-        showInfoRef.current(`🎵 正在播放: ${name}`);
-    }, []);
+        showInfoRef.current(t.library.nowPlaying.replace('{name}', name));
+    }, [t]);
 
     const needsTransition = (from: string, to: string) => {
         return from !== 'all' && to !== 'all' && from !== to;
@@ -855,7 +857,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                                                             ? 'bg-pink-100 text-pink-700'
                                                                             : 'bg-purple-100 text-purple-700'
                                                                     }`}>
-                                                                        {item.item_type === 'anime' ? '追番' : '追剧'}
+                                                                        {item.item_type === 'anime' ? t.library.anime : t.library.tvSeries}
                                                                     </span>
                                                                 </div>
                                                                 {getExtraInfo(item) && (
@@ -991,7 +993,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         >
                             <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                 <Spinner size="sm" variant="primary" />
-                                <span className="text-sm">正在加载更多内容...</span>
+                                <span className="text-sm">{t.library.loadingMore}</span>
                             </div>
                         </div>
                     )}

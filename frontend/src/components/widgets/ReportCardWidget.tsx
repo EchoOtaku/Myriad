@@ -11,6 +11,7 @@ import { FaSteam, FaGithub } from 'react-icons/fa';
 import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useI18n } from '../../contexts/I18nContext';
 
 export interface ReportCardWidgetProps {
   config: WidgetConfig;
@@ -47,7 +48,9 @@ function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
 
 // ==================== B站组件（完整版）====================
 const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: string[] }, allowLoop?: boolean }) => {
-  const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
+  const { t } = useI18n();
+  const defaultDanmaku = t.reportCard.danmakuDefault as unknown as string[];
+  const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku]);
   const uniqueId = useId();
   
   // 🆕 接入动画调度器 - 报告组件高优先级(2)
@@ -179,8 +182,9 @@ const BilibiliWidget = memo(({ data, showOverview, onContentChange, allowLoop = 
 
 // ==================== Steam组件（完整版）====================
 const SteamStatsWidget = memo(({ data }: any) => {
+  const { t } = useI18n();
   const score = useMemo(() => data?.hardcore_score || 0, [data]);
-  const type = useMemo(() => data?.player_type || "休闲玩家", [data]);
+  const type = useMemo(() => data?.player_type || t.reportCard.casualPlayer, [data, t.reportCard.casualPlayer]);
   const gamesCount = useMemo(() => data?.games_count || 0, [data]);
   const totalPlaytime = useMemo(() => {
     const hours = data?.total_playtime || 0;
@@ -255,22 +259,23 @@ const SteamWidget = memo(({ data, showOverview, onContentChange }: any) => {
 
 // ==================== GitHub组件（完整版）====================
 const GithubStatsWidget = memo(({ data }: any) => {
+  const { t } = useI18n();
   const langs = useMemo(() => data?.languages || [], [data?.languages]);
-  const level = useMemo(() => data?.contribution_level || "初级开发者", [data?.contribution_level]);
+  const level = useMemo(() => data?.contribution_level || t.reportCard.beginnerDev, [data?.contribution_level, t.reportCard.beginnerDev]);
   const contributions = useMemo(() => data?.total_contributions || 0, [data?.total_contributions]);
   const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count]);
   const contributionCalendar = useMemo(() => data?.contribution_calendar, [data?.contribution_calendar]);
   
   const levelColor = useMemo(() => {
     const colorMap: { [key: string]: string } = {
-      '初级开发者': '#22c55e',
-      '中级开发者': '#3b82f6',
-      '高级开发者': '#a855f7',
-      '资深开发者': '#f97316',
-      '传奇开发者': '#ef4444',
+      [t.reportCardWidget.beginnerDev]: '#22c55e',
+      [t.reportCardWidget.intermediateDev]: '#3b82f6',
+      [t.reportCardWidget.seniorDev]: '#a855f7',
+      [t.reportCardWidget.veteranDev]: '#f97316',
+      [t.reportCardWidget.legendaryDev]: '#ef4444',
     };
     return colorMap[level] || '#6b7280';
-  }, [level]);
+  }, [level, t]);
   
   const generateHeatmapGrid = () => {
     const grid: Array<{ week: number; day: number; opacity: number; count: number }> = [];
@@ -429,6 +434,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
 
 // ==================== Netease组件（完整版）====================
 const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
+  const { t } = useI18n();
   const uniqueId = useId();
   
   // 🆕 接入动画调度器 - 报告组件高优先级(2)
@@ -448,7 +454,7 @@ const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
   const level = useMemo(() => data?.level || 0, [data?.level]);
   
   const formatNumber = (num: number) => {
-    if (num >= 10000) return `${(num / 10000).toFixed(1)}万`;
+    if (num >= 10000) return `${(num / 10000).toFixed(1)}${t.reportsPage.tenThousandSuffix}`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
     return num.toString();
   };
@@ -661,40 +667,47 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange, allowLoop = t
 
 // ==================== 平台配置 ====================
 const PLATFORM_CONFIG: Record<string, { icon: React.ReactNode; color: string; bgColor: string; borderColor: string; label: string; textColor: string }> = {
-  bilibili: { icon: <SiBilibili />, color: '#00A1D6', bgColor: 'rgba(0, 161, 214, 0.15)', borderColor: 'rgba(0, 161, 214, 0.3)', label: 'B站', textColor: 'text-[#00A1D6]' },
+  bilibili: { icon: <SiBilibili />, color: '#00A1D6', bgColor: 'rgba(0, 161, 214, 0.15)', borderColor: 'rgba(0, 161, 214, 0.3)', label: 'Bilibili', textColor: 'text-[#00A1D6]' },
   steam: { icon: <FaSteam />, color: '#1b2838', bgColor: 'rgba(27, 40, 56, 0.15)', borderColor: 'rgba(27, 40, 56, 0.3)', label: 'Steam', textColor: 'text-gray-700 dark:text-gray-300' },
   github: { icon: <FaGithub />, color: '#24292e', bgColor: 'rgba(36, 41, 46, 0.15)', borderColor: 'rgba(36, 41, 46, 0.3)', label: 'GitHub', textColor: 'text-gray-900 dark:text-gray-100' },
-  netease: { icon: <SiNeteasecloudmusic />, color: '#e60026', bgColor: 'rgba(230, 0, 38, 0.15)', borderColor: 'rgba(230, 0, 38, 0.3)', label: '网易云', textColor: 'text-red-600' },
+  netease: { icon: <SiNeteasecloudmusic />, color: '#e60026', bgColor: 'rgba(230, 0, 38, 0.15)', borderColor: 'rgba(230, 0, 38, 0.3)', label: 'NetEase', textColor: 'text-red-600' },
 };
 
 // ==================== 主组件 ====================
 export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportCardWidgetProps) => {
-    const animLevel = useAnimationLevel();
+  const animLevel = useAnimationLevel();
+  const { t } = useI18n();
   const platformId = (config.config?.platformId || 'bilibili') as string;
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showOverview, setShowOverview] = useState(true);
   const [cardContent, setCardContent] = useState<{ title: string; type?: string; titles?: string[] } | null>(null);
+  
+  // 翻译的平台标签
+  const translatedPlatformLabels = useMemo(() => ({
+    bilibili: t.reportCardWidget.bilibili,
+    netease: t.reportCardWidget.neteaseMusic,
+  }), [t]);
 
   useEffect(() => {
     if (isPreview) {
       setReportData({
         hardcore_score: 85,
-        player_type: '硬核玩家',
+        player_type: t.reportCardWidget.hardcorePlayer,
         games_count: 120,
         total_playtime: 2500,
-        contribution_level: '高级开发者',
+        contribution_level: t.reportCardWidget.seniorDev,
         total_contributions: 1200,
         repos_count: 45,
         follower_count: 1200,
         playlist_count: 15,
         level: 8,
-        mood_keywords: ['快乐', '忧伤', '激情'],
+        mood_keywords: [t.reportCardWidget.happyMood, t.reportCardWidget.sadMood, t.reportCardWidget.passionateMood],
         library_items: [
-          { title: '示例项目', type: 'repo', stars: 120, forks: 30, description: '这是一个示例项目' },
-          { title: '示例游戏', type: 'game', cover: '' },
-          { title: '示例番剧', type: 'anime', cover: '' },
-          { title: '示例歌单', type: 'music', cover: '' }
+          { title: t.reportCardWidget.sampleProject, type: 'repo', stars: 120, forks: 30, description: t.reportCardWidget.sampleProjectDesc },
+          { title: t.reportCardWidget.sampleGame, type: 'game', cover: '' },
+          { title: t.reportCardWidget.sampleAnime, type: 'anime', cover: '' },
+          { title: t.reportCardWidget.samplePlaylist, type: 'music', cover: '' }
         ]
       });
       setLoading(false);
@@ -710,7 +723,7 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
           if (report) setReportData(report.card_visuals);
         }
       } catch (err) {
-        console.error('获取报告失败:', err);
+        console.error(t.reportCardWidget.fetchReportFailed + ':', err);
       } finally {
         setLoading(false);
       }
@@ -779,7 +792,7 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
   }, []);
 
   if (loading) return <div className="h-full w-full flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>;
-  if (!reportData) return <div className="h-full w-full flex items-center justify-center text-gray-400 text-sm"><span>无报告数据</span></div>;
+  if (!reportData) return <div className="h-full w-full flex items-center justify-center text-gray-400 text-sm"><span>{t.reportCard.noReportData}</span></div>;
 
   const platformConfig = PLATFORM_CONFIG[platformId] || PLATFORM_CONFIG.bilibili;
 

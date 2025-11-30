@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { API_URL } from '../config';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAnimationSlot } from '../hooks/useAnimationScheduler';
+import { useI18n } from '../contexts/I18nContext';
 
 // 🔧 工具函数：处理B站图片URL，使用后端代理
 export const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
@@ -20,7 +21,8 @@ export const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
 
 // 迷你组件：B站弹幕云
 export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) => {
-  const texts = useMemo(() => data?.danmaku || ["高能预警", "下次一定", "AWSL", "爷青回", "泪目"], [data?.danmaku]);
+  const { t } = useI18n();
+  const texts = useMemo(() => data?.danmaku || t.reportsPage.danmakuDefaults, [data?.danmaku, t.reportsPage.danmakuDefaults]);
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
@@ -202,8 +204,9 @@ export const SteamStatsWidget = memo(({ data }: { data?: {
   games_count?: number;
   total_playtime?: number;
 } }) => {
+  const { t } = useI18n();
   const score = useMemo(() => data?.hardcore_score || 0, [data?.hardcore_score]);
-  const type = useMemo(() => data?.player_type || "休闲玩家", [data?.player_type]);
+  const type = useMemo(() => data?.player_type || t.reportsPage.casualPlayer, [data?.player_type, t.reportsPage.casualPlayer]);
   const gamesCount = useMemo(() => data?.games_count || 0, [data?.games_count]);
   const totalPlaytime = useMemo(() => {
     const hours = data?.total_playtime || 0;
@@ -362,16 +365,24 @@ export const GithubStatsWidget = memo(({ data }: { data?: {
   languages?: { name: string, percentage: number }[];
   contribution_calendar?: Array<{ date: string; count: number }>;
 } }) => {
-  const level = useMemo(() => data?.contribution_level || "活跃开发者", [data?.contribution_level]);
+  const { t } = useI18n();
+  const level = useMemo(() => data?.contribution_level || t.reportsPage.activeDeveloper, [data?.contribution_level, t.reportsPage.activeDeveloper]);
   const contributions = useMemo(() => data?.total_contributions || 0, [data?.total_contributions]);
   const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count]);
   const langs = useMemo(() => data?.languages || [], [data?.languages]);
   const contributionCalendar = useMemo(() => data?.contribution_calendar || [], [data?.contribution_calendar]);
   
   const getLevelColor = (level: string) => {
-    if (level.includes("传奇") || level.includes("核心")) return "#22c55e";
-    if (level.includes("资深") || level.includes("高产")) return "#3b82f6";
-    if (level.includes("活跃")) return "#8b5cf6";
+    // 使用翻译的关键词进行匹配
+    const legendaryKeyword = t.reportsPage.legendary;
+    const coreKeyword = t.reportsPage.core;
+    const seniorKeyword = t.reportsPage.senior;
+    const prolificKeyword = t.reportsPage.prolific;
+    const activeKeyword = t.reportsPage.active;
+    
+    if (level.includes(legendaryKeyword) || level.includes(coreKeyword)) return "#22c55e";
+    if (level.includes(seniorKeyword) || level.includes(prolificKeyword)) return "#3b82f6";
+    if (level.includes(activeKeyword)) return "#8b5cf6";
     return "#6b7280";
   };
   
@@ -639,6 +650,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
   playlist_count?: number;
   level?: number;
 } }) => {
+  const { t } = useI18n();
   const animConfig = useAnimationLevel();
   const uniqueId = useId();
   
@@ -659,7 +671,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
   const level = useMemo(() => data?.level || 0, [data?.level]);
   
   const formatNumber = (num: number) => {
-    if (num >= 10000) return `${(num / 10000).toFixed(1)}万`;
+    if (num >= 10000) return `${(num / 10000).toFixed(1)}${t.reportsPage.tenThousandSuffix}`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
     return num.toString();
   };

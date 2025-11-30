@@ -6,6 +6,7 @@
 import React, { useEffect } from 'react';
 import { formatTime, getSongVipStatus, highlightText } from '../../utils/musicPlayer';
 import { UseMusicPlayerReturn } from '../../hooks/useMusicPlayer';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface MusicPlayerProps {
   player: UseMusicPlayerReturn;
@@ -15,6 +16,7 @@ interface MusicPlayerProps {
  * 音乐信息视图
  */
 const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
+  const { t } = useI18n();
   const {
     currentSong,
     isPlaying,
@@ -41,15 +43,18 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
     volumeControlRef,
     showVolumePopup,
     setShowVolumePopup,
-    musicError,
+    musicErrorKey,
   } = player;
+
+  // 获取翻译后的错误消息
+  const musicError = musicErrorKey ? (t.music as Record<string, string>)[musicErrorKey] || musicErrorKey : '';
   
   if (!currentSong) {
     return (
       <div className="music-no-song">
         <div className="music-no-song-icon">{musicError ? '⚠️' : '🎵'}</div>
         <div className={`music-no-song-text ${musicError ? 'error' : ''}`}>
-          {musicError || (playlist.length === 0 ? '请在配置中设置歌单' : '暂无播放')}
+          {musicError || (playlist.length === 0 ? t.music.noPlaylist : t.music.noPlaying)}
         </div>
       </div>
     );
@@ -65,8 +70,8 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
         <button
           onClick={stopTempPlay}
           className="music-player-temp-close-btn"
-          aria-label="停止临时播放"
-          title="停止临时播放并恢复原播放列表"
+          aria-label={t.music.stopTemp}
+          title={t.music.stopTempAndRestore}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -121,7 +126,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
               onTouchEnd={handleSeekEnd}
               onInput={(e) => handleSeek(parseFloat(e.currentTarget.value))}
               className={`music-progress-bar ${isAudioLoading ? 'loading' : ''}`}
-              aria-label="音乐进度"
+              aria-label={t.music.progress}
             />
             <span className="music-time">-{formatTime((audioDuration || currentSong.duration || 0) - currentTime)}</span>
           </div>
@@ -136,8 +141,8 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
             <button
               onClick={() => setMusicPlayerView('lyrics')}
               className="music-view-switch-btn"
-              aria-label="查看歌词"
-              title="歌词"
+              aria-label={t.music.lyrics}
+              title={t.music.lyrics}
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" />
@@ -149,8 +154,8 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
             <button
               onClick={togglePlayMode}
               className="music-view-switch-btn"
-              aria-label={playModeInfo.text}
-              title={playModeInfo.text}
+              aria-label={t.music[playModeInfo.textKey]}
+              title={t.music[playModeInfo.textKey]}
             >
               {playModeInfo.icon}
             </button>
@@ -162,7 +167,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
           <button
             onClick={playPrevious}
             className="music-control-btn"
-            aria-label="上一首"
+            aria-label={t.music.previous}
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -172,7 +177,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
           <button
             onClick={togglePlay}
             className="music-play-btn"
-            aria-label={isPlaying ? '暂停' : '播放'}
+            aria-label={isPlaying ? t.music.pause : t.music.play}
           >
             {isPlaying ? (
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -188,7 +193,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
           <button
             onClick={playNext}
             className="music-control-btn"
-            aria-label="下一首"
+            aria-label={t.music.next}
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -203,7 +208,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
             <button
               onClick={() => setShowVolumePopup(!showVolumePopup)}
               className="music-volume-btn"
-              aria-label="音量调节"
+              aria-label={t.music.volume}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
@@ -221,7 +226,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
                 value={volume}
                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
                 className="music-volume-slider"
-                aria-label="音量调节"
+                aria-label={t.music.volume}
               />
             </div>
           </div>
@@ -231,8 +236,8 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
             <button
               onClick={() => setMusicPlayerView('playlist')}
               className="music-view-switch-btn"
-              aria-label="查看播放列表"
-              title="列表"
+              aria-label={t.music.playlist}
+              title={t.music.playlist}
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path fillRule="evenodd" d="M2.625 6.75a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0A.75.75 0 018.25 6h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75zM2.625 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zM7.5 12a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12A.75.75 0 017.5 12zm-4.875 5.25a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75z" clipRule="evenodd" />
@@ -249,6 +254,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
  * 歌词视图
  */
 const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player }) => {
+  const { t } = useI18n();
   const {
     currentSong,
     lyrics,
@@ -299,7 +305,7 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
         <button
           onClick={() => setMusicPlayerView('info')}
           className="music-back-btn"
-          aria-label="返回"
+          aria-label={t.music.back}
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -348,6 +354,7 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
  * 播放列表视图
  */
 const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player }) => {
+  const { t } = useI18n();
   const {
     playlist,
     currentSongIndex,
@@ -412,22 +419,22 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
             setPlaylistSearchQuery('');
           }}
           className="music-back-btn"
-          aria-label="返回"
+          aria-label={t.music.back}
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
           </svg>
         </button>
         <div className="music-playlist-title">
-          播放列表 ({displayPlaylist.length}/{playlist.length}首)
+          {t.music.playlistTitle} ({displayPlaylist.length}/{playlist.length})
         </div>
         
         {/* 排除VIP开关 */}
         <button
           onClick={() => setExcludeVipSongs(!excludeVipSongs)}
           className={`music-vip-filter-toggle ${excludeVipSongs ? 'active' : ''}`}
-          aria-label={excludeVipSongs ? '显示VIP歌曲' : '隐藏VIP歌曲'}
-          title={excludeVipSongs ? '跳过VIP歌曲（点击显示全部）' : '显示全部歌曲（点击跳过VIP）'}
+          aria-label={excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs}
+          title={excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs}
         >
           {excludeVipSongs ? (
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -447,7 +454,7 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
           </svg>
           <input
             type="text"
-            placeholder="搜索..."
+            placeholder={t.music.searchPlaceholder}
             value={playlistSearchQuery}
             onChange={(e) => setPlaylistSearchQuery(e.target.value)}
             className="music-search-input"
@@ -456,7 +463,7 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
             <button
               onClick={() => setPlaylistSearchQuery('')}
               className="music-search-clear"
-              aria-label="清除搜索"
+              aria-label={t.music.clearSearch}
             >
               <svg fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -519,7 +526,7 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
         ) : (
           <div className="music-no-results">
             <div className="music-no-results-icon">🔍</div>
-            <div className="music-no-results-text">未找到匹配的歌曲</div>
+            <div className="music-no-results-text">{t.music.noMatching}</div>
           </div>
         )}
       </div>

@@ -10,6 +10,7 @@ import { FaEdit, FaSave, FaTimes, FaPlus } from 'react-icons/fa';
 import React from 'react';
 import './WidgetGrid.css';
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
+import { useI18n } from '../contexts/I18nContext';
 
 // ⚠️ 移动端检测 - 用于优化触摸事件性能
 const getIsMobile = (): boolean => {
@@ -88,6 +89,7 @@ const WidgetGridItem = React.memo(({
   onConfigChange?: (newConfig: any) => void;
 }) => {
   const perf = usePerformanceProfile();
+  const { t } = useI18n();
   const dim = SIZE_TO_DIMENSIONS[widget.size];
   const WidgetComponent = widgetType.component;
   
@@ -151,8 +153,8 @@ const WidgetGridItem = React.memo(({
                 onRemove(widget.id);
               }}
               className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
-              title="删除小组件"
-              aria-label="删除小组件"
+              title={t.widgetGrid.deleteWidget}
+              aria-label={t.widgetGrid.deleteWidget}
             >
               <FaTimes size={10} />
             </button>
@@ -196,10 +198,14 @@ export interface WidgetType {
   id: string;
   name: string;
   defaultSize: WidgetSize;
-  icon: string;
   component: React.ComponentType<WidgetComponentProps>;
   supportedSizes?: WidgetSize[]; // 支持的尺寸列表，如果未定义则支持所有尺寸
 }
+
+// 将 widget id 转换为翻译键 (kebab-case -> camelCase)
+const getWidgetTranslationKey = (id: string): string => {
+  return id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+};
 
 interface WidgetGridProps {
   widgets: WidgetConfig[];
@@ -275,6 +281,7 @@ export default function WidgetGrid({
   libraryAnimation,
   autoHeight,
 }: WidgetGridProps) {
+  const { t } = useI18n();
   const [gridColumns, setGridColumns] = useState(customGridColumns || GRID_WIDTH);
   // Only enable compact mode (auto-layout) if we are in responsive mode (no custom columns) AND width is small
   const isCompact = !customGridColumns && gridColumns < GRID_WIDTH; 
@@ -1008,7 +1015,7 @@ export default function WidgetGrid({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
               <span className="text-lg">📦</span>
-              <span className="font-bold">小组件库</span>
+              <span className="font-bold">{t.widgetGrid.widgetLibrary}</span>
             </div>
             
             <div className="h-5 w-px bg-gray-300 dark:bg-white/10 mx-2" />
@@ -1018,19 +1025,17 @@ export default function WidgetGrid({
                 onClick={handleUndo}
                 disabled={historyIndex <= 0}
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title="撤销 (Ctrl+Z)"
-                aria-label="撤销"
+                data-undo="true"
               >
-                <span className="text-sm font-bold">↶ 撤销</span>
+                <span className="text-sm font-bold">↶</span>
               </button>
               <button
                 onClick={handleRedo}
                 disabled={historyIndex >= widgetHistory.length - 1}
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title="重做 (Ctrl+Shift+Z)"
-                aria-label="重做"
+                data-redo="true"
               >
-                <span className="text-sm font-bold">↷ 重做</span>
+                <span className="text-sm font-bold">↷</span>
               </button>
             </div>
           </div>
@@ -1108,7 +1113,7 @@ export default function WidgetGrid({
 
                 {/* 悬浮提示 */}
                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-neutral-900/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
-                  {widgetType.name}
+                  {(t.widgets as any)[getWidgetTranslationKey(widgetType.id)] || widgetType.name}
                 </div>
               </motion.div>
             );
@@ -1185,7 +1190,7 @@ export default function WidgetGrid({
                   ? 'bg-red-500/90 text-white'
                   : 'bg-blue-500/90 text-white'
               }`}>
-                {dragPreview.hasCollision ? '❌ 位置冲突' : '✓ 可以放置'}
+                {dragPreview.hasCollision ? t.widgetGrid.positionConflict : t.widgetGrid.canPlace}
               </div>
             </div>
           </motion.div>

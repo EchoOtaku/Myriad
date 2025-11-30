@@ -6,8 +6,10 @@ import { fetchJson } from '../utils/apiHelper';
 import { RateLimitError } from '../utils/rateLimiter';
 import { sanitizeUsername } from '../utils/inputSanitizer';
 import { setSessionHint } from '../utils/sessionDetection';
+import { useI18n } from '../contexts/I18nContext';
 
 const LoginForm: React.FC = () => {
+  const { t, format } = useI18n();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -35,25 +37,25 @@ const LoginForm: React.FC = () => {
 
     // 输入验证
     if (!formData.username || !formData.password) {
-      setError('请填写用户名和密码');
+      setError(t.auth.fillUsernameAndPassword);
       return;
     }
 
     // 验证用户名格式
     if (formData.username.length < 3 || formData.username.length > 50) {
-      setError('用户名长度应为3-50个字符');
+      setError(t.auth.usernameLengthError);
       return;
     }
 
     // 验证用户名只包含字母、数字、下划线
     if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-      setError('用户名只能包含字母、数字和下划线');
+      setError(t.auth.usernameFormatError);
       return;
     }
 
     // 验证密码长度
     if (formData.password.length < 8 || formData.password.length > 128) {
-      setError('密码长度应为8-128个字符');
+      setError(t.auth.passwordLengthError);
       return;
     }
 
@@ -69,22 +71,22 @@ const LoginForm: React.FC = () => {
           },
           body: JSON.stringify(formData),
         },
-        '登录失败'
+        t.auth.loginFailed
       );
       
       // Validate response data
       if (!data.token || typeof data.token !== 'string' || data.token.length < 10) {
-        throw new Error('登录响应数据不完整');
+        throw new Error(t.auth.loginResponseIncomplete);
       }
 
       if (!data.user || typeof data.user !== 'object') {
-        throw new Error('用户信息不完整');
+        throw new Error(t.auth.userInfoIncomplete);
       }
 
       // Validate token format (should be JWT)
       const tokenParts = data.token.split('.');
       if (tokenParts.length !== 3) {
-        throw new Error('无效的token格式');
+        throw new Error(t.auth.invalidTokenFormat);
       }
 
       // ✅ 安全修复 P0: 不再将 token 存入 localStorage（防止 XSS 窃取）
@@ -119,9 +121,9 @@ const LoginForm: React.FC = () => {
       // 处理 Rate Limit 错误
       if (err instanceof RateLimitError) {
         const seconds = Math.ceil(err.retryAfter / 1000);
-        setError(`登录尝试过于频繁，请在 ${seconds} 秒后重试`);
+        setError(format(t.auth.rateLimitError, { seconds }));
       } else {
-        setError(err.message || '登录失败，请稍后重试');
+        setError(err.message || t.auth.loginFailed);
       }
     } finally {
       setSubmitting(false);
@@ -142,7 +144,7 @@ const LoginForm: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              用户名
+              {t.auth.username}
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -156,7 +158,7 @@ const LoginForm: React.FC = () => {
                   setFormData({ ...formData, username: sanitized });
                 }}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="输入用户名"
+                placeholder={t.auth.enterUsername}
                 maxLength={50}
                 autoComplete="username"
                 required
@@ -166,7 +168,7 @@ const LoginForm: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              密码
+              {t.auth.password}
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -177,7 +179,7 @@ const LoginForm: React.FC = () => {
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="输入密码"
+                placeholder={t.auth.enterPassword}
                 maxLength={128}
                 autoComplete="current-password"
                 required
@@ -193,10 +195,10 @@ const LoginForm: React.FC = () => {
             {submitting ? (
               <>
                 <Spinner size="sm" variant="white" />
-                <span>登录中...</span>
+                <span>{t.auth.loggingIn}</span>
               </>
             ) : (
-              <span>登录</span>
+              <span>{t.auth.login}</span>
             )}
           </button>
         </form>
@@ -209,7 +211,7 @@ const LoginForm: React.FC = () => {
                 <div className="w-full border-t border-gray-300"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">或</span>
+                <span className="px-2 bg-white text-gray-500">{t.common.or}</span>
               </div>
             </div>
 
@@ -218,7 +220,7 @@ const LoginForm: React.FC = () => {
               className="w-full py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-semibold shadow-md"
             >
               <FaGithub className="text-xl" />
-              <span>使用 GitHub 登录</span>
+              <span>{t.auth.loginWithGithub}</span>
             </a>
           </>
         )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import './ControlPanelWidgets.css';
 import { createPortal } from 'react-dom';
-import WidgetGrid, { WidgetConfig, WidgetType } from '../WidgetGrid';
+import WidgetGrid, { WidgetConfig, WidgetType, WidgetSize } from '../WidgetGrid';
 import { WelcomeWidget } from '../widgets/WelcomeWidget';
 import { QuickStatsWidget } from '../widgets/QuickStatsWidget';
 import { RecentActivityWidget } from '../widgets/RecentActivityWidget';
@@ -12,99 +12,24 @@ import { MusicPlayerWidget } from '../widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../widgets/ReportCardWidget';
 import { SocialNetworkWidget } from '../widgets/SocialNetworkWidget';
 import { getCSRFToken } from '../../utils/csrf';
+import { useI18n } from '../../contexts/I18nContext';
 
 const API_URL = import.meta.env.PUBLIC_API_URL || '';
 
-const CONTROL_PANEL_WIDGETS: WidgetType[] = [
-  {
-    id: 'welcome',
-    name: '欢迎',
-    defaultSize: '4x2',
-    icon: '👋',
-    component: WelcomeWidget,
-    supportedSizes: ['2x2', '4x2'],
-  },
-  {
-    id: 'social-network',
-    name: '社交网络',
-    defaultSize: '1x1',
-    icon: '🔗',
-    component: SocialNetworkWidget,
-    supportedSizes: ['1x1', '2x1', '2x2'],
-  },
-  {
-    id: 'quick-stats',
-    name: '内容数据概览',
-    defaultSize: '4x2',
-    icon: '📊',
-    component: QuickStatsWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'recent-activity',
-    name: '最近活动',
-    defaultSize: '4x2',
-    icon: '🕐',
-    component: RecentActivityWidget,
-    supportedSizes: ['2x2', '4x2'],
-  },
-  {
-    id: 'weather',
-    name: '天气',
-    defaultSize: '2x2',
-    icon: '🌤️',
-    component: WeatherWidget,
-    supportedSizes: ['2x2', '4x2', '4x1'],
-  },
-  {
-    id: 'quote',
-    name: '一言',
-    defaultSize: '2x2',
-    icon: '💭',
-    component: QuoteWidget,
-    supportedSizes: ['2x2', '4x2', '4x1'],
-  },
-  {
-    id: 'music-player',
-    name: '音乐播放器',
-    defaultSize: '2x2',
-    icon: '🎵',
-    component: MusicPlayerWidget,
-    supportedSizes: ['2x2', '4x2'],
-  },
-  {
-    id: 'report-bilibili',
-    name: 'Bilibili报告',
-    defaultSize: '4x2',
-    icon: '📊',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'report-steam',
-    name: 'Steam报告',
-    defaultSize: '4x2',
-    icon: '🎮',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'report-github',
-    name: 'GitHub报告',
-    defaultSize: '4x2',
-    icon: '💻',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-  {
-    id: 'report-netease',
-    name: '网易云报告',
-    defaultSize: '4x2',
-    icon: '🎵',
-    component: ReportCardWidget,
-    supportedSizes: ['4x2'],
-  },
-];
+// 小组件基础配置（不含翻译的名称）
+const WIDGET_BASE_CONFIG = {
+  welcome: { defaultSize: '4x2' as const, component: WelcomeWidget, supportedSizes: ['2x2', '4x2'] as WidgetSize[] },
+  'social-network': { defaultSize: '1x1' as const, component: SocialNetworkWidget, supportedSizes: ['1x1', '2x1', '2x2'] as WidgetSize[] },
+  'quick-stats': { defaultSize: '4x2' as const, component: QuickStatsWidget, supportedSizes: ['4x2'] as WidgetSize[] },
+  'recent-activity': { defaultSize: '4x2' as const, component: RecentActivityWidget, supportedSizes: ['2x2', '4x2'] as WidgetSize[] },
+  weather: { defaultSize: '2x2' as const, component: WeatherWidget, supportedSizes: ['2x2', '4x2', '4x1'] as WidgetSize[] },
+  quote: { defaultSize: '2x2' as const, component: QuoteWidget, supportedSizes: ['2x2', '4x2', '4x1'] as WidgetSize[] },
+  'music-player': { defaultSize: '2x2' as const, component: MusicPlayerWidget, supportedSizes: ['2x2', '4x2'] as WidgetSize[] },
+  'report-bilibili': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
+  'report-steam': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
+  'report-github': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
+  'report-netease': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
+};
 
 const DEFAULT_CONTROL_PANEL_LAYOUT: WidgetConfig[] = [
   {
@@ -126,6 +51,23 @@ interface ControlPanelWidgetsProps {
 }
 
 export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmin = false }) => {
+  const { t } = useI18n();
+  
+  // 使用翻译后的小组件名称
+  const CONTROL_PANEL_WIDGETS: WidgetType[] = useMemo(() => [
+    { id: 'welcome', name: t.widgets.welcome, ...WIDGET_BASE_CONFIG.welcome },
+    { id: 'social-network', name: t.widgets.socialNetwork, ...WIDGET_BASE_CONFIG['social-network'] },
+    { id: 'quick-stats', name: t.widgets.quickStats, ...WIDGET_BASE_CONFIG['quick-stats'] },
+    { id: 'recent-activity', name: t.widgets.recentActivity, ...WIDGET_BASE_CONFIG['recent-activity'] },
+    { id: 'weather', name: t.widgets.weather, ...WIDGET_BASE_CONFIG.weather },
+    { id: 'quote', name: t.widgets.quote, ...WIDGET_BASE_CONFIG.quote },
+    { id: 'music-player', name: t.widgets.musicPlayer, ...WIDGET_BASE_CONFIG['music-player'] },
+    { id: 'report-bilibili', name: t.widgets.reportBilibili, ...WIDGET_BASE_CONFIG['report-bilibili'] },
+    { id: 'report-steam', name: t.widgets.reportSteam, ...WIDGET_BASE_CONFIG['report-steam'] },
+    { id: 'report-github', name: t.widgets.reportGithub, ...WIDGET_BASE_CONFIG['report-github'] },
+    { id: 'report-netease', name: t.widgets.reportNetease, ...WIDGET_BASE_CONFIG['report-netease'] },
+  ], [t.widgets]);
+  
   const [widgets, setWidgets] = useState<WidgetConfig[]>(DEFAULT_CONTROL_PANEL_LAYOUT);
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);

@@ -25,6 +25,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
 import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useI18n } from '../../contexts/I18nContext';
 
 // ========== 安全验证工具函数 ==========
 
@@ -220,7 +221,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   },
   {
     id: 'netease',
-    name: '网易云音乐',
+    name: 'NetEase Music', // Will be translated in component
     icon: <SiNeteasecloudmusic />,
     color: '#E60026',
     darkColor: '#E60026',
@@ -564,18 +565,19 @@ const CustomPlatformForm = memo(({
   onCancel: () => void;
   isGenerating: boolean;
 }) => {
+  const { t } = useI18n();
   return (
     <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
       {/* 平台名称 */}
       <div>
         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-          平台名称 *
+          {t.socialNetwork.platformName} *
         </label>
         <input
           type="text"
           value={formData.name}
           onChange={(e) => onChange({ ...formData, name: e.target.value })}
-          placeholder="例如: 微博、微信"
+          placeholder={t.socialNetwork.platformNameHint}
           className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
         />
       </div>
@@ -583,7 +585,7 @@ const CustomPlatformForm = memo(({
       {/* 链接类型 */}
       <div>
         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-          链接类型
+          {t.socialNetwork.linkType}
         </label>
         <div className="flex gap-2">
           <button
@@ -595,7 +597,7 @@ const CustomPlatformForm = memo(({
                 : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
             }`}
           >
-            URL链接
+            {t.socialNetwork.urlLink}
           </button>
           <button
             type="button"
@@ -606,7 +608,7 @@ const CustomPlatformForm = memo(({
                 : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
             }`}
           >
-            信息弹窗
+            {t.socialNetwork.infoPopup}
           </button>
         </div>
       </div>
@@ -616,47 +618,44 @@ const CustomPlatformForm = memo(({
         <>
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              用户名/ID <span className="text-gray-400 dark:text-gray-500">(可选)</span>
+              {t.socialNetwork.usernameId} <span className="text-gray-400 dark:text-gray-500">({t.socialNetwork.optional})</span>
             </label>
             <input
               type="text"
               value={formData.username}
               onChange={(e) => onChange({ ...formData, username: e.target.value })}
-              placeholder="例如: your_username"
+              placeholder={t.socialNetwork.usernameHint}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              URL模式 {!formData.username && <span className="text-amber-500">*</span>}
+              {t.socialNetwork.urlPattern} {!formData.username && <span className="text-amber-500">*</span>}
             </label>
             <input
               type="text"
               value={formData.linkPattern}
               onChange={(e) => onChange({ ...formData, linkPattern: e.target.value })}
-              placeholder={formData.username ? "留空则自动生成" : "请填写完整链接"}
+              placeholder={formData.username ? t.socialNetwork.linkAutoGenerate : t.socialNetwork.linkManualInput}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {formData.username ? '使用 {\'{username}\'} 作为用户名占位符' : '无用户名时直接访问此链接'}
+              {formData.username ? t.socialNetwork.usePlaceholder : t.socialNetwork.noUsernameHint}
             </p>
           </div>
         </>
       ) : (
         <div>
           <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            显示内容
+            {t.socialNetwork.popupContent}
           </label>
           <textarea
             value={formData.popupText}
             onChange={(e) => onChange({ ...formData, popupText: e.target.value })}
-            placeholder="输入文本、图片链接等&#10;例如:&#10;微信号: wxid_123&#10;https://example.com/qrcode.png"
+            placeholder={t.socialNetwork.popupHint}
             rows={4}
             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none resize-none"
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            支持图片URL自动识别(http/https开头的.jpg/.png/.gif等)
-          </p>
         </div>
       )}
 
@@ -667,7 +666,7 @@ const CustomPlatformForm = memo(({
           onClick={onCancel}
           className="flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
         >
-          取消
+          {t.common.cancel}
         </button>
         <button
           type="button"
@@ -680,7 +679,7 @@ const CustomPlatformForm = memo(({
           }
           className="flex-1 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
-          {isGenerating ? '生成中...' : '创建'}
+          {isGenerating ? t.socialNetwork.generating : t.socialNetwork.create}
         </button>
       </div>
     </div>
@@ -742,6 +741,7 @@ const InfoTooltip = memo(({
   popupData: CustomPlatformPopupData;
   anchorRef: React.RefObject<HTMLDivElement | null>;
 }) => {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   
   // 解析内容
@@ -828,7 +828,7 @@ const InfoTooltip = memo(({
           </div>
         ) : (
           <div className="p-3 text-center">
-            <span className="text-xs text-gray-400">暂无内容</span>
+            <span className="text-xs text-gray-400">{t.socialNetwork.noContent}</span>
           </div>
         )}
       </div>
@@ -843,6 +843,7 @@ InfoTooltip.displayName = 'InfoTooltip';
 const GlobalSettingsModal = memo(() => {
   // 订阅全局状态
   const [, forceUpdate] = useState({});
+  const { t } = useI18n();
 
   // 加载自定义平台
   const [allPlatforms, setAllPlatforms] = useState<PlatformInfo[]>(() => {
@@ -939,24 +940,24 @@ const GlobalSettingsModal = memo(() => {
   // 处理自定义平台表单提交
   const handleCustomFormSubmit = useCallback(async () => {
     if (!customFormData.name) {
-      alert('请填写平台名称');
+      alert(t.socialNetworkWidget.fillPlatformName);
       return;
     }
     
     // URL类型需要用户名或URL模式其一，弹窗类型需要显示内容
     if (customFormData.linkType === 'url' && !customFormData.username && !customFormData.linkPattern) {
-      alert('请填写用户名/ID 或 URL模式（至少填写一项）');
+      alert(t.socialNetworkWidget.fillUsernameOrUrl);
       return;
     }
     if (customFormData.linkType === 'popup' && !customFormData.popupText) {
-      alert('请填写显示内容');
+      alert(t.socialNetworkWidget.fillPopupContent);
       return;
     }
 
     // ✅ 安全验证：检查 URL 模式
     const urlPattern = customFormData.linkPattern || '';
     if (customFormData.linkType === 'url' && urlPattern && !isValidUrlPattern(urlPattern)) {
-      alert('URL 模式不合法\n\n要求：\n• 必须以 http:// 或 https:// 或 mailto: 开头\n• 不能包含特殊字符 < > " \' ` \\');
+      alert(t.socialNetworkWidget.invalidUrlPattern);
       return;
     }
 
@@ -1053,19 +1054,19 @@ const GlobalSettingsModal = memo(() => {
       closeSettingsModal();
     } catch (error) {
       console.error('Failed to create custom platform:', error);
-      alert('创建自定义平台失败');
+      alert(t.socialNetworkWidget.createCustomPlatformFailed);
     } finally {
       setIsGeneratingIcon(false);
     }
-  }, [customFormData, onSelect]);
+  }, [customFormData, onSelect, t]);
 
   // 删除自定义平台
   const handleDeleteCustomPlatform = useCallback(async (platformId: string) => {
-    if (confirm('确定要删除这个自定义平台吗？')) {
+    if (confirm(t.socialNetworkWidget.confirmDeleteCustomPlatform)) {
       await removeCustomPlatform(platformId);
       setAllPlatforms(getAllPlatforms());
     }
-  }, []);
+  }, [t]);
 
   // 提前返回，不渲染任何东西
   if (!isOpen) return null;
@@ -1094,13 +1095,13 @@ const GlobalSettingsModal = memo(() => {
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/50 dark:border-white/10">
-          <span className="font-bold text-sm text-gray-800 dark:text-gray-200">选择平台</span>
+          <span className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.socialNetwork.selectPlatform}</span>
           <button
             type="button"
             onClick={closeSettingsModal}
             className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-            title="关闭"
-            aria-label="关闭"
+            title={t.socialNetworkWidget.close}
+            aria-label={t.socialNetworkWidget.close}
           >
             <FaTimes size={12} className="text-gray-500 dark:text-gray-400" />
           </button>
@@ -1118,6 +1119,7 @@ const GlobalSettingsModal = memo(() => {
                   isSelected={selectedPlatformId === platform.id}
                   onSelect={handleSelect}
                   onDelete={platform.isCustom ? handleDeleteCustomPlatform : undefined}
+                  deleteLabel={t.socialNetworkWidget.delete}
                 />
               ))}
             </div>
@@ -1132,7 +1134,7 @@ const GlobalSettingsModal = memo(() => {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                添加自定义平台
+                {t.socialNetwork.create}
               </button>
             </div>
           </>
@@ -1167,12 +1169,14 @@ const PlatformButton = memo(({
   platform,
   isSelected,
   onSelect,
-  onDelete
+  onDelete,
+  deleteLabel
 }: {
   platform: PlatformInfo;
   isSelected: boolean;
   onSelect: (platformId: string) => void;
   onDelete?: (platformId: string) => void;
+  deleteLabel?: string;
 }) => {
   const handleClick = useCallback(() => {
     onSelect(platform.id);
@@ -1221,7 +1225,7 @@ const PlatformButton = memo(({
           onClick={handleDelete}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDelete(e as any); } }}
           className="ml-auto w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500 transition-colors flex-shrink-0 cursor-pointer"
-          title="删除"
+          title={deleteLabel || 'Delete'}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1239,6 +1243,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   const { containerRef, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined);
   const anim = useAnimationLevel();
   const uniqueId = useId();
+  const { t } = useI18n();
   
   // 🆕 接入动画调度器 - 图标动画优先级中等(5)
   const { isAnimating } = useAnimationSlot(`social-icon-${uniqueId}`, {
@@ -1551,7 +1556,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           {/* 右上角：复制提示 - 仅在有文本内容时显示 */}
           {popupContent.textContent && (
             <div className="absolute top-2 right-2 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
-              <span>复制</span>
+              <span>{t.socialNetwork.copy}</span>
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
@@ -1637,7 +1642,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           >
             {userId ? (
               <>
-                <span>点击访问个人主页</span>
+                <span>{t.socialNetwork.clickToVisit}</span>
                 <motion.span
                   layout={false}
                   animate={anim.loop ? HINT_ARROW_ANIMATION : { x: 0 }}
@@ -1651,7 +1656,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <span>未配置</span>
+                <span>{t.socialNetwork.notConfigured}</span>
               </>
             )}
           </motion.div>
@@ -1765,7 +1770,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            title="长按小组件进行设置"
+            title={t.socialNetwork.longPressToEdit}
           >
             <svg className="w-3 h-3 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />

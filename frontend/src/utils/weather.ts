@@ -5,6 +5,7 @@ export interface ForecastDay {
   maxTemp: number;
   minTemp: number;
   weather: string;
+  weatherCode: number;
   icon: string;
 }
 
@@ -13,6 +14,7 @@ export interface WeatherData {
   weather: string;
   temperature: string;
   icon: string;
+  weatherCode: number;
   // 扩展信息（用于展开面板）
   humidity?: number;
   windSpeed?: number;
@@ -213,6 +215,7 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
           maxTemp: Math.round(daily.temperature_2m_max[i]),
           minTemp: Math.round(daily.temperature_2m_min[i]),
           weather: getWeatherTextFromWMO(daily.weather_code[i]),
+          weatherCode: daily.weather_code[i],
           icon: getWeatherIconFromWMO(daily.weather_code[i])
         });
       }
@@ -221,6 +224,7 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
     const result: WeatherData = {
       city: location.city,
       weather: getWeatherTextFromWMO(current.weather_code),
+      weatherCode: current.weather_code,
       temperature: `${Math.round(current.temperature_2m)}°C`,
       icon: getWeatherIconFromWMO(current.weather_code),
       humidity: current.relative_humidity_2m,

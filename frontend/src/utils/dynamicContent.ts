@@ -17,12 +17,27 @@ export interface GreetingData {
   time: string;
 }
 
+export interface GreetingTranslations {
+  morning: string;
+  noon: string;
+  afternoon: string;
+  evening: string;
+  night: string;
+}
+
 /**
  * 获取时间段问候语
+ * @param username 用户名（可选）
+ * @param translations 翻译对象（可选，用于国际化）
+ * @param locale 语言代码（可选，用于时间格式化）
  */
-export function getGreeting(username?: string): GreetingData {
+export function getGreeting(
+  username?: string, 
+  translations?: GreetingTranslations,
+  locale?: string
+): GreetingData {
   const hour = new Date().getHours();
-  const time = new Date().toLocaleTimeString('zh-CN', {
+  const time = new Date().toLocaleTimeString(locale || 'zh-CN', {
     hour: '2-digit',
     minute: '2-digit'
   });
@@ -30,25 +45,34 @@ export function getGreeting(username?: string): GreetingData {
   let text = '';
   let icon = '';
 
+  // 默认中文翻译
+  const t = translations || {
+    morning: '早上好',
+    noon: '中午好',
+    afternoon: '下午好',
+    evening: '晚上好',
+    night: '夜深了',
+  };
+
   if (hour >= 5 && hour < 12) {
     icon = '🌅';
-    text = '早上好';
+    text = t.morning;
   } else if (hour >= 12 && hour < 14) {
     icon = '☀️';
-    text = '中午好';
+    text = t.noon;
   } else if (hour >= 14 && hour < 18) {
     icon = '🌤️';
-    text = '下午好';
+    text = t.afternoon;
   } else if (hour >= 18 && hour < 22) {
     icon = '🌆';
-    text = '晚上好';
+    text = t.evening;
   } else {
     icon = '🌙';
-    text = '夜深了';
+    text = t.night;
   }
 
   if (username) {
-    text += `，${username}`;
+    text += locale?.startsWith('zh') ? `，${username}` : `, ${username}`;
   }
 
   return { text, icon, time };
@@ -56,11 +80,13 @@ export function getGreeting(username?: string): GreetingData {
 
 /**
  * 获取主题状态信息
+ * @param translations 翻译对象（可选）
  */
-export function getThemeInfo(): { text: string; icon: string } {
+export function getThemeInfo(translations?: { dark: string; light: string }): { text: string; icon: string } {
   const isDark = document.documentElement.classList.contains('dark');
+  const t = translations || { dark: '深色模式', light: '浅色模式' };
   return {
-    text: isDark ? '深色模式' : '浅色模式',
+    text: isDark ? t.dark : t.light,
     icon: isDark ? '🌙' : '☀️'
   };
 }
