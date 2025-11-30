@@ -1,7 +1,7 @@
-// Service Worker v2.0 for Myriad
-// 性能优化版 - 缓存策略 + 安全过滤
+// Service Worker v2.1 for Myriad
+// 性能优化版 - 缓存策略 + 安全过滤 + 206 响应处理
 
-const CACHE_VERSION = 'myriad-v2';
+const CACHE_VERSION = 'myriad-v2.1';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
@@ -84,17 +84,23 @@ function isCacheExpired(response, maxAge) {
 
 // 添加缓存时间戳
 async function cacheWithTimestamp(cacheName, request, response) {
+  // ✅ 跳过 206 Partial Content 响应（Cache API 不支持）
+  if (response.status === 206) {
+    console.log('[SW] Skipping cache for 206 response:', request.url);
+    return;
+  }
+
   const cache = await caches.open(cacheName);
   const headers = new Headers(response.headers);
   headers.set('sw-cached-date', new Date().toISOString());
-  
+
   const blob = await response.blob();
   const cachedResponse = new Response(blob, {
     status: response.status,
     statusText: response.statusText,
     headers: headers,
   });
-  
+
   await cache.put(request, cachedResponse);
 }
 
@@ -111,7 +117,7 @@ self.addEventListener('fetch', (event) => {
   // API 请求 - 网络优先策略
   if (url.pathname.startsWith('/api/')) {
     // ✅ 安全修复 P0: 排除敏感API，防止XSS通过Cache API读取认证数据
-    const isSensitiveAPI = 
+    const isSensitiveAPI =
       url.pathname.includes('/auth/') ||          // 认证相关
       url.pathname.includes('/config') ||          // 配置信息
       url.pathname.includes('/profile/report') ||  // 个人报告
@@ -121,8 +127,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // ✅ 安全修复 P0: 只缓存非敏感的成功 GET 请求
-          if (request.method === 'GET' && response.ok && !isSensitiveAPI) {
+          // ✅ 安全修复 P0: 只缓存非敏感的成功 GET 请求（排除 206 响应）
+          if (request.method === 'GET' && response.ok && response.status !== 206 && !isSensitiveAPI) {
             const responseClone = response.clone();
             caches.open(DYNAMIC_CACHE).then((cache) => {
               cache.put(request, responseClone);
@@ -157,19 +163,31 @@ self.addEventListener('fetch', (event) => {
           }
 
           try {
-            const response = await fetch(request);
-            if (response.ok) {
+            const response = await fetch(request, {
+              mode: 'cors',
+              credentials: 'omit'  // 跨域图片不发送凭证
+            });
+            if (response.ok && response.status !== 206) {
               const responseClone = response.clone();
               await cacheWithTimestamp(IMAGE_CACHE, request, responseClone);
               limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE);
             }
             return response;
           } catch (error) {
-            // 网络失败时返回过期缓存
+            // 网络失败时返回过期缓存（包括 CORS 错误）
             if (cachedResponse) {
+              console.log('[SW] Using cached image after network error:', request.url);
               return cachedResponse;
             }
-            throw error;
+            // CORS 错误时返回透明占位图
+            console.warn('[SW] Image fetch failed (possibly CORS):', request.url, error);
+            return new Response(
+              new Blob([]),
+              {
+                status: 200,
+                headers: { 'Content-Type': 'image/svg+xml' }
+              }
+            );
           }
         })
     );
@@ -207,7 +225,8 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (request.method === 'GET' && response.ok) {
+        // ✅ 只缓存成功的 GET 请求（排除 206 响应）
+        if (request.method === 'GET' && response.ok && response.status !== 206) {
           const responseClone = response.clone();
           caches.open(DYNAMIC_CACHE).then((cache) => {
             cache.put(request, responseClone);
