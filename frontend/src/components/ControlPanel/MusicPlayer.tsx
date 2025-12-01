@@ -82,14 +82,22 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
       {/* 封面和歌曲信息 + 进度条 */}
       <div className="music-info-main">
         <div className="music-album-cover-large">
-          <img
-            key={currentSong.cover}
-            src={currentSong.cover || 'https://via.placeholder.com/70'}
-            alt={currentSong.name}
-            onError={(e) => {
-              e.currentTarget.src = 'https://via.placeholder.com/70?text=♪';
-            }}
-          />
+          {currentSong.cover ? (
+            <img
+              key={currentSong.cover}
+              src={currentSong.cover}
+              alt={currentSong.name}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <div className={`music-cover-placeholder ${currentSong.cover ? 'hidden' : ''}`}>
+            <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          </div>
           {isPlaying && (
             <div className="music-playing-indicator">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">

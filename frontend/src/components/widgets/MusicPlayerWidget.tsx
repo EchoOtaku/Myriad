@@ -119,16 +119,24 @@ const AlbumCover = memo(({
         className="rounded-md overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm"
         style={{ width: `${48 * scale}px`, height: `${48 * scale}px` }}
       >
-        <img
-          key={cover}
-          src={cover || 'https://via.placeholder.com/48?text=♪'}
-          alt={name}
-          className="w-full h-full object-cover"
-          loading="eager"
-          onError={(e) => {
-            e.currentTarget.src = 'https://via.placeholder.com/48?text=♪';
-          }}
-        />
+        {cover ? (
+          <img
+            key={cover}
+            src={cover}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="eager"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              e.currentTarget.nextElementSibling?.classList.remove('hidden');
+            }}
+          />
+        ) : null}
+        <div className={`w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 ${cover ? 'hidden' : ''}`}>
+          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+          </svg>
+        </div>
       </div>
       {/* 播放状态光晕 */}
       {isPlaying && (

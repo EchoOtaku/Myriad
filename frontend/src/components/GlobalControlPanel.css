@@ -1322,6 +1322,25 @@ html.dark .music-album-cover-large {
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.music-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e5e7eb, #d1d5db);
+  color: #9ca3af;
+}
+
+html.dark .music-cover-placeholder {
+  background: linear-gradient(135deg, #374151, #4b5563);
+  color: #6b7280;
+}
+
+.music-cover-placeholder.hidden {
+  display: none;
+}
+
 .music-album-cover-large:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);

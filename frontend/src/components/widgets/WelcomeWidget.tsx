@@ -116,7 +116,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
 
   const currentGuide = useMemo(
     () => navigationGuides[currentGuideIndex],
-    [currentGuideIndex]
+    [currentGuideIndex, navigationGuides]
   );
 
   const handleGuideClick = useCallback(() => {

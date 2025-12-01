@@ -49,18 +49,26 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
   
   // 将 motion 属性转换为 CSS 样式
   const style: React.CSSProperties = {};
+  const transforms: string[] = [];
   
   if (typeof initialState.opacity === 'number') {
     style.opacity = initialState.opacity;
   }
   if (typeof initialState.scale === 'number') {
-    style.transform = `scale(${initialState.scale})`;
+    transforms.push(`scale(${initialState.scale})`);
   }
-  if (typeof initialState.y === 'number') {
-    style.transform = (style.transform || '') + ` translateY(${initialState.y}px)`;
+  // 支持数字和字符串（如 '-100%'）
+  if (initialState.y !== undefined) {
+    const yVal = typeof initialState.y === 'number' ? `${initialState.y}px` : initialState.y;
+    transforms.push(`translateY(${yVal})`);
   }
-  if (typeof initialState.x === 'number') {
-    style.transform = (style.transform || '') + ` translateX(${initialState.x}px)`;
+  if (initialState.x !== undefined) {
+    const xVal = typeof initialState.x === 'number' ? `${initialState.x}px` : initialState.x;
+    transforms.push(`translateX(${xVal})`);
+  }
+  
+  if (transforms.length > 0) {
+    style.transform = transforms.join(' ');
   }
   
   return Object.keys(style).length > 0 ? style : undefined;
