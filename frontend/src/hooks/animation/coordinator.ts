@@ -73,6 +73,22 @@ class AnimationCoordinator {
   // 事件订阅
   private listeners = new Map<string, Set<AnimationListener>>();
   
+  // ==================== 高效任务调度 ====================
+  // 🔧 使用 MessageChannel 替代 setTimeout(0)，更高效的微任务调度
+  private messageChannel: MessageChannel | null = null;
+  private pendingYieldCallbacks: Array<() => void> = [];
+  
+  // ==================== 页面可见性优化 ====================
+  // 🔧 页面是否可见，不可见时暂停非关键操作
+  private isPageVisible: boolean = true;
+  private visibilityHandler: (() => void) | null = null;
+  
+  // ==================== 时间戳缓存（减少 performance.now 调用）====================
+  // 当前帧缓存的时间戳
+  private cachedNow: number = 0;
+  // 时间戳是否有效（每帧开始时重置）
+  private nowCacheValid: boolean = false;
+  
   // 页面就绪状态
   private currentPageId: string | null = null;
   private pageReadyResolve: (() => void) | null = null;
@@ -114,7 +130,14 @@ class AnimationCoordinator {
   // 循环动画等待队列（按 LoopPriority 排序）
   private loopWaitingQueue: LoopWaitingItem[] = [];
   // 冷却中的循环动画（等待重新进入队列）
-  private loopCooldowns = new Map<string, { cooldownEnd: number; duration: number; cooldown: number; loopPriority: LoopPriority }>();
+  // 🔧 添加 timerId 追踪，确保能正确清理定时器
+  private loopCooldowns = new Map<string, { 
+    cooldownEnd: number; 
+    duration: number; 
+    cooldown: number; 
+    loopPriority: LoopPriority;
+    timerId: ReturnType<typeof setTimeout>;
+  }>();
   
   // 延迟队列
   private delayedQueue: Array<{ id: string; executeAt: number; priority: AnimationPriority }> = [];
@@ -126,6 +149,12 @@ class AnimationCoordinator {
   // 分片延迟（让出主线程）
   private readonly YIELD_DELAY = 0;
   
+  // ==================== 对象池（减少 GC 压力）====================
+  // 🔧 等待队列 ID 索引，用于 O(1) 查找
+  private waitingQueueIndex = new Map<string, number>();
+  // 🔧 循环动画等待队列 ID 索引
+  private loopWaitingQueueIndex = new Map<string, number>();
+  
   // ==================== WeakRef 元素追踪（内存优化）====================
   // 🔧 新增：使用 WeakRef 追踪元素，元素被 GC 时自动清理状态
   private elementRefs = new Map<string, WeakRefEntry>();
@@ -136,12 +165,106 @@ class AnimationCoordinator {
 
   constructor(config: Partial<CoordinatorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    // 🔧 初始化 MessageChannel（比 setTimeout(0) 更高效）
+    this.initMessageChannel();
+    // 🔧 初始化页面可见性监听
+    this.initVisibilityListener();
     // 启动超时检查器
     this.startTimeoutChecker();
     // 📌 初始化时立即进入超频模式，确保首屏动画流畅
     this.activateBurstMode(10000);
     // 🔧 初始化 FinalizationRegistry（如果浏览器支持）
     this.initFinalizationRegistry();
+  }
+  
+  // ==================== MessageChannel 优化 ====================
+  
+  /**
+   * 🔧 初始化 MessageChannel
+   * MessageChannel 比 setTimeout(fn, 0) 更高效，因为：
+   * 1. 不受最小 4ms 延迟限制
+   * 2. 不会被浏览器节流
+   * 3. 在微任务之后、下一个任务之前执行
+   */
+  private initMessageChannel() {
+    if (typeof MessageChannel !== 'undefined') {
+      this.messageChannel = new MessageChannel();
+      this.messageChannel.port1.onmessage = () => {
+        // 批量处理所有待执行的回调
+        const callbacks = this.pendingYieldCallbacks;
+        this.pendingYieldCallbacks = [];
+        for (let i = 0; i < callbacks.length; i++) {
+          callbacks[i]();
+        }
+      };
+    }
+  }
+  
+  /**
+   * 🔧 高效的任务让出（替代 setTimeout(fn, 0)）
+   */
+  private scheduleYield(callback: () => void) {
+    if (this.messageChannel) {
+      this.pendingYieldCallbacks.push(callback);
+      // 只在队列从空变非空时发送消息
+      if (this.pendingYieldCallbacks.length === 1) {
+        this.messageChannel.port2.postMessage(null);
+      }
+    } else {
+      // 降级方案
+      setTimeout(callback, 0);
+    }
+  }
+  
+  // ==================== 页面可见性优化 ====================
+  
+  /**
+   * 🔧 初始化页面可见性监听
+   * 页面不可见时暂停非关键操作，节省 CPU
+   */
+  private initVisibilityListener() {
+    if (typeof document === 'undefined') return;
+    
+    this.visibilityHandler = () => {
+      this.isPageVisible = !document.hidden;
+      
+      // 页面变为可见时，触发等待队列处理
+      if (this.isPageVisible) {
+        this.processWaitQueue();
+        this.processLoopWaitQueue();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+  }
+  
+  // ==================== 时间戳缓存优化 ====================
+  
+  /**
+   * 🔧 获取缓存的时间戳
+   * 同一帧内多次调用只执行一次 performance.now()
+   * 大幅减少 performance.now() 的调用开销
+   */
+  private getNow(): number {
+    if (!this.nowCacheValid) {
+      this.cachedNow = performance.now();
+      this.nowCacheValid = true;
+      // 在下一个微任务中失效缓存，确保下一帧获取新时间
+      queueMicrotask(() => {
+        this.nowCacheValid = false;
+      });
+    }
+    return this.cachedNow;
+  }
+  
+  /**
+   * 🔧 强制刷新时间戳缓存
+   * 用于需要精确时间的场景
+   */
+  private refreshNow(): number {
+    this.cachedNow = performance.now();
+    this.nowCacheValid = true;
+    return this.cachedNow;
   }
   
   // ==================== WeakRef 元素追踪 ====================
@@ -249,7 +372,7 @@ class AnimationCoordinator {
   }
   
   /**
-   * 🔧 清理动画状态（内部使用）
+   * 🔧 清理动画状态（内部使用）- 优化版：使用索引 Map
    */
   private cleanupAnimationState(animationId: string) {
     // 从 elementRefs 移除
@@ -274,20 +397,30 @@ class AnimationCoordinator {
       }
       this.loopSlots.delete(animationId);
     }
-    this.loopCooldowns.delete(animationId);
     
-    // 从等待队列移除
-    const waitIdx = this.waitingQueue.findIndex(item => item.id === animationId);
-    if (waitIdx !== -1) {
+    // 🔧 清理冷却定时器
+    const cooldownInfo = this.loopCooldowns.get(animationId);
+    if (cooldownInfo) {
+      clearTimeout(cooldownInfo.timerId);
+      this.loopCooldowns.delete(animationId);
+    }
+    
+    // 🔧 使用索引 Map O(1) 查找并移除
+    const waitIdx = this.waitingQueueIndex.get(animationId);
+    if (waitIdx !== undefined) {
       this.waitingQueue.splice(waitIdx, 1);
+      this.waitingQueueIndex.delete(animationId);
+      this.rebuildWaitingQueueIndex(waitIdx);
     }
     
-    const loopWaitIdx = this.loopWaitingQueue.findIndex(item => item.id === animationId);
-    if (loopWaitIdx !== -1) {
+    const loopWaitIdx = this.loopWaitingQueueIndex.get(animationId);
+    if (loopWaitIdx !== undefined) {
       this.loopWaitingQueue.splice(loopWaitIdx, 1);
+      this.loopWaitingQueueIndex.delete(animationId);
+      this.rebuildLoopWaitingQueueIndex(loopWaitIdx);
     }
     
-    // 从延迟队列移除
+    // 从延迟队列移除（仍用 findIndex，因为延迟队列通常较小）
     const delayIdx = this.delayedQueue.findIndex(item => item.id === animationId);
     if (delayIdx !== -1) {
       this.delayedQueue.splice(delayIdx, 1);
@@ -299,28 +432,52 @@ class AnimationCoordinator {
   /**
    * 启动超时检查器
    * 定期检查并清理超时的动画槽位
-   * 🔧 优化：页面不可见时暂停检查，节省 CPU
+   * 🔧 优化：使用 requestIdleCallback 在浏览器空闲时执行，减少主线程开销
    */
   private startTimeoutChecker() {
     if (this.timeoutCheckerId) return;
     
-    this.timeoutCheckerId = setInterval(() => {
-      // 🔧 页面不可见时跳过检查
-      if (typeof document !== 'undefined' && document.hidden) {
-        return;
-      }
-      this.cleanupTimedOutSlots();
-    }, 1000); // 每1000ms检查一次，减少CPU开销
+    // 🔧 优先使用 requestIdleCallback，降低调度开销
+    if (typeof requestIdleCallback !== 'undefined') {
+      const scheduleIdleCheck = () => {
+        this.timeoutCheckerId = requestIdleCallback(
+          (deadline) => {
+            // 只在有空闲时间且页面可见时执行
+            if (deadline.timeRemaining() > 0 && 
+                (typeof document === 'undefined' || !document.hidden)) {
+              this.cleanupTimedOutSlots();
+            }
+            // 继续调度下一次检查
+            if (this.timeoutCheckerId) {
+              scheduleIdleCheck();
+            }
+          },
+          { timeout: 2000 } // 最多延迟 2 秒
+        ) as unknown as ReturnType<typeof setInterval>;
+      };
+      scheduleIdleCheck();
+    } else {
+      // 降级方案：使用 setInterval
+      this.timeoutCheckerId = setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          return;
+        }
+        this.cleanupTimedOutSlots();
+      }, 1000);
+    }
   }
   
   /**
-   * 清理超时的槽位 - 优化版：减少数组创建
+   * 清理超时的槽位 - 优化版：使用缓存时间戳，减少数组创建
    */
   private cleanupTimedOutSlots() {
+    // 🔧 页面不可见时跳过清理（节省 CPU）
+    if (!this.isPageVisible) return;
+    
     // 快速返回：无活动槽位
     if (this.activeSlots.size === 0) return;
     
-    const now = performance.now();
+    const now = this.refreshNow(); // 使用刷新的时间戳确保准确
     let hasTimedOut = false;
     
     for (const [id, slot] of this.activeSlots) {
@@ -344,19 +501,22 @@ class AnimationCoordinator {
   // ==================== 动态并发控制 ====================
   
   /**
-   * 获取当前最大并发数 - 优化版：减少计算开销
+   * 获取当前最大并发数 - 优化版：使用缓存时间戳减少计算开销
    */
   private getMaxConcurrent(): number {
-    // 快速路径：爆发模式
-    if (this.inBurstMode) {
-      const elapsed = performance.now() - this.burstStartTime;
-      if (elapsed < this.currentBurstDuration) {
-        return this.config.burstConcurrent;
-      }
-      // 爆发模式到期
-      this.inBurstMode = false;
+    // 快速路径：非爆发模式
+    if (!this.inBurstMode) {
+      return this.config.baseConcurrent;
     }
     
+    // 爆发模式：检查是否到期
+    const elapsed = this.getNow() - this.burstStartTime;
+    if (elapsed < this.currentBurstDuration) {
+      return this.config.burstConcurrent;
+    }
+    
+    // 爆发模式到期
+    this.inBurstMode = false;
     return this.config.baseConcurrent;
   }
   
@@ -378,7 +538,7 @@ class AnimationCoordinator {
    */
   private activateBurstMode(duration: number) {
     this.inBurstMode = true;
-    this.burstStartTime = performance.now();
+    this.burstStartTime = this.refreshNow();
     this.currentBurstDuration = duration;
   }
   
@@ -387,7 +547,7 @@ class AnimationCoordinator {
    */
   private extendBurstMode() {
     // 每次延长一个基础周期
-    this.burstStartTime = performance.now();
+    this.burstStartTime = this.getNow();
     this.currentBurstDuration = this.config.burstDuration;
   }
 
@@ -456,7 +616,8 @@ class AnimationCoordinator {
             callbacks[index]();
           }
           if (index < callbacks.length) {
-            setTimeout(processBatch, this.YIELD_DELAY);
+            // 🔧 使用 MessageChannel 替代 setTimeout
+            this.scheduleYield(processBatch);
           }
         };
         queueMicrotask(processBatch);
@@ -508,7 +669,7 @@ class AnimationCoordinator {
     this.isMicrotaskScheduled = false;
     
     // 清理延迟队列
-    this.delayedQueue = [];
+    this.delayedQueue.length = 0;
     if (this.delayTimerId) {
       clearTimeout(this.delayTimerId);
       this.delayTimerId = null;
@@ -516,7 +677,8 @@ class AnimationCoordinator {
     
     // 清理并发控制队列
     this.activeSlots.clear();
-    this.waitingQueue = [];
+    this.waitingQueue.length = 0;
+    this.waitingQueueIndex.clear();
     
     // 清理循环动画队列和定时器
     for (const slot of this.loopSlots.values()) {
@@ -525,7 +687,13 @@ class AnimationCoordinator {
       }
     }
     this.loopSlots.clear();
-    this.loopWaitingQueue = [];
+    this.loopWaitingQueue.length = 0;
+    this.loopWaitingQueueIndex.clear();
+    
+    // 🔧 清理所有冷却定时器
+    for (const cooldownInfo of this.loopCooldowns.values()) {
+      clearTimeout(cooldownInfo.timerId);
+    }
     this.loopCooldowns.clear();
   }
 
@@ -611,10 +779,10 @@ class AnimationCoordinator {
   }
 
   /**
-   * 获取槽位 - 优化版：缓存时间戳
+   * 获取槽位 - 优化版：使用缓存时间戳
    */
   private acquireSlot(id: string, priority: AnimationPriority) {
-    const now = performance.now();
+    const now = this.getNow();
     this.activeSlots.set(id, {
       id,
       priority,
@@ -644,21 +812,22 @@ class AnimationCoordinator {
   }
 
   /**
-   * 抢占最低优先级槽位
+   * 抢占最低优先级槽位 - 优化版：减少重复查找
    */
   private preemptLowestPriority(id: string, priority: AnimationPriority) {
     // 找到最低优先级的槽位
     let lowestPriority = -1;
-    let victimId: string | null = null;
+    let victimSlot: AnimationSlot | null = null;
     
     for (const slot of this.activeSlots.values()) {
       if (slot.priority > lowestPriority) {
         lowestPriority = slot.priority;
-        victimId = slot.id;
+        victimSlot = slot;
       }
     }
     
-    if (victimId) {
+    if (victimSlot) {
+      const victimId = victimSlot.id;
       // 跳过被抢占的动画
       this.releaseSlot(victimId);
       this.skip(victimId);
@@ -670,9 +839,14 @@ class AnimationCoordinator {
   }
 
   /**
-   * 添加到等待队列 - 优化版：二分插入避免排序
+   * 添加到等待队列 - 优化版：使用索引 Map 快速检查重复
    */
   private addToWaitQueue(id: string, priority: AnimationPriority) {
+    // 🔧 使用索引 Map O(1) 检查是否已在队列中
+    if (this.waitingQueueIndex.has(id)) {
+      return;
+    }
+    
     this.states.set(id, AnimationState.SCHEDULED);
     
     const item: WaitingItem = {
@@ -680,12 +854,20 @@ class AnimationCoordinator {
       priority,
       delay: 0,
       index: 0,
-      registeredAt: performance.now()
+      registeredAt: this.getNow()
     };
+    
+    // 🔧 快速路径：队列为空或应该插入末尾
+    const queueLen = this.waitingQueue.length;
+    if (queueLen === 0 || this.waitingQueue[queueLen - 1].priority <= priority) {
+      this.waitingQueueIndex.set(id, queueLen);
+      this.waitingQueue.push(item);
+      return;
+    }
     
     // 二分查找插入位置（优先级数值小的在前）
     let left = 0;
-    let right = this.waitingQueue.length;
+    let right = queueLen;
     while (left < right) {
       const mid = (left + right) >>> 1;
       if (this.waitingQueue[mid].priority <= priority) {
@@ -695,6 +877,18 @@ class AnimationCoordinator {
       }
     }
     this.waitingQueue.splice(left, 0, item);
+    
+    // 🔧 更新索引（插入位置及之后的所有项）
+    this.rebuildWaitingQueueIndex(left);
+  }
+  
+  /**
+   * 🔧 重建等待队列索引（从指定位置开始）
+   */
+  private rebuildWaitingQueueIndex(fromIndex: number = 0) {
+    for (let i = fromIndex; i < this.waitingQueue.length; i++) {
+      this.waitingQueueIndex.set(this.waitingQueue[i].id, i);
+    }
   }
 
   /**
@@ -705,13 +899,14 @@ class AnimationCoordinator {
   }
 
   /**
-   * 处理等待队列 - 分片版：避免 Long Task
+   * 处理等待队列 - 优化版：批量处理并更新索引
    */
   private processWaitQueue() {
+    // 快速返回：无等待项
+    if (this.waitingQueue.length === 0) return;
+    
     // 队列有压力时触发爆发模式
-    if (this.waitingQueue.length > 0) {
-      this.checkAndTriggerBurst();
-    }
+    this.checkAndTriggerBurst();
     
     const maxConcurrent = this.getMaxConcurrent();
     let processed = 0;
@@ -723,28 +918,44 @@ class AnimationCoordinator {
     ) {
       const next = this.waitingQueue.shift();
       if (next) {
+        // 🔧 从索引中移除
+        this.waitingQueueIndex.delete(next.id);
         this.acquireSlot(next.id, next.priority);
         this.markReady(next.id);
         processed++;
       }
     }
     
+    // 🔧 如果有移除，重建索引
+    if (processed > 0 && this.waitingQueue.length > 0) {
+      this.rebuildWaitingQueueIndex(0);
+    }
+    
     // 如果还有剩余且有槽位，延迟继续处理
     if (this.waitingQueue.length > 0 && this.activeSlots.size < maxConcurrent) {
-      setTimeout(() => this.processWaitQueue(), this.YIELD_DELAY);
+      // 🔧 使用 MessageChannel 替代 setTimeout
+      this.scheduleYield(() => this.processWaitQueue());
     }
   }
 
   /**
-   * 添加到延迟队列 - 优化版：二分插入避免排序
+   * 添加到延迟队列 - 优化版：二分插入避免排序，使用缓存时间戳
    */
   private addToDelayedQueue(id: string, delay: number, priority: AnimationPriority = AnimationPriority.COMPONENT) {
-    const executeAt = performance.now() + delay;
+    const executeAt = this.getNow() + delay;
     const item = { id, executeAt, priority };
+    
+    // 🔧 快速路径：队列为空或应该插入末尾
+    const queueLen = this.delayedQueue.length;
+    if (queueLen === 0 || this.delayedQueue[queueLen - 1].executeAt <= executeAt) {
+      this.delayedQueue.push(item);
+      this.scheduleNextDelay();
+      return;
+    }
     
     // 二分查找插入位置（按执行时间升序）
     let left = 0;
-    let right = this.delayedQueue.length;
+    let right = queueLen;
     while (left < right) {
       const mid = (left + right) >>> 1;
       if (this.delayedQueue[mid].executeAt <= executeAt) {
@@ -766,8 +977,7 @@ class AnimationCoordinator {
     if (this.delayTimerId || this.delayedQueue.length === 0) return;
     
     const next = this.delayedQueue[0];
-    const now = performance.now();
-    const wait = Math.max(0, next.executeAt - now);
+    const wait = Math.max(0, next.executeAt - this.getNow());
     
     this.delayTimerId = setTimeout(() => {
       this.delayTimerId = null;
@@ -776,10 +986,10 @@ class AnimationCoordinator {
   }
 
   /**
-   * 处理延迟队列
+   * 处理延迟队列 - 优化版：使用刷新的时间戳确保精确
    */
   private processDelayedQueue() {
-    const now = performance.now();
+    const now = this.refreshNow();
     
     // 处理所有到期项
     while (this.delayedQueue.length > 0) {
@@ -873,15 +1083,17 @@ class AnimationCoordinator {
       return true;
     }
     
-    // 🔧 优化：如果已经在等待队列中，直接返回 false，避免重复添加
-    if (this.states.get(id) === AnimationState.SCHEDULED) {
+    // 🔧 优化：使用索引 Map O(1) 检查是否已在等待队列中
+    if (this.loopWaitingQueueIndex.has(id)) {
       return false;
     }
     
-    // 从等待队列移除（优化：使用 findIndex + splice 避免创建新数组）
-    const waitIdx = this.loopWaitingQueue.findIndex(item => item.id === id);
-    if (waitIdx !== -1) {
+    // 从等待队列移除（如果存在）
+    const waitIdx = this.loopWaitingQueueIndex.get(id);
+    if (waitIdx !== undefined) {
       this.loopWaitingQueue.splice(waitIdx, 1);
+      this.loopWaitingQueueIndex.delete(id);
+      this.rebuildLoopWaitingQueueIndex(waitIdx);
     }
     
     const maxConcurrent = this.getMaxConcurrent();
@@ -913,10 +1125,10 @@ class AnimationCoordinator {
   }
 
   /**
-   * 获取循环动画槽位（共享主队列）- 优化版：缓存时间戳
+   * 获取循环动画槽位（共享主队列）- 优化版：使用缓存时间戳
    */
   private acquireLoopSlot(id: string, loopPriority: LoopPriority, duration: number, cooldown: number) {
-    const now = performance.now();
+    const now = this.getNow();
     
     // 在主队列获取槽位
     this.activeSlots.set(id, {
@@ -966,18 +1178,20 @@ class AnimationCoordinator {
     
     // 进入冷却期，冷却结束后重新加入队列
     if (loopInfo.cooldown > 0) {
-      const cooldownEnd = performance.now() + loopInfo.cooldown;
+      const cooldownEnd = this.getNow() + loopInfo.cooldown;
+      
+      // 🔧 保存定时器 ID，以便后续清理
+      const timerId = setTimeout(() => {
+        this.onLoopCooldownComplete(id);
+      }, loopInfo.cooldown);
+      
       this.loopCooldowns.set(id, {
         cooldownEnd,
         duration: loopInfo.duration,
         cooldown: loopInfo.cooldown,
         loopPriority: loopInfo.loopPriority,
+        timerId,
       });
-      
-      // 冷却结束后重新请求
-      setTimeout(() => {
-        this.onLoopCooldownComplete(id);
-      }, loopInfo.cooldown);
     }
   }
 
@@ -1028,32 +1242,50 @@ class AnimationCoordinator {
   }
 
   /**
-   * 添加到循环动画等待队列 - 优化版：二分插入 + 状态检查
+   * 添加到循环动画等待队列 - 优化版：使用索引 Map
    */
   private addToLoopWaitQueue(id: string, loopPriority: LoopPriority, duration: number, cooldown: number) {
-    // 如果已经在调度中，跳过（使用状态检查替代 some 遍历）
-    if (this.states.get(id) === AnimationState.SCHEDULED) {
+    // 🔧 使用索引 Map O(1) 检查
+    if (this.loopWaitingQueueIndex.has(id)) {
       return;
     }
     
     this.states.set(id, AnimationState.SCHEDULED);
     
+    const now = this.getNow();
     const item: LoopWaitingItem = {
       id,
       loopPriority,
       duration,
       cooldown,
-      registeredAt: performance.now(),
+      registeredAt: now,
     };
+    
+    // 🔧 快速路径：队列为空直接添加
+    const queueLen = this.loopWaitingQueue.length;
+    if (queueLen === 0) {
+      this.loopWaitingQueueIndex.set(id, 0);
+      this.loopWaitingQueue.push(item);
+      return;
+    }
+    
+    // 🔧 快速路径：优先级最低，直接追加到末尾
+    const lastItem = this.loopWaitingQueue[queueLen - 1];
+    if (lastItem.loopPriority < loopPriority || 
+        (lastItem.loopPriority === loopPriority && lastItem.registeredAt <= now)) {
+      this.loopWaitingQueueIndex.set(id, queueLen);
+      this.loopWaitingQueue.push(item);
+      return;
+    }
     
     // 二分查找插入位置（优先级数值小的在前，同优先级按注册时间）
     let left = 0;
-    let right = this.loopWaitingQueue.length;
+    let right = queueLen;
     while (left < right) {
       const mid = (left + right) >>> 1;
       const midItem = this.loopWaitingQueue[mid];
       const shouldInsertAfter = midItem.loopPriority < loopPriority || 
-        (midItem.loopPriority === loopPriority && midItem.registeredAt <= item.registeredAt);
+        (midItem.loopPriority === loopPriority && midItem.registeredAt <= now);
       if (shouldInsertAfter) {
         left = mid + 1;
       } else {
@@ -1061,10 +1293,22 @@ class AnimationCoordinator {
       }
     }
     this.loopWaitingQueue.splice(left, 0, item);
+    
+    // 🔧 重建索引
+    this.rebuildLoopWaitingQueueIndex(left);
+  }
+  
+  /**
+   * 🔧 重建循环动画等待队列索引
+   */
+  private rebuildLoopWaitingQueueIndex(fromIndex: number = 0) {
+    for (let i = fromIndex; i < this.loopWaitingQueue.length; i++) {
+      this.loopWaitingQueueIndex.set(this.loopWaitingQueue[i].id, i);
+    }
   }
 
   /**
-   * 处理循环动画等待队列 - 优化版：预计算限制
+   * 处理循环动画等待队列 - 优化版：预计算限制并更新索引
    */
   private processLoopWaitQueue() {
     // 快速返回：无等待项
@@ -1076,6 +1320,7 @@ class AnimationCoordinator {
     // 预计算可用槽位数
     let availableConcurrent = maxConcurrent - this.activeSlots.size;
     let availableLoopSlots = maxLoopSlots - this.loopSlots.size;
+    let processed = 0;
     
     while (
       this.loopWaitingQueue.length > 0 &&
@@ -1084,10 +1329,18 @@ class AnimationCoordinator {
     ) {
       const next = this.loopWaitingQueue.shift();
       if (next) {
+        // 🔧 从索引中移除
+        this.loopWaitingQueueIndex.delete(next.id);
         this.acquireLoopSlot(next.id, next.loopPriority, next.duration, next.cooldown);
         availableConcurrent--;
         availableLoopSlots--;
+        processed++;
       }
+    }
+    
+    // 🔧 如果有移除，重建索引
+    if (processed > 0 && this.loopWaitingQueue.length > 0) {
+      this.rebuildLoopWaitingQueueIndex(0);
     }
   }
 
@@ -1112,21 +1365,23 @@ class AnimationCoordinator {
     
     // 被抢占后也进入冷却期
     if (loopInfo.cooldown > 0) {
+      // 🔧 保存定时器 ID
+      const timerId = setTimeout(() => {
+        this.onLoopCooldownComplete(id);
+      }, loopInfo.cooldown);
+      
       this.loopCooldowns.set(id, {
-        cooldownEnd: performance.now() + loopInfo.cooldown,
+        cooldownEnd: this.getNow() + loopInfo.cooldown,
         duration: loopInfo.duration,
         cooldown: loopInfo.cooldown,
         loopPriority: loopInfo.loopPriority,
+        timerId,
       });
-      
-      setTimeout(() => {
-        this.onLoopCooldownComplete(id);
-      }, loopInfo.cooldown);
     }
   }
 
   /**
-   * 释放循环动画槽位（组件卸载时调用）- 优化版：减少数组创建
+   * 释放循环动画槽位（组件卸载时调用）- 优化版：使用索引 Map
    */
   releaseLoopSlot(id: string) {
     const loopInfo = this.loopSlots.get(id);
@@ -1143,13 +1398,19 @@ class AnimationCoordinator {
       this.processLoopWaitQueue();
     }
     
-    // 清除冷却状态
-    this.loopCooldowns.delete(id);
+    // 🔧 清除冷却状态和定时器
+    const cooldownInfo = this.loopCooldowns.get(id);
+    if (cooldownInfo) {
+      clearTimeout(cooldownInfo.timerId);
+      this.loopCooldowns.delete(id);
+    }
     
-    // 从等待队列移除（使用 findIndex + splice 避免创建新数组）
-    const idx = this.loopWaitingQueue.findIndex(item => item.id === id);
-    if (idx !== -1) {
+    // 🔧 使用索引 Map O(1) 移除
+    const idx = this.loopWaitingQueueIndex.get(id);
+    if (idx !== undefined) {
       this.loopWaitingQueue.splice(idx, 1);
+      this.loopWaitingQueueIndex.delete(id);
+      this.rebuildLoopWaitingQueueIndex(idx);
     }
   }
 
@@ -1165,7 +1426,7 @@ class AnimationCoordinator {
    */
   getLoopSlotStatus() {
     const slots: { id: string; priority: string; runningTime: number }[] = [];
-    const now = performance.now();
+    const now = this.getNow();
     
     for (const slot of this.loopSlots.values()) {
       slots.push({
@@ -1240,7 +1501,8 @@ class AnimationCoordinator {
       }
       
       if (index < ids.length) {
-        setTimeout(processBatch, this.YIELD_DELAY);
+        // 🔧 使用 MessageChannel 替代 setTimeout
+        this.scheduleYield(processBatch);
       }
     };
     
@@ -1341,12 +1603,18 @@ class AnimationCoordinator {
       pageReadyCallbacksSize: this.pageReadyCallbacks.size,
       activeSlotsSize: this.activeSlots.size,
       waitingQueueLength: this.waitingQueue.length,
+      waitingQueueIndexSize: this.waitingQueueIndex.size,
       delayedQueueLength: this.delayedQueue.length,
       loopSlotsSize: this.loopSlots.size,
       loopWaitingQueueLength: this.loopWaitingQueue.length,
+      loopWaitingQueueIndexSize: this.loopWaitingQueueIndex.size,
       loopCooldownsSize: this.loopCooldowns.size,
       // 🔧 新增：WeakRef 追踪的元素数量
       trackedElementsCount: this.elementRefs.size,
+      // 🔧 新增：待执行的 yield 回调数量
+      pendingYieldCallbacksCount: this.pendingYieldCallbacks.length,
+      // 🔧 新增：页面可见性状态
+      isPageVisible: this.isPageVisible,
       // 总计：超过 500 可能有泄漏
       totalEntries: this.states.size + this.listeners.size + this.activeSlots.size + 
                     this.waitingQueue.length + this.delayedQueue.length +
@@ -1368,7 +1636,7 @@ class AnimationCoordinator {
       maxConcurrent,
       inBurstMode: this.inBurstMode,
       burstTimeRemaining: this.inBurstMode 
-        ? Math.max(0, this.currentBurstDuration - (performance.now() - this.burstStartTime))
+        ? Math.max(0, this.currentBurstDuration - (this.getNow() - this.burstStartTime))
         : 0,
       waitingQueue: this.waitingQueue.length,
       delayedQueue: this.delayedQueue.length,
@@ -1386,12 +1654,13 @@ class AnimationCoordinator {
     this.listeners.clear();
     this.pendingUpdates.clear();
     this.pageReadyCallbacks.clear();
-    this.delayedQueue = [];
+    this.delayedQueue.length = 0;
     this.isMicrotaskScheduled = false;
     
     // 清理并发控制
     this.activeSlots.clear();
-    this.waitingQueue = [];
+    this.waitingQueue.length = 0;
+    this.waitingQueueIndex.clear();
     
     // 清理循环动画队列和定时器
     for (const slot of this.loopSlots.values()) {
@@ -1400,7 +1669,13 @@ class AnimationCoordinator {
       }
     }
     this.loopSlots.clear();
-    this.loopWaitingQueue = [];
+    this.loopWaitingQueue.length = 0;
+    this.loopWaitingQueueIndex.clear();
+    
+    // 🔧 清理所有冷却定时器
+    for (const cooldownInfo of this.loopCooldowns.values()) {
+      clearTimeout(cooldownInfo.timerId);
+    }
     this.loopCooldowns.clear();
     
     // 重置爆发模式
@@ -1437,6 +1712,18 @@ class AnimationCoordinator {
     if (this.weakRefCheckerId) {
       clearInterval(this.weakRefCheckerId);
       this.weakRefCheckerId = null;
+    }
+    // 🔧 清理 MessageChannel
+    if (this.messageChannel) {
+      this.messageChannel.port1.close();
+      this.messageChannel.port2.close();
+      this.messageChannel = null;
+    }
+    this.pendingYieldCallbacks.length = 0;
+    // 🔧 移除 visibility 监听器
+    if (this.visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
     }
     // 清理 elementRefs
     this.elementRefs.clear();
