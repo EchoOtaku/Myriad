@@ -54,13 +54,13 @@ export default defineConfig({
       rollupOptions: {
         output: {
           manualChunks: (id) => {
-            // React 核心
-            if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            // React 核心 + React Router 合并到同一 chunk
+            // 避免 React Router v7 在 React Context 初始化前加载导致 hydration 错误
+            if (id.includes('node_modules/react/') || 
+                id.includes('node_modules/react-dom/') ||
+                id.includes('node_modules/react-router') || 
+                id.includes('node_modules/@remix-run')) {
               return 'react-vendor';
-            }
-            // React Router
-            if (id.includes('node_modules/react-router') || id.includes('node_modules/@remix-run')) {
-              return 'react-router';
             }
             // Chart.js
             if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
