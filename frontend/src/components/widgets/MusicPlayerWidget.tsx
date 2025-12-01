@@ -3,15 +3,80 @@
  * Glass风格设计，2x2紧凑布局
  */
 
-import { useState, useEffect, useCallback, memo, useRef, useId } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useCallback, memo, useRef, useId, useMemo } from 'react';
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { Song, getNeteaseLyrics, getQQLyrics, LyricLine, getCurrentLyricIndex, audioManager } from '../../utils/musicPlayer';
 import { WidgetConfig } from '../WidgetGrid';
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel, AnimationConfig } from '../../hooks/useAnimationLevel';
-import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
+
+// ==================== 静态动画常量（避免每次渲染创建新对象）====================
+
+// 封面入场动画
+const ALBUM_COVER_INITIAL = { scale: 0.5, opacity: 0, rotate: -15 };
+const ALBUM_COVER_ANIMATE = { scale: 1, opacity: 1, rotate: 0 };
+const ALBUM_COVER_TRANSITION = { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] };
+
+// 播放状态光晕动画 - 有限次数，配合调度器 duration=4000ms
+const GLOW_ANIMATE = { opacity: [0.5, 1, 0.5] };
+const GLOW_TRANSITION_LOOP = { duration: 2, repeat: 1, ease: "easeInOut" as const }; // 2轮=4s
+const GLOW_TRANSITION_ONCE = { duration: 2, repeat: 0, ease: "easeInOut" as const };
+
+// 播放指示器动画 - 有限次数
+const INDICATOR_INITIAL = { opacity: 0, scale: 0.8 };
+const INDICATOR_ANIMATE = { opacity: 1, scale: 1 };
+const INDICATOR_TRANSITION = { duration: 0.3 };
+
+const BAR_ANIMATE_1 = { height: ['30%', '100%', '30%'] };
+const BAR_ANIMATE_2 = { height: ['60%', '100%', '60%'] };
+const BAR_ANIMATE_3 = { height: ['40%', '100%', '40%'] };
+const BAR_TRANSITION_LOOP = (delay: number) => ({ duration: 0.6, repeat: 6, ease: "easeInOut" as const, delay }); // 6轮≈4s
+const BAR_TRANSITION_ONCE = (delay: number) => ({ duration: 0.6, repeat: 0, ease: "easeInOut" as const, delay });
+
+// 背景光效动画 - 有限次数
+const BG_GLOW_ANIMATE = { opacity: [0.1, 0.2, 0.1], scale: [1, 1.15, 1] };
+const BG_GLOW_TRANSITION = { duration: 3, repeat: 1, ease: "easeInOut" as const }; // 1轮=3s
+
+// 光斑动画 - 有限次数
+const LIGHT_SPOT_ANIMATE = { scale: [0.8, 1.1, 0.8], opacity: [0.2, 0.4, 0.2] };
+const LIGHT_SPOT_TRANSITION = { duration: 4, repeat: 0, ease: "easeInOut" as const }; // 1轮
+
+// 封面浮动动画 - 有限次数
+const COVER_FLOAT_ANIMATE_PLAYING = { y: [0, -4, 0] };
+const COVER_FLOAT_ANIMATE_STATIC = { y: 0 };
+const COVER_FLOAT_TRANSITION_LOOP = { y: { duration: 4, repeat: 0, ease: "easeInOut" as const } };
+const COVER_FLOAT_TRANSITION_ONCE = { y: { duration: 4, repeat: 0, ease: "easeInOut" as const } };
+
+// 歌曲切换动画
+const SONG_SLIDE_INITIAL = { opacity: 0, x: -10 };
+const SONG_SLIDE_ANIMATE = { opacity: 1, x: 0 };
+const SONG_SLIDE_TRANSITION = { duration: 0.4, ease: "easeOut" as const };
+const SONG_SLIDE_TRANSITION_DELAY = { duration: 0.4, delay: 0.1, ease: "easeOut" as const };
+
+// 歌词切换动画
+const LYRIC_INITIAL = { opacity: 0, y: 10, scale: 0.95 };
+const LYRIC_ANIMATE = { opacity: 1, y: 0, scale: 1 };
+const LYRIC_EXIT = { opacity: 0, y: -10, scale: 0.95 };
+const LYRIC_TRANSITION = { duration: 0.4 };
+
+// 底部控制区入场
+const CONTROL_INITIAL = { y: 10, opacity: 0 };
+const CONTROL_ANIMATE = { y: 0, opacity: 1 };
+const CONTROL_TRANSITION = { duration: 0.4, delay: 0.4 };
+
+// 音乐图标入场
+const MUSIC_ICON_INITIAL = { scale: 0.5, opacity: 0, rotate: -15 };
+const MUSIC_ICON_ANIMATE_STATIC = { scale: 1, opacity: 1, rotate: 0 };
+const MUSIC_ICON_ANIMATE_PLAYING = { scale: 1, opacity: 1, rotate: [0, 5, 0, -5, 0] };
+
+// 歌曲信息入场
+const INFO_INITIAL = { x: -20, opacity: 0 };
+const INFO_ANIMATE = { x: 0, opacity: 1 };
+const INFO_TRANSITION_1 = { duration: 0.6, delay: 0.2, ease: [0.34, 1.56, 0.64, 1] };
+const INFO_TRANSITION_2 = { duration: 0.6, delay: 0.3, ease: [0.34, 1.56, 0.64, 1] };
 
 export interface MusicPlayerWidgetProps {
   config: WidgetConfig;
@@ -19,7 +84,7 @@ export interface MusicPlayerWidgetProps {
   isPreview?: boolean;
 }
 
-// 专辑封面组件 - 独立优化
+// 专辑封面组件 - 独立优化（使用静态动画常量）
 const AlbumCover = memo(({ 
   cover, 
   name, 
@@ -39,34 +104,27 @@ const AlbumCover = memo(({
   style?: React.CSSProperties;
   anim: AnimationConfig;
 }) => {
-  // 直接使用 cover 作为 key，强制重新渲染，不使用内部状态缓存
-  // 这样可以确保封面立即更新，而不是等待加载完成
+  // 缓存 transition 避免重复创建
+  const glowTransition = anim.loop ? GLOW_TRANSITION_LOOP : GLOW_TRANSITION_ONCE;
   
   return (
     <motion.div 
       className={className || "absolute z-10"}
       style={style || { top: `${8 * scale}px`, right: `${8 * scale}px` }}
-      initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-      animate={{ 
-        scale: 1, 
-        opacity: 1, 
-        rotate: 0,
-      }}
-      transition={{ 
-        duration: 0.6, 
-        ease: [0.34, 1.56, 0.64, 1]
-      }}
+      initial={ALBUM_COVER_INITIAL}
+      animate={ALBUM_COVER_ANIMATE}
+      transition={ALBUM_COVER_TRANSITION}
     >
       <div 
         className="rounded-md overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm"
         style={{ width: `${48 * scale}px`, height: `${48 * scale}px` }}
       >
         <img
-          key={cover} // 关键：使用 key 强制更新
+          key={cover}
           src={cover || 'https://via.placeholder.com/48?text=♪'}
           alt={name}
           className="w-full h-full object-cover"
-          loading="eager" // 立即加载
+          loading="eager"
           onError={(e) => {
             e.currentTarget.src = 'https://via.placeholder.com/48?text=♪';
           }}
@@ -76,17 +134,9 @@ const AlbumCover = memo(({
       {isPlaying && (
         <motion.div 
           className="absolute inset-0 rounded-lg pointer-events-none"
-          style={{ 
-            boxShadow: `0 0 20px ${themeColor}40`,
-          }}
-          animate={{ 
-            opacity: [0.5, 1, 0.5],
-          }}
-          transition={{
-            duration: 2,
-            repeat: anim.loop ? Infinity : 0,
-            ease: "easeInOut"
-          }}
+          style={{ boxShadow: `0 0 20px ${themeColor}40` }}
+          animate={GLOW_ANIMATE}
+          transition={glowTransition}
         />
       )}
     </motion.div>
@@ -95,35 +145,42 @@ const AlbumCover = memo(({
 
 AlbumCover.displayName = 'AlbumCover';
 
-// 播放状态指示器 - 独立组件
-const PlayingIndicator = memo(({ themeColor, scale = 1, anim }: { themeColor: string; scale?: number; anim: AnimationConfig }) => (
-  <motion.div 
-    className="flex items-end"
-    style={{ gap: `${2 * scale}px`, height: `${16 * scale}px` }}
-    initial={{ opacity: 0, scale: 0.8 }}
-    animate={{ opacity: 1, scale: 1 }}
-    transition={{ duration: 0.3 }}
-  >
+// 播放状态指示器 - 使用静态动画常量
+const PlayingIndicator = memo(({ themeColor, scale = 1, anim }: { themeColor: string; scale?: number; anim: AnimationConfig }) => {
+  // 缓存 transitions
+  const barTransition1 = anim.loop ? BAR_TRANSITION_LOOP(0) : BAR_TRANSITION_ONCE(0);
+  const barTransition2 = anim.loop ? BAR_TRANSITION_LOOP(0.1) : BAR_TRANSITION_ONCE(0.1);
+  const barTransition3 = anim.loop ? BAR_TRANSITION_LOOP(0.2) : BAR_TRANSITION_ONCE(0.2);
+  
+  return (
     <motion.div 
-      className="rounded-full"
-      style={{ background: themeColor, width: `${2 * scale}px` }}
-      animate={{ height: ['30%', '100%', '30%'] }}
-      transition={{ duration: 0.6, repeat: anim.loop ? Infinity : 0, ease: "easeInOut" }}
-    />
-    <motion.div 
-      className="rounded-full"
-      style={{ background: themeColor, width: `${2 * scale}px` }}
-      animate={{ height: ['60%', '100%', '60%'] }}
-      transition={{ duration: 0.6, repeat: anim.loop ? Infinity : 0, ease: "easeInOut", delay: 0.1 }}
-    />
-    <motion.div 
-      className="rounded-full"
-      style={{ background: themeColor, width: `${2 * scale}px` }}
-      animate={{ height: ['40%', '100%', '40%'] }}
-      transition={{ duration: 0.6, repeat: anim.loop ? Infinity : 0, ease: "easeInOut", delay: 0.2 }}
-    />
-  </motion.div>
-));
+      className="flex items-end"
+      style={{ gap: `${2 * scale}px`, height: `${16 * scale}px` }}
+      initial={INDICATOR_INITIAL}
+      animate={INDICATOR_ANIMATE}
+      transition={INDICATOR_TRANSITION}
+    >
+      <motion.div 
+        className="rounded-full"
+        style={{ background: themeColor, width: `${2 * scale}px` }}
+        animate={BAR_ANIMATE_1}
+        transition={barTransition1}
+      />
+      <motion.div 
+        className="rounded-full"
+        style={{ background: themeColor, width: `${2 * scale}px` }}
+        animate={BAR_ANIMATE_2}
+        transition={barTransition2}
+      />
+      <motion.div 
+        className="rounded-full"
+        style={{ background: themeColor, width: `${2 * scale}px` }}
+        animate={BAR_ANIMATE_3}
+        transition={barTransition3}
+      />
+    </motion.div>
+  );
+});
 
 PlayingIndicator.displayName = 'PlayingIndicator';
 
@@ -134,9 +191,8 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const uniqueId = useId();
   const { t } = useI18n();
   
-  // 🆕 接入动画调度器 - 音乐播放器动画优先级中上(4)
-  const { isAnimating } = useAnimationSlot(`music-player-${uniqueId}`, {
-    priority: 4,
+  // 🆕 使用统一动画调度器管理循环动画
+  const { isAnimating } = useLoopAnimation({
     duration: 4000, // 光效动画约4秒周期
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 确保动画完整完成一轮
@@ -352,7 +408,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                   }}
                   transition={{
                     duration: 4,
-                    repeat: Infinity,
+                    repeat: 1, // 有限次数
                     ease: "easeInOut"
                   }}
                 />
@@ -486,7 +542,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
           }}
           transition={{
             duration: 3,
-            repeat: Infinity,
+            repeat: 1, // 有限次数
             ease: "easeInOut"
           }}
         />

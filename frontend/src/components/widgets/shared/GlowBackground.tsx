@@ -7,14 +7,19 @@
  * 3. 使用 transform3d 强制创建合成层
  * 4. 使用更长的动画周期减少重绘频率
  * 5. 🆕 接入动画调度器，限制同时运行的动画数量
+ * 6. 🔑 使用同步初始配置，避免首屏闪烁
+ * 7. 🚀 使用静态动画常量，避免每次渲染创建新对象
  */
 
 import { memo, useMemo, useId } from 'react';
-import { motion } from 'framer-motion';
-import { useAnimationSlot } from '../../../hooks/useAnimationScheduler';
+import { motionShim as motion } from '@lib/motionShim';
+import { useLoopAnimation, LoopPriority } from '../../../hooks/animation';
+import { getAnimationConfigSync } from '../../../hooks/useAnimationLevel';
 
-// ========== 动画配置常量 ==========
-// 使用较长的 duration 减少 CPU 开销
+// 🔑 模块加载时同步获取动画配置，确保首次渲染正确
+const INITIAL_ANIM_CONFIG = getAnimationConfigSync();
+
+// ========== 静态动画常量（避免每次渲染创建新对象）==========
 
 /** 第一个光晕动画 - 主光源 */
 const GLOW_ANIMATION_1 = {
@@ -27,9 +32,10 @@ const GLOW_ANIMATION_1_STATIC = {
   scale: 1,
 };
 
+// 改为有限次数，配合调度器 duration=12000ms
 const GLOW_TRANSITION_1 = {
-  duration: 12, // 延长至 12 秒 (原 8 秒 +50%)
-  repeat: Infinity,
+  duration: 12,
+  repeat: 0, // 只运行一轮，由调度器控制重新播放
   ease: 'linear' as const,
   repeatType: 'mirror' as const,
 };
@@ -45,9 +51,10 @@ const GLOW_ANIMATION_2_STATIC = {
   scale: 1,
 };
 
+// 改为有限次数
 const GLOW_TRANSITION_2 = {
-  duration: 15, // 延长至 15 秒 (原 10 秒 +50%)
-  repeat: Infinity,
+  duration: 12, // 统一为 12s，配合调度器
+  repeat: 0,
   ease: 'linear' as const,
   repeatType: 'mirror' as const,
   delay: 2,
@@ -90,18 +97,24 @@ export const GlowBackground = memo(function GlowBackground({
   size = 'md',
   opacity,
 }: GlowBackgroundProps) {
-  // 🆕 接入动画调度器 - 光晕动画优先级较低(6)，持续时间长(12秒)
+  // 🆕 使用统一动画调度器管理循环动画 - 光晕是装饰动画，优先级最低
   const uniqueId = useId();
-  const { isAnimating } = useAnimationSlot(`glow-${uniqueId}`, {
-    priority: 6, // 较低优先级装饰动画
+  const { isAnimating } = useLoopAnimation({
     duration: 12000, // 12秒一个周期
+    cooldown: 8000, // 冷却 8 秒后重新加入队列
     autoRequest: shouldAnimate,
+    loopPriority: LoopPriority.DECORATIVE, // 装饰动画，可被抢占
   });
   
   // 只有在调度器分配了槽位且允许动画时才真正动画
   const canAnimate = shouldAnimate && isAnimating;
   
-  const blurClass = animLevel === 'standard' ? 'blur-3xl' : 'blur-xl';
+  // 🔑 关键修复：直接使用模块级同步配置
+  // animLevel prop 来自 useAnimationLevel hook，可能在首次渲染时值不正确
+  // 但 INITIAL_ANIM_CONFIG 是在模块加载时就同步计算好的，保证正确
+  // 由于我们已经修复了 useAnimationLevel hook，现在 animLevel 应该始终正确
+  // 但为了双重保险，这里仍使用 INITIAL_ANIM_CONFIG.level 作为可靠基准
+  const blurClass = INITIAL_ANIM_CONFIG.level === 'standard' ? 'blur-3xl' : 'blur-xl';
 
   // 根据 size 确定尺寸类
   const sizeClasses = useMemo(() => {

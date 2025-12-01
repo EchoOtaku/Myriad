@@ -13,19 +13,18 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo, useId } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { WidgetComponentProps } from '../WidgetGrid';
-import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
-import { FaSteam, FaGithub, FaTimes } from 'react-icons/fa';
-import * as FaIcons from 'react-icons/fa';
-import * as SiIcons from 'react-icons/si';
-import * as Fa6Icons from 'react-icons/fa6';
+// 使用内联 SVG 图标，避免 react-icons 全量导入
+import { SiBilibili, SiNeteasecloudmusic, FaSteam, FaGithub, FaTimes, getIconByName } from '@lib/icons';
 import { API_URL } from '../../config';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
-import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
+import { getUIConfigDeduped } from '../../utils/requestDedup';
+import { useThemeMode } from '../../utils/themeSubscriber';
 
 // ========== 安全验证工具函数 ==========
 
@@ -102,58 +101,6 @@ const sanitizeUrlPattern = (pattern: string): string => {
 };
 
 // ========== 结束安全验证工具函数 ==========
-
-// ========== 图标缓存系统 ==========
-// 图标缓存 - 避免重复创建 React 节点
-const iconCache = new Map<string, React.ReactNode>();
-const MAX_ICON_CACHE_SIZE = 100;
-
-// 清理图标缓存（当缓存超过限制时）
-const cleanIconCache = () => {
-  if (iconCache.size > MAX_ICON_CACHE_SIZE) {
-    const keysToDelete = Array.from(iconCache.keys()).slice(0, 20);
-    keysToDelete.forEach(key => iconCache.delete(key));
-  }
-};
-
-// 动态获取react-icons图标 - 带缓存
-const getReactIcon = (library: string, iconName: string): React.ReactNode => {
-  // 生成缓存键
-  const cacheKey = `${library}:${iconName}`;
-  
-  // 检查缓存
-  if (iconCache.has(cacheKey)) {
-    return iconCache.get(cacheKey);
-  }
-  
-  try {
-    let IconComponent;
-    switch (library) {
-      case 'fa':
-        IconComponent = (FaIcons as any)[iconName];
-        break;
-      case 'si':
-        IconComponent = (SiIcons as any)[iconName];
-        break;
-      case 'fa6':
-        IconComponent = (Fa6Icons as any)[iconName];
-        break;
-      default:
-        return null;
-    }
-
-    if (IconComponent) {
-      const iconElement = <IconComponent />;
-      // 存入缓存
-      cleanIconCache();
-      iconCache.set(cacheKey, iconElement);
-      return iconElement;
-    }
-  } catch (e) {
-    console.error(`Failed to load icon ${iconName} from ${library}:`, e);
-  }
-  return null;
-};
 
 // 平台配置定义 - 移到组件外部避免重复创建
 interface PlatformInfo {
@@ -251,16 +198,16 @@ const ICON_STATIC_ANIMATION = {
 
 const ICON_STATIC_TRANSITION = { duration: 0.3 };
 
-// 循环动画过渡配置 - 带循环
+// 循环动画过渡配置 - 有限次数（视觉上与无限循环等价但不会永久运行）
 const LOOP_TRANSITION_FAST = {
   duration: 0.5,
-  repeat: Infinity,
+  repeat: 6, // ~3s
   ease: 'easeInOut' as const,
 };
 
 const LOOP_TRANSITION_NORMAL = {
   duration: 0.6,
-  repeat: Infinity,
+  repeat: 5, // ~3s
   ease: 'easeInOut' as const,
 };
 
@@ -288,7 +235,7 @@ const HINT_ANIMATION = {
   transition: { delay: 0.2 },
 };
 const HINT_ARROW_ANIMATION = { x: [0, 2, 0] };
-const HINT_LOOP_TRANSITION = { duration: 1, repeat: Infinity };
+const HINT_LOOP_TRANSITION = { duration: 1, repeat: 3 }; // ~3s
 const HINT_NO_LOOP_TRANSITION = { duration: 0.3 };
 
 // ========== 自定义平台 PlatformInfo 缓存 ==========
@@ -316,23 +263,20 @@ const loadCustomPlatforms = (): CustomPlatformData[] => {
   return customPlatformsData;
 };
 
-// 异步从后端加载自定义平台
+// 异步从后端加载自定义平台（使用去重机制）
 const loadCustomPlatformsAsync = async (): Promise<CustomPlatformData[]> => {
   if (customPlatformsLoaded) {
     return customPlatformsData;
   }
   
   try {
-    const response = await fetch(`${API_URL}/api/config/ui`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.custom_platforms) {
-        try {
-          customPlatformsData = JSON.parse(data.custom_platforms);
-        } catch (e) {
-          console.error('Failed to parse custom platforms:', e);
-          customPlatformsData = [];
-        }
+    const data = await getUIConfigDeduped();
+    if (data.custom_platforms) {
+      try {
+        customPlatformsData = JSON.parse(data.custom_platforms);
+      } catch (e) {
+        console.error('Failed to parse custom platforms:', e);
+        customPlatformsData = [];
       }
     }
   } catch (e) {
@@ -386,14 +330,19 @@ const customPlatformToPlatformInfo = (custom: CustomPlatformData): PlatformInfo 
     return cached.info;
   }
 
-  // 创建图标元素
+  // 创建图标元素 - 支持 react-icons 名称映射和 URL
   let icon: React.ReactNode;
 
-  if (custom.iconType === 'react-icons' && custom.iconLibrary && custom.iconName) {
-    // 使用react-icons（已经有缓存）
-    icon = getReactIcon(custom.iconLibrary, custom.iconName);
-  } else if (custom.iconUrl) {
-    // 使用外部URL - 生成带缓存键的图片
+  // 优先使用 iconName（从图标库映射）
+  if (custom.iconName) {
+    const IconComponent = getIconByName(custom.iconName);
+    if (IconComponent) {
+      icon = <IconComponent className="w-full h-full" />;
+    }
+  }
+
+  // 如果没有找到图标组件，使用外部URL
+  if (!icon && custom.iconUrl) {
     icon = <img src={custom.iconUrl} alt={custom.name} className="w-full h-full object-contain" loading="lazy" />;
   }
 
@@ -1245,9 +1194,8 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   const uniqueId = useId();
   const { t } = useI18n();
   
-  // 🆕 接入动画调度器 - 图标动画优先级中等(5)
-  const { isAnimating } = useAnimationSlot(`social-icon-${uniqueId}`, {
-    priority: 5,
+  // 🆕 使用统一动画调度器管理循环动画
+  const { isAnimating } = useLoopAnimation({
     duration: 600, // hover动画约0.6秒
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 确保动画完整完成一轮
@@ -1256,32 +1204,8 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）
   const localRef = useRef<HTMLDivElement | null>(null);
 
-  // 深色模式检测 - 优化 MutationObserver
-  const [isDark, setIsDark] = useState(() =>
-    typeof window !== 'undefined' && document.documentElement.classList.contains('dark')
-  );
-
-  // 监听主题变化 - 使用 useCallback 优化回调函数
-  useEffect(() => {
-    const handleThemeChange = (mutations: MutationRecord[]) => {
-      // 只处理 class 属性变化
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          setIsDark(document.documentElement.classList.contains('dark'));
-          break; // 找到后立即退出
-        }
-      }
-    };
-
-    const observer = new MutationObserver(handleThemeChange);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-      attributeOldValue: false, // 不需要旧值
-    });
-
-    return () => observer.disconnect();
-  }, []);
+  // 深色模式检测 - 使用共享主题订阅器，避免每个组件都创建 MutationObserver
+  const isDark = useThemeMode();
 
   // 从配置获取选中的平台ID
   const [selectedPlatformId, setSelectedPlatformId] = useState<string>(

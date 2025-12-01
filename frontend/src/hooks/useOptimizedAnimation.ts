@@ -5,7 +5,7 @@
  */
 
 import { useMemo } from 'react';
-import { Transition, TargetAndTransition } from 'framer-motion';
+import type { Transition, TargetAndTransition } from 'framer-motion';
 import { useAnimationLevel, AnimationConfig } from './useAnimationLevel';
 
 /**

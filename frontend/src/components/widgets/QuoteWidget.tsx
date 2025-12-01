@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, memo, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import { getRandomQuote, QuoteData } from '../../utils/dynamicContent';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
@@ -116,12 +116,15 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
     };
   }, [loadFromCache, fetchQuote, isPreview]);
 
-  // 主题色获取 - 优化：使用节流避免频繁更新
+  // 主题色获取 - 优化：使用 requestAnimationFrame 批处理避免强制重排
   const updateThemeColor = useCallback(() => {
-    const primaryColor = getComputedStyle(document.documentElement)
-      .getPropertyValue('--color-primary')
-      .trim() || '#a855f7';
-    setThemeColor(prev => prev !== primaryColor ? primaryColor : prev);
+    // 使用 requestAnimationFrame 延迟读取，避免同步强制重排
+    requestAnimationFrame(() => {
+      const primaryColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-primary')
+        .trim() || '#a855f7';
+      setThemeColor(prev => prev !== primaryColor ? primaryColor : prev);
+    });
   }, []);
 
   useEffect(() => {
@@ -133,7 +136,7 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
       throttleTimer = setTimeout(() => {
         throttleTimer = null;
         updateThemeColor();
-      }, 200);
+      }, 300); // 增加节流时间到 300ms
     };
     
     const observer = new MutationObserver(throttledUpdate);

@@ -1,10 +1,20 @@
 /**
  * 页面过渡动画包装器
  * 使用 framer-motion 实现流畅的进入和退出动画
- * 与 AnimatePresence 配合，实现完整的页面切换效果
+ * 与统一动画协调器配合
+ * 
+ * 特性:
+ * - 页面级动画享有最高优先级
+ * - 自动与 AnimationCoordinator 集成
+ * - 支持 framer-motion 懒加载
+ * - 退出动画使用绝对定位避免布局跳变
  */
 
-import { motion, type Variants } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
+import type { Variants } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { usePageTransition } from '../hooks/animation';
 
 interface AnimatedViewProps {
   children: React.ReactNode;
@@ -14,7 +24,7 @@ interface AnimatedViewProps {
 /**
  * 页面动画变体配置
  * - 进入: 从下方淡入，带轻微缩放
- * - 退出: 向上淡出，带轻微缩小
+ * - 退出: 快速淡出，使用绝对定位脱离文档流
  */
 const pageVariants: Variants = {
   initial: {
@@ -27,30 +37,53 @@ const pageVariants: Variants = {
     y: 0,
     scale: 1,
     transition: {
-      duration: 0.4, // 0.5s → 0.4s (加快20%)
-      ease: [0.34, 1.56, 0.64, 1], // 弹性曲线
-      staggerChildren: 0.08, // 0.1s → 0.08s (加快20%)
+      duration: 0.4,
+      ease: [0.22, 1, 0.36, 1], // 平滑的缓动曲线
+      staggerChildren: 0.05,
     },
   },
   exit: {
     opacity: 0,
-    y: -20,
+    y: -10,
     scale: 0.98,
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: -1,
+    pointerEvents: 'none' as const,
     transition: {
-      duration: 0.24, // 0.3s → 0.24s (加快20%)
-      ease: [0.4, 0, 1, 1], // 快速退出
+      duration: 0.25,
+      ease: [0.4, 0, 0.6, 1], // 退出时稍微加速
     },
   },
 };
 
 export default function AnimatedView({ children, className = '' }: AnimatedViewProps) {
+  const location = useLocation();
+  const pageId = location.pathname.replace(/\//g, '-') || 'home';
+  
+  // 使用统一动画协调器
+  const { isReady, onEnterComplete } = usePageTransition({ pageId });
+  
+  // 处理动画完成
+  const handleAnimationComplete = (definition: string) => {
+    if (definition === 'enter') {
+      onEnterComplete();
+    }
+  };
+  
   return (
     <motion.div
-      className={className}
+      className={`animated-view-container ${className}`}
       variants={pageVariants}
       initial="initial"
-      animate="enter"
+      animate={isReady ? "enter" : "initial"}
       exit="exit"
+      onAnimationComplete={handleAnimationComplete}
+      style={{
+        willChange: 'opacity, transform',
+      }}
     >
       {children}
     </motion.div>

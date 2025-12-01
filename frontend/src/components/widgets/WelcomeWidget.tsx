@@ -4,13 +4,13 @@
  */
 
 import { useState, useEffect, memo, useCallback, useMemo, useId } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { GlowBackground } from './shared/GlowBackground';
-import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 
 // Navigation guide type definition
@@ -34,9 +34,8 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   const titleFontScale = isNonChinese ? fontScale * 0.88 : fontScale; // 标题减少约12%
   const infoFontScale = isNonChinese ? fontScale * 0.92 : fontScale;  // 信息类减少约8%
   
-  // 🆕 接入动画调度器 - 欢迎动画优先级低(4)
-  const { isAnimating } = useAnimationSlot(`welcome-${uniqueId}`, {
-    priority: 4,
+  // 🆕 使用统一动画调度器管理循环动画
+  const { isAnimating } = useLoopAnimation({
     duration: 1500, // 箭头动画约1.5秒周期
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 确保动画完整完成一轮
@@ -370,7 +369,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                     animate={canAnimate ? { x: [0, 3, 0] } : { x: 0 }}
                     transition={canAnimate ? {
                       duration: 1.5,
-                      repeat: Infinity,
+                      repeat: 3, // ~4.5s
                       ease: "easeInOut"
                     } : { duration: 0 }}
                   >

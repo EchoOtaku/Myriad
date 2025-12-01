@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useContext } from 'react';
-import { usePerformanceProfile } from './usePerformanceProfile';
-import { configureAnimationScheduler } from './useAnimationScheduler';
+import { usePerformanceProfile, getPerformanceProfileSync } from './usePerformanceProfile';
+import { configureAnimationCoordinator } from './animation';
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext';
 
 export type AnimationLevel = 'none' | 'light' | 'standard';
@@ -11,6 +11,27 @@ export interface AnimationConfig {
   loop: boolean; // allow infinite loops
   spring: boolean; // allow spring physics
   durationScale: number; // multiply base duration
+}
+
+/**
+ * 同步获取动画配置（用于模块初始化时）
+ * 注意：无法获取用户手动设置的偏好（需要 Context），仅用于首屏渲染
+ */
+export function getAnimationConfigSync(): AnimationConfig {
+  const perf = getPerformanceProfileSync();
+  
+  // prefers-reduced-motion 优先
+  if (perf.reduceMotion) {
+    return { level: 'none', loop: false, spring: false, durationScale: 0.0 };
+  }
+  
+  // 低端设备
+  if (perf.lowEndDevice) {
+    return { level: 'light', loop: false, spring: false, durationScale: 0.6 };
+  }
+  
+  // 标准设备
+  return { level: 'standard', loop: true, spring: true, durationScale: 1.0 };
 }
 
 export function useAnimationLevel(): AnimationConfig {
@@ -40,33 +61,36 @@ export function useAnimationLevel(): AnimationConfig {
     return { level: 'standard' as const, loop: true, spring: true, durationScale: 1.0 };
   }, [perf.reduceMotion, perf.lowEndDevice, prefContext?.preference]);
 
-  // 根据性能级别自动配置动画调度器
+  // 根据性能级别自动配置动画协调器
   useEffect(() => {
     const isMobile = perf.isMobile;
     
     switch (config.level) {
       case 'none':
-        // 完全禁用动画时，只允许 1 个同时运行（基本的 UI 反馈）
-        configureAnimationScheduler({ 
-          maxConcurrent: 1, 
-          minInterval: 200,
-          defaultDuration: 200,
+        // 完全禁用动画时，最小化并发
+        configureAnimationCoordinator({ 
+          baseConcurrent: 4,
+          burstConcurrent: 8,
+          burstDuration: 3000,
+          maxLoopSlots: 2,
         });
         break;
       case 'light':
         // 低端设备，限制同时动画数量
-        configureAnimationScheduler({ 
-          maxConcurrent: isMobile ? 2 : 4,  // 移动端低端: 2, 桌面端低端: 4
-          minInterval: isMobile ? 120 : 100,
-          defaultDuration: 400,
+        configureAnimationCoordinator({ 
+          baseConcurrent: isMobile ? 6 : 8,
+          burstConcurrent: isMobile ? 16 : 20,
+          burstDuration: 6000,
+          maxLoopSlots: isMobile ? 4 : 6,
         });
         break;
       case 'standard':
         // 标准设备，允许较多动画
-        configureAnimationScheduler({ 
-          maxConcurrent: isMobile ? 6 : 8,  // 移动端中高端: 6, 桌面端: 8
-          minInterval: isMobile ? 60 : 50,
-          defaultDuration: 500,
+        configureAnimationCoordinator({ 
+          baseConcurrent: isMobile ? 10 : 12,
+          burstConcurrent: isMobile ? 24 : 32,
+          burstDuration: 8000,
+          maxLoopSlots: isMobile ? 6 : 8,
         });
         break;
     }

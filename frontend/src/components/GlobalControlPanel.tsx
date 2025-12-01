@@ -20,6 +20,7 @@ import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAuth } from '../contexts/AuthContext';
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext';
 import { useI18n } from '../contexts/I18nContext';
+import { useThemeMode } from '../utils/themeSubscriber';
 
 interface DynamicContent {
   type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
@@ -36,7 +37,8 @@ const GlobalControlPanel: React.FC = () => {
   const [showDynamicContent, setShowDynamicContent] = useState(true);
   const [showPanelContent, setShowPanelContent] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
-  const [isDark, setIsDark] = useState(false);
+  // 使用共享主题订阅器，避免创建多余的 MutationObserver
+  const isDark = useThemeMode();
   const [user, setUser] = useState<User | null>(null);
 
   // 动态内容状态
@@ -65,9 +67,7 @@ const GlobalControlPanel: React.FC = () => {
   const { preference: animPreference, togglePerformanceMode } = useAnimationPreference();
 
   useEffect(() => {
-    // 检查当前主题
-    setIsDark(document.documentElement.classList.contains('dark'));
-
+    // 主题状态现在由 useThemeMode() hook 自动管理
     // 认证检查现在由 AuthContext 管理，用户信息会自动同步
 
     // 加载动态内容
@@ -283,24 +283,8 @@ const GlobalControlPanel: React.FC = () => {
     };
   }, [dynamicContents.length, isExpanded, isHovering, anim.durationScale]);
 
-  // 监听主题变化，仅更新主题状态（不重新请求数据）
-  useEffect(() => {
-    const handleThemeChange = () => {
-      const newIsDark = document.documentElement.classList.contains('dark');
-      setIsDark(newIsDark);
-      // 移除 loadDynamicContents() 调用，避免主题切换时重复请求天气等数据
-      // 天气等数据已有缓存机制，不需要在主题切换时重新加载
-    };
-
-    // 使用 MutationObserver 监听主题变化
-    const observer = new MutationObserver(handleThemeChange);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-
-    return () => observer.disconnect();
-  }, []); // 移除 loadDynamicContents 依赖
+  // 主题变化已通过 useThemeMode() hook 自动响应
+  // 无需额外的 MutationObserver
 
   // 动态计算展开面板的高度 - 使用克隆测量方案（性能优化版）
   // ⚠️ 关键优化: 移动端改为轻量监测（无 ResizeObserver），桌面保留 Observer
@@ -487,8 +471,7 @@ const GlobalControlPanel: React.FC = () => {
       html.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
-
-    setIsDark(newIsDark);
+    // isDark 状态由 useThemeMode() hook 自动响应 class 变化，无需手动 setIsDark
 
     // 更新 meta theme-color - 使用壁纸颜色
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');

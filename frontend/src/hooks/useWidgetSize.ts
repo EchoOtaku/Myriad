@@ -64,17 +64,16 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
   const pageHiddenRef = useRef<boolean>(typeof document !== 'undefined' ? document.hidden : false);
   const lastMeasuredRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   
-  const measureElement = useCallback(() => {
+  // 使用 ResizeObserver 的尺寸更新函数（避免调用 getBoundingClientRect 导致强制重排）
+  const updateSizeFromEntry = useCallback((width: number, height: number) => {
     // 页面不可见时跳过测量，避免后台持续计算
     if (pageHiddenRef.current) return;
-    if (!elementRef.current) return;
-
-    const rect = elementRef.current.getBoundingClientRect();
+    
     // 如果宽度为0 (可能是隐藏或未渲染)，不更新状态以避免闪烁
-    if (rect.width > 0) {
+    if (width > 0) {
       // 检查尺寸是否真正变化（避免微小变化触发重渲染）
-      const widthDiff = Math.abs(lastMeasuredRef.current.width - rect.width);
-      const heightDiff = Math.abs(lastMeasuredRef.current.height - rect.height);
+      const widthDiff = Math.abs(lastMeasuredRef.current.width - width);
+      const heightDiff = Math.abs(lastMeasuredRef.current.height - height);
       // 预置阈值：仅当 >=8px 时才更新
       const THRESHOLD_PX = 8;
       
@@ -82,20 +81,29 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
         return; // 变化太小，跳过
       }
       
-      lastMeasuredRef.current = { width: rect.width, height: rect.height };
+      lastMeasuredRef.current = { width, height };
       
       setSize(prev => {
         // 二次阈值判断，进一步避免频繁状态更新
-        if (Math.abs(prev.width - rect.width) < THRESHOLD_PX && Math.abs(prev.height - rect.height) < THRESHOLD_PX) {
+        if (Math.abs(prev.width - width) < THRESHOLD_PX && Math.abs(prev.height - height) < THRESHOLD_PX) {
           return prev;
         }
-        return {
-          width: rect.width,
-          height: rect.height,
-        };
+        return { width, height };
       });
     }
   }, []);
+
+  // 兼容性：fallback 测量函数（仅在 ResizeObserver 不可用时使用）
+  const measureElement = useCallback(() => {
+    if (pageHiddenRef.current) return;
+    if (!elementRef.current) return;
+    // 使用 requestAnimationFrame 批处理，避免同步读取几何属性
+    requestAnimationFrame(() => {
+      if (!elementRef.current) return;
+      const rect = elementRef.current.getBoundingClientRect();
+      updateSizeFromEntry(rect.width, rect.height);
+    });
+  }, [updateSizeFromEntry]);
 
   // 监听 widgetSize 变化，强制重新测量
   // 使用 useLayoutEffect 确保在浏览器绘制前更新，减少闪烁
@@ -125,27 +133,45 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       elementRef.current = node;
-      measureElement();
 
       // 低端设备：默认不持续监听，改为按需测量
       if (!lowEndDeviceRef.current) {
-        // 使用 ResizeObserver 监听尺寸变化
-        const resizeObserver = new ResizeObserver(() => {
+        // 使用 ResizeObserver 监听尺寸变化 - 直接使用 entry.contentRect 避免强制重排
+        const resizeObserver = new ResizeObserver((entries) => {
           if (pageHiddenRef.current) return;
-          if (measureThrottleRef.current) {
-            // 已有等待中的测量，不再重复排队
-            return;
-          }
+          // 使用 ResizeObserver 提供的尺寸，无需调用 getBoundingClientRect
+          const entry = entries[0];
+          if (!entry) return;
+          
+          // 使用节流避免过于频繁的更新
+          if (measureThrottleRef.current) return;
+          
           measureThrottleRef.current = window.setTimeout(() => {
-            measureElement();
             measureThrottleRef.current = null;
-          }, 5000); // 从 2000ms 降低到 500ms
+            // 直接使用 contentRect，避免强制重排
+            const { width, height } = entry.contentRect;
+            updateSizeFromEntry(width, height);
+          }, 50); // 50ms 节流，足够响应式但不会过于频繁
         });
         resizeObserver.observe(node);
         (node as any).__widgetResizeObserver = resizeObserver;
+        
+        // 初始测量：使用 requestAnimationFrame 延迟避免同步重排
+        requestAnimationFrame(() => {
+          if (node) {
+            const rect = node.getBoundingClientRect();
+            updateSizeFromEntry(rect.width, rect.height);
+          }
+        });
       } else {
         // 低端设备：仅在首次挂载测量一次即可
         (node as any).__widgetResizeObserver = null;
+        requestAnimationFrame(() => {
+          if (node) {
+            const rect = node.getBoundingClientRect();
+            updateSizeFromEntry(rect.width, rect.height);
+          }
+        });
       }
     } else if (elementRef.current) {
       // 清理
@@ -159,7 +185,7 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
       }
       elementRef.current = null;
     }
-  }, [measureElement]);
+  }, [updateSizeFromEntry]);
 
   // 计算缩放比例
   const scale = (() => {

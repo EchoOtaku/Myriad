@@ -7,8 +7,8 @@ import AnimatedView from '../components/AnimatedView';
 import { API_URL } from '../config';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { FaEdit } from 'react-icons/fa';
+import { motionShim as motion } from '@lib/motionShim';
+import { FaEdit } from '@lib/icons';
 import WidgetGrid, { WidgetConfig, WidgetType } from '../components/WidgetGrid';
 import { WelcomeWidget } from '../components/widgets/WelcomeWidget';
 import { QuickStatsWidget } from '../components/widgets/QuickStatsWidget';
@@ -19,15 +19,18 @@ import { QuoteWidget } from '../components/widgets/QuoteWidget';
 import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget';
 import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget';
+import { usePageReady } from '../hooks/animation';
 import { getUserInfoWithCache, getCsrfTokenWithCache, UserInfo } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
 import { useI18n } from '../contexts/I18nContext';
+import { getUIConfigDeduped } from '../utils/requestDedup';
 
 export default function Home() {
   const navigate = useNavigate();
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth();
   const { t } = useI18n();
+  const isPageReady = usePageReady();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -206,35 +209,30 @@ export default function Home() {
     fetchCsrfToken();
   }, [isAuthenticated, hasChecked]);
 
-  // 从后端加载小组件配置
+  // 从后端加载小组件配置（使用去重机制）
   useEffect(() => {
     async function loadDashboardConfig() {
       try {
-        const response = await fetch(`${API_URL}/api/config/ui`);
-        if (response.ok) {
-          const data = await response.json();
-          let loadedWidgets = null;
+        const data = await getUIConfigDeduped();
+        let loadedWidgets = null;
 
-          if (data.dashboard_layout) {
-            try {
-              const parsedLayout = JSON.parse(data.dashboard_layout);
-              if (Array.isArray(parsedLayout)) {
-                // 过滤掉未注册的小组件
-                const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
-                loadedWidgets = parsedLayout.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type));
-              }
-            } catch (e) {
-              console.error('解析仪表盘布局失败:', e);
+        if (data.dashboard_layout) {
+          try {
+            const parsedLayout = JSON.parse(data.dashboard_layout);
+            if (Array.isArray(parsedLayout)) {
+              // 过滤掉未注册的小组件
+              const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
+              loadedWidgets = parsedLayout.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type));
             }
+          } catch (e) {
+            console.error('解析仪表盘布局失败:', e);
           }
+        }
 
-          setWidgets(loadedWidgets || DEFAULT_WIDGETS);
+        setWidgets(loadedWidgets || DEFAULT_WIDGETS);
 
-          if (data.dashboard_title) {
-            setDashboardTitle(data.dashboard_title);
-          }
-        } else {
-          setWidgets(DEFAULT_WIDGETS);
+        if (data.dashboard_title) {
+          setDashboardTitle(data.dashboard_title);
         }
       } catch (err) {
         console.error('加载配置失败:', err);
@@ -373,8 +371,8 @@ export default function Home() {
               <motion.div 
                 className="h-full flex items-center justify-between"
                 initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
+                animate={isPageReady ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
+                transition={{ duration: 0.3, ease: "easeOut", delay: isPageReady ? 0.1 : 0 }}
               >
                 {/* 用户信息卡片 */}
                 <motion.div 

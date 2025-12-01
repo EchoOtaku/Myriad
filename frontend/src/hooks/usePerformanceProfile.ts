@@ -53,6 +53,14 @@ function detectPerformanceProfile(): PerformanceProfile {
   }
 }
 
+/**
+ * 同步获取性能配置（用于模块初始化时，非 React 上下文）
+ * 返回当前检测到的设备性能画像
+ */
+export function getPerformanceProfileSync(): PerformanceProfile {
+  return detectPerformanceProfile();
+}
+
 export function usePerformanceProfile(): PerformanceProfile {
   // 🔧 关键修复：使用 useMemo 在首次渲染时同步检测
   // 这样可以确保第一次渲染就能获取正确的值

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
+import { getLibraryDataDeduped } from '../utils/requestDedup';
 import PlatformIcon from './PlatformIcon';
 import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
@@ -501,13 +502,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const fetchLibraryData = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${API_URL}/api/library`);
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch library data');
-            }
-
-            const data: LibraryResponse = await response.json();
+            // 使用去重版本，避免多组件同时请求
+            const data: LibraryResponse = await getLibraryDataDeduped();
 
             if (data.success) {
                 const balanced = balancedShuffle(data.items);

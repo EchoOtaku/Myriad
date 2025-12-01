@@ -13,6 +13,7 @@ import { ReportCardWidget } from '../widgets/ReportCardWidget';
 import { SocialNetworkWidget } from '../widgets/SocialNetworkWidget';
 import { getCSRFToken } from '../../utils/csrf';
 import { useI18n } from '../../contexts/I18nContext';
+import { getUIConfigDeduped } from '../../utils/requestDedup';
 
 const API_URL = import.meta.env.PUBLIC_API_URL || '';
 
@@ -82,26 +83,23 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 从后端加载配置
+  // 从后端加载配置（使用去重机制）
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/config/ui`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.control_panel_layout) {
-            try {
-              const layout = JSON.parse(data.control_panel_layout);
-              if (Array.isArray(layout) && layout.length > 0) {
-                setWidgets(layout);
-              }
-            } catch (e) {
-              console.error('Failed to parse control panel layout', e);
+        const data = await getUIConfigDeduped();
+        if (data.control_panel_layout) {
+          try {
+            const layout = JSON.parse(data.control_panel_layout);
+            if (Array.isArray(layout) && layout.length > 0) {
+              setWidgets(layout);
             }
+          } catch (e) {
+            console.error('Failed to parse control panel layout', e);
           }
-          if (data.control_panel_rows) {
-            setGridRows(data.control_panel_rows);
-          }
+        }
+        if (data.control_panel_rows) {
+          setGridRows(data.control_panel_rows);
         }
       } catch (e) {
         console.error('Failed to load control panel config', e);

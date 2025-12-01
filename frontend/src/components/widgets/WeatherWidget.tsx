@@ -4,14 +4,13 @@
  */
 
 import { useState, useEffect, memo, useCallback, useMemo, useId } from 'react';
-import { motion } from 'framer-motion';
 import { getWeatherInfo, WeatherData } from '../../utils/dynamicContent';
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
-import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 import { TranslationKeys } from '../../i18n';
 
@@ -93,21 +92,41 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   const anim = useAnimationLevel();
   const uniqueId = useId();
   const { t, locale } = useI18n();
+  // framer-motion 动态模块（仅在需要动画时加载）
+  const [FM, setFM] = useState<null | { motion: any }>(null);
   
   // 非中文语言时减小标题字体（英文等语言单词较长）
   const isNonChinese = !locale.startsWith('zh');
   const titleFontScale = isNonChinese ? fontScale * 0.9 : fontScale; // 温度等标题减少约6-8px
   const infoFontScale = isNonChinese ? fontScale * 0.8 : fontScale;  // 城市等信息减少约4px
   
-  // 🆕 接入动画调度器 - 天气图标动画优先级低(3)
-  const { isAnimating } = useAnimationSlot(`weather-${uniqueId}`, {
-    priority: 3,
+  // 🆕 使用统一动画调度器管理循环动画
+  const { isAnimating } = useLoopAnimation({
     duration: 3000, // 天气图标摇摆约3秒周期
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 确保动画完整完成一轮
   });
   
   const canAnimate = anim.loop && isAnimating;
+  // 需要动画时才加载 framer-motion
+  useEffect(() => {
+    let cancelled = false;
+    if (canAnimate && !FM) {
+      import('framer-motion')
+        .then((mod) => {
+          if (!cancelled) setFM({ motion: mod.motion });
+        })
+        .catch(() => {
+          // 忽略加载失败，保持静态渲染
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [canAnimate, FM]);
+  // 在未加载 framer-motion 时使用原生标签占位
+  const MDiv: any = FM ? FM.motion.div : 'div';
+  const MSpan: any = FM ? FM.motion.span : 'span';
   
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -263,13 +282,13 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
 
             {/* 中部：温度和图标 */}
             <div className="flex items-center gap-3 my-auto">
-              <motion.div
+              <MDiv
                 className="text-4xl drop-shadow-md flex-shrink-0"
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
               >
                 {weatherData.icon}
-              </motion.div>
+              </MDiv>
               <div className="flex flex-col justify-center min-w-0">
                 <div className="flex items-baseline gap-2 overflow-hidden">
                   <span
@@ -333,7 +352,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
           <div className="w-[40%] pl-2 flex flex-col justify-between gap-1 h-full">
             {weatherData.forecast ? (
               weatherData.forecast.slice(0, 3).map((day, i) => (
-                <motion.div
+                <MDiv
                   key={day.date}
                   className="flex-1 flex items-center justify-between px-2 rounded-md hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
                   initial={{ opacity: 0, x: 10 }}
@@ -348,7 +367,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
                     <span className="font-bold text-gray-800 dark:text-gray-100" style={{ fontSize: '0.6rem' }}>{day.maxTemp}°</span>
                     <span className="text-gray-400 dark:text-gray-500" style={{ fontSize: '0.6rem' }}>{day.minTemp}°</span>
                   </div>
-                </motion.div>
+                </MDiv>
               ))
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ fontSize: '0.6rem' }}>
@@ -459,7 +478,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
       <div className="absolute inset-0 flex flex-col p-3">
         {/* 顶部：图标 - 轻微摆动 */}
         <div className="h-9 flex-shrink-0">
-          <motion.span 
+          <MSpan 
             className="text-3xl leading-none inline-block origin-center"
             style={{ transformOrigin: 'center center' }}
             initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
@@ -467,16 +486,16 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             transition={canAnimate ? {
               scale: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
               opacity: { duration: 0.6 },
-              rotate: { duration: 3, repeat: Infinity, ease: "easeInOut" }
+              rotate: { duration: 3, repeat: 2, ease: "easeInOut" }
             } : { duration: 0.4 }}
           >
             {weatherData.icon}
-          </motion.span>
+          </MSpan>
         </div>
 
         {/* 主要信息：温度和天气状态 */}
         <div className="flex-1 flex flex-col justify-center">
-          <motion.div 
+          <MDiv 
             className="flex items-baseline gap-2 mb-1"
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -492,17 +511,17 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             >
               {weatherData.temperature}
             </span>
-            <motion.span 
+            <MSpan 
               className="text-gray-600 dark:text-gray-400 font-medium"
               style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
               initial={{ opacity: 0 }}
               animate={canAnimate ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }}
-              transition={canAnimate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+              transition={canAnimate ? { duration: 3, repeat: 2, ease: "easeInOut" } : { duration: 0.3 }}
             >
               {weatherText}
-            </motion.span>
-          </motion.div>
-          <motion.div 
+            </MSpan>
+          </MDiv>
+          <MDiv 
             className="text-xs text-gray-600 dark:text-gray-400 mb-2"
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -513,12 +532,12 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
             }}
           >
             {weatherData.city}
-          </motion.div>
+          </MDiv>
         </div>
 
         {/* 次要信息：湿度/风速 - 横向紧凑排列 */}
         {(weatherData.humidity !== undefined || weatherData.windSpeed !== undefined) && (
-          <motion.div 
+          <MDiv 
             className="flex items-center gap-2 text-[10px]"
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -536,7 +555,7 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
                 <span className="text-gray-600 dark:text-gray-400">{Math.round(weatherData.windSpeed)}km/h</span>
               </div>
             )}
-          </motion.div>
+          </MDiv>
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
-import { FaCheck, FaDatabase, FaUser, FaExclamationTriangle } from 'react-icons/fa';
+import { FaCheck, FaDatabase, FaUser, FaExclamationTriangle } from '@lib/icons';
 import { Spinner } from './Spinner';
 import { useI18n } from '../contexts/I18nContext';
 import './SetupWizard.css';

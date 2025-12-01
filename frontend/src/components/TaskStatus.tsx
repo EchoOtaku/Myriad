@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { FaTimes, FaCheckCircle, FaExclamationCircle, FaSpinner } from 'react-icons/fa';
+import { FaTimes, FaCheckCircle, FaExclamationCircle, FaSpinner } from '@lib/icons';
 import { useManagedFetch } from '../hooks/useManagedFetch';
 import { useI18n } from '../contexts/I18nContext';
 

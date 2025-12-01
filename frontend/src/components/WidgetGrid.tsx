@@ -5,12 +5,13 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FaEdit, FaSave, FaTimes, FaPlus } from 'react-icons/fa';
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
+import { FaEdit, FaSave, FaTimes, FaPlus } from '@lib/icons';
 import React from 'react';
 import './WidgetGrid.css';
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 import { useI18n } from '../contexts/I18nContext';
+import { useStaggerAnimation } from '../hooks/animation';
 
 // ⚠️ 移动端检测 - 用于优化触摸事件性能
 const getIsMobile = (): boolean => {
@@ -71,7 +72,8 @@ const WidgetGridItem = React.memo(({
   gridHeight,
   cellWidth,
   cellHeight,
-  onConfigChange
+  onConfigChange,
+  index = 0,
 }: {
   widget: WidgetConfig;
   widgetType: WidgetType;
@@ -87,15 +89,35 @@ const WidgetGridItem = React.memo(({
   cellWidth?: number;
   cellHeight?: number;
   onConfigChange?: (newConfig: any) => void;
+  /** 组件索引，用于计算递增延迟 */
+  index?: number;
 }) => {
   const perf = usePerformanceProfile();
   const { t } = useI18n();
+  
+  // 使用统一动画协调系统
+  const { canAnimate, delay, onComplete } = useStaggerAnimation({
+    groupId: 'widget-grid',
+    index: index || 0,
+    baseDelay: 80,
+  });
+  const hasCompletedRef = useRef(false);
+
+  const handleAnimationComplete = () => {
+    if (hasCompletedRef.current) return;
+    hasCompletedRef.current = true;
+    onComplete();
+  };
+  
   const dim = SIZE_TO_DIMENSIONS[widget.size];
   const WidgetComponent = widgetType.component;
   
   // 使用传入的网格尺寸或默认值
   const gw = gridWidth || GRID_WIDTH;
   const gh = gridHeight || GRID_HEIGHT;
+  
+  // 交错延迟由协调器计算（转换为秒）
+  const staggerDelay = delay / 1000;
 
   // 如果有像素级尺寸，优先使用
   const style: React.CSSProperties = (cellWidth && cellHeight) ? {
@@ -121,10 +143,14 @@ const WidgetGridItem = React.memo(({
     <motion.div
       className="absolute transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
       style={style}
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, scale: 0.9, y: 12 }}
+      animate={canAnimate ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.9, y: 12 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      transition={perf.lowEndDevice ? { type: 'tween', duration: 0.25 } : { type: 'spring', stiffness: 400, damping: 30 }}
+      onAnimationComplete={handleAnimationComplete}
+      transition={perf.lowEndDevice 
+        ? { type: 'tween', duration: 0.35, delay: staggerDelay } 
+        : { type: 'spring', stiffness: 300, damping: 25, delay: staggerDelay }
+      }
     >
       <div className="relative h-full w-full p-1 group">
         <div
@@ -190,7 +216,8 @@ const WidgetGridItem = React.memo(({
     prev.gridWidth === next.gridWidth &&
     prev.gridHeight === next.gridHeight &&
     prev.cellWidth === next.cellWidth &&
-    prev.cellHeight === next.cellHeight
+    prev.cellHeight === next.cellHeight &&
+    prev.index === next.index
   );
 });
 
@@ -288,6 +315,8 @@ export default function WidgetGrid({
   const isCompact = !customGridColumns && gridColumns < GRID_WIDTH; 
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // 🔧 性能优化：缓存 gridRect 避免频繁调用 getBoundingClientRect
+  const gridRectRef = useRef<DOMRect | null>(null);
 
   // 计算内容高度 (用于 autoHeight)
   const contentHeight = useMemo(() => {
@@ -434,7 +463,14 @@ export default function WidgetGrid({
     setWidgetHistory(newHistory);
   }, [widgetHistory, historyIndex]);
 
-  // 计算网格单元格尺寸
+  // 🔧 更新 gridRect 缓存（在拖拽开始时调用）
+  const updateGridRectCache = useCallback(() => {
+    if (containerRef.current) {
+      gridRectRef.current = containerRef.current.getBoundingClientRect();
+    }
+  }, []);
+
+  // 计算网格单元格尺寸 - 使用 ResizeObserver 的 contentRect 避免强制重排
   const gridRef = useCallback((node: HTMLDivElement | null) => {
     // 清理旧的 observer
     if (containerRef.current) {
@@ -447,27 +483,36 @@ export default function WidgetGrid({
     
     containerRef.current = node;
     if (node) {
-      const rect = node.getBoundingClientRect();
-      
-      // 更新容器宽度
-      setContainerWidth(rect.width);
-      
-      // 使用 ResizeObserver 监听宽度变化 - 添加节流
-      let resizeRafId: number | null = null;
+      // 使用 ResizeObserver 监听宽度变化 - 直接使用 contentRect 避免 getBoundingClientRect
+      let resizeThrottleId: number | null = null;
       const resizeObserver = new ResizeObserver(entries => {
-        if (resizeRafId) return;
-        resizeRafId = requestAnimationFrame(() => {
-          resizeRafId = null;
-          for (const entry of entries) {
-            setContainerWidth(entry.contentRect.width);
-          }
-        });
+        const entry = entries[0];
+        if (!entry) return;
+        
+        // 使用节流避免过于频繁的更新
+        if (resizeThrottleId) return;
+        resizeThrottleId = window.setTimeout(() => {
+          resizeThrottleId = null;
+          // 直接使用 contentRect.width，避免调用 getBoundingClientRect
+          setContainerWidth(entry.contentRect.width);
+          // 🔧 同时更新 gridRect 缓存
+          gridRectRef.current = node.getBoundingClientRect();
+        }, 50); // 50ms 节流
       });
       resizeObserver.observe(node);
       
-      // 保存 observer 和 rafId 以便清理
+      // 初始测量：使用 requestAnimationFrame 延迟避免同步重排
+      requestAnimationFrame(() => {
+        if (node) {
+          const rect = node.getBoundingClientRect();
+          setContainerWidth(rect.width);
+          gridRectRef.current = rect;
+        }
+      });
+      
+      // 保存 observer 和 throttleId 以便清理
       (node as any).__resizeObserver = resizeObserver;
-      (node as any).__resizeRafId = resizeRafId;
+      (node as any).__resizeThrottleId = resizeThrottleId;
     }
   }, []);
 
@@ -476,12 +521,12 @@ export default function WidgetGrid({
     return () => {
       if (containerRef.current) {
         const observer = (containerRef.current as any).__resizeObserver;
-        const rafId = (containerRef.current as any).__resizeRafId;
+        const throttleId = (containerRef.current as any).__resizeThrottleId;
         if (observer) {
           observer.disconnect();
         }
-        if (rafId) {
-          cancelAnimationFrame(rafId);
+        if (throttleId) {
+          clearTimeout(throttleId);
         }
       }
     };
@@ -497,6 +542,9 @@ export default function WidgetGrid({
       const widget = widgets.find((w) => w.id === widgetId);
       if (!widget) return;
 
+      // 🔧 拖拽开始时更新 gridRect 缓存
+      updateGridRectCache();
+
       // 立即设置光标位置
       setDragCursorPosition({ x: e.clientX, y: e.clientY });
 
@@ -507,7 +555,7 @@ export default function WidgetGrid({
         offset: { x: 0, y: 0 }, // offset 现在不再使用
       });
     },
-    [isEditMode, widgets]
+    [isEditMode, widgets, updateGridRectCache]
   );
 
   // 开始拖拽新小组件
@@ -515,6 +563,9 @@ export default function WidgetGrid({
     (e: React.MouseEvent | React.TouchEvent, widgetTypeId: string) => {
       e.stopPropagation();
       e.preventDefault();
+
+      // 🔧 拖拽开始时更新 gridRect 缓存
+      updateGridRectCache();
 
       // 获取初始位置
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -530,7 +581,7 @@ export default function WidgetGrid({
         offset: { x: 0, y: 0 },
       });
     },
-    []
+    [updateGridRectCache]
   );
 
   // 开始调整大小
@@ -542,6 +593,9 @@ export default function WidgetGrid({
     const widget = widgets.find((w) => w.id === widgetId);
     if (!widget) return;
 
+    // 🔧 调整大小开始时更新 gridRect 缓存
+    updateGridRectCache();
+
     // 获取初始位置（支持鼠标和触控）
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
@@ -552,7 +606,7 @@ export default function WidgetGrid({
       startSize: widget.size,
       direction,
     });
-  }, [isEditMode, widgets]);
+  }, [isEditMode, widgets, updateGridRectCache]);
 
   // 调整大小移动
   const handleResizeMove = useCallback((e: MouseEvent | TouchEvent) => {
@@ -561,7 +615,8 @@ export default function WidgetGrid({
     if (rafRef.current) return;
 
     rafRef.current = requestAnimationFrame(() => {
-      const gridRect = containerRef.current?.getBoundingClientRect();
+      // 🔧 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
+      const gridRect = gridRectRef.current;
       if (!gridRect) {
         rafRef.current = null;
         return;
@@ -667,8 +722,9 @@ export default function WidgetGrid({
       }
 
       rafRef.current = requestAnimationFrame(() => {
-        // 实时获取 gridRect，以支持滚动容器内的拖拽
-        const gridRect = containerRef.current?.getBoundingClientRect();
+        // 🔧 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
+        // 注意：如果容器在滚动过程中位置变化，需要在滚动事件中更新缓存
+        const gridRect = gridRectRef.current;
         
         if (!gridRect) {
           rafRef.current = null;
@@ -1091,8 +1147,8 @@ export default function WidgetGrid({
                   height: wrapperHeight 
                 }}
                 draggable
-                onMouseDown={(e) => handleNewWidgetDragStart(e, widgetType.id)}
-                onTouchStart={(e) => handleNewWidgetDragStart(e, widgetType.id)}
+                onMouseDown={(e: React.MouseEvent) => handleNewWidgetDragStart(e, widgetType.id)}
+                onTouchStart={(e: React.TouchEvent) => handleNewWidgetDragStart(e, widgetType.id)}
                 whileHover={{ scale: 1.05, zIndex: 10 }}
                 whileTap={{ scale: 0.95 }}
                 layout
@@ -1234,6 +1290,7 @@ export default function WidgetGrid({
                 cellWidth={cellWidth}
                 cellHeight={cellHeight}
                 onConfigChange={handleConfigChange}
+                index={index}
               />
             );
           })}

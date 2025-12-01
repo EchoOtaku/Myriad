@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import { API_URL } from '@/config';
 import PlatformIcon from './PlatformIcon';
 import Toast from './Toast';
 import { ButtonSpinner } from './Spinner';
-import { FaSearch, FaTimes, FaStar } from 'react-icons/fa';
-import { SiNeteasecloudmusic } from 'react-icons/si';
+import { FaSearch, FaTimes, FaStar } from '@lib/icons';
+import { SiNeteasecloudmusic } from '@lib/icons';
 import { fetchJson } from '../utils/apiHelper';
 import { fetchConfig } from '../lib/api';
 import { useDebounce } from '../hooks/useDebounce';

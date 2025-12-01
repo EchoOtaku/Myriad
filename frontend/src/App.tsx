@@ -6,7 +6,7 @@
 
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { AppLayout } from './layouts/AppLayout';
 import { recordNavigation } from './router/navigationHistory';
 import RouteLoader from './components/RouteLoader';
@@ -89,6 +89,7 @@ function RequireAuth({ children, requiresAdmin }: { children: JSX.Element; requi
 /**
  * 加载指示器 - 纯光效
  * 无背景遮罩，只有优雅的光
+ * 包装在 AnimatedView 中以参与页面切换动画
  */
 function LoadingFallback() {
   return (
@@ -100,12 +101,25 @@ function LoadingFallback() {
 }
 
 /**
+ * 带 Suspense 的懒加载页面包装器
+ * 确保每个页面独立处理加载状态，避免切换时闪屏
+ */
+function SuspensePage({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      {children}
+    </Suspense>
+  );
+}
+
+/**
  * 路由内容组件
  */
 function AppRoutes() {
   const location = useLocation();
 
   // 记录每次路由变化
+  // 页面动画状态由 AnimatedView 中的 usePageTransition 自动管理
   useEffect(() => {
     recordNavigation(location.pathname);
   }, [location.pathname]);
@@ -116,16 +130,16 @@ function AppRoutes() {
   }, [location.pathname]);
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence mode="sync">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<Home />} />
-        <Route path="/library" element={<Library />} />
-        <Route path="/reports" element={<Reports />} />
+        <Route path="/" element={<SuspensePage><Home /></SuspensePage>} />
+        <Route path="/library" element={<SuspensePage><Library /></SuspensePage>} />
+        <Route path="/reports" element={<SuspensePage><Reports /></SuspensePage>} />
         <Route
           path="/config"
           element={
             <RequireAuth requiresAdmin>
-              <Config />
+              <SuspensePage><Config /></SuspensePage>
             </RequireAuth>
           }
         />
@@ -133,13 +147,13 @@ function AppRoutes() {
           path="/data-management"
           element={
             <RequireAuth requiresAdmin>
-              <DataManagement />
+              <SuspensePage><DataManagement /></SuspensePage>
             </RequireAuth>
           }
         />
-        <Route path="/login" element={<Login />} />
-        <Route path="/details" element={<Details />} />
-        <Route path="/setup" element={<Setup />} />
+        <Route path="/login" element={<SuspensePage><Login /></SuspensePage>} />
+        <Route path="/details" element={<SuspensePage><Details /></SuspensePage>} />
+        <Route path="/setup" element={<SuspensePage><Setup /></SuspensePage>} />
 
         {/* 404 页面 - 重定向到首页 */}
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -152,22 +166,24 @@ function AppRoutes() {
  * 主应用组件
  */
 export function App() {
-  // 在 React 应用挂载完成后隐藏页面加载器
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
+  
+  // 在 React 应用挂载完成后标记就绪状态
+  // 注意：这只是通知基本框架已加载，各个组件会独立控制自己的淡入显示
   useEffect(() => {
-    const hideLoader = () => {
-      if ((window as any).pageLoader) {
-        (window as any).pageLoader.hide();
-      }
-    };
-
-    // 立即尝试隐藏加载器
-    hideLoader();
-
-    // 如果页面还在加载,等待完成后再隐藏
-    if (document.readyState === 'loading') {
-      window.addEventListener('load', hideLoader);
-      return () => window.removeEventListener('load', hideLoader);
-    }
+    // 使用双帧延迟确保基础布局已渲染
+    const rafId = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setIsLayoutReady(true);
+        
+        // 通知 PageLoader 应用已就绪
+        if ((window as any).pageLoader) {
+          (window as any).pageLoader.markAppReady();
+        }
+      });
+    });
+    
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   // 预加载关键路由 - 在空闲时加载Library和Config
@@ -190,9 +206,7 @@ export function App() {
                 <RouteLoader />
                 <CustomScrollbar />
                 <AppLayout>
-                  <Suspense fallback={<LoadingFallback />}>
-                    <AppRoutes />
-                  </Suspense>
+                  <AppRoutes />
                 </AppLayout>
                 {/* 开发环境下显示合并的性能监控工具 */}
                 {import.meta.env.DEV && (

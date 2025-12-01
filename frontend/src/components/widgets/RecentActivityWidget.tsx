@@ -10,7 +10,7 @@
  * - 静态动画配置提取到组件外部
  */
 
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { WidgetComponentProps } from '../WidgetGrid';
 import { useAuth } from '../../contexts/AuthContext';

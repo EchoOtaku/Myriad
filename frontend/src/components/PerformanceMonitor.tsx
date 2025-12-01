@@ -7,7 +7,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { globalResourceLoader } from '../utils/resourceLoader';
 import { clearPlaylistCache, clearLyricsCache } from '../utils/musicPlayer';
-import { globalAnimationScheduler, configureAnimationScheduler } from '../hooks/useAnimationScheduler';
+import { coordinator, configureAnimationCoordinator } from '../hooks/animation';
 import './PerformanceMonitor.css';
 
 interface PerformanceMetrics {
@@ -194,22 +194,23 @@ function getJsAnimationStats(): JsAnimationStats {
   }
   
   // 检测 Framer Motion 元素（通过 data-framer-* 属性或 style 特征）
+  // ⚠️ 优化：避免使用 getComputedStyle，改用内联 style 检测
   let framerMotionElements = 0;
   try {
-    // Framer Motion 会给动画元素添加内联 transform style
+    // Framer Motion 会给动画元素添加内联 transform 和 transition style
     const motionElements = document.querySelectorAll('[style*="transform"]');
     motionElements.forEach((el) => {
-      // 检查是否有 Framer Motion 的特征
-      const style = (el as HTMLElement).style;
-      if (style.transform && (
-        style.transform.includes('translateX') ||
-        style.transform.includes('translateY') ||
-        style.transform.includes('scale') ||
-        style.transform.includes('rotate')
+      const htmlEl = el as HTMLElement;
+      const inlineStyle = htmlEl.style;
+      // 检查内联 style 而非 computedStyle，避免强制重排
+      if (inlineStyle.transform && (
+        inlineStyle.transform.includes('translateX') ||
+        inlineStyle.transform.includes('translateY') ||
+        inlineStyle.transform.includes('scale') ||
+        inlineStyle.transform.includes('rotate')
       )) {
-        // 检查是否在动画中（有过渡或正在变化）
-        const computed = getComputedStyle(el);
-        if (computed.transition && computed.transition !== 'none' && computed.transition !== 'all 0s ease 0s') {
+        // 检查内联 transition（Framer Motion 会设置内联 transition）
+        if (inlineStyle.transition && inlineStyle.transition !== 'none') {
           framerMotionElements++;
         }
       }
@@ -347,8 +348,10 @@ export default function PerformanceMonitor() {
     }
   }, [isExpanded, activeTab]);
 
-  /** 扫描页面动效 */
+  /** 扫描页面动效 - 使用 Web Animations API 避免强制重排 */
   const scanAnimations = useCallback(() => {
+    // ⚠️ 优化：使用 Web Animations API 代替遍历所有元素调用 getComputedStyle
+    // 这避免了在扫描时触发强制重排（215ms+ 的性能损失）
     const animations: AnimationInfo[] = [];
     const expensiveAnimations: AnimationInfo[] = [];
     let running = 0;
@@ -361,30 +364,37 @@ export default function PerformanceMonitor() {
 
     // 排除性能监控面板自身
     const monitorPanel = document.querySelector('[data-perf-monitor]');
-    
-    // 遍历所有元素
-    const allElements = document.querySelectorAll('*');
-    allElements.forEach((el) => {
-      // 跳过监控面板内的元素
-      if (monitorPanel?.contains(el)) return;
+
+    try {
+      // 使用 Web Animations API 获取所有动画（不触发重排）
+      const allAnimations = document.getAnimations?.() || [];
       
-      const style = getComputedStyle(el);
-      
-      // 检测 CSS 动画
-      if (style.animationName && style.animationName !== 'none') {
-        const isRunning = style.animationPlayState === 'running';
-        const isInfiniteAnim = style.animationIterationCount === 'infinite';
-        const expensive = isExpensiveAnimation(el, style);
+      allAnimations.forEach((anim) => {
+        const effect = anim.effect as KeyframeEffect | null;
+        const target = effect?.target as Element | null;
+        
+        // 跳过监控面板内的元素
+        if (!target || monitorPanel?.contains(target)) return;
+        
+        const timing = effect?.getTiming?.();
+        const isRunning = anim.playState === 'running';
+        const isInfiniteAnim = timing?.iterations === Infinity;
+        const animName = (anim as CSSAnimation).animationName || 'anonymous';
+        const durationMs = typeof timing?.duration === 'number' ? timing.duration : 0;
+        
+        // 检测是否可能造成性能问题
+        const isExpensive = isInfiniteAnim && durationMs > 10000 && 
+          !OPTIMIZED_ANIMATIONS.has(animName);
         
         const info: AnimationInfo = {
-          element: el.tagName.toLowerCase(),
-          selector: getElementSelector(el),
-          animationName: style.animationName,
-          duration: style.animationDuration,
-          iterationCount: style.animationIterationCount,
+          element: target.tagName?.toLowerCase() || 'unknown',
+          selector: getElementSelector(target),
+          animationName: animName,
+          duration: `${durationMs}ms`,
+          iterationCount: isInfiniteAnim ? 'infinite' : String(timing?.iterations || 1),
           state: isRunning ? 'running' : 'paused',
           isInfinite: isInfiniteAnim,
-          isExpensive: expensive,
+          isExpensive: isExpensive,
         };
         
         animations.push(info);
@@ -392,31 +402,61 @@ export default function PerformanceMonitor() {
         if (isRunning) running++;
         else paused++;
         if (isInfiniteAnim) infinite++;
-        if (expensive) expensiveAnimations.push(info);
+        if (isExpensive) expensiveAnimations.push(info);
+      });
+    } catch {
+      // getAnimations 可能不支持
+    }
+
+    // 🔧 优化：使用更高效的采样策略，减少 DOM 查询次数
+    // 只检测有内联 style 且包含动画相关属性的元素
+    try {
+      // 使用更具体的选择器减少匹配元素数量
+      // 只匹配可能包含动画的元素（有 transform 或 transition 的内联样式）
+      const transformElements_list = document.querySelectorAll('[style*="transform"]');
+      const transitionElements_list = document.querySelectorAll('[style*="transition"]');
+      const willChangeElements_list = document.querySelectorAll('[style*="will-change"]');
+      
+      // 直接计数，避免重复遍历
+      let transformCount = 0;
+      let transitionCount = 0;
+      let willChangeCount = 0;
+      let framerCount = 0;
+      
+      // 限制每种类型最多检测 30 个，总共最多 90 次 DOM 访问
+      const maxPerType = 30;
+      
+      for (let i = 0; i < Math.min(transformElements_list.length, maxPerType); i++) {
+        const el = transformElements_list[i] as HTMLElement;
+        if (monitorPanel?.contains(el)) continue;
+        transformCount++;
+        // Framer Motion 检测：有 transform 且有 transition 的元素
+        if (el.style.transition && el.style.transition !== 'none') {
+          framerCount++;
+        }
       }
       
-      // 检测 CSS 过渡
-      if (style.transitionProperty && style.transitionProperty !== 'none' && style.transitionProperty !== 'all') {
-        cssTransitions++;
+      for (let i = 0; i < Math.min(transitionElements_list.length, maxPerType); i++) {
+        const el = transitionElements_list[i] as HTMLElement;
+        if (monitorPanel?.contains(el)) continue;
+        transitionCount++;
       }
       
-      // 检测 Framer Motion 元素
-      if (el.hasAttribute('data-framer-component-type') || 
-          el.className?.toString().includes('motion') ||
-          (el as HTMLElement).style?.transform) {
-        framerMotionElements++;
+      for (let i = 0; i < Math.min(willChangeElements_list.length, maxPerType); i++) {
+        const el = willChangeElements_list[i] as HTMLElement;
+        if (monitorPanel?.contains(el)) continue;
+        if (el.style.willChange && el.style.willChange !== 'auto') {
+          willChangeCount++;
+        }
       }
       
-      // 检测 will-change
-      if (style.willChange && style.willChange !== 'auto') {
-        willChangeElements++;
-      }
-      
-      // 检测 transform
-      if (style.transform && style.transform !== 'none') {
-        transformElements++;
-      }
-    });
+      transformElements = transformCount;
+      cssTransitions = transitionCount;
+      willChangeElements = willChangeCount;
+      framerMotionElements = framerCount;
+    } catch {
+      // 忽略错误
+    }
 
     setAnimationStats({
       total: animations.length,
@@ -1136,47 +1176,50 @@ export default function PerformanceMonitor() {
 
                 {/* 动画调度器状态 */}
                 <div>
-                  <div className="font-bold mb-2 text-gray-300">🎬 动画调度器</div>
+                  <div className="font-bold mb-2 text-gray-300">🎬 动画协调器</div>
                   {(() => {
-                    const schedulerStats = globalAnimationScheduler.getStats();
+                    const status = coordinator.getConcurrencyStatus();
                     return (
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-1.5 text-[10px]">
                           <div className="bg-white/5 rounded px-2 py-1.5 text-center">
                             <div className="text-gray-400">活跃</div>
-                            <div className={schedulerStats.activeCount >= schedulerStats.maxConcurrent ? 'text-orange-400 font-bold' : 'text-cyan-400'}>
-                              {schedulerStats.activeCount}
+                            <div className={status.activeSlots >= status.maxConcurrent ? 'text-orange-400 font-bold' : 'text-cyan-400'}>
+                              {status.activeSlots}
                             </div>
                           </div>
                           <div className="bg-white/5 rounded px-2 py-1.5 text-center">
                             <div className="text-gray-400">队列</div>
-                            <div className={schedulerStats.queueLength > 5 ? 'text-yellow-400 font-bold' : 'text-gray-400'}>
-                              {schedulerStats.queueLength}
+                            <div className={status.waitingQueue > 5 ? 'text-yellow-400 font-bold' : 'text-gray-400'}>
+                              {status.waitingQueue}
                             </div>
                           </div>
                           <div className="bg-white/5 rounded px-2 py-1.5 text-center">
                             <div className="text-gray-400">上限</div>
-                            <div className="text-gray-400">{schedulerStats.maxConcurrent}</div>
+                            <div className={status.inBurstMode ? 'text-green-400' : 'text-gray-400'}>
+                              {status.maxConcurrent}
+                              {status.inBurstMode && ' 🚀'}
+                            </div>
                           </div>
                         </div>
                         <div className="flex gap-1">
                           <button
-                            onClick={() => configureAnimationScheduler({ maxConcurrent: 4 })}
+                            onClick={() => configureAnimationCoordinator({ baseConcurrent: 6, burstConcurrent: 16 })}
                             className="flex-1 px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 rounded text-[9px] text-orange-300 transition-colors"
                           >
-                            节能模式 (4)
+                            节能 (6/16)
                           </button>
                           <button
-                            onClick={() => configureAnimationScheduler({ maxConcurrent: 8 })}
+                            onClick={() => configureAnimationCoordinator({ baseConcurrent: 12, burstConcurrent: 32 })}
                             className="flex-1 px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-[9px] text-gray-300 transition-colors"
                           >
-                            默认 (8)
+                            默认 (12/32)
                           </button>
                           <button
-                            onClick={() => configureAnimationScheduler({ maxConcurrent: 16 })}
+                            onClick={() => configureAnimationCoordinator({ baseConcurrent: 24, burstConcurrent: 48 })}
                             className="flex-1 px-2 py-1 bg-green-500/20 hover:bg-green-500/30 rounded text-[9px] text-green-300 transition-colors"
                           >
-                            性能模式 (16)
+                            性能 (24/48)
                           </button>
                         </div>
                       </div>

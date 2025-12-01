@@ -5,13 +5,36 @@
 
 import { useState, useEffect, useMemo, memo, useCallback, useRef, useId } from 'react';
 import { API_URL } from '../../config';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { WidgetConfig } from '../WidgetGrid';
-import { FaSteam, FaGithub } from 'react-icons/fa';
-import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
+import { FaSteam, FaGithub } from '@lib/icons';
+import { SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
-import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useLoopAnimation, LoopPriority } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
+import { getLatestReportDeduped } from '../../utils/requestDedup';
+
+// ==================== 静态动画常量（避免每次渲染创建新对象）====================
+// 弹幕动画 - 有限次数，配合调度器 duration=11000ms
+const DANMAKU_INITIAL = { x: '100%', opacity: 0 };
+const DANMAKU_ANIMATE = { x: '-100%', opacity: [0, 1, 1, 0] };
+const createDanmakuTransition = (duration: number, delay: number) => ({
+  repeat: 0, // 只运行一轮，由调度器控制重新播放
+  duration,
+  delay,
+  ease: "linear" as const,
+});
+
+// 内容切换动画
+const CONTENT_FADE_INITIAL = { opacity: 0 };
+const CONTENT_FADE_ANIMATE = { opacity: 1 };
+const CONTENT_FADE_EXIT = { opacity: 0 };
+const CONTENT_FADE_TRANSITION = { duration: 0.5 };
+
+const CONTENT_SLIDE_INITIAL = { opacity: 0, y: 10 };
+const CONTENT_SLIDE_ANIMATE = { opacity: 1, y: 0 };
+const CONTENT_SLIDE_EXIT = { opacity: 0, y: -10 };
+const CONTENT_SLIDE_TRANSITION = { duration: 0.5 };
 
 export interface ReportCardWidgetProps {
   config: WidgetConfig;
@@ -53,12 +76,13 @@ const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: str
   const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku]);
   const uniqueId = useId();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`widget-danmaku-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画（弹幕是核心动画，不可被抢占）
+  const { isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
+    cooldown: 10000, // 冷却 10 秒后重新加入队列
     autoRequest: allowLoop,
     releaseOnUnmount: false, // 内容切换前不强制移除
+    loopPriority: LoopPriority.CORE, // 弹幕是核心动画
   });
   
   const canAnimate = allowLoop && isAnimating;
@@ -128,16 +152,16 @@ const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: str
       {animations.map((anim, i) => (
         <motion.div
           key={`${texts[i]}-${i}`}
-          initial={{ x: '100%', opacity: 0 }}
-          animate={{ x: '-100%', opacity: [0, 1, 1, 0] }}
-          transition={{ repeat: Infinity, duration: anim.duration, delay: anim.delay, ease: "linear" }}
+          initial={DANMAKU_INITIAL}
+          animate={DANMAKU_ANIMATE}
+          transition={createDanmakuTransition(anim.duration, anim.delay)}
           className="absolute whitespace-nowrap text-base font-bold"
           style={{ 
             top: anim.top, 
             color: '#B3E5FF', 
             opacity: anim.opacity, 
             willChange: 'transform',
-            transform: 'translateZ(0)', // 强制 GPU 加速
+            transform: 'translateZ(0)',
             backfaceVisibility: 'hidden'
           } as React.CSSProperties}
         >
@@ -163,11 +187,11 @@ const BilibiliWidget = memo(({ data, showOverview, onContentChange, allowLoop = 
   return (
     <AnimatePresence mode="wait">
       {showOverview || !currentItem ? (
-        <motion.div key="danmaku" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="h-full w-full">
+        <motion.div key="danmaku" initial={CONTENT_FADE_INITIAL} animate={CONTENT_FADE_ANIMATE} exit={CONTENT_FADE_EXIT} transition={CONTENT_FADE_TRANSITION} className="h-full w-full">
           <DanmakuWidget data={data} allowLoop={allowLoop} />
         </motion.div>
       ) : (
-        <motion.div key={`lib-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
+        <motion.div key={`lib-${currentItemIndex}`} initial={CONTENT_SLIDE_INITIAL} animate={CONTENT_SLIDE_ANIMATE} exit={CONTENT_SLIDE_EXIT} transition={CONTENT_SLIDE_TRANSITION} className="h-full w-full p-1.5">
           <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0">
               <img src={getBilibiliProxyUrl(currentItem.cover, currentItem.title)} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
@@ -437,12 +461,13 @@ const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
   const { t } = useI18n();
   const uniqueId = useId();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`widget-music-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画（音乐气泡是核心动画，不可被抢占）
+  const { isAnimating } = useLoopAnimation({
     duration: 5000,
+    cooldown: 10000, // 冷却 10 秒后重新加入队列
     autoRequest: allowLoop,
     releaseOnUnmount: false, // 内容切换前不强制移除
+    loopPriority: LoopPriority.CORE, // 音乐气泡是核心动画
   });
   
   const canAnimate = allowLoop && isAnimating;
@@ -716,12 +741,10 @@ export const ReportCardWidget = memo(({ config, isEditMode, isPreview }: ReportC
 
     const fetchReport = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/reports/latest`, { credentials: 'include' });
-        if (response.ok) {
-          const data = await response.json();
-          const report = data.platform_reports?.find((r: any) => r.platform === platformId);
-          if (report) setReportData(report.card_visuals);
-        }
+        // 使用去重机制避免多个 ReportCardWidget 同时请求
+        const data = await getLatestReportDeduped();
+        const report = data.platform_reports?.find((r: any) => r.platform === platformId);
+        if (report) setReportData(report.card_visuals);
       } catch (err) {
         console.error(t.reportCardWidget.fetchReportFailed + ':', err);
       } finally {

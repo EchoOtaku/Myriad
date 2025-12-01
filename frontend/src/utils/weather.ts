@@ -1,4 +1,5 @@
 import { API_URL } from '../config';
+import { getClientGeoDeduped, dedupedFetch } from './requestDedup';
 
 export interface ForecastDay {
   date: string;
@@ -67,45 +68,26 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
 
 /**
  * 获取客户端IP地址
- * 优先使用后端代理，失败则使用第三方服务
+ * 使用去重机制避免重复请求
  */
 async function getClientIP(): Promise<string | null> {
-  // 方案1: 通过后端代理获取（最准确）
   try {
-    const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
-      signal: AbortSignal.timeout(5000)
-    });
+    // 使用去重的 client-geo API
+    const data = await getClientGeoDeduped();
     
-    if (response.ok) {
-      const data = await response.json();
-      // 后端会返回地理位置信息，这里我们只需要提取用于缓存key的标识
-      // 使用 lat+lon 作为唯一标识（同一个位置的用户共享缓存）
-      if (data.lat && data.lon) {
-        return `${data.lat.toFixed(2)},${data.lon.toFixed(2)}`;
-      }
+    // 使用 lat+lon 作为唯一标识（同一个位置的用户共享缓存）
+    if (data.lat && data.lon) {
+      return `${data.lat.toFixed(2)},${data.lon.toFixed(2)}`;
+    }
+    
+    if (data.ip) {
+      return data.ip;
     }
   } catch (error) {
-    console.warn('[IP] 后端代理失败:', error);
-  }
-
-  // 方案2: 使用后端代理获取IP（避免浏览器跟踪保护拦截）
-  try {
-    const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
-      signal: AbortSignal.timeout(5000)
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.ip) {
-        return data.ip;
-      }
-    }
-  } catch (error) {
-    console.warn('[IP] 后端代理获取失败:', error);
+    console.warn('[IP] 获取失败:', error);
   }
 
   // 所有方案失败，使用固定标识符（基于浏览器特征）
-  // 这样至少同一个浏览器会有一致的体验
   return 'browser-default';
 }
 
@@ -155,8 +137,7 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
   const cached = localStorage.getItem(cacheKey);
   const cacheTime = localStorage.getItem(cacheTimeKey);
 
-  // 暂时禁用缓存
-  /*
+  // 启用缓存（30分钟）
   if (cached && cacheTime) {
     const cacheAge = Date.now() - parseInt(cacheTime);
     // 天气数据缓存30分钟（天气会变化）
@@ -164,41 +145,35 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
       return JSON.parse(cached);
     }
   }
-  */
 
-  // 缓存失效或不存在，重新获取
+  // 缓存失效或不存在，重新获取（使用去重避免并发请求）
 
   try {
-    // 1. 获取天气数据
+    // 使用去重机制获取天气和空气质量数据，避免并发重复请求
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
-    
-    // 2. 获取空气质量数据
     const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${location.latitude}&longitude=${location.longitude}&current=us_aqi`;
 
-    const [weatherResponse, aqiResponse] = await Promise.all([
-      fetch(weatherUrl, { signal: AbortSignal.timeout(10000) }),
-      fetch(aqiUrl, { signal: AbortSignal.timeout(10000) }).catch(() => null) // AQI 失败不影响天气
+    const [weatherData, aqiData] = await Promise.all([
+      dedupedFetch(weatherUrl, async () => {
+        const response = await fetch(weatherUrl, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error('Weather fetch failed');
+        return response.json();
+      }, { cacheTTL: 30 * 60 * 1000 }), // 30分钟缓存
+      
+      dedupedFetch(aqiUrl, async () => {
+        const response = await fetch(aqiUrl, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) return null;
+        return response.json();
+      }, { cacheTTL: 30 * 60 * 1000 }).catch(() => null) // AQI 失败不影响天气
     ]);
 
-    if (!weatherResponse.ok) {
-      return null;
-    }
-
-    const weatherData = await weatherResponse.json();
     const current = weatherData.current;
     const daily = weatherData.daily;
 
     // 处理 AQI 数据
     let aqi = undefined;
-    if (aqiResponse && aqiResponse.ok) {
-      try {
-        const aqiData = await aqiResponse.json();
-        if (aqiData.current && aqiData.current.us_aqi) {
-          aqi = aqiData.current.us_aqi;
-        }
-      } catch (e) {
-        // 忽略 AQI 解析错误
-      }
+    if (aqiData && aqiData.current && aqiData.current.us_aqi) {
+      aqi = aqiData.current.us_aqi;
     }
 
     if (!current) {
@@ -247,26 +222,20 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
 
 /**
  * 获取地理位置信息
- * 尝试多个服务，返回第一个成功的结果
+ * 使用去重机制，尝试多个服务，返回第一个成功的结果
  */
 async function getGeolocation(): Promise<{ latitude: number; longitude: number; city: string } | null> {
-  // 方案1: 通过后端代理获取（最准确，能获取真实客户端IP）
+  // 方案1: 通过后端代理获取（最准确，能获取真实客户端IP，使用去重）
   try {
-    const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
-      signal: AbortSignal.timeout(10000) // 10秒超时
-    });
+    const data = await getClientGeoDeduped();
     
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.status === 'success' && data.lat && data.lon) {
-        const city = data.city || data.regionName || data.country || '未知';
-        return {
-          latitude: data.lat,
-          longitude: data.lon,
-          city: city
-        };
-      }
+    if (data.status === 'success' && data.lat && data.lon) {
+      const city = data.city || data.regionName || data.country || '未知';
+      return {
+        latitude: data.lat,
+        longitude: data.lon,
+        city: city
+      };
     }
   } catch (error) {
     // 静默失败，尝试下一个服务

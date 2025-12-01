@@ -29,8 +29,13 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
     <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
     <link rel="dns-prefetch" href="https://api.fuukei.org" />
+    <link rel="dns-prefetch" href="https://api.open-meteo.com" />
+    <link rel="dns-prefetch" href="https://avatars.githubusercontent.com" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- 关键外部 API 预连接（Lighthouse 建议） -->
+    <link rel="preconnect" href="https://api.fuukei.org" crossorigin />
+    <link rel="preconnect" href="https://avatars.githubusercontent.com" crossorigin />
     <!-- Inter 字体延迟加载 -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -38,10 +43,12 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
       media="print"
       onload="this.media='all'"
     />
-    <!-- Qwitcher Grypen 字体 - 按照 Google Fonts 官方文档 -->
+    <!-- Qwitcher Grypen 字体 - 延迟加载避免渲染阻塞 -->
     <link
       href="https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@400;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
     <noscript>
       <link
@@ -68,8 +75,10 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
     <!-- 页面加载器 -->
     <PageLoader />
 
-    <!-- React 应用 -->
-    <App client:only="react" />
+    <!-- React 应用容器 - 初始隐藏，等待完全加载后显示 -->
+    <div id="app-root">
+      <App client:only="react" />
+    </div>
 
     <!-- 初始化主题 -->
     <script>

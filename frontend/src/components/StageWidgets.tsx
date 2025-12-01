@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, memo, useId } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { API_URL } from '../config';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
-import { useAnimationSlot } from '../hooks/useAnimationScheduler';
+import { useLoopAnimation, LoopPriority } from '../hooks/animation';
 import { useI18n } from '../contexts/I18nContext';
 
 // 🔧 工具函数：处理B站图片URL，使用后端代理
@@ -26,12 +26,13 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`danmaku-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画（弹幕是核心动画，不可被抢占）
+  const { isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
+    cooldown: 10000, // 冷却 10 秒后重新加入队列
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 内容切换前不强制移除
+    loopPriority: LoopPriority.CORE, // 弹幕是核心动画
   });
   
   const animations = useMemo(() => {
@@ -110,7 +111,7 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
             opacity: [0, 1, 1, 0],
           }}
           transition={{
-            repeat: Infinity, 
+            repeat: 0, // 只运行一轮，由调度器控制重新播放
             duration: a.duration,
             delay: a.delay,
             ease: "linear"
@@ -654,12 +655,13 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
   const animConfig = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`music-bubbles-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画（音乐气泡是核心动画，不可被抢占）
+  const { isAnimating } = useLoopAnimation({
     duration: 5000, // 气泡浮动约5秒周期
+    cooldown: 10000, // 冷却 10 秒后重新加入队列
     autoRequest: animConfig.loop,
     releaseOnUnmount: false, // 内容切换前不强制移除
+    loopPriority: LoopPriority.CORE, // 音乐气泡是核心动画
   });
   
   const canAnimate = animConfig.loop && isAnimating;
@@ -786,7 +788,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
                 opacity: { duration: 0.6, delay: i * 0.1 },
                 y: canAnimate ? { 
                   duration: bubble.floatDuration, 
-                  repeat: Infinity, 
+                  repeat: 2, // 有限次数 
                   ease: "easeInOut", 
                   delay: bubble.floatDelay 
                 } : { duration: 0.3 },

@@ -12,7 +12,7 @@ import TokenManager from '../utils/tokenManager';
 import { getUserAvatarWithCache } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
-import { useI18n } from '../i18n/context';
+import { useI18n } from '../contexts/I18nContext';
 
 interface User {
   username: string;

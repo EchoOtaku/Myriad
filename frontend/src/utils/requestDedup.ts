@@ -1,0 +1,216 @@
+/**
+ * 请求去重工具
+ * 
+ * 解决多个组件同时请求相同 API 导致的重复网络请求问题。
+ * 使用 Promise 共享机制，确保相同的请求在短时间内只发起一次。
+ */
+
+// 进行中的请求缓存
+const pendingRequests = new Map<string, Promise<any>>();
+
+// 已完成请求的结果缓存
+const resultCache = new Map<string, { data: any; timestamp: number }>();
+
+// 默认缓存时间（毫秒）
+const DEFAULT_CACHE_TTL = 30 * 1000; // 30秒
+
+export interface DedupOptions {
+  /** 缓存时间（毫秒），默认 30 秒 */
+  cacheTTL?: number;
+  /** 是否跳过缓存，强制重新请求 */
+  forceRefresh?: boolean;
+  /** 缓存键（默认使用 URL） */
+  cacheKey?: string;
+}
+
+/**
+ * 去重请求包装器
+ * 
+ * @param url 请求 URL
+ * @param fetchFn 实际的 fetch 函数
+ * @param options 配置选项
+ * @returns Promise<T>
+ * 
+ * @example
+ * ```ts
+ * // 基本用法
+ * const data = await dedupedFetch('/api/config/ui', () => 
+ *   fetch('/api/config/ui').then(r => r.json())
+ * );
+ * 
+ * // 自定义缓存时间
+ * const weather = await dedupedFetch('/api/weather', fetchWeather, {
+ *   cacheTTL: 5 * 60 * 1000 // 5分钟
+ * });
+ * ```
+ */
+export async function dedupedFetch<T>(
+  url: string,
+  fetchFn: () => Promise<T>,
+  options: DedupOptions = {}
+): Promise<T> {
+  const { 
+    cacheTTL = DEFAULT_CACHE_TTL, 
+    forceRefresh = false,
+    cacheKey = url 
+  } = options;
+
+  // 1. 检查结果缓存（非强制刷新时）
+  if (!forceRefresh) {
+    const cached = resultCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < cacheTTL) {
+      return cached.data as T;
+    }
+  }
+
+  // 2. 检查是否有进行中的相同请求
+  const pending = pendingRequests.get(cacheKey);
+  if (pending) {
+    return pending as Promise<T>;
+  }
+
+  // 3. 发起新请求
+  const requestPromise = fetchFn()
+    .then((data) => {
+      // 缓存结果
+      resultCache.set(cacheKey, { data, timestamp: Date.now() });
+      return data;
+    })
+    .finally(() => {
+      // 请求完成后从 pending 中移除
+      pendingRequests.delete(cacheKey);
+    });
+
+  // 4. 记录进行中的请求
+  pendingRequests.set(cacheKey, requestPromise);
+
+  return requestPromise;
+}
+
+/**
+ * 清除指定 URL 的缓存
+ */
+export function clearDedupCache(url?: string): void {
+  if (url) {
+    resultCache.delete(url);
+    pendingRequests.delete(url);
+  } else {
+    resultCache.clear();
+    pendingRequests.clear();
+  }
+}
+
+/**
+ * 预热缓存（后台预加载）
+ */
+export function prefetchDedup<T>(
+  url: string,
+  fetchFn: () => Promise<T>,
+  options?: DedupOptions
+): void {
+  // 使用 requestIdleCallback 或 setTimeout 延迟执行
+  const prefetch = () => {
+    dedupedFetch(url, fetchFn, options).catch(() => {
+      // 预热失败静默处理
+    });
+  };
+
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(prefetch, { timeout: 5000 });
+  } else {
+    setTimeout(prefetch, 1000);
+  }
+}
+
+// ============================================
+// 预定义的常用 API 去重函数
+// ============================================
+
+import { API_URL } from '../config';
+
+/** 
+ * 获取 UI 配置（去重） 
+ * 缓存 30 秒
+ */
+export async function getUIConfigDeduped(): Promise<any> {
+  return dedupedFetch(
+    `${API_URL}/api/config/ui`,
+    async () => {
+      const response = await fetch(`${API_URL}/api/config/ui`);
+      if (!response.ok) throw new Error('Failed to fetch UI config');
+      return response.json();
+    },
+    { cacheTTL: 30 * 1000 }
+  );
+}
+
+/**
+ * 获取客户端地理位置（去重）
+ * 缓存 5 分钟（位置很少变化）
+ */
+export async function getClientGeoDeduped(): Promise<any> {
+  return dedupedFetch(
+    `${API_URL}/api/proxy/client-geo`,
+    async () => {
+      const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!response.ok) throw new Error('Failed to fetch client geo');
+      return response.json();
+    },
+    { cacheTTL: 5 * 60 * 1000 } // 5分钟
+  );
+}
+
+/**
+ * 获取最新报告（去重）
+ * 缓存 30 秒
+ */
+export async function getLatestReportDeduped(): Promise<any> {
+  return dedupedFetch(
+    `${API_URL}/api/reports/latest`,
+    async () => {
+      const response = await fetch(`${API_URL}/api/reports/latest`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch latest report');
+      return response.json();
+    },
+    { cacheTTL: 30 * 1000 }
+  );
+}
+
+/**
+ * 获取设置状态（去重）
+ * 缓存 1 分钟
+ */
+export async function getSetupStatusDeduped(): Promise<any> {
+  return dedupedFetch(
+    `${API_URL}/api/setup/status`,
+    async () => {
+      const response = await fetch(`${API_URL}/api/setup/status`);
+      if (!response.ok) throw new Error('Failed to fetch setup status');
+      return response.json();
+    },
+    { cacheTTL: 60 * 1000 }
+  );
+}
+
+/**
+ * 获取库数据（去重）
+ * 缓存 2 分钟（数据量大，减少请求）
+ */
+export async function getLibraryDataDeduped(): Promise<any> {
+  return dedupedFetch(
+    `${API_URL}/api/library`,
+    async () => {
+      const response = await fetch(`${API_URL}/api/library`, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(30000) // 30秒超时（数据量大）
+      });
+      if (!response.ok) throw new Error('Failed to fetch library data');
+      return response.json();
+    },
+    { cacheTTL: 2 * 60 * 1000 } // 2分钟
+  );
+}

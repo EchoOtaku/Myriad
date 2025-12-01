@@ -14,12 +14,22 @@ const STATIC_ASSETS = [
 
 // 缓存配置
 const MAX_DYNAMIC_CACHE_SIZE = 50;
-const MAX_IMAGE_CACHE_SIZE = 30;
+const MAX_IMAGE_CACHE_SIZE = 50; // 增加图片缓存上限
 const CACHE_MAX_AGE = {
   static: 30 * 24 * 60 * 60 * 1000,  // 30天
   images: 7 * 24 * 60 * 60 * 1000,   // 7天
+  wallpaper: 24 * 60 * 60 * 1000,    // 壁纸缓存1天（可能是动态API）
   api: 5 * 60 * 1000,                // 5分钟
 };
+
+// 壁纸 CDN 域名列表（优先缓存）
+const WALLPAPER_CDN_DOMAINS = [
+  'nmxc.ltd',
+  's.nmxc.ltd',
+  'picsum.photos',
+  'unsplash.com',
+  'source.unsplash.com',
+];
 
 // 安装 Service Worker
 self.addEventListener('install', (event) => {
@@ -154,23 +164,38 @@ self.addEventListener('fetch', (event) => {
 
   // 图片请求 - 缓存优先策略(带过期检查)
   if (request.destination === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)) {
+    // 检查是否为壁纸 CDN 图片
+    const isWallpaperCDN = WALLPAPER_CDN_DOMAINS.some(domain => url.hostname.includes(domain));
+    const cacheMaxAge = isWallpaperCDN ? CACHE_MAX_AGE.wallpaper : CACHE_MAX_AGE.images;
+    
     event.respondWith(
       caches.match(request)
         .then(async (cachedResponse) => {
           // 检查缓存是否过期
-          if (cachedResponse && !isCacheExpired(cachedResponse, CACHE_MAX_AGE.images)) {
+          if (cachedResponse && !isCacheExpired(cachedResponse, cacheMaxAge)) {
+            // 壁纸CDN图片命中缓存时记录日志
+            if (isWallpaperCDN) {
+              console.log('[SW] Wallpaper cache hit:', request.url.slice(0, 80));
+            }
             return cachedResponse;
           }
 
           try {
-            const response = await fetch(request, {
-              mode: 'cors',
-              credentials: 'omit'  // 跨域图片不发送凭证
-            });
-            if (response.ok && response.status !== 206) {
+            // 壁纸CDN使用 no-cors 模式（避免CORS问题）
+            const fetchOptions = isWallpaperCDN 
+              ? { mode: 'no-cors' }
+              : { mode: 'cors', credentials: 'omit' };
+            
+            const response = await fetch(request, fetchOptions);
+            
+            // no-cors 响应是 opaque 的，status 为 0，但仍可缓存
+            if ((response.ok || response.type === 'opaque') && response.status !== 206) {
               const responseClone = response.clone();
               await cacheWithTimestamp(IMAGE_CACHE, request, responseClone);
               limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE);
+              if (isWallpaperCDN) {
+                console.log('[SW] Wallpaper cached:', request.url.slice(0, 80));
+              }
             }
             return response;
           } catch (error) {

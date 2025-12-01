@@ -3,11 +3,11 @@
  */
 
 import { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import { useNavigate } from 'react-router-dom';
 import { WidgetComponentProps } from '../WidgetGrid';
-import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
-import { FaSteam, FaGithub } from 'react-icons/fa';
+import { SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
+import { FaSteam, FaGithub } from '@lib/icons';
 import { useI18n } from '../../contexts/I18nContext';
 
 const PLATFORMS = [

@@ -2,8 +2,10 @@
    字体定义 - Qwitcher Grypen from Google Fonts
    ============================================ */
 
-/* Qwitcher Grypen Regular - 400 */
-@import url('https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@400;700&display=swap');
+/* 
+ * ⚠️ @import 已移除，改为在 index.astro 中异步加载
+ * 避免 CSS @import 阻塞渲染（Lighthouse: "渲染屏蔽请求"）
+ */
 
 /* Qwitcher Grypen 字体类 - Google Fonts 官方推荐 */
 .qwitcher-grypen-regular {

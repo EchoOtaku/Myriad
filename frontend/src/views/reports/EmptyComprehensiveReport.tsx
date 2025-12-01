@@ -2,7 +2,7 @@
  * 综合报告空状态占位组件
  */
 
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import { useI18n } from '../../contexts/I18nContext';
 
 interface EmptyComprehensiveReportProps {

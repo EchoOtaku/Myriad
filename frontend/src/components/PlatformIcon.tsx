@@ -1,7 +1,5 @@
 import React from 'react';
-import { FaGithub, FaSteam } from 'react-icons/fa';
-import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
-import { FaXTwitter } from 'react-icons/fa6';
+import { FaGithub, FaSteam, FaXTwitter, SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
 
 interface PlatformIconProps {
     platform: string;

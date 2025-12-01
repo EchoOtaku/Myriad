@@ -4,20 +4,21 @@
  */
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import AnimatedView from '../components/AnimatedView';
 import Toast from '../components/Toast';
 import { ButtonSpinner } from '../components/Spinner';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import { getCSRFToken } from '../utils/csrf';
-import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
-import { FaSteam, FaGithub, FaSyncAlt, FaChevronLeft } from 'react-icons/fa';
+import { SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
+import { FaSteam, FaGithub, FaSyncAlt, FaChevronLeft } from '@lib/icons';
 import { useBackgroundTasks } from '../hooks/useBackgroundTasks';
 import { TaskStatus } from '../components/TaskStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
 import { useI18n } from '../contexts/I18nContext';
+import { usePageReady } from '../hooks/animation';
 import '../components/ConfigForm.css';
 
 // 平台定义
@@ -51,6 +52,7 @@ export default function DataManagement() {
   const navigate = useNavigate();
   const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth();
   const { t } = useI18n();
+  const isPageReady = usePageReady();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [message, setMessage] = useState('');
@@ -295,8 +297,8 @@ export default function DataManagement() {
                 className="config-section" 
                 style={{ marginBottom: 0 }}
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + index * 0.08, duration: 0.3 }}
+                animate={isPageReady ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+                transition={{ delay: isPageReady ? 0.1 + index * 0.08 : 0, duration: 0.3 }}
               >
                 {/* 平台标题 */}
                 <div className="section-header" style={{ marginBottom: '0.75rem' }}>

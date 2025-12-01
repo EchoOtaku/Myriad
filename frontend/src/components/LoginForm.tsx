@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
-import { FaUser, FaLock, FaGithub } from 'react-icons/fa';
+import { FaUser, FaLock, FaGithub } from '@lib/icons';
 import { Spinner } from './Spinner';
 import { fetchJson } from '../utils/apiHelper';
 import { RateLimitError } from '../utils/rateLimiter';

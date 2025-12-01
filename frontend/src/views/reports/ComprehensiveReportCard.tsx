@@ -3,7 +3,7 @@
  */
 
 import { memo, useCallback, useId } from 'react';
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import {
   FaRobot,
   FaBrain,
@@ -14,9 +14,9 @@ import {
   FaPalette,
   FaRocket,
   FaLightbulb
-} from 'react-icons/fa';
+} from '@lib/icons';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
-import { useAnimationSlot } from '../../hooks/useAnimationScheduler';
+import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 import type { ComprehensiveAnalysis } from './types';
 
@@ -78,9 +78,8 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
   const uniqueId = useId();
   const { t } = useI18n();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`comp-report-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画
+  const { isAnimating } = useLoopAnimation({
     duration: 4000, // 装饰动画约4秒周期
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 内容切换前不强制移除
@@ -148,7 +147,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                       } : { y: 0, opacity: 0.25 }}
                       transition={canAnimate ? {
                         duration: 4 + i * 0.3,
-                        repeat: Infinity,
+                        repeat: 2, // ~10s
                         delay: i * 0.5,
                         ease: "easeInOut"
                       } : { duration: 0 }}
@@ -173,7 +172,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                     scale: [1, 1.15, 1],
                     opacity: [0.2, 0.35, 0.2]
                   } : { scale: 1, opacity: 0.25 }}
-                  transition={canAnimate ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+                  transition={canAnimate ? { duration: 4, repeat: 2, ease: "easeInOut" } : { duration: 0 }}
                 />
                 <motion.div
                   className="relative w-24 h-24 rounded-xl backdrop-blur-sm flex items-center justify-center shadow-2xl overflow-hidden"
@@ -185,7 +184,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                   animate={canAnimate ? {
                     y: [0, -5, 0],
                   } : { y: 0 }}
-                  transition={canAnimate ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+                  transition={canAnimate ? { duration: 4, repeat: 2, ease: "easeInOut" } : { duration: 0 }}
                 >
                   <div style={{ color: themeColor, fontSize: '56px' }}>
                     {getThemeIcon(analysis.icon_image_url, analysis.icon_prompt, analysis.theme_icon)}
@@ -259,7 +258,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
                     } : { y: 0, opacity: 0.25 }}
                     transition={canAnimate ? {
                       duration: 4 + i * 0.3,
-                      repeat: Infinity,
+                      repeat: 2, // ~10s
                       delay: (i + 2) * 0.5,
                       ease: "easeInOut"
                     } : { duration: 0 }}

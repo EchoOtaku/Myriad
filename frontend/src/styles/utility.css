@@ -77,6 +77,69 @@
   display: none;
 }
 
+/* ============================================
+   Content-visibility 性能优化
+   使用 content-visibility: auto 延迟渲染屏幕外内容
+   ============================================ */
+
+/* 大型列表容器优化 - 自动跳过屏幕外渲染 */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px; /* 默认预估高度 */
+}
+
+/* 不同尺寸的预估高度 */
+.cv-auto-sm {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100px;
+}
+
+.cv-auto-md {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+.cv-auto-lg {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+}
+
+/* Widget 卡片专用 - 基于典型 widget 尺寸 */
+.cv-widget {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+/* 列表项专用 */
+.cv-list-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+/* 动画区域优化 - 配合 AnimationCoordinator 使用 */
+.cv-animated {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+  /* 当元素离开视口时自动暂停渲染计算 */
+}
+
+/* 严格 contain 用于完全隔离的组件 */
+.contain-strict {
+  contain: strict;
+}
+
+.contain-content {
+  contain: content;
+}
+
+.contain-layout {
+  contain: layout;
+}
+
+.contain-paint {
+  contain: paint;
+}
+
 /* 移动端禁用选择 */
 @media (max-width: 767px) {
   .nav-item,

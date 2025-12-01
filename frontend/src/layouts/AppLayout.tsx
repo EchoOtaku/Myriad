@@ -22,6 +22,7 @@ import {
   getColorFromCache,
   saveColorToCache,
 } from '../utils/wallpaperColorCache';
+import { useIdleEffect, useIdleInterval } from '../hooks/useIdleCallback';
 import './AppLayout.css';
 
 interface AppLayoutProps {
@@ -438,34 +439,43 @@ export function AppLayout({ children }: AppLayoutProps) {
       updateModeMetrics(currentMode, metrics, routeContext);
     }
 
-    // 强制重排，确保初始状态在绘制前稳定
-    void content.offsetHeight;
-
-    // 步骤 4: 进入动画 - 级联淡入
+    // ⚠️ 性能优化：使用双 rAF 模式代替 void offsetHeight 强制重排
+    // 第一帧：浏览器应用初始状态样式
+    // 第二帧：开始过渡动画
+    let rafId1: number, rafId2: number;
     const enterTimers: number[] = [];
-    groups.forEach((group, index) => {
-      const timer = window.setTimeout(() => {
-        (group as HTMLElement).removeAttribute('data-animation');
-      }, index * 40 + 50); // 40ms 间隔，50ms 初始延迟
-      enterTimers.push(timer);
-    });
+    let cleanupTimer: number;
+    
+    rafId1 = requestAnimationFrame(() => {
+      rafId2 = requestAnimationFrame(() => {
+        // 步骤 4: 进入动画 - 级联淡入
+        groups.forEach((group, index) => {
+          const timer = window.setTimeout(() => {
+            (group as HTMLElement).removeAttribute('data-animation');
+          }, index * 40 + 50); // 40ms 间隔，50ms 初始延迟
+          enterTimers.push(timer);
+        });
 
-    // 步骤 5: 清除过渡标记和最终清理
-    const cleanupTimer = window.setTimeout(() => {
-      if (island) {
-        island.removeAttribute('data-transitioning');
-      }
-      // 最终确认所有元素都已显示
-      groups.forEach(group => {
-        const el = group as HTMLElement;
-        el.removeAttribute('data-animation');
+        // 步骤 5: 清除过渡标记和最终清理
+        cleanupTimer = window.setTimeout(() => {
+          if (island) {
+            island.removeAttribute('data-transitioning');
+          }
+          // 最终确认所有元素都已显示
+          groups.forEach(group => {
+            const el = group as HTMLElement;
+            el.removeAttribute('data-animation');
+          });
+        }, groups.length * 40 + 100);
       });
-    }, groups.length * 40 + 100);
+    });
 
     // 清理函数
     return () => {
+      cancelAnimationFrame(rafId1);
+      cancelAnimationFrame(rafId2);
       enterTimers.forEach(timer => clearTimeout(timer));
-      clearTimeout(cleanupTimer);
+      if (cleanupTimer) clearTimeout(cleanupTimer);
     };
   }, [showLibraryFilters, showReportsTabs, location.pathname, isAnimating]);
 
@@ -813,44 +823,36 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [location, t.nav.library, t.nav.reports, t.nav.backToHome]);
 
 
-  // 检查后端连接状态
-  useEffect(() => {
-    let isMounted = true;
-
-    const checkBackend = async () => {
-      try {
-        const response = await fetch(`${API_URL}/health`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(5000), // 5秒超时
-        });
-        if (isMounted) {
-          setBackendConnected(response.ok);
-          if (response.ok) {
-            setHasEverConnected(true);
-          }
-        }
-      } catch (error) {
-        // 只在组件仍挂载时更新状态
-        if (isMounted) {
-          setBackendConnected(false);
-        }
+  // 检查后端连接状态 - 使用 useIdleInterval 降低主线程占用
+  const checkBackendRef = useRef<() => Promise<void>>();
+  checkBackendRef.current = async () => {
+    try {
+      const response = await fetch(`${API_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000), // 5秒超时
+      });
+      setBackendConnected(response.ok);
+      if (response.ok) {
+        setHasEverConnected(true);
       }
-    };
+    } catch {
+      setBackendConnected(false);
+    }
+  };
 
-    // 延迟1秒后首次检查，避免初始加载时的误报
-    const initialTimer = setTimeout(() => {
-      checkBackend();
-    }, 1000);
+  // 首次检查延迟到主线程空闲时执行
+  useIdleEffect(() => {
+    checkBackendRef.current?.();
+  }, [], { timeout: 2000 });
 
-    // 每30秒检查一次
-    const interval = setInterval(checkBackend, 30000);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(initialTimer);
-      clearInterval(interval);
-    };
-  }, []);
+  // 每30秒检查一次，使用空闲回调
+  useIdleInterval(() => {
+    checkBackendRef.current?.();
+  }, 30000, {
+    enabled: true,
+    pauseWhenHidden: true, // 页面隐藏时暂停
+    timeout: 5000,
+  });
 
   // 初始化：加载壁纸（仅首次挂载执行）
   const hasInitializedRef = useRef(false);
@@ -867,6 +869,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, []);
 
   // 初始化导航岛高度 - 仅在组件首次挂载时执行
+  // ⚠️ 性能优化：使用 requestAnimationFrame 替代 setTimeout，避免强制重排
   useEffect(() => {
     const content = navContentRef.current;
     if (!content) return;
@@ -874,15 +877,23 @@ export function AppLayout({ children }: AppLayoutProps) {
     const island = content.closest('.dynamic-island') as HTMLElement;
     if (!island) return;
 
-    // 等待 DOM 渲染完成后计算初始高度（仅桌面端）
-    const initTimer = setTimeout(() => {
+    // 使用 rAF 等待浏览器完成布局后读取尺寸
+    let rafId: number;
+    rafId = requestAnimationFrame(() => {
       if (window.innerWidth >= 768) {
-        const currentHeight = content.scrollHeight + parseFloat(getComputedStyle(island).paddingTop) * 2;
-        island.style.height = `${currentHeight}px`;
+        // 批量读取所需尺寸信息，避免多次触发重排
+        const scrollHeight = content.scrollHeight;
+        const computedStyle = getComputedStyle(island);
+        const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+        
+        // 在下一帧写入样式，实现读写分离
+        requestAnimationFrame(() => {
+          island.style.height = `${scrollHeight + paddingTop * 2}px`;
+        });
       }
-    }, 50);
+    });
 
-    return () => clearTimeout(initTimer);
+    return () => cancelAnimationFrame(rafId);
     // 只在首次挂载和 isAdmin 变化时执行，不依赖 showLibraryFilters 和 location.pathname
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);

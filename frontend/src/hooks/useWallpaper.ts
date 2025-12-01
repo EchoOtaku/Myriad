@@ -92,6 +92,38 @@ const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.sv
 const DYNAMIC_EXTENSIONS = ['.php', '.jsp', '.asp', '.aspx', '.py'] as const;
 
 // ============================================================================
+// 图片预加载缓存 - 避免重复加载同一壁纸
+// ============================================================================
+
+/** 
+ * 图片预加载缓存 
+ * 缓存已加载的图片 URL，避免重复 fetch
+ */
+const imagePreloadCache = new Map<string, {
+  loaded: boolean;
+  timestamp: number;
+  promise?: Promise<boolean>;
+}>();
+
+/** 图片缓存过期时间（10分钟） */
+const IMAGE_CACHE_TTL = 10 * 60 * 1000;
+
+/** 清理过期的图片缓存 */
+function cleanupImageCache(): void {
+  const now = Date.now();
+  for (const [url, entry] of imagePreloadCache.entries()) {
+    if (now - entry.timestamp > IMAGE_CACHE_TTL) {
+      imagePreloadCache.delete(url);
+    }
+  }
+}
+
+// 每 5 分钟清理一次过期缓存
+if (typeof window !== 'undefined') {
+  setInterval(cleanupImageCache, 5 * 60 * 1000);
+}
+
+// ============================================================================
 // 工具函数
 // ============================================================================
 
@@ -196,31 +228,64 @@ async function resolveImageUrl(apiUrl: string, bustCache = false): Promise<strin
 }
 
 /**
- * 预加载图片
+ * 预加载图片（带内存缓存）
+ * 使用缓存避免同一图片被多次 fetch
  * @returns 加载成功返回true，失败返回false
  */
 function preloadImage(url: string, timeout = IMAGE_LOAD_TIMEOUT): Promise<boolean> {
-  return new Promise((resolve) => {
+  // 规范化 URL（移除时间戳参数用于缓存键）
+  const cacheKey = url.replace(/[?&]_t=\d+/, '').replace(/[?&]t=\d+/, '');
+  
+  // 检查缓存
+  const cached = imagePreloadCache.get(cacheKey);
+  if (cached) {
+    // 缓存未过期
+    if (Date.now() - cached.timestamp < IMAGE_CACHE_TTL) {
+      // 如果有正在进行的加载，返回其 Promise
+      if (cached.promise) {
+        return cached.promise;
+      }
+      // 已完成加载，直接返回结果
+      return Promise.resolve(cached.loaded);
+    }
+    // 缓存过期，删除
+    imagePreloadCache.delete(cacheKey);
+  }
+
+  // 创建加载 Promise
+  const loadPromise = new Promise<boolean>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     
     const timer = setTimeout(() => {
       img.src = '';
+      imagePreloadCache.set(cacheKey, { loaded: false, timestamp: Date.now() });
       resolve(false);
     }, timeout);
     
     img.onload = () => {
       clearTimeout(timer);
+      imagePreloadCache.set(cacheKey, { loaded: true, timestamp: Date.now() });
       resolve(true);
     };
     
     img.onerror = () => {
       clearTimeout(timer);
+      imagePreloadCache.set(cacheKey, { loaded: false, timestamp: Date.now() });
       resolve(false);
     };
     
     img.src = url;
   });
+
+  // 缓存 Promise（用于并发去重）
+  imagePreloadCache.set(cacheKey, { 
+    loaded: false, 
+    timestamp: Date.now(), 
+    promise: loadPromise 
+  });
+
+  return loadPromise;
 }
 
 /**
@@ -344,6 +409,15 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
 // ============================================================================
 
 /**
+ * loadWallpaper 去重机制
+ * 多个组件同时调用 loadWallpaper 时，只执行一次实际加载
+ */
+let pendingLoadWallpaper: Promise<LoadWallpaperResult | null> | null = null;
+let lastLoadTimestamp = 0;
+const LOAD_DEBOUNCE_MS = 1000; // 1秒内的重复调用直接返回上次结果
+let lastLoadResult: LoadWallpaperResult | null = null;
+
+/**
  * 壁纸管理 Hook
  */
 export function useWallpaper() {
@@ -360,43 +434,89 @@ export function useWallpaper() {
   }, []);
 
   /**
-   * 加载壁纸配置和显示
+   * 加载壁纸配置和显示（带去重）
+   * 多个组件同时调用时，只执行一次实际加载
    */
   const loadWallpaper = useCallback(async (): Promise<LoadWallpaperResult | null> => {
+    const now = Date.now();
+    
+    // 1秒内的重复调用，直接返回上次结果
+    if (lastLoadResult && now - lastLoadTimestamp < LOAD_DEBOUNCE_MS) {
+      // 同步本地状态
+      if (lastLoadResult.actualUrl) {
+        setWallpaperUrl(lastLoadResult.actualUrl);
+        setBlur(lastLoadResult.blur);
+      }
+      return lastLoadResult;
+    }
+    
+    // 如果有正在进行的加载，等待其完成
+    if (pendingLoadWallpaper) {
+      const result = await pendingLoadWallpaper;
+      // 同步本地状态
+      if (result?.actualUrl) {
+        setWallpaperUrl(result.actualUrl);
+        setBlur(result.blur);
+      }
+      return result;
+    }
+    
+    // 执行实际加载
+    const doLoad = async (): Promise<LoadWallpaperResult | null> => {
+      try {
+        const config = await fetchWallpaperConfig();
+        if (!config) {
+          return null;
+        }
+
+        const actualUrl = await resolveImageUrl(config.wallpaper_url);
+
+        // 验证URL有效性
+        if (!actualUrl || actualUrl.includes('/api/proxy/music/')) {
+          return null;
+        }
+
+        // 应用到DOM并验证
+        const verifiedUrl = await applyWallpaperToDOM(actualUrl, config.wallpaper_blur);
+        
+        if (!verifiedUrl) {
+          return null;
+        }
+
+        const result: LoadWallpaperResult = { 
+          actualUrl: verifiedUrl, 
+          blur: config.wallpaper_blur,
+          verified: areUrlsEquivalent(verifiedUrl, actualUrl),
+          parallaxEnabled: config.wallpaper_parallax ?? true,
+        };
+        
+        // 缓存结果
+        lastLoadResult = result;
+        lastLoadTimestamp = Date.now();
+        
+        // 更新本地状态
+        setWallpaperUrl(verifiedUrl);
+        setBlur(config.wallpaper_blur);
+        setCanRefresh(!isStaticImageUrl(config.wallpaper_url));
+
+        return result;
+      } catch (error) {
+        console.error('加载壁纸失败:', error);
+        return null;
+      }
+    };
+    
+    // 设置 pending Promise
+    pendingLoadWallpaper = doLoad();
+    
     try {
-      const config = await fetchWallpaperConfig();
-      if (!config) {
-        return null;
-      }
-
-      const actualUrl = await resolveImageUrl(config.wallpaper_url);
-
-      // 验证URL有效性
-      if (!actualUrl || actualUrl.includes('/api/proxy/music/')) {
-        return null;
-      }
-
-      // 应用到DOM并验证
-      const verifiedUrl = await applyWallpaperToDOM(actualUrl, config.wallpaper_blur);
-      
-      if (!verifiedUrl) {
-        return null;
-      }
-
-      // 更新本地状态
-      setWallpaperUrl(verifiedUrl);
-      setBlur(config.wallpaper_blur);
-      setCanRefresh(!isStaticImageUrl(config.wallpaper_url));
-
-      return { 
-        actualUrl: verifiedUrl, 
-        blur: config.wallpaper_blur,
-        verified: areUrlsEquivalent(verifiedUrl, actualUrl),
-        parallaxEnabled: config.wallpaper_parallax ?? true,
-      };
-    } catch (error) {
-      console.error('加载壁纸失败:', error);
-      return null;
+      const result = await pendingLoadWallpaper;
+      return result;
+    } finally {
+      // 清除 pending（延迟清除，避免并发问题）
+      setTimeout(() => {
+        pendingLoadWallpaper = null;
+      }, 100);
     }
   }, []);
 

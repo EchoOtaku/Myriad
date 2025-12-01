@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { FaTrash, FaSyncAlt, FaHdd, FaClock, FaExclamationCircle } from 'react-icons/fa';
+import { FaTrash, FaSyncAlt, FaHdd, FaClock, FaExclamationCircle } from '@lib/icons';
 import { useBackgroundTasks } from '../hooks/useBackgroundTasks';
 import { TaskStatus } from './TaskStatus';
 import { useI18n } from '../contexts/I18nContext';

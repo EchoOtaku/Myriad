@@ -228,7 +228,11 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, content_type),
-            (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+            // 延长缓存至 7 天，减少重复请求 (Lighthouse 建议高效的缓存生命周期)
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=604800, immutable".to_string(),
+            ),
             (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
         ],
         image_data,
@@ -375,7 +379,8 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
                             StatusCode::OK,
                             [
                                 (header::CONTENT_TYPE, content_type),
-                                (header::CACHE_CONTROL, "public, max-age=3600".to_string()),
+                                // 延长音频缓存至 24 小时 (Lighthouse 建议高效的缓存生命周期)
+                                (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
                                 (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
                                 (header::ACCEPT_RANGES, "bytes".to_string()),
                             ],

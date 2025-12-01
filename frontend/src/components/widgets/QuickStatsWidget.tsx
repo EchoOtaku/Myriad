@@ -3,10 +3,10 @@
  * 显示资料库统计数据
  */
 
-import { motion } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { WidgetComponentProps } from '../WidgetGrid';
-import { API_URL } from '../../config';
+import { getLibraryDataDeduped } from '../../utils/requestDedup';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useI18n } from '../../contexts/I18nContext';
 
@@ -148,16 +148,9 @@ export const QuickStatsWidget = memo(({ config, isEditMode, isPreview }: WidgetC
 
   const fetchLibraryStats = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/library`, { 
-        credentials: 'include',
-        signal: AbortSignal.timeout(10000), // 10秒超时
-      });
+      // 使用去重版本，避免多组件同时请求
+      const data = await getLibraryDataDeduped();
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
       if (data.success && Array.isArray(data.items)) {
         // 使用 reduce 一次性统计，性能更好
         const counts = data.items.reduce((acc: LibraryStats, item: any) => {

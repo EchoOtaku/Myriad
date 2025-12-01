@@ -3,6 +3,7 @@ import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { visualizer } from 'rollup-plugin-visualizer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +21,14 @@ export default defineConfig({
   // SPA 模式：所有路由都重定向到 index.html
   trailingSlash: 'never',
   vite: {
+    plugins: [
+      visualizer({
+        filename: 'dist/stats.html',
+        template: 'treemap',
+        gzipSize: true,
+        brotliSize: true,
+      }),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
@@ -44,11 +53,40 @@ export default defineConfig({
       },
       rollupOptions: {
         output: {
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom'],
-            'react-router': ['react-router-dom'],
-            'chart-vendor': ['chart.js', 'react-chartjs-2'],
-            'framer-motion': ['framer-motion'],
+          manualChunks: (id) => {
+            // React 核心
+            if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+              return 'react-vendor';
+            }
+            // React Router
+            if (id.includes('node_modules/react-router') || id.includes('node_modules/@remix-run')) {
+              return 'react-router';
+            }
+            // Chart.js
+            if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
+              return 'chart-vendor';
+            }
+            // Framer Motion
+            if (id.includes('node_modules/framer-motion')) {
+              return 'framer-motion';
+            }
+            // react-icons 各子包分开打包（仅动态导入时使用）
+            if (id.includes('node_modules/react-icons/fa6/')) {
+              return 'icons-fa6';
+            }
+            if (id.includes('node_modules/react-icons/fa/')) {
+              return 'icons-fa';
+            }
+            if (id.includes('node_modules/react-icons/si/')) {
+              return 'icons-si';
+            }
+            if (id.includes('node_modules/react-icons')) {
+              return 'icons-base';
+            }
+            // Axios
+            if (id.includes('node_modules/axios')) {
+              return 'axios';
+            }
           },
           // 优化文件名用于长期缓存
           chunkFileNames: 'assets/[name]-[hash].js',

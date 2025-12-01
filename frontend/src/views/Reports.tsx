@@ -6,7 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
 import StageMode from '../components/StageMode';
 import Toast from '../components/Toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motionShim as motion } from '@lib/motionShim';
+import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import {
   FaSteam,
   FaGithub,
@@ -17,13 +18,14 @@ import {
   FaTrash,
   FaPlay,
   FaPause,
-  FaRobot
-} from 'react-icons/fa';
-import { SiBilibili, SiNeteasecloudmusic } from 'react-icons/si';
+  FaRobot,
+  SiBilibili,
+  SiNeteasecloudmusic
+} from '@lib/icons';
 import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard';
 import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
-import { useAnimationSlot } from '../hooks/useAnimationScheduler';
+import { useLoopAnimation, usePageReady, LoopPriority } from '../hooks/animation';
 import { useI18n } from '../contexts/I18nContext';
 
 // 🚀 性能优化：防抖Hook
@@ -195,12 +197,13 @@ const DanmakuWidget = memo(({ data, defaultDanmaku }: { data?: { danmaku?: strin
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`reports-danmaku-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画（弹幕是核心动画，不可被抢占）
+  const { isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
+    cooldown: 10000, // 冷却 10 秒后重新加入队列
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 内容切换前不强制移除
+    loopPriority: LoopPriority.CORE, // 弹幕是核心动画
   });
   
   // 🚀 性能优化：预计算随机化的动画参数，避免弹幕重叠
@@ -240,7 +243,7 @@ const DanmakuWidget = memo(({ data, defaultDanmaku }: { data?: { danmaku?: strin
             opacity: [0, 1, 1, 0],
           }}
           transition={{
-            repeat: Infinity, 
+            repeat: 0, // 只运行一轮，由调度器 cooldown 控制重新播放
             duration: a.duration,
             delay: a.delay,
             ease: "linear"
@@ -815,12 +818,13 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix }: { data?: {
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 接入动画调度器 - 报告组件高优先级(2)
-  const { isAnimating } = useAnimationSlot(`reports-music-${uniqueId}`, {
-    priority: 2,
+  // 🆕 使用统一动画调度器管理循环动画（音乐气泡是核心动画，不可被抢占）
+  const { isAnimating } = useLoopAnimation({
     duration: 5000,
+    cooldown: 10000, // 冷却 10 秒后重新加入队列
     autoRequest: anim.loop,
     releaseOnUnmount: false, // 内容切换前不强制移除
+    loopPriority: LoopPriority.CORE, // 音乐气泡是核心动画
   });
   
   const canAnimate = anim.loop && isAnimating;
@@ -968,7 +972,7 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix }: { data?: {
                 opacity: { duration: 0.6, delay: i * 0.1 },
                 y: canAnimate ? { 
                   duration: bubble.floatDuration, 
-                  repeat: Infinity, 
+                  repeat: 2, // 有限次数
                   ease: "easeInOut", 
                   delay: bubble.floatDelay 
                 } : { duration: 0.3 },
@@ -1166,6 +1170,7 @@ const NeteaseWidget = memo(({
 // 🚀 性能优化：将综合报告卡片提取为独立的 memo 组件
 export default function Reports() {
   const { t } = useI18n();
+  const isPageReady = usePageReady();
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
   const [report, setReport] = useState<CrossPlatformReport | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
@@ -1934,9 +1939,9 @@ export default function Reports() {
                 <motion.div 
                   className={`h-[50px] ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
                   initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
+                  animate={isPageReady ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
                   exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  transition={{ duration: 0.3, ease: "easeOut", delay: isPageReady ? 0.1 : 0 }}
                 >
                   <motion.div 
                     className="w-full md:w-[24%] h-full glass rounded-xl px-4 flex items-center gap-2 shadow-sm"
@@ -2041,9 +2046,9 @@ export default function Reports() {
                 <motion.div 
                   className={`flex lg:grid lg:grid-cols-4 gap-4 overflow-x-auto lg:overflow-x-visible scrollbar-hide snap-x snap-mandatory lg:snap-none ${isStageMode ? 'hidden md:flex' : ''}`}
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
+                  transition={{ duration: 0.3, delay: isPageReady ? 0.15 : 0 }}
                 >
               {PLATFORMS.map((platform) => {
               const isLoading = loadingPlatform === platform.id;
@@ -2057,11 +2062,11 @@ export default function Reports() {
                   key={platform.id}
                   layout
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  animate={isPageReady ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 20, scale: 0.95 }}
                   exit={{ opacity: 0, y: -20, scale: 0.95 }}
                   transition={{ 
                     duration: 0.4, 
-                    delay: cardIndex * 0.08,
+                    delay: isPageReady ? cardIndex * 0.08 + 0.2 : 0,
                     ease: [0.4, 0, 0.2, 1]
                   }}
                   whileHover={{ scale: 1.02, y: -4 }}
@@ -2437,8 +2442,8 @@ export default function Reports() {
                 <motion.div
                   className={`h-[50px] ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
                   initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
+                  animate={isPageReady ? { opacity: 1, y: 0 } : { opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3, delay: isPageReady ? 0.1 : 0 }}
                 >
                   <motion.div 
                     className="w-full md:w-[24%] h-full glass rounded-xl px-4 flex items-center gap-2 shadow-sm"
@@ -2573,9 +2578,9 @@ export default function Reports() {
                 <motion.div
                   className={`flex lg:grid lg:grid-cols-4 gap-4 overflow-x-auto lg:overflow-x-visible scrollbar-hide snap-x snap-mandatory lg:snap-none ${isStageMode ? 'hidden md:flex' : ''}`}
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
+                  transition={{ duration: 0.3, delay: isPageReady ? 0.15 : 0 }}
                 >
                 <AnimatePresence mode="popLayout">
                 {displayedComprehensiveReports.length > 0 ? (
