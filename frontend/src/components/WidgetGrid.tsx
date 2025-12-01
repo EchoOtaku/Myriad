@@ -81,7 +81,7 @@ const WidgetGridItem = React.memo(({
   onMouseEnter: (id: string) => void;
   onMouseLeave: () => void;
   onRemove: (id: string) => void;
-  onResizeStart: (e: React.MouseEvent, id: string, direction?: 'se' | 's') => void;
+  onResizeStart: (e: React.MouseEvent | React.TouchEvent, id: string, direction?: 'se' | 's') => void;
   gridWidth?: number;
   gridHeight?: number;
   cellWidth?: number;
@@ -159,13 +159,14 @@ const WidgetGridItem = React.memo(({
               <FaTimes size={10} />
             </button>
 
-            {/* 调整大小手柄 - 明显的倒L型设计，1x1组件用更小判定区域 */}
+            {/* 调整大小手柄 - 明显的倒L型设计，触控时区域更大 */}
             {canResize && (
               <div
-                className={`absolute bottom-0 right-0 cursor-se-resize z-50 flex items-end justify-end transition-transform hover:scale-110 active:scale-95 group/resize ${
-                  widget.size === '1x1' ? 'w-6 h-6 p-0.5' : 'w-12 h-12 p-2'
+                className={`absolute bottom-0 right-0 cursor-se-resize z-50 flex items-end justify-end transition-transform hover:scale-110 active:scale-95 group/resize touch-none ${
+                  widget.size === '1x1' ? 'w-8 h-8 p-0.5 md:w-6 md:h-6' : 'w-14 h-14 p-2 md:w-12 md:h-12'
                 }`}
                 onMouseDown={(e) => onResizeStart(e, widget.id, 'se')}
+                onTouchStart={(e) => onResizeStart(e, widget.id, 'se')}
               >
                  {/* L 型条 - 适配主题色，1x1组件更小 */}
                  <div className={`border-b-[8px] border-r-[8px] rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)] ${
@@ -533,7 +534,7 @@ export default function WidgetGrid({
   );
 
   // 开始调整大小
-  const handleResizeStart = useCallback((e: React.MouseEvent, widgetId: string, direction: 'se' | 's' = 'se') => {
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent, widgetId: string, direction: 'se' | 's' = 'se') => {
     if (!isEditMode) return;
     e.stopPropagation();
     e.preventDefault();
@@ -541,9 +542,13 @@ export default function WidgetGrid({
     const widget = widgets.find((w) => w.id === widgetId);
     if (!widget) return;
 
+    // 获取初始位置（支持鼠标和触控）
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
     setResizingWidget({
       widgetId,
-      startPos: { x: e.clientX, y: e.clientY },
+      startPos: { x: clientX, y: clientY },
       startSize: widget.size,
       direction,
     });

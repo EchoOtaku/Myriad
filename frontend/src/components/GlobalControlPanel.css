@@ -1771,20 +1771,7 @@ html.dark .music-volume-popup {
 }
 
 .music-volume-popup::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid rgba(255, 255, 255, 0.95);
-}
-
-html.dark .music-volume-popup::after {
-  border-top-color: rgba(30, 30, 30, 0.95);
+  display: none;
 }
 
 .music-volume-popup svg {

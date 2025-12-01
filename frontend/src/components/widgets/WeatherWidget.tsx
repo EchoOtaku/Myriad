@@ -458,18 +458,21 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
       {/* 主内容区：2x2紧凑布局 */}
       <div className="absolute inset-0 flex flex-col p-3">
         {/* 顶部：图标 - 轻微摆动 */}
-        <motion.div 
-          className="text-3xl mb-1"
-          initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-          animate={canAnimate ? { scale: 1, opacity: 1, rotate: [-2, 2, -2] } : { scale: 1, opacity: 1 }}
-          transition={canAnimate ? {
-            scale: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
-            opacity: { duration: 0.6 },
-            rotate: { duration: 3, repeat: Infinity, ease: "easeInOut" }
-          } : { duration: 0.4 }}
-        >
-          {weatherData.icon}
-        </motion.div>
+        <div className="h-9 flex-shrink-0">
+          <motion.span 
+            className="text-3xl leading-none inline-block origin-center"
+            style={{ transformOrigin: 'center center' }}
+            initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
+            animate={canAnimate ? { scale: 1, opacity: 1, rotate: [-2, 2, -2] } : { scale: 1, opacity: 1, rotate: 0 }}
+            transition={canAnimate ? {
+              scale: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
+              opacity: { duration: 0.6 },
+              rotate: { duration: 3, repeat: Infinity, ease: "easeInOut" }
+            } : { duration: 0.4 }}
+          >
+            {weatherData.icon}
+          </motion.span>
+        </div>
 
         {/* 主要信息：温度和天气状态 */}
         <div className="flex-1 flex flex-col justify-center">

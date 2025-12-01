@@ -457,6 +457,8 @@ export const jaJP: TranslationKeys = {
     partlyCloudy: 'くもり',
     cloudy: '曇り',
     foggy: '霧',
+    rainy: '雨',
+    snowy: '雪',
     lightRain: '小雨',
     moderateRain: '雨',
     heavyRain: '大雨',

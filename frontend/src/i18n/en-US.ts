@@ -456,6 +456,8 @@ export const enUS: TranslationKeys = {
     partlyCloudy: 'Partly Cloudy',
     cloudy: 'Cloudy',
     foggy: 'Foggy',
+    rainy: 'Rainy',
+    snowy: 'Snowy',
     lightRain: 'Light Rain',
     moderateRain: 'Moderate Rain',
     heavyRain: 'Heavy Rain',

@@ -457,6 +457,8 @@ export const zhCN: TranslationKeys = {
     partlyCloudy: '多云',
     cloudy: '阴',
     foggy: '雾',
+    rainy: '雨',
+    snowy: '雪',
     lightRain: '小雨',
     moderateRain: '中雨',
     heavyRain: '大雨',

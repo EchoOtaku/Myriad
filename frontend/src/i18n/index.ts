@@ -458,6 +458,8 @@ export interface TranslationKeys {
     partlyCloudy: string;
     cloudy: string;
     foggy: string;
+    rainy: string;
+    snowy: string;
     lightRain: string;
     moderateRain: string;
     heavyRain: string;
