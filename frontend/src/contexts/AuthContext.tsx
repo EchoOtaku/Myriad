@@ -3,7 +3,7 @@
  * 统一管理用户登录状态，避免重复的认证请求
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
 import { API_URL } from '../config';
 import { clearSessionHint } from '../utils/sessionDetection';
 
@@ -82,18 +82,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 由需要认证的组件主动调用 checkAuth
   }, []);
 
+  // 🔧 性能优化：使用 useMemo 缓存 context value，避免不必要的重渲染
+  const value = useMemo(() => ({
+    isAuthenticated,
+    isAdmin,
+    user,
+    isLoading,
+    hasChecked,
+    checkAuth,
+    logout,
+  }), [isAuthenticated, isAdmin, user, isLoading, hasChecked, checkAuth, logout]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        isAdmin,
-        user,
-        isLoading,
-        hasChecked,
-        checkAuth,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
 /**
  * 设备性能画像与动态特性检测
@@ -21,7 +21,16 @@ const DEFAULT_PROFILE: PerformanceProfile = {
   deviceMemory: null,
 };
 
+// 🔧 性能优化：全局缓存检测结果，避免重复检测
+let cachedProfile: PerformanceProfile | null = null;
+let hasDetected = false;
+
 function detectPerformanceProfile(): PerformanceProfile {
+  // 🔧 优化：如果已经检测过，直接返回缓存
+  if (hasDetected && cachedProfile) {
+    return cachedProfile;
+  }
+  
   // 每次调用时检测浏览器环境
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return DEFAULT_PROFILE;
@@ -46,7 +55,13 @@ function detectPerformanceProfile(): PerformanceProfile {
       );
     }
 
-    return { isMobile, reduceMotion, lowEndDevice, hardwareConcurrency, deviceMemory };
+    const profile = { isMobile, reduceMotion, lowEndDevice, hardwareConcurrency, deviceMemory };
+    
+    // 🔧 缓存结果
+    cachedProfile = profile;
+    hasDetected = true;
+    
+    return profile;
   } catch (e) {
     console.warn('Failed to detect performance profile:', e);
     return DEFAULT_PROFILE;
@@ -62,16 +77,23 @@ export function getPerformanceProfileSync(): PerformanceProfile {
 }
 
 export function usePerformanceProfile(): PerformanceProfile {
-  // 🔧 关键修复：使用 useMemo 在首次渲染时同步检测
-  // 这样可以确保第一次渲染就能获取正确的值
-  const initialProfile = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      return detectPerformanceProfile();
-    }
-    return DEFAULT_PROFILE;
-  }, []);
+  // 🔧 SSR 安全：始终使用默认值作为初始状态，避免 hydration 不匹配
+  const [profile, setProfile] = useState<PerformanceProfile>(DEFAULT_PROFILE);
+  const hasInitialized = useRef(false);
 
-  const [profile, setProfile] = useState<PerformanceProfile>(initialProfile);
+  // 客户端初始化：在组件挂载后检测真实性能配置
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    
+    const detected = detectPerformanceProfile();
+    // 只有在检测结果与默认值不同时才更新，避免不必要的重渲染
+    if (detected.isMobile !== DEFAULT_PROFILE.isMobile ||
+        detected.reduceMotion !== DEFAULT_PROFILE.reduceMotion ||
+        detected.lowEndDevice !== DEFAULT_PROFILE.lowEndDevice) {
+      setProfile(detected);
+    }
+  }, []);
 
   // 监听 reduceMotion 变化
   useEffect(() => {
@@ -79,6 +101,9 @@ export function usePerformanceProfile(): PerformanceProfile {
     
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const handler = () => {
+      // 🔧 重置缓存，重新检测
+      hasDetected = false;
+      cachedProfile = null;
       setProfile(detectPerformanceProfile());
     };
     

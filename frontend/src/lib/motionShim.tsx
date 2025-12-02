@@ -32,6 +32,7 @@ function filterMotionProps(props: any): any {
 /**
  * 从 initial 或 variants.initial 提取初始样式
  * 用于在 motion 未加载时应用正确的初始状态，防止闪屏
+ * 🔧 性能优化：扩展支持的属性列表，减少动画加载前的视觉跳变
  */
 function getInitialStyle(props: any): React.CSSProperties | undefined {
   let initialState: any = null;
@@ -51,13 +52,23 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
   const style: React.CSSProperties = {};
   const transforms: string[] = [];
   
+  // 透明度
   if (typeof initialState.opacity === 'number') {
     style.opacity = initialState.opacity;
   }
+  
+  // 缩放 - 支持 scale, scaleX, scaleY
   if (typeof initialState.scale === 'number') {
     transforms.push(`scale(${initialState.scale})`);
   }
-  // 支持数字和字符串（如 '-100%'）
+  if (typeof initialState.scaleX === 'number') {
+    transforms.push(`scaleX(${initialState.scaleX})`);
+  }
+  if (typeof initialState.scaleY === 'number') {
+    transforms.push(`scaleY(${initialState.scaleY})`);
+  }
+  
+  // 平移 - 支持数字和字符串（如 '-100%'）
   if (initialState.y !== undefined) {
     const yVal = typeof initialState.y === 'number' ? `${initialState.y}px` : initialState.y;
     transforms.push(`translateY(${yVal})`);
@@ -67,8 +78,56 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     transforms.push(`translateX(${xVal})`);
   }
   
+  // 🔧 新增：旋转支持
+  if (typeof initialState.rotate === 'number') {
+    transforms.push(`rotate(${initialState.rotate}deg)`);
+  }
+  if (typeof initialState.rotateX === 'number') {
+    transforms.push(`rotateX(${initialState.rotateX}deg)`);
+  }
+  if (typeof initialState.rotateY === 'number') {
+    transforms.push(`rotateY(${initialState.rotateY}deg)`);
+  }
+  
+  // 🔧 新增：斜切支持
+  if (typeof initialState.skewX === 'number') {
+    transforms.push(`skewX(${initialState.skewX}deg)`);
+  }
+  if (typeof initialState.skewY === 'number') {
+    transforms.push(`skewY(${initialState.skewY}deg)`);
+  }
+  
+  // 🔧 新增：filter 支持
+  const filters: string[] = [];
+  if (typeof initialState.blur === 'number' && initialState.blur > 0) {
+    filters.push(`blur(${initialState.blur}px)`);
+  }
+  if (typeof initialState.brightness === 'number') {
+    filters.push(`brightness(${initialState.brightness})`);
+  }
+  if (typeof initialState.contrast === 'number') {
+    filters.push(`contrast(${initialState.contrast})`);
+  }
+  if (typeof initialState.grayscale === 'number') {
+    filters.push(`grayscale(${initialState.grayscale})`);
+  }
+  if (typeof initialState.saturate === 'number') {
+    filters.push(`saturate(${initialState.saturate})`);
+  }
+  
+  if (filters.length > 0) {
+    style.filter = filters.join(' ');
+  }
+  
   if (transforms.length > 0) {
     style.transform = transforms.join(' ');
+  }
+  
+  // 🔧 新增：transformOrigin 支持
+  if (initialState.originX !== undefined || initialState.originY !== undefined) {
+    const ox = initialState.originX ?? 0.5;
+    const oy = initialState.originY ?? 0.5;
+    style.transformOrigin = `${ox * 100}% ${oy * 100}%`;
   }
   
   return Object.keys(style).length > 0 ? style : undefined;

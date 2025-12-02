@@ -28,6 +28,14 @@ import { useThemeMode } from '../../utils/themeSubscriber';
 
 // ========== 安全验证工具函数 ==========
 
+// 🚀 性能优化：预编译正则表达式（避免每次调用时重新创建）
+const HTML_TAG_REGEX = /<[^>]*>/g;
+const DANGEROUS_CHARS_REGEX = /[<>"'`\\]/g;
+const DANGEROUS_CHARS_WITH_AMP_REGEX = /[<>"'`\\&]/g;
+const VALID_PROTOCOLS_REGEX = /^(https?:\/\/|mailto:)/i;
+const DANGEROUS_PROTOCOLS_REGEX = /^(javascript:|data:|vbscript:|file:)/i;
+const SUSPICIOUS_CHARS_REGEX = /[<>"'`\\]/;
+
 // HTML 实体转义，防止 XSS
 const escapeHtml = (text: string): string => {
   const div = document.createElement('div');
@@ -40,20 +48,17 @@ const isValidUrlPattern = (pattern: string): boolean => {
   if (!pattern) return true; // 空字符串允许
   
   // 必须以 http:// 或 https:// 或 mailto: 开头
-  const validProtocols = /^(https?:\/\/|mailto:)/i;
-  if (!validProtocols.test(pattern)) {
+  if (!VALID_PROTOCOLS_REGEX.test(pattern)) {
     return false;
   }
   
   // 禁止危险协议
-  const dangerousProtocols = /^(javascript:|data:|vbscript:|file:)/i;
-  if (dangerousProtocols.test(pattern)) {
+  if (DANGEROUS_PROTOCOLS_REGEX.test(pattern)) {
     return false;
   }
   
   // 禁止包含可疑字符（防止注入）
-  const suspiciousChars = /[<>"'`\\]/;
-  if (suspiciousChars.test(pattern.replace('{username}', ''))) {
+  if (SUSPICIOUS_CHARS_REGEX.test(pattern.replace('{username}', ''))) {
     return false;
   }
   
@@ -64,8 +69,8 @@ const isValidUrlPattern = (pattern: string): boolean => {
 const sanitizePlatformName = (name: string): string => {
   // 移除 HTML 标签和危险字符，限制长度
   return name
-    .replace(/<[^>]*>/g, '') // 移除 HTML 标签
-    .replace(/[<>"'`\\]/g, '') // 移除危险字符
+    .replace(HTML_TAG_REGEX, '') // 移除 HTML 标签
+    .replace(DANGEROUS_CHARS_REGEX, '') // 移除危险字符
     .trim()
     .slice(0, 50); // 限制长度
 };
@@ -74,7 +79,7 @@ const sanitizePlatformName = (name: string): string => {
 const sanitizeUsername = (username: string): string => {
   // 移除危险字符，限制长度
   return username
-    .replace(/[<>"'`\\&]/g, '') // 移除危险字符
+    .replace(DANGEROUS_CHARS_WITH_AMP_REGEX, '') // 移除危险字符
     .trim()
     .slice(0, 100); // 限制长度
 };
@@ -93,7 +98,7 @@ const sanitizeUrlPattern = (pattern: string): string => {
   let cleaned = pattern.trim();
   
   // 如果没有协议，添加 https://
-  if (cleaned && !/^(https?:\/\/|mailto:)/i.test(cleaned)) {
+  if (cleaned && !VALID_PROTOCOLS_REGEX.test(cleaned)) {
     cleaned = 'https://' + cleaned;
   }
   
@@ -1149,7 +1154,7 @@ const PlatformButton = memo(({
       }`}
     >
       <div
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-lg flex-shrink-0"
+        className={`w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0 ${platform.isCustom ? 'p-1.5' : 'text-lg'}`}
         style={{ backgroundColor: platform.color }}
       >
         {platform.icon}

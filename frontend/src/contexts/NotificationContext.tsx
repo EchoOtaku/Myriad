@@ -3,7 +3,7 @@
  * 统一管理所有角落通知（加载提示、错误提示等）
  */
 
-import { createContext, useContext, useState, ReactNode, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
 
 interface Notification {
     id: string;
@@ -64,8 +64,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }, 5000);
     }, []);
 
+    // 🔧 性能优化：使用 useMemo 缓存 context value
+    const value = useMemo(() => ({
+        notifications,
+        showLoading,
+        hideLoading,
+        showInfo,
+        showError
+    }), [notifications, showLoading, hideLoading, showInfo, showError]);
+
     return (
-        <NotificationContext.Provider value={{ notifications, showLoading, hideLoading, showInfo, showError }}>
+        <NotificationContext.Provider value={value}>
             {children}
         </NotificationContext.Provider>
     );

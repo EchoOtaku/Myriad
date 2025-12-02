@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useSyncExternalStore, useMemo } from 'react';
 import type { Song } from '../utils/musicPlayer';
 
 /**
@@ -132,61 +132,85 @@ export function useMusicPlayerControl() {
   return context;
 }
 
-// 降级方案：基于事件的实现（向后兼容）- 优化：使用单个 state 对象减少重渲染
-function useFallbackMusicPlayerControl() {
-  const [state, setState] = useState<MusicPlayerState>({
-    currentSong: null,
-    isEnabled: false,
-    isPlaying: false,
-    musicColor: '#ef4444',
-    isTempPlay: false,
-    currentSongIndex: 0,
-    playlistLength: 0,
-    playlist: [],
-  });
+// ============================================
+// 🔧 性能优化：使用 useSyncExternalStore 实现外部状态订阅
+// 避免不必要的重渲染，只在实际使用的状态变化时更新组件
+// ============================================
 
-  // 在客户端初始化时从全局状态读取
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const globalState = (window as any).__musicPlayerState;
-      if (globalState) {
-        setState({
-          currentSong: globalState.currentSong || null,
-          isEnabled: globalState.isEnabled || false,
-          isPlaying: globalState.isPlaying || false,
-          musicColor: globalState.musicColor || '#ef4444',
-          isTempPlay: globalState.isTempPlay || false,
-          currentSongIndex: globalState.currentSongIndex || 0,
-          playlistLength: globalState.playlistLength || 0,
-          playlist: globalState.playlist || [],
-        });
-      }
+/** 全局音乐播放器状态存储 */
+let globalMusicState: MusicPlayerState = {
+  currentSong: null,
+  isEnabled: false,
+  isPlaying: false,
+  musicColor: '#ef4444',
+  isTempPlay: false,
+  currentSongIndex: 0,
+  playlistLength: 0,
+  playlist: [],
+};
+
+/** 状态变化监听器集合 */
+const musicStateListeners = new Set<() => void>();
+
+/** 通知所有监听器状态已变化 */
+function emitMusicStateChange() {
+  musicStateListeners.forEach(listener => listener());
+}
+
+/** 订阅状态变化 */
+function subscribeMusicState(listener: () => void) {
+  musicStateListeners.add(listener);
+  return () => musicStateListeners.delete(listener);
+}
+
+/** 获取当前状态快照 */
+function getMusicStateSnapshot() {
+  return globalMusicState;
+}
+
+/** 更新全局状态并通知监听器 */
+function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
+  const prevState = globalMusicState;
+  globalMusicState = { ...globalMusicState, ...newState };
+  
+  // 同步到 window 对象（向后兼容）
+  (window as any).__musicPlayerState = globalMusicState;
+  
+  // 只有状态真正变化时才通知
+  if (prevState !== globalMusicState) {
+    emitMusicStateChange();
+  }
+}
+
+// 初始化：监听事件并更新全局状态
+if (typeof window !== 'undefined') {
+  // 从 window 对象读取初始状态
+  const initialState = (window as any).__musicPlayerState;
+  if (initialState) {
+    globalMusicState = { ...globalMusicState, ...initialState };
+  }
+  
+  // 监听状态变化事件
+  window.addEventListener('music-player-state-change', (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail) {
+      updateGlobalMusicState(detail);
     }
-  }, []);
+  });
+}
 
-  useEffect(() => {
-    const handleMusicStateChange = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const detail = customEvent.detail;
-      
-      // 单次 setState 更新所有状态，避免多次重渲染
-      setState({
-        currentSong: detail?.currentSong || null,
-        isEnabled: detail?.isEnabled || false,
-        isPlaying: detail?.isPlaying || false,
-        musicColor: detail?.musicColor || '#ef4444',
-        isTempPlay: detail?.isTempPlay || false,
-        currentSongIndex: detail?.currentSongIndex || 0,
-        playlistLength: detail?.playlistLength || 0,
-        playlist: detail?.playlist || [],
-      });
-    };
-
-    window.addEventListener('music-player-state-change', handleMusicStateChange);
-    return () => {
-      window.removeEventListener('music-player-state-change', handleMusicStateChange);
-    };
-  }, []);
+// 降级方案：基于 useSyncExternalStore 的实现（高性能版本）
+function useFallbackMusicPlayerControl() {
+  // 🔧 使用 useSyncExternalStore 订阅外部状态
+  // 这比 useState + useEffect 更高效，因为它：
+  // 1. 避免了初始化时的额外渲染
+  // 2. 自动处理并发模式
+  // 3. 只在快照变化时触发重渲染
+  const state = useSyncExternalStore(
+    subscribeMusicState,
+    getMusicStateSnapshot,
+    getMusicStateSnapshot // SSR 快照
+  );
 
   const playSong = useCallback((song: Song) => {
     window.dispatchEvent(new CustomEvent('play-song', { detail: { song } }));
@@ -200,15 +224,16 @@ function useFallbackMusicPlayerControl() {
     window.dispatchEvent(new CustomEvent('stop-temp-play'));
   }, []);
 
-  const updateState = useCallback(() => {
-    console.warn('updateState not available in fallback mode');
+  const updateState = useCallback((newState: Partial<MusicPlayerState>) => {
+    updateGlobalMusicState(newState);
   }, []);
 
-  return {
+  // 🔧 使用 useMemo 避免每次都创建新对象
+  return useMemo(() => ({
     ...state,
     playSong,
     togglePlayPause,
     stopTempPlay,
     updateState,
-  };
+  }), [state, playSong, togglePlayPause, stopTempPlay, updateState]);
 }

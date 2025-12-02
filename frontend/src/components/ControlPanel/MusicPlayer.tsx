@@ -3,7 +3,7 @@
  * 从 GlobalControlPanel 分离出来的音乐播放器 UI
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import { formatTime, getSongVipStatus, highlightText } from '../../utils/musicPlayer';
 import { UseMusicPlayerReturn } from '../../hooks/useMusicPlayer';
 import { useI18n } from '../../contexts/I18nContext';
@@ -359,6 +359,67 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
 };
 
 /**
+ * 单个播放列表项 - 使用 memo 避免不必要的重渲染
+ */
+const PlaylistItem = memo<{
+  song: { id: string; name: string; artist: string; isVip?: boolean; vipType?: string };
+  originalIndex: number;
+  isActive: boolean;
+  isPlaying: boolean;
+  searchQuery: string;
+  onSelect: (song: any, index: number, autoPlay: boolean) => void;
+  onClose: () => void;
+}>(({ song, originalIndex, isActive, isPlaying, searchQuery, onSelect, onClose }) => {
+  const vipStatus = getSongVipStatus(song);
+  
+  const handleClick = useCallback(() => {
+    onSelect(song, originalIndex, true);
+    onClose();
+  }, [song, originalIndex, onSelect, onClose]);
+  
+  return (
+    <div
+      onClick={handleClick}
+      className={`music-playlist-item ${isActive ? 'active' : ''}`}
+    >
+      <span className="music-playlist-index">{originalIndex + 1}</span>
+      <div className="music-playlist-info">
+        <div className="music-playlist-name-row">
+          <div 
+            className="music-playlist-name"
+            dangerouslySetInnerHTML={{ 
+              __html: searchQuery 
+                ? highlightText(song.name, searchQuery)
+                : song.name 
+            }}
+          />
+          {vipStatus.displayText && (
+            <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
+              {vipStatus.displayText}
+            </span>
+          )}
+        </div>
+        <div 
+          className="music-playlist-artist"
+          dangerouslySetInnerHTML={{ 
+            __html: searchQuery 
+              ? highlightText(song.artist, searchQuery)
+              : song.artist 
+          }}
+        />
+      </div>
+      {isActive && (
+        <span className="music-playlist-playing">
+          {isPlaying ? '▶' : '⏸'}
+        </span>
+      )}
+    </div>
+  );
+});
+
+PlaylistItem.displayName = 'PlaylistItem';
+
+/**
  * 播放列表视图
  */
 const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player }) => {
@@ -377,8 +438,27 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
     playlistScrollRef,
   } = player;
   
+  // 🔧 监听面板动画状态，动画期间简化渲染
+  const [isPanelAnimating, setIsPanelAnimating] = useState(false);
+  
+  // 🔧 监听面板动画事件
+  useEffect(() => {
+    const handleAnimationStart = () => setIsPanelAnimating(true);
+    const handleAnimationEnd = () => setIsPanelAnimating(false);
+    
+    window.addEventListener('gcp-animation-start', handleAnimationStart);
+    window.addEventListener('gcp-animation-end', handleAnimationEnd);
+    
+    return () => {
+      window.removeEventListener('gcp-animation-start', handleAnimationStart);
+      window.removeEventListener('gcp-animation-end', handleAnimationEnd);
+    };
+  }, []);
+  
   // 播放列表自动滚动到当前歌曲
   useEffect(() => {
+    // 动画期间不滚动
+    if (isPanelAnimating) return;
     if (!playlistScrollRef.current || playlist.length === 0) {
       return;
     }
@@ -403,7 +483,22 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
         behavior: 'smooth'
       });
     }, 100);
-  }, [currentSongIndex, playlist.length, playlistSearchQuery, playlistScrollRef]);
+  }, [currentSongIndex, playlist.length, playlistSearchQuery, playlistScrollRef, isPanelAnimating]);
+  
+  // 🔧 预计算歌曲 ID 到索引的映射，避免 O(n²) 查找
+  const songIdToIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    playlist.forEach((song, index) => {
+      map.set(song.id, index);
+    });
+    return map;
+  }, [playlist]);
+  
+  // 关闭播放列表的回调
+  const handleClosePlaylist = useCallback(() => {
+    setMusicPlayerView('info');
+    setPlaylistSearchQuery('');
+  }, [setMusicPlayerView, setPlaylistSearchQuery]);
   
   if (playlist.length === 0) {
     return null;
@@ -417,6 +512,19 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
                song.artist.toLowerCase().includes(query);
       })
     : playlist;
+  
+  // 🔧 动画期间只显示简化视图（当前歌曲附近的几首）
+  const visiblePlaylist = isPanelAnimating && displayPlaylist.length > 20
+    ? displayPlaylist.slice(
+        Math.max(0, currentSongIndex - 3),
+        Math.min(displayPlaylist.length, currentSongIndex + 7)
+      )
+    : displayPlaylist;
+  
+  // 计算动画期间的偏移索引
+  const indexOffset = isPanelAnimating && displayPlaylist.length > 20
+    ? Math.max(0, currentSongIndex - 3)
+    : 0;
   
   return (
     <div className="music-view music-view-playlist">
@@ -481,54 +589,26 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
         </div>
       </div>
 
-      <div className="music-playlist-scroll" ref={playlistScrollRef}>
-        {displayPlaylist.length > 0 ? (
-          displayPlaylist.map((song) => {
-            const originalIndex = playlist.findIndex(s => s.id === song.id);
-            const vipStatus = getSongVipStatus(song);
+      <div 
+        className={`music-playlist-scroll ${isPanelAnimating ? 'animating' : ''}`} 
+        ref={playlistScrollRef}
+      >
+        {visiblePlaylist.length > 0 ? (
+          visiblePlaylist.map((song, idx) => {
+            // 使用 Map 查找，O(1) 复杂度
+            const originalIndex = songIdToIndex.get(song.id) ?? (indexOffset + idx);
             
             return (
-              <div
+              <PlaylistItem
                 key={song.id}
-                onClick={() => {
-                  selectSong(song, originalIndex, true);
-                  setMusicPlayerView('info');
-                  setPlaylistSearchQuery('');
-                }}
-                className={`music-playlist-item ${currentSongIndex === originalIndex ? 'active' : ''}`}
-              >
-                <span className="music-playlist-index">{originalIndex + 1}</span>
-                <div className="music-playlist-info">
-                  <div className="music-playlist-name-row">
-                    <div 
-                      className="music-playlist-name"
-                      dangerouslySetInnerHTML={{ 
-                        __html: playlistSearchQuery 
-                          ? highlightText(song.name, playlistSearchQuery)
-                          : song.name 
-                      }}
-                    />
-                    {vipStatus.displayText && (
-                      <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
-                        {vipStatus.displayText}
-                      </span>
-                    )}
-                  </div>
-                  <div 
-                    className="music-playlist-artist"
-                    dangerouslySetInnerHTML={{ 
-                      __html: playlistSearchQuery 
-                        ? highlightText(song.artist, playlistSearchQuery)
-                        : song.artist 
-                    }}
-                  />
-                </div>
-                {currentSongIndex === originalIndex && (
-                  <span className="music-playlist-playing">
-                    {isPlaying ? '▶' : '⏸'}
-                  </span>
-                )}
-              </div>
+                song={song}
+                originalIndex={originalIndex}
+                isActive={currentSongIndex === originalIndex}
+                isPlaying={isPlaying}
+                searchQuery={playlistSearchQuery}
+                onSelect={selectSong}
+                onClose={handleClosePlaylist}
+              />
             );
           })
         ) : (

@@ -14,6 +14,11 @@ import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 import { getLatestReportDeduped } from '../../utils/requestDedup';
 
+// 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
+const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i);
+const HEATMAP_DAYS = Array.from({ length: 5 }, (_, i) => i);
+const LANES_ARRAY = Array.from({ length: 5 }, (_, i) => i);
+
 // ==================== 静态动画常量（避免每次渲染创建新对象）====================
 // 弹幕动画 - 有限次数，配合调度器 duration=11000ms
 const DANMAKU_INITIAL = { x: '100%', opacity: 0 };
@@ -87,8 +92,8 @@ const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { d
   
   const animations = useMemo(() => {
     const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
-    const lanes = 5;
-    const availableLanes = Array.from({ length: lanes }, (_, i) => i);
+    // 🔧 使用预生成的 LANES_ARRAY 进行洗牌
+    const availableLanes = [...LANES_ARRAY];
     for (let i = availableLanes.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [availableLanes[i], availableLanes[j]] = [availableLanes[j], availableLanes[i]];
@@ -130,11 +135,10 @@ const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { d
         {staticDanmaku.map((item, i) => (
           <div
             key={`static-${item.text}-${i}`}
-            className="absolute whitespace-nowrap text-base font-bold"
+            className="absolute whitespace-nowrap text-base font-bold danmaku-text-color"
             style={{
               top: item.top,
               left: item.left,
-              color: '#B3E5FF',
               opacity: item.opacity,
             }}
           >
@@ -153,15 +157,11 @@ const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { d
           initial={DANMAKU_INITIAL}
           animate={DANMAKU_ANIMATE}
           transition={createDanmakuTransition(anim.duration, anim.delay)}
-          className="absolute whitespace-nowrap text-base font-bold"
+          className="absolute whitespace-nowrap text-base font-bold danmaku-text-color gpu-accelerated"
           style={{ 
             top: anim.top, 
-            color: '#B3E5FF', 
-            opacity: anim.opacity, 
-            willChange: 'transform',
-            transform: 'translateZ(0)',
-            backfaceVisibility: 'hidden'
-          } as React.CSSProperties}
+            opacity: anim.opacity
+          }}
         >
           {texts[i]}
         </motion.div>
@@ -216,7 +216,7 @@ const SteamStatsWidget = memo(({ data }: any) => {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent" style={{ clipPath: 'polygon(0 0, 70% 0, 45% 100%, 0 100%)' } as React.CSSProperties} />
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent clip-diagonal" />
       </div>
       <motion.div className="absolute top-2 left-4 z-10" initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, delay: 0.1 }}>
         <div className="flex items-start gap-1">
@@ -232,11 +232,11 @@ const SteamStatsWidget = memo(({ data }: any) => {
       </motion.div>
       <div className="absolute right-0 top-0 bottom-0 w-1/3 flex flex-col justify-center items-end pr-5 gap-4">
         <motion.div className="flex flex-col items-end" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ duration: 0.5, delay: 0.4 }}>
-          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">LIBRARY</span>
+          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">{t.reportsPage.library}</span>
           <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">{gamesCount}</span>
         </motion.div>
         <motion.div className="flex flex-col items-end" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ duration: 0.5, delay: 0.6 }}>
-          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">PLAYTIME</span>
+          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">{t.reportsPage.playtime}</span>
           <div className="flex items-baseline gap-0.5">
             <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">{totalPlaytime}</span>
             <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-1">H</span>
@@ -355,18 +355,18 @@ const GithubStatsWidget = memo(({ data }: any) => {
               <div className="flex flex-col gap-1.5">
                 <motion.div className="flex items-baseline gap-1.5" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.4, delay: 0.3 }}>
                   <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">{contributions}</span>
-                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Commits</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">{t.reportsPage.commits}</span>
                 </motion.div>
                 <motion.div className="flex items-baseline gap-1.5" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.4, delay: 0.4 }}>
                   <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">{reposCount}</span>
-                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Repos</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">{t.reportsPage.repos}</span>
                 </motion.div>
               </div>
             </div>
             <div className="flex gap-[2.5px]">
-              {Array.from({ length: 12 }).map((_, week) => (
+              {HEATMAP_WEEKS.map((week) => (
                 <div key={week} className="flex flex-col gap-[2.5px]">
-                  {Array.from({ length: 5 }).map((_, day) => {
+                  {HEATMAP_DAYS.map((day) => {
                     const cell = heatmapData.find(c => c.week === week && c.day === day);
                     return (
                       <motion.div key={`${week}-${day}`} className="w-[10px] h-[10px] rounded-[2px]"
@@ -578,12 +578,12 @@ const MusicStatsWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: 
             initial={{ scale: 0.8, opacity: 0, x: 20 }} animate={{ scale: 1, opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
             <div className="flex flex-col items-end">
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">{formatNumber(followerCount)}</span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>Fans</span>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400 font-georgia">{t.reportsPage.fans}</span>
             </div>
             <div className="w-px h-5 bg-gray-300 dark:bg-white/20" />
             <div className="flex flex-col items-end">
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">{formatNumber(playlistCount)}</span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>Lists</span>
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400 font-georgia">{t.reportsPage.lists}</span>
             </div>
           </motion.div>
         </div>

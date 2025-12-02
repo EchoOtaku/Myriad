@@ -304,6 +304,7 @@ const GlobalControlPanel: React.FC = () => {
     let lastUpdateTime = 0;
     let pendingMeasure = false;
     let measureTimeout: number | null = null;
+    let isAnimating = false; // 🔧 动画状态标记
 
     // ⚠️ 移动端检测 - 使用性能配置而非 window.innerWidth，更可靠
     const isMobileDevice = perf.isMobile || perf.lowEndDevice;
@@ -312,9 +313,12 @@ const GlobalControlPanel: React.FC = () => {
     // 🔧 加大节流时间，减少克隆测量频率
     const THROTTLE_MS = isMobileDevice ? 1200 : 600;
 
-    const measure = () => {
+    const measure = (force = false) => {
+      // 🔧 动画期间跳过测量（除非强制）
+      if (isAnimating && !force) return;
+      
       const now = Date.now();
-      if (now - lastUpdateTime < THROTTLE_MS) {
+      if (now - lastUpdateTime < THROTTLE_MS && !force) {
         // 如果在节流期内,标记待测量,稍后执行
         if (!pendingMeasure) {
           pendingMeasure = true;
@@ -337,16 +341,50 @@ const GlobalControlPanel: React.FC = () => {
         ? window.innerWidth - 56
         : 356;
 
-      // ⚠️ DOM 克隆操作：仅在事件触发时执行
-      const clone = contentEl.cloneNode(true) as HTMLElement;
-      clone.style.position = 'absolute';
-      clone.style.visibility = 'hidden';
-      clone.style.height = 'auto';
-      clone.style.width = targetWidth + 'px';
+      // 🔧 优化：使用轻量级测量方式
+      // 对于播放列表视图，使用估算高度而非完整克隆
+      const playlistScroll = contentEl.querySelector('.music-playlist-scroll');
+      let raw: number;
+      
+      if (playlistScroll && playlistScroll.children.length > 15) {
+        // 🔧 播放列表超过 15 项时，使用估算而非克隆
+        // 估算：头部约 40px，每项约 52px，底部边距约 16px
+        const playlistHeader = contentEl.querySelector('.music-playlist-header');
+        const headerHeight = playlistHeader?.getBoundingClientRect().height ?? 40;
+        const itemCount = Math.min(playlistScroll.children.length, 8); // 最多显示 8 项
+        const estimatedPlaylistHeight = headerHeight + (itemCount * 52) + 16;
+        
+        // 测量除播放列表外的其他内容
+        const otherContent = contentEl.cloneNode(true) as HTMLElement;
+        const clonedPlaylist = otherContent.querySelector('.music-view-playlist');
+        if (clonedPlaylist) {
+          (clonedPlaylist as HTMLElement).style.height = estimatedPlaylistHeight + 'px';
+          const clonedScroll = clonedPlaylist.querySelector('.music-playlist-scroll');
+          if (clonedScroll) {
+            clonedScroll.innerHTML = ''; // 清空列表项
+          }
+        }
+        
+        otherContent.style.position = 'absolute';
+        otherContent.style.visibility = 'hidden';
+        otherContent.style.height = 'auto';
+        otherContent.style.width = targetWidth + 'px';
+        
+        document.body.appendChild(otherContent);
+        raw = otherContent.offsetHeight;
+        document.body.removeChild(otherContent);
+      } else {
+        // 常规克隆测量
+        const clone = contentEl.cloneNode(true) as HTMLElement;
+        clone.style.position = 'absolute';
+        clone.style.visibility = 'hidden';
+        clone.style.height = 'auto';
+        clone.style.width = targetWidth + 'px';
 
-      document.body.appendChild(clone);
-      const raw = clone.offsetHeight;
-      document.body.removeChild(clone);
+        document.body.appendChild(clone);
+        raw = clone.offsetHeight;
+        document.body.removeChild(clone);
+      }
 
       // 适当补偿 (考虑内边距 + 过渡)
       const compensated = Math.ceil(raw * 1.08);
@@ -358,7 +396,20 @@ const GlobalControlPanel: React.FC = () => {
     };
 
     // 立即测量，确保动画起始帧即为正确高度
-    measure();
+    measure(true);
+
+    // 🔧 监听动画状态
+    const handleAnimationStart = () => {
+      isAnimating = true;
+    };
+    const handleAnimationEnd = () => {
+      isAnimating = false;
+      // 动画结束后重新测量
+      lastUpdateTime = 0;
+      measure(true);
+    };
+    window.addEventListener('gcp-animation-start', handleAnimationStart);
+    window.addEventListener('gcp-animation-end', handleAnimationEnd);
 
     // 🔧 统一使用事件驱动重测（移除轮询）
     const handleRemeasure = () => {
@@ -380,7 +431,7 @@ const GlobalControlPanel: React.FC = () => {
     const handleVisibility = () => {
       if (!document.hidden) {
         lastUpdateTime = 0;
-        setTimeout(measure, 100);
+        setTimeout(() => measure(), 100);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -399,6 +450,8 @@ const GlobalControlPanel: React.FC = () => {
     });
 
     return () => {
+      window.removeEventListener('gcp-animation-start', handleAnimationStart);
+      window.removeEventListener('gcp-animation-end', handleAnimationEnd);
       window.removeEventListener('gcp-remeasure', handleRemeasure);
       window.removeEventListener('control-panel-content-resize', handleRemeasure);
       window.removeEventListener('resize', handleViewportChange);
@@ -438,6 +491,9 @@ const GlobalControlPanel: React.FC = () => {
   }, [isDark]);
 
   const handleTogglePanel = useCallback(() => {
+    // 🔧 通知子组件动画开始
+    window.dispatchEvent(new CustomEvent('gcp-animation-start'));
+    
     if (isExpanded) {
       // 收缩：面板内容立即淡出，容器开始收缩，动态内容在中途淡入
       setShowPanelContent(false);
@@ -446,6 +502,10 @@ const GlobalControlPanel: React.FC = () => {
       setTimeout(() => {
         setShowDynamicContent(true);
       }, 400); // 容器收缩到一半时显示（0.7s 动画的中点）
+      // 🔧 动画结束后通知
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('gcp-animation-end'));
+      }, 700);
     } else {
       // 展开：动态内容立即淡出，容器开始展开，面板内容在中途淡入
       setShowDynamicContent(false);
@@ -457,6 +517,10 @@ const GlobalControlPanel: React.FC = () => {
       setTimeout(() => {
         setShowPanelContent(true);
       }, 400); // 容器展开到一半时显示（0.7s 动画的中点）
+      // 🔧 动画结束后通知
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('gcp-animation-end'));
+      }, 700);
     }
   }, [isExpanded]);
 

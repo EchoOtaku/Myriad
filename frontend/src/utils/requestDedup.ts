@@ -11,8 +11,44 @@ const pendingRequests = new Map<string, Promise<any>>();
 // 已完成请求的结果缓存
 const resultCache = new Map<string, { data: any; timestamp: number }>();
 
+// 🔧 性能优化：LRU 缓存最大容量
+const MAX_CACHE_SIZE = 50;
+
 // 默认缓存时间（毫秒）
 const DEFAULT_CACHE_TTL = 30 * 1000; // 30秒
+
+/**
+ * 🔧 LRU 缓存清理 - 删除最早的条目直到缓存大小正常
+ */
+function ensureCacheSize() {
+  if (resultCache.size <= MAX_CACHE_SIZE) return;
+  
+  // Map 保持插入顺序，所以第一个就是最早的
+  const keysToDelete: string[] = [];
+  const deleteCount = resultCache.size - MAX_CACHE_SIZE;
+  
+  let count = 0;
+  for (const key of resultCache.keys()) {
+    if (count >= deleteCount) break;
+    keysToDelete.push(key);
+    count++;
+  }
+  
+  keysToDelete.forEach(key => resultCache.delete(key));
+}
+
+/**
+ * 🔧 读取缓存并更新 LRU 顺序
+ */
+function getCacheWithLRU(key: string): { data: any; timestamp: number } | undefined {
+  const cached = resultCache.get(key);
+  if (cached) {
+    // 删除并重新插入，使其移到末尾（最新）
+    resultCache.delete(key);
+    resultCache.set(key, cached);
+  }
+  return cached;
+}
 
 export interface DedupOptions {
   /** 缓存时间（毫秒），默认 30 秒 */
@@ -55,9 +91,9 @@ export async function dedupedFetch<T>(
     cacheKey = url 
   } = options;
 
-  // 1. 检查结果缓存（非强制刷新时）
+  // 1. 检查结果缓存（非强制刷新时）- 🔧 使用 LRU 读取
   if (!forceRefresh) {
-    const cached = resultCache.get(cacheKey);
+    const cached = getCacheWithLRU(cacheKey);
     if (cached && Date.now() - cached.timestamp < cacheTTL) {
       return cached.data as T;
     }
@@ -72,7 +108,8 @@ export async function dedupedFetch<T>(
   // 3. 发起新请求
   const requestPromise = fetchFn()
     .then((data) => {
-      // 缓存结果
+      // 🔧 缓存结果前检查容量
+      ensureCacheSize();
       resultCache.set(cacheKey, { data, timestamp: Date.now() });
       return data;
     })

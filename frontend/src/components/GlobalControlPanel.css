@@ -2643,6 +2643,26 @@ html.dark .music-no-results-text {
   padding: 0.25rem 0.875rem;
 }
 
+/* 🔧 动画期间优化：禁用列表项的过渡动画和复杂样式 */
+.music-playlist-scroll.animating {
+  /* 使用 content-visibility 优化渲染 */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 400px;
+}
+
+.music-playlist-scroll.animating .music-playlist-item {
+  /* 禁用所有过渡，避免动画叠加 */
+  transition: none !important;
+  /* 禁用变换动画 */
+  transform: none !important;
+}
+
+.music-playlist-scroll.animating .music-playlist-item:hover {
+  transform: none !important;
+  background: inherit;
+  border-color: inherit;
+}
+
 /* 滚动条样式已在行1887合并定义 */
 
 /* 歌词显示（旧样式保留） */

@@ -23,6 +23,9 @@ class SharedEventManager {
   private listeners = new Map<string, Set<ListenerEntry>>();
   private nativeListeners = new Map<string, EventCallback>();
   private throttledCallbacks = new Map<string, EventCallback>();
+  // 🔧 性能优化：缓存排序后的监听器数组，避免每次事件触发时都排序
+  private sortedListenersCache = new Map<string, ListenerEntry[]>();
+  private listenersDirty = new Map<string, boolean>();
 
   /**
    * 添加监听器
@@ -44,15 +47,21 @@ class SharedEventManager {
     
     const entry: ListenerEntry = { callback, priority };
     this.listeners.get(eventType)!.add(entry);
+    // 🔧 标记缓存为脏，下次事件触发时重新排序
+    this.listenersDirty.set(eventType, true);
     
     // 返回移除函数
     return () => {
       const set = this.listeners.get(eventType);
       if (set) {
         set.delete(entry);
+        // 🔧 标记缓存为脏
+        this.listenersDirty.set(eventType, true);
         if (set.size === 0) {
           this.removeNativeListener(eventType);
           this.listeners.delete(eventType);
+          this.sortedListenersCache.delete(eventType);
+          this.listenersDirty.delete(eventType);
         }
       }
     };
@@ -61,13 +70,19 @@ class SharedEventManager {
   private setupNativeListener(eventType: string, throttle: boolean) {
     const handler: EventCallback = (event) => {
       const entries = this.listeners.get(eventType);
-      if (!entries) return;
+      if (!entries || entries.size === 0) return;
       
-      // 按优先级排序执行
-      const sorted = Array.from(entries).sort((a, b) => b.priority - a.priority);
-      for (const entry of sorted) {
+      // 🔧 使用缓存的排序结果，只有在监听器变化时才重新排序
+      let sorted = this.sortedListenersCache.get(eventType);
+      if (!sorted || this.listenersDirty.get(eventType)) {
+        sorted = Array.from(entries).sort((a, b) => b.priority - a.priority);
+        this.sortedListenersCache.set(eventType, sorted);
+        this.listenersDirty.set(eventType, false);
+      }
+      
+      for (let i = 0; i < sorted.length; i++) {
         try {
-          entry.callback(event);
+          sorted[i].callback(event);
         } catch (e) {
           console.error(`Error in ${eventType} listener:`, e);
         }

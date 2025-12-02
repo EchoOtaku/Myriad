@@ -20,6 +20,18 @@ const getIsMobile = (): boolean => {
   return getPerformanceProfileSync().isMobile;
 };
 
+// 🔧 性能优化：预生成常见网格尺寸的索引数组缓存
+const gridIndicesCache = new Map<string, number[]>();
+const getGridIndices = (width: number, height: number): number[] => {
+  const key = `${width}x${height}`;
+  let indices = gridIndicesCache.get(key);
+  if (!indices) {
+    indices = Array.from({ length: width * height }, (_, i) => i);
+    gridIndicesCache.set(key, indices);
+  }
+  return indices;
+};
+
 // 小组件尺寸配置
 export type WidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '2x4' | '4x1' | '4x2' | '4x4';
 
@@ -1007,22 +1019,26 @@ export default function WidgetGrid({
   }, [draggedWidget, hoveredCell, widgets, availableWidgets]);
 
   // Memoize grid background
-  const gridBackground = useMemo(() => (
-    <div 
-      className="widget-grid-background absolute inset-0 pointer-events-none z-0"
-      style={{
-        gridTemplateColumns: `repeat(${currentGridWidth}, 1fr)`,
-        gridTemplateRows: `repeat(${currentGridHeight}, 1fr)`,
-      }}
-    >
-      {Array.from({ length: currentGridWidth * currentGridHeight }).map((_, i) => (
-        <div
-          key={i}
-          className="border border-gray-200 dark:border-white/5 border-opacity-30"
-        />
-      ))}
-    </div>
-  ), [currentGridWidth, currentGridHeight]);
+  const gridBackground = useMemo(() => {
+    // 🔧 使用缓存的网格索引
+    const indices = getGridIndices(currentGridWidth, currentGridHeight);
+    return (
+      <div 
+        className="widget-grid-background absolute inset-0 pointer-events-none z-0"
+        style={{
+          gridTemplateColumns: `repeat(${currentGridWidth}, 1fr)`,
+          gridTemplateRows: `repeat(${currentGridHeight}, 1fr)`,
+        }}
+      >
+        {indices.map((i) => (
+          <div
+            key={i}
+            className="border border-gray-200 dark:border-white/5 border-opacity-30"
+          />
+        ))}
+      </div>
+    );
+  }, [currentGridWidth, currentGridHeight]);
 
   // 小组件库内容
   const libraryContent = (

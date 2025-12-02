@@ -26,6 +26,7 @@ import './styles/navigation-island.css';
 import './styles/utility.css';
 import './styles/modals.css';
 import './styles/overrides.css';
+import './styles/performance.css'; // 🔧 性能优化 CSS
 
 // 懒加载视图组件 - 使用代码分割
 const Home = lazy(() => import('./views/Home.tsx'));

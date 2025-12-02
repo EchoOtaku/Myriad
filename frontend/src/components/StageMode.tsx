@@ -46,6 +46,29 @@ const getBlurAmount = (easeProgress: number, isEnteringPhase: boolean) => (
   isEnteringPhase ? easeProgress * 20 : (1 - easeProgress) * 20
 );
 
+// 🚀 性能优化：预编译正则表达式（避免每次调用时重新创建）
+const CONTROL_CHARS_REGEX = /[\u0000-\u001F\u007F-\u009F]/g;
+const MARKDOWN_SYMBOLS_REGEX = /[*_~`]/g;
+const WHITESPACE_REGEX = /\s+/g;
+const PUNCTUATION_SPLIT_REGEX = /([。！？.!?，,])/g;
+
+// 🚀 性能优化：共享文本处理工具函数
+const cleanText = (text: string): string => {
+  return text
+    .replace(CONTROL_CHARS_REGEX, '')
+    .replace(MARKDOWN_SYMBOLS_REGEX, '')
+    .replace(WHITESPACE_REGEX, ' ')
+    .trim();
+};
+
+const splitByPunctuation = (text: string) => {
+  return text
+    .replace(PUNCTUATION_SPLIT_REGEX, '$1\uFFFF')
+    .split('\uFFFF')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+};
+
 // 字幕行接口
 interface SubtitleLine {
   text: string;
@@ -309,24 +332,6 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
 const parseComprehensiveReportToChapters = (analysis: any): StageChapter[] => {
   const chapters: StageChapter[] = [];
 
-  // 清理文本
-  const cleanText = (text: string): string => {
-    return text
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-      .replace(/[*_~`]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
-  // 按标点符号分段
-  const splitByPunctuation = (text: string) => {
-    return text
-      .replace(/([。！？.!?，,])/g, '$1\uFFFF')
-      .split('\uFFFF')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-  };
-
   // 遍历综合分析的所有字段
   const styleFields = [
     'theme_color', 'theme_icon', 'visual_style',
@@ -399,24 +404,6 @@ const parseReportToChapters = (reportData: {
   insights: string[];
 }, chapterTitles: { dataEcho: string; deepInsight: string }): StageChapter[] => {
   const chapters: StageChapter[] = [];
-
-  // 清理文本：移除特殊字符和多余空白
-  const cleanText = (text: string): string => {
-    return text
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')  // 移除控制字符
-      .replace(/[*_~`]/g, '')  // 移除Markdown符号
-      .replace(/\s+/g, ' ')  // 合并多个空白
-      .trim();
-  };
-
-  // 辅助函数：按标点符号分段
-  const splitByPunctuation = (text: string) => {
-    return text
-      .replace(/([。！？.!?，,])/g, '$1\uFFFF')
-      .split('\uFFFF')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-  };
 
   // 第一篇章：总结
   if (reportData.summary) {

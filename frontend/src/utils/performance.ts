@@ -107,8 +107,8 @@ export function rafThrottle<T extends (...args: any[]) => any>(
       return;
     }
     
-    // 低帧率时可选跳过
-    if (skipOnLowFps && _isLowFpsMode) {
+    // 🔧 修复：使用正确的函数调用而非未定义变量
+    if (skipOnLowFps && isLowFps()) {
       return;
     }
     

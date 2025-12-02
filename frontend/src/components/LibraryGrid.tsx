@@ -435,10 +435,24 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         computeLayout();
     }, [computeLayout]);
 
-    // 滚动加载更多
+    // 滚动加载更多 - 🔧 添加节流防止过快触发
+    const loadMoreRef = useRef<number | null>(null);
     const loadMore = useCallback(() => {
-        setVisibleCount(prev => Math.min(prev + 20, filteredAllItems.length));
+        if (loadMoreRef.current) return; // 防止重复触发
+        loadMoreRef.current = requestAnimationFrame(() => {
+            setVisibleCount(prev => Math.min(prev + 20, filteredAllItems.length));
+            loadMoreRef.current = null;
+        });
     }, [filteredAllItems.length]);
+    
+    // 清理 RAF
+    useEffect(() => {
+        return () => {
+            if (loadMoreRef.current) {
+                cancelAnimationFrame(loadMoreRef.current);
+            }
+        };
+    }, []);
 
     const hasMore = visibleCount < filteredAllItems.length;
 

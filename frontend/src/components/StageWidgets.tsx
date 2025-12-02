@@ -6,6 +6,10 @@ import { useLoopAnimation } from '../hooks/animation';
 import { useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
 
+// 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
+const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i);
+const HEATMAP_DAYS = Array.from({ length: 5 }, (_, i) => i);
+
 // 🔧 工具函数：处理B站图片URL，使用后端代理
 export const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
   if (!cover) {
@@ -83,11 +87,10 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
         {staticDanmaku.map((item, i) => (
           <div
             key={`static-${item.text}-${i}`}
-            className="absolute whitespace-nowrap text-base font-bold"
+            className="absolute whitespace-nowrap text-base font-bold danmaku-text-color"
             style={{
               top: item.top,
               left: item.left,
-              color: '#B3E5FF',
               opacity: item.opacity,
             }}
           >
@@ -114,12 +117,10 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
             delay: a.delay,
             ease: "linear"
           }}
-          className="absolute whitespace-nowrap text-base font-bold"
+          className="absolute whitespace-nowrap text-base font-bold danmaku-text-color gpu-accelerated"
           style={{ 
             top: a.top,
-            color: '#B3E5FF',
-            opacity: a.opacity,
-            willChange: 'transform'
+            opacity: a.opacity
           }}
         >
           {texts[i]}
@@ -213,8 +214,7 @@ export const SteamStatsWidget = memo(({ data }: { data?: {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent"
-             style={{ clipPath: 'polygon(0 0, 70% 0, 45% 100%, 0 100%)' }} />
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent clip-diagonal" />
       </div>
       
       <motion.div 
@@ -256,7 +256,7 @@ export const SteamStatsWidget = memo(({ data }: { data?: {
           transition={{ duration: 0.5, delay: 0.4 }}
         >
           <div className="flex flex-col items-end">
-            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">LIBRARY</span>
+            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">{t.reportsPage.library}</span>
             <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">{gamesCount}</span>
           </div>
         </motion.div>
@@ -268,7 +268,7 @@ export const SteamStatsWidget = memo(({ data }: { data?: {
           transition={{ duration: 0.5, delay: 0.6 }}
         >
           <div className="flex flex-col items-end">
-            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">PLAYTIME</span>
+            <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">{t.reportsPage.playtime}</span>
             <div className="flex items-baseline gap-0.5">
               <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">{totalPlaytime}</span>
               <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-1">H</span>
@@ -456,7 +456,7 @@ export const GithubStatsWidget = memo(({ data }: { data?: {
                   transition={{ duration: 0.4, delay: 0.3 }}
                 >
                   <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">{contributions}</span>
-                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Commits</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">{t.reportsPage.commits}</span>
                 </motion.div>
                 <motion.div 
                   className="flex items-baseline gap-1.5"
@@ -465,14 +465,14 @@ export const GithubStatsWidget = memo(({ data }: { data?: {
                   transition={{ duration: 0.4, delay: 0.4 }}
                 >
                   <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">{reposCount}</span>
-                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Repos</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">{t.reportsPage.repos}</span>
                 </motion.div>
               </div>
             </div>
             <div className="flex gap-[2.5px]">
-              {Array.from({ length: 12 }).map((_, week) => (
+              {HEATMAP_WEEKS.map((week) => (
                 <div key={week} className="flex flex-col gap-[2.5px]">
-                  {Array.from({ length: 5 }).map((_, day) => {
+                  {HEATMAP_DAYS.map((day) => {
                     const cell = heatmapData.find(c => c.week === week && c.day === day);
                     return (
                       <motion.div
@@ -542,6 +542,7 @@ export const GithubWidget = memo(({ data, onContentChange, showOverview }: {
   onContentChange?: (item: { title: string; type: string } | null) => void;
   showOverview: boolean;
 }) => {
+  const { t } = useI18n();
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
 
@@ -622,7 +623,7 @@ export const GithubWidget = memo(({ data, onContentChange, showOverview }: {
           ) : (
             <div className="h-full w-full flex items-center justify-center">
               <div className="text-[9px] font-mono text-gray-400 text-center">
-                &gt; No repos found_
+                {t.reportsPage.noReposFound}
               </div>
             </div>
           )}
@@ -820,8 +821,8 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(followerCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
-                Fans
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400 font-georgia">
+                {t.reportsPage.fans}
               </span>
             </div>
             <div className="w-px h-5 bg-gray-300 dark:bg-white/20" />
@@ -829,8 +830,8 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
               <span className="text-lg font-black leading-none text-gray-900 dark:text-gray-100">
                 {formatNumber(playlistCount)}
               </span>
-              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Georgia, serif' }}>
-                Lists
+              <span className="text-[9px] tracking-wide mt-0.5 italic font-semibold text-gray-600 dark:text-gray-400 font-georgia">
+                {t.reportsPage.lists}
               </span>
             </div>
           </motion.div>
