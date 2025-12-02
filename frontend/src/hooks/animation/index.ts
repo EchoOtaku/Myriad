@@ -116,7 +116,6 @@ export {
 export type {
   AnimationConfig,
   ElementAnimationOptions,
-  LoopAnimationOptions,
   AnimationListener,
   Unsubscribe,
   CoordinatorConfig,
@@ -126,7 +125,6 @@ export {
   AnimationPriority,
   AnimationState,
   ScheduleStrategy,
-  LoopPriority,
   DEFAULT_CONFIG,
 } from './types';
 
@@ -135,19 +133,11 @@ export { coordinator } from './coordinator';
 export { default as AnimationCoordinator } from './coordinator';
 
 // 导出 Hooks
-export { usePageTransition } from './usePageTransition';
+export { usePageTransition, pageTransitionManager } from './usePageTransition';
 export { useElementAnimation } from './useElementAnimation';
 export { useStaggerAnimation } from './useStaggerAnimation';
 export { usePageReady } from './usePageReady';
 export { useLoopAnimation } from './useLoopAnimation';
-export { 
-  useVisibilityAwareAnimation,
-  useVisibilityObserver,
-  type VisibilityAwareAnimationOptions,
-  type VisibilityAwareAnimationResult,
-  type VisibilityObserverOptions,
-  type VisibilityObserverResult,
-} from './useVisibilityAwareAnimation';
 
 // 🔧 新增：可见性感知定时器 Hook
 export {
@@ -223,9 +213,17 @@ export function isLowFps(): boolean {
 
 /**
  * 获取帧率统计
+ * 用于性能监控面板，统一从调度器获取数据
  */
 export function getFrameStats() {
   return coordinator.getFrameStats();
+}
+
+/**
+ * 重置帧率统计
+ */
+export function resetFrameStats() {
+  coordinator.resetFrameStats();
 }
 
 // ==================== DOM 批量操作 API ====================

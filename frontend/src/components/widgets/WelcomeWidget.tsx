@@ -35,11 +35,11 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   const titleFontScale = isNonChinese ? fontScale * 0.88 : fontScale; // 标题减少约12%
   const infoFontScale = isNonChinese ? fontScale * 0.92 : fontScale;  // 信息类减少约8%
   
-  // 🆕 使用统一动画调度器管理循环动画
+  // 🆕 使用触发式动画 - 组件挂载时播放一次箭头动画
   const { isAnimating } = useLoopAnimation({
     duration: 1500, // 箭头动画约1.5秒周期
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 确保动画完整完成一轮
+    trigger: 'mount', // 固定值，组件首次渲染时触发一次
+    enabled: anim.loop, // 低端设备禁用
   });
   
   const canAnimate = anim.loop && isAnimating;

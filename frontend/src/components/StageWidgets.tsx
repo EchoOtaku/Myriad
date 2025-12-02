@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, memo, useId, useRef } from 'react';
 import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { API_URL } from '../config';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
-import { useLoopAnimation, LoopPriority } from '../hooks/animation';
+import { useLoopAnimation } from '../hooks/animation';
 import { useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
 
@@ -27,13 +27,10 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 使用统一动画调度器管理循环动画（弹幕是核心动画，不可被抢占）
+  // 使用触发式循环动画（弹幕核心动画）
   const { isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
-    cooldown: 10000, // 冷却 10 秒后重新加入队列
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
-    loopPriority: LoopPriority.CORE, // 弹幕是核心动画
+    enabled: anim.loop,
   });
   
   const animations = useMemo(() => {
@@ -647,13 +644,10 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
   const animConfig = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 使用统一动画调度器管理循环动画（音乐气泡是核心动画，不可被抢占）
+  // 使用触发式循环动画（音乐气泡核心动画）
   const { isAnimating } = useLoopAnimation({
     duration: 5000, // 气泡浮动约5秒周期
-    cooldown: 10000, // 冷却 10 秒后重新加入队列
-    autoRequest: animConfig.loop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
-    loopPriority: LoopPriority.CORE, // 音乐气泡是核心动画
+    enabled: animConfig.loop,
   });
   
   const canAnimate = animConfig.loop && isAnimating;

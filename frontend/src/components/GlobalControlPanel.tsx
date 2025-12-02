@@ -287,8 +287,8 @@ const GlobalControlPanel: React.FC = () => {
   // 主题变化已通过 useThemeMode() hook 自动响应
   // 无需额外的 MutationObserver
 
-  // 动态计算展开面板的高度 - 使用克隆测量方案（性能优化版）
-  // ⚠️ 关键优化: 移动端改为轻量监测（无 ResizeObserver），桌面保留 Observer
+  // 动态计算展开面板的高度 - 🔧 事件驱动，无轮询
+  // 外部可通过 dispatchEvent(new CustomEvent('gcp-remeasure')) 触发重测
   useLayoutEffect(() => {
     if (!triggerRef.current) return;
     const triggerEl = triggerRef.current;
@@ -301,7 +301,6 @@ const GlobalControlPanel: React.FC = () => {
     const contentEl = expandedContentRef.current;
 
     let lastHeight = 0;
-    let lastNaturalHeight = 0;
     let lastUpdateTime = 0;
     let pendingMeasure = false;
     let measureTimeout: number | null = null;
@@ -309,8 +308,9 @@ const GlobalControlPanel: React.FC = () => {
     // ⚠️ 移动端检测 - 使用性能配置而非 window.innerWidth，更可靠
     const isMobileDevice = perf.isMobile || perf.lowEndDevice;
     
-    // ⚠️ 移动端使用更长的节流时间，减少测量频率
-    const THROTTLE_MS = isMobileDevice ? 1000 : (anim.level === 'standard' ? 300 : 500);
+    // ⚠️ 节流时间：防止短时间内多次事件触发重复测量
+    // 🔧 加大节流时间，减少克隆测量频率
+    const THROTTLE_MS = isMobileDevice ? 1200 : 600;
 
     const measure = () => {
       const now = Date.now();
@@ -337,12 +337,11 @@ const GlobalControlPanel: React.FC = () => {
         ? window.innerWidth - 56
         : 356;
 
-      // ⚠️ DOM 克隆操作开销大,已添加严格节流
+      // ⚠️ DOM 克隆操作：仅在事件触发时执行
       const clone = contentEl.cloneNode(true) as HTMLElement;
       clone.style.position = 'absolute';
       clone.style.visibility = 'hidden';
       clone.style.height = 'auto';
-      // 关键修复：强制使用目标宽度而不是当前宽度
       clone.style.width = targetWidth + 'px';
 
       document.body.appendChild(clone);
@@ -351,7 +350,6 @@ const GlobalControlPanel: React.FC = () => {
 
       // 适当补偿 (考虑内边距 + 过渡)
       const compensated = Math.ceil(raw * 1.08);
-      lastNaturalHeight = raw;
 
       if (Math.abs(compensated - lastHeight) > 4) {
         lastHeight = compensated;
@@ -362,96 +360,54 @@ const GlobalControlPanel: React.FC = () => {
     // 立即测量，确保动画起始帧即为正确高度
     measure();
 
-    // ⚠️ 关键优化: 移动端/低端设备禁用 Observer，避免滚动时触发性能问题
-    // 只在展开时进行一次测量，之后不再监听变化
-    if (isMobileDevice) {
-      // 移动端: 初始测量后启动轻量监测，避免滚动/视口变化导致高度失准
-      const delayedMeasure = setTimeout(measure, 200);
+    // 🔧 统一使用事件驱动重测（移除轮询）
+    const handleRemeasure = () => {
+      measure();
+    };
+    window.addEventListener('gcp-remeasure', handleRemeasure);
+    // 兼容 ControlPanelWidgets 触发的事件
+    window.addEventListener('control-panel-content-resize', handleRemeasure);
 
-      let scrollIdleId: number | null = null;
-      const handleScroll = () => {
-        if (scrollIdleId) {
-          clearTimeout(scrollIdleId);
-        }
-        scrollIdleId = window.setTimeout(() => {
-          scrollIdleId = null;
-          lastUpdateTime = 0; // 强制允许下一次测量
-          measure();
-        }, 180);
-      };
-      window.addEventListener('scroll', handleScroll, { passive: true });
+    // 视口变化事件
+    const handleViewportChange = () => {
+      lastUpdateTime = 0; // 重置节流
+      measure();
+    };
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('orientationchange', handleViewportChange);
 
-      const handleViewportResize = () => {
+    // 可见性变化时重新测量
+    const handleVisibility = () => {
+      if (!document.hidden) {
         lastUpdateTime = 0;
-        measure();
-      };
-      window.addEventListener('resize', handleViewportResize);
-      window.addEventListener('orientationchange', handleViewportResize);
-
-      const visualViewport = window.visualViewport;
-      const handleVisualViewportResize = visualViewport
-        ? () => {
-            lastUpdateTime = 0;
-            measure();
-          }
-        : null;
-      if (visualViewport && handleVisualViewportResize) {
-        visualViewport.addEventListener('resize', handleVisualViewportResize);
+        setTimeout(measure, 100);
       }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
-      // 轮询内容自然高度，只有在真实高度变化时才触发克隆测量
-      let pollId: number | null = null;
-      const startPolling = () => {
-        pollId = window.setInterval(() => {
-          const currentNaturalHeight = contentEl.scrollHeight;
-          if (Math.abs(currentNaturalHeight - lastNaturalHeight) > 6) {
-            lastUpdateTime = 0;
-            measure();
-          }
-        }, 450);
-      };
-      startPolling();
-
-      return () => {
-        clearTimeout(delayedMeasure);
-        if (scrollIdleId) {
-          clearTimeout(scrollIdleId);
-        }
-        window.removeEventListener('scroll', handleScroll);
-        window.removeEventListener('resize', handleViewportResize);
-        window.removeEventListener('orientationchange', handleViewportResize);
-        if (visualViewport && handleVisualViewportResize) {
-          visualViewport.removeEventListener('resize', handleVisualViewportResize);
-        }
-        if (pollId) {
-          clearInterval(pollId);
-        }
-        if (measureTimeout !== null) {
-          clearTimeout(measureTimeout);
-        }
-      };
+    // 桌面端：使用 ResizeObserver 监听内容尺寸变化
+    let unobserveResize: (() => void) | null = null;
+    if (!isMobileDevice) {
+      unobserveResize = observeResize(contentEl, () => measure());
     }
 
-    // 桌面端: 使用共享 ResizeObserver 监听变化
-    const unobserve = observeResize(contentEl, () => measure());
-
-    // ⚠️ 优化: 减少 MutationObserver 的监听范围
-    // 只监听直接子节点变化,不监听 subtree 和 characterData
+    // MutationObserver：只监听直接子节点变化
     const mutationObserver = new MutationObserver(() => measure());
     mutationObserver.observe(contentEl, {
       childList: true,
-      // subtree: true,  // 移除 subtree 监听,减少触发频率
-      // characterData: true  // 移除 characterData 监听
+      // 不监听 subtree 和 characterData，减少触发频率
     });
 
-    // 可见性变化时重新测量
-    const handleVisibility = () => { if (!document.hidden) setTimeout(measure, 100); };
-    document.addEventListener('visibilitychange', handleVisibility);
-
     return () => {
-      unobserve();
-      mutationObserver.disconnect();
+      window.removeEventListener('gcp-remeasure', handleRemeasure);
+      window.removeEventListener('control-panel-content-resize', handleRemeasure);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('orientationchange', handleViewportChange);
       document.removeEventListener('visibilitychange', handleVisibility);
+      if (unobserveResize) {
+        unobserveResize();
+      }
+      mutationObserver.disconnect();
       if (measureTimeout !== null) {
         clearTimeout(measureTimeout);
       }

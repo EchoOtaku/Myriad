@@ -1194,11 +1194,11 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
   const uniqueId = useId();
   const { t } = useI18n();
   
-  // 🆕 使用统一动画调度器管理循环动画
+  // 🆕 使用触发式动画 - 组件挂载时播放一次hover动画
   const { isAnimating } = useLoopAnimation({
     duration: 600, // hover动画约0.6秒
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 确保动画完整完成一轮
+    trigger: 'mount', // 固定值，组件首次渲染时触发一次
+    enabled: anim.loop, // 低端设备禁用
   });
   
   // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）

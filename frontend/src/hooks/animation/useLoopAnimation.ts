@@ -1,119 +1,129 @@
 /**
  * 循环动画 Hook
  * 
- * 用于管理持续循环的动画（如天气图标摇摆、音乐播放器动效等）
- * 循环动画与主队列共享槽位，支持优先级抢占
- * 动画结束后自动释放槽位，冷却期结束后自动重新加入队列
+ * 用于管理触发式循环动画（如弹幕、音乐气泡等）
+ * 每次触发播放一轮，播放完成后自动释放资源，不自动重播
  * 
- * 优先级说明：
- * - CORE(0): 核心动画（B站弹幕、网易云、GitHub、Steam），不可被抢占
- * - NORMAL(1): 普通动画（大多数卡片），可被 CORE 抢占
- * - DECORATIVE(2): 装饰动画（背景光晕），优先级最低，最容易被抢占
+ * 使用方式：
+ * - 传入 trigger 参数，当 trigger 变化时触发一轮动画
+ * - 动画播放完成后自动停止，不占用任何资源
+ * - 下次 trigger 变化时再次播放
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { coordinator } from './coordinator';
-import { AnimationState, LoopAnimationOptions, LoopPriority } from './types';
+
+interface UseLoopAnimationOptions {
+  /** 动画持续时间(ms) */
+  duration?: number;
+  /** 触发器：值变化时触发一轮动画 */
+  trigger?: unknown;
+  /** 是否启用（可用于暂停功能） */
+  enabled?: boolean;
+}
 
 interface UseLoopAnimationResult {
   /** 是否正在播放动画 */
   isAnimating: boolean;
-  /** 手动请求动画槽位 */
-  requestAnimation: () => boolean;
-  /** 手动释放动画槽位 */
-  releaseAnimation: () => void;
+  /** 手动触发一轮动画 */
+  triggerAnimation: () => void;
+  /** 手动停止动画 */
+  stopAnimation: () => void;
 }
 
-let loopIdCounter = 0;
-
 /**
- * 循环动画 Hook
+ * 触发式循环动画 Hook
  * 
  * @example
  * ```tsx
- * // 核心动画（B站弹幕，11s播放，10s冷却）
+ * // 报告卡片弹幕动画 - 状态切换时触发
+ * const [currentIndex, setCurrentIndex] = useState(0);
  * const { isAnimating } = useLoopAnimation({
  *   duration: 11000,
- *   cooldown: 10000,
- *   loopPriority: LoopPriority.CORE,
+ *   trigger: currentIndex, // 切换时触发
+ *   enabled: anim.loop,
  * });
  * 
- * // 装饰动画（背景光晕）
- * const { isAnimating } = useLoopAnimation({
- *   duration: 5000,
- *   cooldown: 8000,
- *   loopPriority: LoopPriority.DECORATIVE,
- * });
+ * // 手动触发
+ * const { isAnimating, triggerAnimation } = useLoopAnimation({ duration: 5000 });
+ * <button onClick={triggerAnimation}>播放动画</button>
  * ```
  */
-export function useLoopAnimation(options: LoopAnimationOptions = {}): UseLoopAnimationResult {
+export function useLoopAnimation(options: UseLoopAnimationOptions = {}): UseLoopAnimationResult {
   const {
     duration = 3000,
-    cooldown = 10000,
-    autoRequest = true,
-    releaseOnUnmount = true,
-    loopPriority = LoopPriority.NORMAL,
+    trigger,
+    enabled = true,
   } = options;
 
-  // 生成稳定的 ID
-  const idRef = useRef<string>('');
-  if (!idRef.current) {
-    idRef.current = `loop-${++loopIdCounter}`;
-  }
-  const id = idRef.current;
-
   const [isAnimating, setIsAnimating] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  const isFirstRender = useRef(true);
 
-  // 订阅状态变化
-  useEffect(() => {
-    mountedRef.current = true;
+  // 清理定时器
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  // 开始一轮动画
+  const startAnimation = useCallback(() => {
+    if (!mountedRef.current || !enabled) return;
     
-    const unsubscribe = coordinator.subscribe(id, (state) => {
-      if (!mountedRef.current) return;
-      
-      if (state === AnimationState.RUNNING) {
-        setIsAnimating(true);
-      } else if (state === AnimationState.COMPLETED || state === AnimationState.SKIPPED) {
+    clearTimer();
+    setIsAnimating(true);
+    
+    // 动画结束后自动停止
+    timerRef.current = setTimeout(() => {
+      if (mountedRef.current) {
         setIsAnimating(false);
       }
-    });
+      timerRef.current = null;
+    }, duration);
+  }, [duration, enabled, clearTimer]);
 
-    // 自动请求
-    if (autoRequest) {
-      const success = coordinator.requestLoopSlot(id, duration, cooldown, loopPriority);
-      if (success) {
-        setIsAnimating(true);
+  // 手动触发
+  const triggerAnimation = useCallback(() => {
+    startAnimation();
+  }, [startAnimation]);
+
+  // 手动停止
+  const stopAnimation = useCallback(() => {
+    clearTimer();
+    setIsAnimating(false);
+  }, [clearTimer]);
+
+  // trigger 变化时触发动画（跳过首次渲染）
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      // 首次渲染时也触发一次（如果启用）
+      if (enabled && trigger !== undefined) {
+        startAnimation();
       }
+      return;
     }
+    
+    if (enabled && trigger !== undefined) {
+      startAnimation();
+    }
+  }, [trigger, enabled, startAnimation]);
 
+  // 清理
+  useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      unsubscribe();
-      
-      if (releaseOnUnmount) {
-        coordinator.releaseLoopSlot(id);
-      }
+      clearTimer();
     };
-  }, [id, duration, cooldown, autoRequest, releaseOnUnmount, loopPriority]);
-
-  const requestAnimation = useCallback(() => {
-    const success = coordinator.requestLoopSlot(id, duration, cooldown, loopPriority);
-    if (success) {
-      setIsAnimating(true);
-    }
-    return success;
-  }, [id, duration, cooldown, loopPriority]);
-
-  const releaseAnimation = useCallback(() => {
-    coordinator.releaseLoopSlot(id);
-    setIsAnimating(false);
-  }, [id]);
+  }, [clearTimer]);
 
   return {
     isAnimating,
-    requestAnimation,
-    releaseAnimation,
+    triggerAnimation,
+    stopAnimation,
   };
 }
 

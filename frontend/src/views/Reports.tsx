@@ -25,7 +25,7 @@ import {
 import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard';
 import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
-import { useLoopAnimation, usePageReady, LoopPriority } from '../hooks/animation';
+import { useLoopAnimation, usePageReady } from '../hooks/animation';
 import { useReportsScheduler, useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
 
@@ -193,18 +193,16 @@ const getBilibiliProxyUrl = (cover?: string, title?: string): string => {
 };
 
 // 迷你组件：B站弹幕云 (优化：使用 memo + 优化动画性能 + 调度器)
-const DanmakuWidget = memo(({ data, defaultDanmaku }: { data?: { danmaku?: string[] }; defaultDanmaku: string[] }) => {
+const DanmakuWidget = memo(({ data, defaultDanmaku, triggerKey }: { data?: { danmaku?: string[] }; defaultDanmaku: string[]; triggerKey?: unknown }) => {
   const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku]);
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 使用统一动画调度器管理循环动画（弹幕是核心动画，不可被抢占）
+  // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
-    cooldown: 10000, // 冷却 10 秒后重新加入队列
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
-    loopPriority: LoopPriority.CORE, // 弹幕是核心动画
+    trigger: triggerKey, // 状态切换时触发
+    enabled: anim.loop, // 低端设备禁用
   });
   
   // 🚀 性能优化：预计算随机化的动画参数，避免弹幕重叠
@@ -294,7 +292,7 @@ const BilibiliWidget = memo(({ data, onContentChange, showOverview, defaultDanma
           transition={{ duration: 0.5 }}
           className="h-full w-full"
         >
-          <DanmakuWidget data={data} defaultDanmaku={defaultDanmaku} />
+          <DanmakuWidget data={data} defaultDanmaku={defaultDanmaku} triggerKey={showOverview} />
         </motion.div>
       ) : (
         <motion.div
@@ -809,23 +807,21 @@ const GithubWidget = memo(({ data, onContentChange, showOverview, defaultLevel, 
 });
 
 // 迷你组件：网易云音乐卡片展示（统计信息展示）+ 调度器
-const MusicStatsWidget = memo(({ data, tenThousandSuffix }: { data?: { 
+const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?: { 
   soul_color?: string; 
   mood_keywords?: Array<{ tag: string; color: string }>;
   follower_count?: number;
   playlist_count?: number;
   level?: number;
-}; tenThousandSuffix: string }) => {
+}; tenThousandSuffix: string; triggerKey?: unknown }) => {
   const anim = useAnimationLevel();
   const uniqueId = useId();
   
-  // 🆕 使用统一动画调度器管理循环动画（音乐气泡是核心动画，不可被抢占）
+  // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
-    duration: 5000,
-    cooldown: 10000, // 冷却 10 秒后重新加入队列
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
-    loopPriority: LoopPriority.CORE, // 音乐气泡是核心动画
+    duration: 5000, // 气泡动画约5秒
+    trigger: triggerKey, // 状态切换时触发
+    enabled: anim.loop, // 低端设备禁用
   });
   
   const canAnimate = anim.loop && isAnimating;
@@ -1131,7 +1127,7 @@ const NeteaseWidget = memo(({
           transition={{ duration: 0.5 }}
           className="h-full w-full"
         >
-          <MusicStatsWidget data={processedData} tenThousandSuffix={tenThousandSuffix} />
+          <MusicStatsWidget data={processedData} tenThousandSuffix={tenThousandSuffix} triggerKey={showOverview} />
         </motion.div>
       ) : (
         <motion.div

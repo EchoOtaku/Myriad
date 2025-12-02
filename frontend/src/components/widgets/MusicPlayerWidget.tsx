@@ -199,11 +199,11 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const uniqueId = useId();
   const { t } = useI18n();
   
-  // 🆕 使用统一动画调度器管理循环动画
+  // 🆕 使用触发式动画 - 组件挂载时播放一次光效动画
   const { isAnimating } = useLoopAnimation({
     duration: 4000, // 光效动画约4秒周期
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 确保动画完整完成一轮
+    trigger: 'mount', // 固定值，组件首次渲染时触发一次
+    enabled: anim.loop, // 低端设备禁用
   });
   
   const canAnimate = anim.loop && isAnimating;

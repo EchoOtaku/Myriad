@@ -10,7 +10,7 @@ import { WidgetConfig } from '../WidgetGrid';
 import { FaSteam, FaGithub } from '@lib/icons';
 import { SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
-import { useLoopAnimation, LoopPriority } from '../../hooks/animation';
+import { useLoopAnimation } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 import { getLatestReportDeduped } from '../../utils/requestDedup';
 
@@ -70,19 +70,17 @@ function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
 }
 
 // ==================== B站组件（完整版）====================
-const DanmakuWidget = memo(({ data, allowLoop = true }: { data?: { danmaku?: string[] }, allowLoop?: boolean }) => {
+const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { danmaku?: string[] }, allowLoop?: boolean, triggerKey?: unknown }) => {
   const { t } = useI18n();
   const defaultDanmaku = t.reportCard.danmakuDefault as unknown as string[];
   const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku]);
   const uniqueId = useId();
   
-  // 🆕 使用统一动画调度器管理循环动画（弹幕是核心动画，不可被抢占）
+  // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
-    cooldown: 10000, // 冷却 10 秒后重新加入队列
-    autoRequest: allowLoop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
-    loopPriority: LoopPriority.CORE, // 弹幕是核心动画
+    trigger: triggerKey, // 状态切换时触发
+    enabled: allowLoop, // 低端设备禁用
   });
   
   const canAnimate = allowLoop && isAnimating;
@@ -188,7 +186,7 @@ const BilibiliWidget = memo(({ data, showOverview, onContentChange, allowLoop = 
     <AnimatePresence mode="wait">
       {showOverview || !currentItem ? (
         <motion.div key="danmaku" initial={CONTENT_FADE_INITIAL} animate={CONTENT_FADE_ANIMATE} exit={CONTENT_FADE_EXIT} transition={CONTENT_FADE_TRANSITION} className="h-full w-full">
-          <DanmakuWidget data={data} allowLoop={allowLoop} />
+          <DanmakuWidget data={data} allowLoop={allowLoop} triggerKey={showOverview} />
         </motion.div>
       ) : (
         <motion.div key={`lib-${currentItemIndex}`} initial={CONTENT_SLIDE_INITIAL} animate={CONTENT_SLIDE_ANIMATE} exit={CONTENT_SLIDE_EXIT} transition={CONTENT_SLIDE_TRANSITION} className="h-full w-full p-1.5">
@@ -457,17 +455,15 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
 });
 
 // ==================== Netease组件（完整版）====================
-const MusicStatsWidget = memo(({ data, allowLoop = true }: any) => {
+const MusicStatsWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: any, allowLoop?: boolean, triggerKey?: unknown }) => {
   const { t } = useI18n();
   const uniqueId = useId();
   
-  // 🆕 使用统一动画调度器管理循环动画（音乐气泡是核心动画，不可被抢占）
+  // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
-    duration: 5000,
-    cooldown: 10000, // 冷却 10 秒后重新加入队列
-    autoRequest: allowLoop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
-    loopPriority: LoopPriority.CORE, // 音乐气泡是核心动画
+    duration: 5000, // 气泡动画约5秒
+    trigger: triggerKey, // 状态切换时触发
+    enabled: allowLoop, // 低端设备禁用
   });
   
   const canAnimate = allowLoop && isAnimating;
@@ -669,7 +665,7 @@ const NeteaseWidget = memo(({ data, showOverview, onContentChange, allowLoop = t
     <AnimatePresence mode="wait">
       {showOverview || currentItems.length === 0 || libraryItems.length === 0 ? (
         <motion.div key="stats" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="h-full w-full">
-          <MusicStatsWidget data={processedData} allowLoop={allowLoop} />
+          <MusicStatsWidget data={processedData} allowLoop={allowLoop} triggerKey={showOverview} />
         </motion.div>
       ) : (
         <motion.div key={`music-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">

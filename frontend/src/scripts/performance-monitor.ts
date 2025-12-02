@@ -1,7 +1,10 @@
 /**
  * 前端性能监控工具
  * 监测页面加载性能、FPS、内存使用等指标
+ * 🔧 优化：FPS 数据统一从 AnimationCoordinator 获取，避免重复 RAF 循环
  */
+
+import { getFrameStats } from '../hooks/animation';
 
 interface PerformanceMetrics {
   fcp: number; // First Contentful Paint
@@ -20,7 +23,7 @@ const LONG_TASK_THRESHOLD = 50; // ms
 class PerformanceMonitor {
   private metrics: Partial<PerformanceMetrics> = {};
   private fpsFrames: number[] = [];
-  private rafId: number | null = null;
+  private fpsIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.init();
@@ -32,7 +35,7 @@ class PerformanceMonitor {
     // 监测Core Web Vitals
     this.measureWebVitals();
     
-    // 开始FPS监测
+    // 开始FPS监测（从 coordinator 轮询）
     this.startFPSMonitor();
 
     // 监听页面可见性变化
@@ -132,19 +135,16 @@ class PerformanceMonitor {
   }
 
   /**
-   * 开始FPS监测
+   * 开始FPS监测（从 AnimationCoordinator 轮询）
    */
   private startFPSMonitor() {
-    let lastTime = performance.now();
-    let frames = 0;
-
-    const measureFPS = (currentTime: number) => {
-      frames++;
-      const delta = currentTime - lastTime;
-
-      // 每秒计算一次FPS
-      if (delta >= 1000) {
-        const fps = Math.round((frames * 1000) / delta);
+    if (this.fpsIntervalId) return;
+    
+    // 每秒从 coordinator 获取 FPS 数据
+    this.fpsIntervalId = setInterval(() => {
+      try {
+        const stats = getFrameStats();
+        const fps = stats.fps;
         this.metrics.fps = fps;
         this.fpsFrames.push(fps);
         
@@ -157,24 +157,19 @@ class PerformanceMonitor {
         if (ENABLE_LOGGING && fps < FPS_WARNING_THRESHOLD) {
           console.warn(`⚠️ Low FPS detected: ${fps}`);
         }
-
-        frames = 0;
-        lastTime = currentTime;
+      } catch {
+        // coordinator 可能未初始化
       }
-
-      this.rafId = requestAnimationFrame(measureFPS);
-    };
-
-    this.rafId = requestAnimationFrame(measureFPS);
+    }, 1000);
   }
 
   /**
    * 停止FPS监测
    */
   private stopFPSMonitor() {
-    if (this.rafId) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
+    if (this.fpsIntervalId) {
+      clearInterval(this.fpsIntervalId);
+      this.fpsIntervalId = null;
     }
   }
 

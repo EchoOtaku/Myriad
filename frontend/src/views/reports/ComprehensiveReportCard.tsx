@@ -78,11 +78,11 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
   const uniqueId = useId();
   const { t } = useI18n();
   
-  // 🆕 使用统一动画调度器管理循环动画
+  // 🆕 使用触发式动画 - 组件挂载时播放一次装饰动画
   const { isAnimating } = useLoopAnimation({
     duration: 4000, // 装饰动画约4秒周期
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 内容切换前不强制移除
+    trigger: 'mount', // 固定值，组件首次渲染时触发一次
+    enabled: anim.loop, // 低端设备禁用
   });
   
   const canAnimate = anim.loop && isAnimating;

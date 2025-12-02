@@ -549,6 +549,15 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = (props) => {
   const { player } = props;
   const { musicEnabled, musicPlayerView, currentSong, lyrics, musicContainerRef } = player;
   
+  // 🔧 视图切换时触发父容器重测高度
+  useEffect(() => {
+    // 延迟触发，等待 DOM 更新完成
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('gcp-remeasure'));
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [musicPlayerView]);
+  
   // 歌词视图自动返回：当歌词不存在时延迟检测后返回默认界面
   useEffect(() => {
     if (musicPlayerView !== 'lyrics') {

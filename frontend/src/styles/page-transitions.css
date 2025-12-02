@@ -65,12 +65,11 @@ main.relative {
 }
 
 /*
- * AnimatedView 容器的初始样式
- * 确保在 framer-motion 接管之前完全不可见
- * 这是防止闪屏的关键 CSS
+ * AnimatedView 容器样式
+ * 页面级动画由 App.tsx 的 PageWrapper 处理
  */
 .animated-view-container {
-    /* 默认继承 framer-motion 设置的 opacity，无需额外处理 */
+    /* 容器继承父级尺寸 */
 }
 
 /* ========================================

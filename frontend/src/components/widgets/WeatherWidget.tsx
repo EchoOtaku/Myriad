@@ -101,11 +101,11 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
   const titleFontScale = isNonChinese ? fontScale * 0.9 : fontScale; // 温度等标题减少约6-8px
   const infoFontScale = isNonChinese ? fontScale * 0.8 : fontScale;  // 城市等信息减少约4px
   
-  // 🆕 使用统一动画调度器管理循环动画
+  // 🆕 使用触发式动画 - 组件挂载时播放一次天气图标动画
   const { isAnimating } = useLoopAnimation({
     duration: 3000, // 天气图标摇摆约3秒周期
-    autoRequest: anim.loop,
-    releaseOnUnmount: false, // 确保动画完整完成一轮
+    trigger: 'mount', // 固定值，组件首次渲染时触发一次
+    enabled: anim.loop, // 低端设备禁用
   });
   
   const canAnimate = anim.loop && isAnimating;

@@ -227,6 +227,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const [visibleCount, setVisibleCount] = useState(20); // 初始显示数量
     
     const containerRef = useRef<HTMLDivElement>(null);
+    const containerWidthRef = useRef<number>(0); // 🔧 缓存容器宽度，避免重复读取
     const { showInfo } = useNotification();
     const { playSong, currentSong, isPlaying: globalIsPlaying, musicColor } = useMusicPlayerControl();
     const { t } = useI18n();
@@ -248,7 +249,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const computeLayout = useCallback(() => {
         if (!containerRef.current || filteredAllItems.length === 0) return;
 
-        const containerWidth = containerRef.current.offsetWidth;
+        // 🔧 使用缓存的容器宽度，避免强制重排
+        // 只有缓存无效时才读取
+        if (containerWidthRef.current === 0) {
+            containerWidthRef.current = containerRef.current.offsetWidth;
+        }
+        const containerWidth = containerWidthRef.current;
         const gap = 16;
         let columns = 5;
 
@@ -416,7 +422,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }, [filteredAllItems, filter]);
 
     // 使用共享的 resize 监听器
-    useSharedResize(computeLayout, { debounce: 150 });
+    useSharedResize(() => {
+        // 🔧 resize 时刷新容器宽度缓存
+        if (containerRef.current) {
+            containerWidthRef.current = containerRef.current.offsetWidth;
+        }
+        computeLayout();
+    }, { debounce: 150 });
     
     // 初始计算布局
     useEffect(() => {

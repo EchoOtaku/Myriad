@@ -13,7 +13,6 @@
 import {
   AnimationState,
   AnimationPriority,
-  LoopPriority,
   AnimationConfig,
   AnimationListener,
   Unsubscribe,
@@ -33,25 +32,6 @@ interface AnimationSlot {
   priority: AnimationPriority;
   startTime: number;
   duration: number;
-}
-
-/** 循环动画槽位信息（共享主队列） */
-interface LoopSlot {
-  id: string;
-  loopPriority: LoopPriority;
-  startTime: number;
-  duration: number;
-  cooldown: number;
-  timerId: ReturnType<typeof setTimeout> | null;
-}
-
-/** 循环动画等待项 */
-interface LoopWaitingItem {
-  id: string;
-  loopPriority: LoopPriority;
-  duration: number;
-  cooldown: number;
-  registeredAt: number;
 }
 
 /** 等待队列项 */
@@ -130,21 +110,6 @@ class AnimationCoordinator {
   // 超时检查定时器
   private timeoutCheckerId: ReturnType<typeof setInterval> | null = null;
   
-  // ==================== 循环动画队列 ====================
-  // 循环动画槽位追踪（共享主队列 activeSlots，这里只记录循环动画的额外信息）
-  private loopSlots = new Map<string, LoopSlot>();
-  // 循环动画等待队列（按 LoopPriority 排序）
-  private loopWaitingQueue: LoopWaitingItem[] = [];
-  // 冷却中的循环动画（等待重新进入队列）
-  // 🔧 添加 timerId 追踪，确保能正确清理定时器
-  private loopCooldowns = new Map<string, { 
-    cooldownEnd: number; 
-    duration: number; 
-    cooldown: number; 
-    loopPriority: LoopPriority;
-    timerId: ReturnType<typeof setTimeout>;
-  }>();
-  
   // 延迟队列
   private delayedQueue: Array<{ id: string; executeAt: number; priority: AnimationPriority }> = [];
   private delayTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -152,8 +117,6 @@ class AnimationCoordinator {
   // ==================== 分片处理配置 ====================
   // 每批最大处理数，避免 Long Task
   private readonly BATCH_SIZE = 8;
-  // 分片延迟（让出主线程）
-  private readonly YIELD_DELAY = 0;
   
   // ==================== 帧率监控与管理 ====================
   /** 帧时间预算（ms） - 60fps */
@@ -162,6 +125,8 @@ class AnimationCoordinator {
   private readonly FPS_SAMPLE_SIZE = 30;
   /** 低帧率阈值 */
   private readonly LOW_FPS_THRESHOLD = 45;
+  /** FPS 更新间隔（ms），避免频繁计算 */
+  private readonly FPS_UPDATE_INTERVAL = 500;
   
   /** 帧时间记录 */
   private frameTimes: number[] = [];
@@ -173,6 +138,8 @@ class AnimationCoordinator {
   private fpsMonitorRafId: number | null = null;
   /** 上次帧时间 */
   private lastFrameTimestamp: number = 0;
+  /** 上次 FPS 更新时间 */
+  private lastFpsUpdateTime: number = 0;
   /** FPS 监控是否运行中 */
   private fpsMonitorRunning: boolean = false;
   /** 卡顿计数 */
@@ -240,8 +207,6 @@ class AnimationCoordinator {
   // ==================== 对象池（减少 GC 压力）====================
   // 🔧 等待队列 ID 索引，用于 O(1) 查找
   private waitingQueueIndex = new Map<string, number>();
-  // 🔧 循环动画等待队列 ID 索引
-  private loopWaitingQueueIndex = new Map<string, number>();
   
   // ==================== WeakRef 元素追踪（内存优化）====================
   // 🔧 新增：使用 WeakRef 追踪元素，元素被 GC 时自动清理状态
@@ -321,7 +286,6 @@ class AnimationCoordinator {
       // 页面变为可见时，触发等待队列处理
       if (this.isPageVisible) {
         this.processWaitQueue();
-        this.processLoopWaitQueue();
       }
       
       // 🔧 通知所有可见性订阅者
@@ -520,35 +484,12 @@ class AnimationCoordinator {
       this.processWaitQueue();
     }
     
-    // 清理循环动画
-    const loopInfo = this.loopSlots.get(animationId);
-    if (loopInfo) {
-      if (loopInfo.timerId) {
-        clearTimeout(loopInfo.timerId);
-      }
-      this.loopSlots.delete(animationId);
-    }
-    
-    // 🔧 清理冷却定时器
-    const cooldownInfo = this.loopCooldowns.get(animationId);
-    if (cooldownInfo) {
-      clearTimeout(cooldownInfo.timerId);
-      this.loopCooldowns.delete(animationId);
-    }
-    
     // 🔧 使用索引 Map O(1) 查找并移除
     const waitIdx = this.waitingQueueIndex.get(animationId);
     if (waitIdx !== undefined) {
       this.waitingQueue.splice(waitIdx, 1);
       this.waitingQueueIndex.delete(animationId);
       this.rebuildWaitingQueueIndex(waitIdx);
-    }
-    
-    const loopWaitIdx = this.loopWaitingQueueIndex.get(animationId);
-    if (loopWaitIdx !== undefined) {
-      this.loopWaitingQueue.splice(loopWaitIdx, 1);
-      this.loopWaitingQueueIndex.delete(animationId);
-      this.rebuildLoopWaitingQueueIndex(loopWaitIdx);
     }
     
     // 从延迟队列移除（仍用 findIndex，因为延迟队列通常较小）
@@ -612,9 +553,6 @@ class AnimationCoordinator {
     let hasTimedOut = false;
     
     for (const [id, slot] of this.activeSlots) {
-      // 循环动画不受超时限制（由 scheduleLoopRelease 管理）
-      if (slot.priority === AnimationPriority.LOOP) continue;
-      
       // 检查是否超时
       if (now - slot.startTime > this.ANIMATION_TIMEOUT) {
         this.activeSlots.delete(id);
@@ -671,15 +609,6 @@ class AnimationCoordinator {
     this.inBurstMode = true;
     this.burstStartTime = this.refreshNow();
     this.currentBurstDuration = duration;
-  }
-  
-  /**
-   * 延长爆发模式
-   */
-  private extendBurstMode() {
-    // 每次延长一个基础周期
-    this.burstStartTime = this.getNow();
-    this.currentBurstDuration = this.config.burstDuration;
   }
 
   // ==================== 配置 ====================
@@ -810,22 +739,6 @@ class AnimationCoordinator {
     this.activeSlots.clear();
     this.waitingQueue.length = 0;
     this.waitingQueueIndex.clear();
-    
-    // 清理循环动画队列和定时器
-    for (const slot of this.loopSlots.values()) {
-      if (slot.timerId) {
-        clearTimeout(slot.timerId);
-      }
-    }
-    this.loopSlots.clear();
-    this.loopWaitingQueue.length = 0;
-    this.loopWaitingQueueIndex.clear();
-    
-    // 🔧 清理所有冷却定时器
-    for (const cooldownInfo of this.loopCooldowns.values()) {
-      clearTimeout(cooldownInfo.timerId);
-    }
-    this.loopCooldowns.clear();
   }
 
   // ==================== 元素级（批量调度）====================
@@ -1184,403 +1097,7 @@ class AnimationCoordinator {
     this.scheduleMicrotaskFlush();
   }
 
-  // ==================== 循环动画支持（共享主队列）====================
-
-  /**
-   * 请求循环动画槽位
-   * 循环动画与普通动画共享主队列槽位
-   * 支持按 LoopPriority 优先级抢占
-   * 动画结束后自动释放槽位，冷却后重新加入队列
-   * 
-   * @param id 动画唯一标识
-   * @param duration 动画持续时间(ms)，结束后释放槽位
-   * @param cooldown 冷却时间(ms)，释放后等待多久再重新请求
-   * @param loopPriority 循环动画优先级（CORE > NORMAL > DECORATIVE）
-   * @returns 是否成功获取槽位
-   */
-  requestLoopSlot(
-    id: string, 
-    duration: number = 3000, 
-    cooldown: number = 10000,
-    loopPriority: LoopPriority = LoopPriority.NORMAL
-  ): boolean {
-    // 如果正在冷却中，不允许请求
-    if (this.loopCooldowns.has(id)) {
-      return false;
-    }
-    
-    // 如果已经在运行，返回 true
-    if (this.loopSlots.has(id)) {
-      return true;
-    }
-    
-    // 🔧 优化：使用索引 Map O(1) 检查是否已在等待队列中
-    if (this.loopWaitingQueueIndex.has(id)) {
-      return false;
-    }
-    
-    // 从等待队列移除（如果存在）
-    const waitIdx = this.loopWaitingQueueIndex.get(id);
-    if (waitIdx !== undefined) {
-      this.loopWaitingQueue.splice(waitIdx, 1);
-      this.loopWaitingQueueIndex.delete(id);
-      this.rebuildLoopWaitingQueueIndex(waitIdx);
-    }
-    
-    const maxConcurrent = this.getMaxConcurrent();
-    const maxLoopSlots = this.config.maxLoopSlots;
-    
-    // 检查循环动画槽位是否已满
-    const loopSlotsFull = this.loopSlots.size >= maxLoopSlots;
-    
-    // 检查主队列是否有可用槽位，且循环动画槽位未满
-    if (this.activeSlots.size < maxConcurrent && !loopSlotsFull) {
-      this.acquireLoopSlot(id, loopPriority, duration, cooldown);
-      return true;
-    }
-    
-    // 循环动画槽位满，检查是否可以抢占其他循环动画
-    if (loopSlotsFull) {
-      const victimId = this.findLoopPreemptVictim(loopPriority);
-      if (victimId) {
-        // 抢占低优先级循环动画槽位
-        this.forceReleaseLoopSlot(victimId);
-        this.acquireLoopSlot(id, loopPriority, duration, cooldown);
-        return true;
-      }
-    }
-    
-    // 无法抢占，加入等待队列
-    this.addToLoopWaitQueue(id, loopPriority, duration, cooldown);
-    return false;
-  }
-
-  /**
-   * 获取循环动画槽位（共享主队列）- 优化版：使用缓存时间戳
-   */
-  private acquireLoopSlot(id: string, loopPriority: LoopPriority, duration: number, cooldown: number) {
-    const now = this.getNow();
-    
-    // 在主队列获取槽位
-    this.activeSlots.set(id, {
-      id,
-      priority: AnimationPriority.LOOP,
-      startTime: now,
-      duration,
-    });
-    
-    // 记录循环动画额外信息
-    const timerId = setTimeout(() => {
-      this.onLoopAnimationComplete(id);
-    }, duration);
-    
-    this.loopSlots.set(id, {
-      id,
-      loopPriority,
-      startTime: now,
-      duration,
-      cooldown,
-      timerId,
-    });
-    
-    this.states.set(id, AnimationState.RUNNING);
-    this.notify(id, AnimationState.RUNNING);
-  }
-
-  /**
-   * 循环动画完成回调
-   * 释放槽位，进入冷却期，然后重新加入队列
-   */
-  private onLoopAnimationComplete(id: string) {
-    const loopInfo = this.loopSlots.get(id);
-    if (!loopInfo) return;
-    
-    // 释放主队列槽位
-    this.activeSlots.delete(id);
-    this.loopSlots.delete(id);
-    
-    // 通知动画完成（暂时）
-    this.states.set(id, AnimationState.COMPLETED);
-    this.notify(id, AnimationState.COMPLETED);
-    
-    // 处理等待队列
-    this.processWaitQueue();
-    this.processLoopWaitQueue();
-    
-    // 进入冷却期，冷却结束后重新加入队列
-    if (loopInfo.cooldown > 0) {
-      const cooldownEnd = this.getNow() + loopInfo.cooldown;
-      
-      // 🔧 保存定时器 ID，以便后续清理
-      const timerId = setTimeout(() => {
-        this.onLoopCooldownComplete(id);
-      }, loopInfo.cooldown);
-      
-      this.loopCooldowns.set(id, {
-        cooldownEnd,
-        duration: loopInfo.duration,
-        cooldown: loopInfo.cooldown,
-        loopPriority: loopInfo.loopPriority,
-        timerId,
-      });
-    }
-  }
-
-  /**
-   * 循环动画冷却完成，重新加入队列
-   */
-  private onLoopCooldownComplete(id: string) {
-    const cooldownInfo = this.loopCooldowns.get(id);
-    if (!cooldownInfo) return;
-    
-    this.loopCooldowns.delete(id);
-    
-    // 检查组件是否还在监听（如果没有监听器了，说明组件已卸载）
-    if (!this.listeners.has(id)) {
-      return;
-    }
-    
-    // 重新请求槽位
-    this.requestLoopSlot(id, cooldownInfo.duration, cooldownInfo.cooldown, cooldownInfo.loopPriority);
-  }
-
-  /**
-   * 寻找可抢占的循环动画槽位
-   * CORE 不能被抢占，DECORATIVE 最容易被抢占
-   */
-  private findLoopPreemptVictim(requestingPriority: LoopPriority): string | null {
-    if (requestingPriority === LoopPriority.DECORATIVE) {
-      return null; // DECORATIVE 不能抢占
-    }
-    
-    let bestVictim: { id: string; priority: LoopPriority; startTime: number } | null = null;
-    
-    for (const slot of this.loopSlots.values()) {
-      // CORE 不能被抢占
-      if (slot.loopPriority === LoopPriority.CORE) {
-        continue;
-      }
-      
-      // 检查是否可以抢占
-      if (requestingPriority < slot.loopPriority) {
-        if (!bestVictim || slot.startTime < bestVictim.startTime) {
-          bestVictim = { id: slot.id, priority: slot.loopPriority, startTime: slot.startTime };
-        }
-      }
-    }
-    
-    return bestVictim?.id ?? null;
-  }
-
-  /**
-   * 添加到循环动画等待队列 - 优化版：使用索引 Map
-   */
-  private addToLoopWaitQueue(id: string, loopPriority: LoopPriority, duration: number, cooldown: number) {
-    // 🔧 使用索引 Map O(1) 检查
-    if (this.loopWaitingQueueIndex.has(id)) {
-      return;
-    }
-    
-    this.states.set(id, AnimationState.SCHEDULED);
-    
-    const now = this.getNow();
-    const item: LoopWaitingItem = {
-      id,
-      loopPriority,
-      duration,
-      cooldown,
-      registeredAt: now,
-    };
-    
-    // 🔧 快速路径：队列为空直接添加
-    const queueLen = this.loopWaitingQueue.length;
-    if (queueLen === 0) {
-      this.loopWaitingQueueIndex.set(id, 0);
-      this.loopWaitingQueue.push(item);
-      return;
-    }
-    
-    // 🔧 快速路径：优先级最低，直接追加到末尾
-    const lastItem = this.loopWaitingQueue[queueLen - 1];
-    if (lastItem.loopPriority < loopPriority || 
-        (lastItem.loopPriority === loopPriority && lastItem.registeredAt <= now)) {
-      this.loopWaitingQueueIndex.set(id, queueLen);
-      this.loopWaitingQueue.push(item);
-      return;
-    }
-    
-    // 二分查找插入位置（优先级数值小的在前，同优先级按注册时间）
-    let left = 0;
-    let right = queueLen;
-    while (left < right) {
-      const mid = (left + right) >>> 1;
-      const midItem = this.loopWaitingQueue[mid];
-      const shouldInsertAfter = midItem.loopPriority < loopPriority || 
-        (midItem.loopPriority === loopPriority && midItem.registeredAt <= now);
-      if (shouldInsertAfter) {
-        left = mid + 1;
-      } else {
-        right = mid;
-      }
-    }
-    this.loopWaitingQueue.splice(left, 0, item);
-    
-    // 🔧 重建索引
-    this.rebuildLoopWaitingQueueIndex(left);
-  }
-  
-  /**
-   * 🔧 重建循环动画等待队列索引
-   */
-  private rebuildLoopWaitingQueueIndex(fromIndex: number = 0) {
-    for (let i = fromIndex; i < this.loopWaitingQueue.length; i++) {
-      this.loopWaitingQueueIndex.set(this.loopWaitingQueue[i].id, i);
-    }
-  }
-
-  /**
-   * 处理循环动画等待队列 - 优化版：预计算限制并更新索引
-   */
-  private processLoopWaitQueue() {
-    // 快速返回：无等待项
-    if (this.loopWaitingQueue.length === 0) return;
-    
-    const maxConcurrent = this.getMaxConcurrent();
-    const maxLoopSlots = this.config.maxLoopSlots;
-    
-    // 预计算可用槽位数
-    let availableConcurrent = maxConcurrent - this.activeSlots.size;
-    let availableLoopSlots = maxLoopSlots - this.loopSlots.size;
-    let processed = 0;
-    
-    while (
-      this.loopWaitingQueue.length > 0 &&
-      availableConcurrent > 0 &&
-      availableLoopSlots > 0
-    ) {
-      const next = this.loopWaitingQueue.shift();
-      if (next) {
-        // 🔧 从索引中移除
-        this.loopWaitingQueueIndex.delete(next.id);
-        this.acquireLoopSlot(next.id, next.loopPriority, next.duration, next.cooldown);
-        availableConcurrent--;
-        availableLoopSlots--;
-        processed++;
-      }
-    }
-    
-    // 🔧 如果有移除，重建索引
-    if (processed > 0 && this.loopWaitingQueue.length > 0) {
-      this.rebuildLoopWaitingQueueIndex(0);
-    }
-  }
-
-  /**
-   * 强制释放循环动画槽位（被抢占时调用）
-   */
-  private forceReleaseLoopSlot(id: string) {
-    const loopInfo = this.loopSlots.get(id);
-    if (!loopInfo) return;
-    
-    // 清除定时器
-    if (loopInfo.timerId) {
-      clearTimeout(loopInfo.timerId);
-    }
-    
-    // 释放槽位
-    this.activeSlots.delete(id);
-    this.loopSlots.delete(id);
-    
-    this.states.set(id, AnimationState.SKIPPED);
-    this.notify(id, AnimationState.SKIPPED);
-    
-    // 被抢占后也进入冷却期
-    if (loopInfo.cooldown > 0) {
-      // 🔧 保存定时器 ID
-      const timerId = setTimeout(() => {
-        this.onLoopCooldownComplete(id);
-      }, loopInfo.cooldown);
-      
-      this.loopCooldowns.set(id, {
-        cooldownEnd: this.getNow() + loopInfo.cooldown,
-        duration: loopInfo.duration,
-        cooldown: loopInfo.cooldown,
-        loopPriority: loopInfo.loopPriority,
-        timerId,
-      });
-    }
-  }
-
-  /**
-   * 释放循环动画槽位（组件卸载时调用）- 优化版：使用索引 Map
-   */
-  releaseLoopSlot(id: string) {
-    const loopInfo = this.loopSlots.get(id);
-    if (loopInfo) {
-      if (loopInfo.timerId) {
-        clearTimeout(loopInfo.timerId);
-      }
-      this.activeSlots.delete(id);
-      this.loopSlots.delete(id);
-      this.states.set(id, AnimationState.COMPLETED);
-      this.notify(id, AnimationState.COMPLETED);
-      
-      this.processWaitQueue();
-      this.processLoopWaitQueue();
-    }
-    
-    // 🔧 清除冷却状态和定时器
-    const cooldownInfo = this.loopCooldowns.get(id);
-    if (cooldownInfo) {
-      clearTimeout(cooldownInfo.timerId);
-      this.loopCooldowns.delete(id);
-    }
-    
-    // 🔧 使用索引 Map O(1) 移除
-    const idx = this.loopWaitingQueueIndex.get(id);
-    if (idx !== undefined) {
-      this.loopWaitingQueue.splice(idx, 1);
-      this.loopWaitingQueueIndex.delete(id);
-      this.rebuildLoopWaitingQueueIndex(idx);
-    }
-  }
-
-  /**
-   * 检查循环动画是否活跃
-   */
-  isLoopActive(id: string): boolean {
-    return this.loopSlots.has(id);
-  }
-
-  /**
-   * 获取循环动画槽位状态（用于调试）
-   */
-  getLoopSlotStatus() {
-    const slots: { id: string; priority: string; runningTime: number }[] = [];
-    const now = this.getNow();
-    
-    for (const slot of this.loopSlots.values()) {
-      slots.push({
-        id: slot.id,
-        priority: LoopPriority[slot.loopPriority],
-        runningTime: Math.round(now - slot.startTime),
-      });
-    }
-    
-    return {
-      activeLoopSlots: this.loopSlots.size,
-      maxLoopSlots: this.config.maxLoopSlots,
-      totalActiveSlots: this.activeSlots.size,
-      maxConcurrent: this.getMaxConcurrent(),
-      waitingQueue: this.loopWaitingQueue.length,
-      cooldownCount: this.loopCooldowns.size,
-      slots,
-      waiting: this.loopWaitingQueue.map(item => ({
-        id: item.id,
-        priority: LoopPriority[item.loopPriority],
-      })),
-    };
-  }
+  // ==================== 帧率监控 ====================
 
   // ==================== 批量更新（microtask 替代 RAF）====================
 
@@ -1736,10 +1253,6 @@ class AnimationCoordinator {
       waitingQueueLength: this.waitingQueue.length,
       waitingQueueIndexSize: this.waitingQueueIndex.size,
       delayedQueueLength: this.delayedQueue.length,
-      loopSlotsSize: this.loopSlots.size,
-      loopWaitingQueueLength: this.loopWaitingQueue.length,
-      loopWaitingQueueIndexSize: this.loopWaitingQueueIndex.size,
-      loopCooldownsSize: this.loopCooldowns.size,
       // 🔧 新增：WeakRef 追踪的元素数量
       trackedElementsCount: this.elementRefs.size,
       // 🔧 新增：待执行的 yield 回调数量
@@ -1749,7 +1262,6 @@ class AnimationCoordinator {
       // 总计：超过 500 可能有泄漏
       totalEntries: this.states.size + this.listeners.size + this.activeSlots.size + 
                     this.waitingQueue.length + this.delayedQueue.length +
-                    this.loopSlots.size + this.loopWaitingQueue.length + this.loopCooldowns.size +
                     this.elementRefs.size,
     };
   }
@@ -1793,22 +1305,6 @@ class AnimationCoordinator {
     this.waitingQueue.length = 0;
     this.waitingQueueIndex.clear();
     
-    // 清理循环动画队列和定时器
-    for (const slot of this.loopSlots.values()) {
-      if (slot.timerId) {
-        clearTimeout(slot.timerId);
-      }
-    }
-    this.loopSlots.clear();
-    this.loopWaitingQueue.length = 0;
-    this.loopWaitingQueueIndex.clear();
-    
-    // 🔧 清理所有冷却定时器
-    for (const cooldownInfo of this.loopCooldowns.values()) {
-      clearTimeout(cooldownInfo.timerId);
-    }
-    this.loopCooldowns.clear();
-    
     // 重置爆发模式
     this.inBurstMode = false;
     this.burstStartTime = 0;
@@ -1840,6 +1336,7 @@ class AnimationCoordinator {
     if (this.fpsMonitorRunning) return;
     this.fpsMonitorRunning = true;
     this.lastFrameTimestamp = performance.now();
+    this.lastFpsUpdateTime = this.lastFrameTimestamp;
     
     const measureFps = (timestamp: number) => {
       if (!this.fpsMonitorRunning) return;
@@ -1848,22 +1345,28 @@ class AnimationCoordinator {
       this.lastFrameTimestamp = timestamp;
       this.totalFrames++;
       
-      // 记录帧时间
+      // 记录每一帧的帧时间（更准确的测量）
       this.frameTimes.push(frameTime);
       if (this.frameTimes.length > this.FPS_SAMPLE_SIZE) {
         this.frameTimes.shift();
       }
       
-      // 计算 FPS
-      if (this.frameTimes.length >= 5) {
-        const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-        this.currentFps = Math.round(1000 / avgFrameTime);
-        this.isLowFpsMode = this.currentFps < this.LOW_FPS_THRESHOLD;
-      }
-      
-      // 检测卡顿
+      // 检测卡顿（帧时间 > 32ms 算卡顿）
       if (frameTime > this.FRAME_BUDGET * 2) {
         this.jankCount++;
+      }
+      
+      // 每 500ms 更新一次 FPS 显示值
+      const timeSinceUpdate = timestamp - this.lastFpsUpdateTime;
+      if (timeSinceUpdate >= this.FPS_UPDATE_INTERVAL && this.frameTimes.length >= 5) {
+        this.lastFpsUpdateTime = timestamp;
+        
+        // 使用中位数而不是平均值，减少异常值影响
+        const sortedTimes = [...this.frameTimes].sort((a, b) => a - b);
+        const medianFrameTime = sortedTimes[Math.floor(sortedTimes.length / 2)];
+        
+        this.currentFps = Math.round(1000 / medianFrameTime);
+        this.isLowFpsMode = this.currentFps < this.LOW_FPS_THRESHOLD;
       }
       
       this.fpsMonitorRafId = requestAnimationFrame(measureFps);
@@ -1899,6 +1402,7 @@ class AnimationCoordinator {
   
   /**
    * 获取帧率统计信息
+   * 用于性能监控面板，统一从调度器获取数据
    */
   getFrameStats(): {
     fps: number;
@@ -1906,6 +1410,7 @@ class AnimationCoordinator {
     isLowFps: boolean;
     jankCount: number;
     totalFrames: number;
+    isMonitoring: boolean;
   } {
     const avgFrameTime = this.frameTimes.length > 0
       ? this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length
@@ -1917,7 +1422,19 @@ class AnimationCoordinator {
       isLowFps: this.isLowFpsMode,
       jankCount: this.jankCount,
       totalFrames: this.totalFrames,
+      isMonitoring: this.fpsMonitorRunning,
     };
+  }
+  
+  /**
+   * 重置帧率统计（可选）
+   */
+  resetFrameStats(): void {
+    this.frameTimes = [];
+    this.jankCount = 0;
+    this.totalFrames = 0;
+    this.currentFps = 60;
+    this.isLowFpsMode = false;
   }
   
   // ==================== DOM 批量操作 ====================

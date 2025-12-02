@@ -2,12 +2,13 @@
  * 性能监控面板 (开发环境)
  * 实时显示FPS、内存使用、渲染时间、资源加载状态等
  * 🆕 增强功能：动效监控、布局重排检测、GPU层统计、JS动画监控
+ * 🔧 优化：FPS 数据统一从 AnimationCoordinator 获取，避免重复 RAF 循环
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { globalResourceLoader } from '../utils/resourceLoader';
 import { clearPlaylistCache, clearLyricsCache } from '../utils/musicPlayer';
-import { coordinator, configureAnimationCoordinator } from '../hooks/animation';
+import { coordinator, configureAnimationCoordinator, getFrameStats } from '../hooks/animation';
 import './PerformanceMonitor.css';
 
 interface PerformanceMetrics {
@@ -198,9 +199,11 @@ function getJsAnimationStats(): JsAnimationStats {
   let framerMotionElements = 0;
   try {
     // Framer Motion 会给动画元素添加内联 transform 和 transition style
+    // 🔧 优化：限制最多检测 50 个元素，避免 Long Task
     const motionElements = document.querySelectorAll('[style*="transform"]');
-    motionElements.forEach((el) => {
-      const htmlEl = el as HTMLElement;
+    const maxCheck = Math.min(motionElements.length, 50);
+    for (let i = 0; i < maxCheck; i++) {
+      const htmlEl = motionElements[i] as HTMLElement;
       const inlineStyle = htmlEl.style;
       // 检查内联 style 而非 computedStyle，避免强制重排
       if (inlineStyle.transform && (
@@ -214,7 +217,7 @@ function getJsAnimationStats(): JsAnimationStats {
           framerMotionElements++;
         }
       }
-    });
+    }
   } catch {
     // 忽略错误
   }
@@ -326,24 +329,21 @@ export default function PerformanceMonitor() {
   });
   const [highlightAnimations, setHighlightAnimations] = useState(false);
   const [pauseAllAnimations, setPauseAllAnimations] = useState(false);
-  
-  const frameCountRef = useRef(0);
-  const lastTimeRef = useRef(performance.now());
-  const rafIdRef = useRef<number>();
 
   // 安装 JS 动画追踪器
   useEffect(() => {
     installAnimationTracker();
   }, []);
 
-  // JS 动画统计更新
+  // JS 动画统计更新 - 🔧 降低更新频率减少 Long Tasks
   useEffect(() => {
     if (isExpanded && activeTab === 'js') {
       const updateJsStats = () => {
         setJsAnimationStats(getJsAnimationStats());
       };
       updateJsStats();
-      const interval = setInterval(updateJsStats, 500);
+      // 🔧 从 500ms 改为 1000ms，减少 querySelectorAll 调用频率
+      const interval = setInterval(updateJsStats, 1000);
       return () => clearInterval(interval);
     }
   }, [isExpanded, activeTab]);
@@ -472,73 +472,32 @@ export default function PerformanceMonitor() {
     });
   }, []);
 
-  // FPS监控 - 只在展开时运行，减少 RAF 开销
+  // FPS监控 - 🔧 统一从 AnimationCoordinator 获取，无需额外 RAF 循环
   useEffect(() => {
-    // 折叠时使用低频率轮询
-    if (!isExpanded) {
-      // 简单的采样：每2秒测一次，使用 setTimeout 而不是 RAF
-      const sampleFPS = () => {
-        const startTime = performance.now();
-        let frames = 0;
-        
-        const countFrame = () => {
-          frames++;
-          if (performance.now() - startTime < 200) {
-            rafIdRef.current = requestAnimationFrame(countFrame);
-          } else {
-            // 200ms 采样，外推到 1 秒
-            const estimatedFPS = Math.round(frames * 5);
-            setMetrics(prev => ({ ...prev, fps: estimatedFPS }));
-            rafIdRef.current = undefined;
-          }
-        };
-        
-        rafIdRef.current = requestAnimationFrame(countFrame);
-      };
-      
-      sampleFPS();
-      const interval = setInterval(sampleFPS, 3000);
-      
-      return () => {
-        clearInterval(interval);
-        if (rafIdRef.current) {
-          cancelAnimationFrame(rafIdRef.current);
-        }
-      };
-    }
-    
-    // 展开时使用持续测量以获得精确 FPS
-    const measureFPS = () => {
-      frameCountRef.current++;
-      const currentTime = performance.now();
-      const elapsed = currentTime - lastTimeRef.current;
-
-      if (elapsed >= 1000) {
-        const fps = Math.round((frameCountRef.current * 1000) / elapsed);
-        
-        setMetrics(prev => ({
-          ...prev,
-          fps,
-        }));
-
-        frameCountRef.current = 0;
-        lastTimeRef.current = currentTime;
-      }
-
-      rafIdRef.current = requestAnimationFrame(measureFPS);
+    // 从调度器获取 FPS 数据
+    const updateFromCoordinator = () => {
+      const stats = getFrameStats();
+      setMetrics(prev => ({ ...prev, fps: stats.fps }));
     };
-
-    measureFPS();
-
+    
+    // 收缩状态：低频率轮询（每 2 秒）
+    // 展开状态：高频率轮询（每 500ms）
+    const interval = isExpanded ? 500 : 2000;
+    
+    // 立即更新一次
+    updateFromCoordinator();
+    
+    const intervalId = setInterval(updateFromCoordinator, interval);
+    
     return () => {
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
+      clearInterval(intervalId);
     };
   }, [isExpanded]);
 
-  // 内存监控
+  // 内存监控 - 只在展开时运行，减少收缩状态性能开销
   useEffect(() => {
+    if (!isExpanded) return;
+    
     const checkMemory = () => {
       if ('memory' in performance) {
         const mem = (performance as any).memory;
@@ -557,10 +516,12 @@ export default function PerformanceMonitor() {
     checkMemory();
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isExpanded]);
 
-  // Long Tasks监控
+  // Long Tasks监控 - 只在展开时运行
   useEffect(() => {
+    if (!isExpanded) return;
+    
     if ('PerformanceObserver' in window) {
       try {
         const observer = new PerformanceObserver((list) => {
@@ -578,10 +539,12 @@ export default function PerformanceMonitor() {
         // longtask可能不被支持
       }
     }
-  }, []);
+  }, [isExpanded]);
 
-  // Layout Shift 监控
+  // Layout Shift 监控 - 只在展开时运行
   useEffect(() => {
+    if (!isExpanded) return;
+    
     if ('PerformanceObserver' in window) {
       try {
         const observer = new PerformanceObserver((list) => {
@@ -604,7 +567,7 @@ export default function PerformanceMonitor() {
         // layout-shift可能不被支持
       }
     }
-  }, []);
+  }, [isExpanded]);
 
   // 渲染时间监控
   useEffect(() => {
@@ -631,20 +594,26 @@ export default function PerformanceMonitor() {
     }
   }, []);
 
-  // 资源加载监控
+  // 资源加载监控 - 收缩状态下降低频率减少性能开销
   useEffect(() => {
+    const updateInterval = isExpanded ? 1000 : 5000; // 收缩时 5 秒更新一次
+    
     const interval = setInterval(() => {
       setResourceStats(globalResourceLoader.getStats());
-    }, 1000);
+    }, updateInterval);
+    
+    // 立即更新一次
+    setResourceStats(globalResourceLoader.getStats());
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isExpanded]);
 
-  // 动效扫描（展开时或切换到动效标签页时）
+  // 动效扫描（展开时或切换到动效标签页时）- 🔧 降低扫描频率
   useEffect(() => {
     if (isExpanded && activeTab === 'animations') {
       scanAnimations();
-      const interval = setInterval(scanAnimations, 2000);
+      // 🔧 从 2 秒改为 3 秒，减少 Long Task 风险
+      const interval = setInterval(scanAnimations, 3000);
       return () => clearInterval(interval);
     }
   }, [isExpanded, activeTab, scanAnimations]);

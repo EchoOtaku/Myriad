@@ -99,6 +99,8 @@ function CustomScrollbarInner() {
   const dragEndTimeRef = useRef(0); // 记录拖动结束时间
   const isRouteTransitioningRef = useRef(false); // 路由切换中，禁止所有更新
   const routeTransitionTimeRef = useRef(0); // 记录路由切换开始时间
+  const cachedDocumentHeightRef = useRef(0); // 🔧 缓存文档高度，减少重排
+  const lastHeightCheckRef = useRef(0); // 上次检查高度的时间
 
   // 计算并更新 Thumb 的位置和高度
   const updateThumb = useCallback(() => {
@@ -117,7 +119,15 @@ function CustomScrollbarInner() {
     }
 
     const windowHeight = window.innerHeight;
-    const documentHeight = document.documentElement.scrollHeight;
+    
+    // 🔧 优化：缓存 scrollHeight，每 500ms 最多更新一次
+    // 这减少了大量的强制布局计算
+    if (now - lastHeightCheckRef.current > 500 || cachedDocumentHeightRef.current === 0) {
+      cachedDocumentHeightRef.current = document.documentElement.scrollHeight;
+      lastHeightCheckRef.current = now;
+    }
+    const documentHeight = cachedDocumentHeightRef.current;
+    
     const scrollTop = window.scrollY;
     const scrollableHeight = documentHeight - windowHeight;
 
@@ -223,6 +233,8 @@ function CustomScrollbarInner() {
       const updateDelay = setTimeout(() => {
         // 解除更新禁止，并触发一次更新
         isRouteTransitioningRef.current = false;
+        // 🔧 路由变化时重置高度缓存
+        cachedDocumentHeightRef.current = 0;
         requestAnimationFrame(() => {
           updateThumb();
         });

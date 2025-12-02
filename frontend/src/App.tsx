@@ -6,7 +6,7 @@
 
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim';
 import { AppLayout } from './layouts/AppLayout';
 import { recordNavigation } from './router/navigationHistory';
 import RouteLoader from './components/RouteLoader';
@@ -114,6 +114,65 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * 带动画的页面包装器
+ * 确保 AnimatePresence 直接包裹 motion 组件
+ */
+function AnimatedPage({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <PageWrapper key={location.pathname}>
+        {children}
+      </PageWrapper>
+    </AnimatePresence>
+  );
+}
+
+/**
+ * 页面包装器 - 提供退出动画
+ */
+const pageVariants = {
+  initial: {
+    opacity: 0,
+    y: 20,
+    scale: 0.98,
+  },
+  enter: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.35,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+  exit: {
+    opacity: 0,
+    y: -15,
+    scale: 0.98,
+    transition: {
+      duration: 0.25,
+      ease: [0.4, 0, 0.6, 1],
+    },
+  },
+};
+
+function PageWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      variants={pageVariants}
+      initial="initial"
+      animate="enter"
+      exit="exit"
+      style={{ width: '100%', minHeight: '100%' }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/**
  * 路由内容组件
  */
 function AppRoutes() {
@@ -135,8 +194,8 @@ function AppRoutes() {
   }, [location.pathname]);
 
   return (
-    <AnimatePresence mode="sync">
-      <Routes location={location} key={location.pathname}>
+    <AnimatedPage>
+      <Routes location={location}>
         <Route path="/" element={<SuspensePage><Home /></SuspensePage>} />
         <Route path="/library" element={<SuspensePage><Library /></SuspensePage>} />
         <Route path="/reports" element={<SuspensePage><Reports /></SuspensePage>} />
@@ -163,7 +222,7 @@ function AppRoutes() {
         {/* 404 页面 - 重定向到首页 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </AnimatePresence>
+    </AnimatedPage>
   );
 }
 
