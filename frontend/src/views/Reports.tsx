@@ -1254,9 +1254,16 @@ export default function Reports() {
   
   const handleContentChange = useCallback((platformId: string, content: any) => {
     setCardContents(prev => {
-      // 性能优化：如果内容未变化，不更新状态，避免无限循环
-      if (JSON.stringify(prev[platformId]) === JSON.stringify(content)) {
-        return prev;
+      // 性能优化：使用浅比较替代 JSON.stringify
+      // 如果是同一引用或 null/undefined 相同，不更新状态
+      const prevContent = prev[platformId];
+      if (prevContent === content) return prev;
+      // 如果都是对象，检查关键字段（避免深比较）
+      if (prevContent && content && typeof prevContent === 'object' && typeof content === 'object') {
+        // 检查 id 或 timestamp 等标识字段
+        if (prevContent.id === content.id && prevContent.timestamp === content.timestamp) {
+          return prev;
+        }
       }
       return { ...prev, [platformId]: content };
     });

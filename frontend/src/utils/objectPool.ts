@@ -359,4 +359,195 @@ export const globalPoolManager = new PoolManager();
 globalPoolManager.register('animationState', animationStatePool);
 globalPoolManager.register('timer', timerPool);
 
+// ============================================================================
+// Image 对象池 - 用于图片预加载
+// ============================================================================
+
+/** 图片加载对象 */
+export interface ImageLoadObject {
+  img: HTMLImageElement;
+  onLoad: ((e: Event) => void) | null;
+  onError: ((e: Event | string) => void) | null;
+}
+
+/**
+ * Image 对象池
+ * 用于减少 new Image() 的 GC 开销
+ */
+export const imagePool = new ObjectPool<ImageLoadObject>({
+  create: () => ({
+    img: new Image(),
+    onLoad: null,
+    onError: null,
+  }),
+  reset: (obj) => {
+    // 清除事件监听器
+    obj.img.onload = null;
+    obj.img.onerror = null;
+    // 清除 src 停止加载
+    obj.img.src = '';
+    // 重置属性
+    obj.img.crossOrigin = null;
+    obj.onLoad = null;
+    obj.onError = null;
+  },
+  destroy: (obj) => {
+    obj.img.onload = null;
+    obj.img.onerror = null;
+    obj.img.src = '';
+  },
+  initialSize: 3,
+  maxSize: 10,
+  idleTimeout: 120000, // 2分钟
+});
+
+globalPoolManager.register('image', imagePool);
+
+// ============================================================================
+// Canvas 对象池 - 用于图片处理（颜色提取等）
+// ============================================================================
+
+/** Canvas 加载对象 */
+export interface CanvasPoolObject {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D | null;
+}
+
+/**
+ * Canvas 对象池
+ * 用于减少 document.createElement('canvas') 的开销
+ */
+export const canvasPool = new ObjectPool<CanvasPoolObject>({
+  create: () => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    return { canvas, ctx };
+  },
+  reset: (obj) => {
+    // 重置 canvas 大小会清空内容
+    obj.canvas.width = 0;
+    obj.canvas.height = 0;
+  },
+  destroy: (obj) => {
+    obj.canvas.width = 0;
+    obj.canvas.height = 0;
+    obj.ctx = null;
+  },
+  initialSize: 1,
+  maxSize: 3,
+  idleTimeout: 60000, // 1分钟
+});
+
+globalPoolManager.register('canvas', canvasPool);
+
+/**
+ * 使用池化的 canvas 进行图片处理
+ * 
+ * @param width canvas 宽度
+ * @param height canvas 高度
+ * @param processor 处理函数，接收 ctx 和 canvas
+ * @returns 处理结果
+ * 
+ * @example
+ * ```ts
+ * const imageData = await withPooledCanvas(100, 100, (ctx, canvas) => {
+ *   ctx.drawImage(img, 0, 0, 100, 100);
+ *   return ctx.getImageData(0, 0, 100, 100);
+ * });
+ * ```
+ */
+export function withPooledCanvas<T>(
+  width: number,
+  height: number,
+  processor: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => T
+): T {
+  const pooled = canvasPool.acquire();
+  const { canvas, ctx } = pooled;
+  
+  if (!ctx) {
+    canvasPool.release(pooled);
+    throw new Error('Failed to get canvas context');
+  }
+  
+  try {
+    canvas.width = width;
+    canvas.height = height;
+    return processor(ctx, canvas);
+  } finally {
+    canvasPool.release(pooled);
+  }
+}
+
+/**
+ * 使用池化的图片加载
+ * 
+ * @param src 图片 URL
+ * @param options 加载选项
+ * @returns Promise<boolean> 加载是否成功
+ * 
+ * @example
+ * ```ts
+ * const success = await loadImagePooled('https://example.com/image.jpg');
+ * ```
+ */
+export function loadImagePooled(
+  src: string,
+  options: {
+    crossOrigin?: string | null;
+    timeout?: number;
+  } = {}
+): Promise<boolean> {
+  const { crossOrigin = null, timeout = 15000 } = options;
+  
+  return new Promise((resolve) => {
+    const pooled = imagePool.acquire();
+    const { img } = pooled;
+    
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let resolved = false;
+    
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      imagePool.release(pooled);
+    };
+    
+    const handleLoad = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(true);
+    };
+    
+    const handleError = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(false);
+    };
+    
+    // 设置超时
+    if (timeout > 0) {
+      timeoutId = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        img.src = ''; // 停止加载
+        cleanup();
+        resolve(false);
+      }, timeout);
+    }
+    
+    img.onload = handleLoad;
+    img.onerror = handleError;
+    
+    if (crossOrigin !== null) {
+      img.crossOrigin = crossOrigin;
+    }
+    
+    img.src = src;
+  });
+}
+
 export default ObjectPool;

@@ -9,15 +9,14 @@ import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@l
 import { FaEdit, FaSave, FaTimes, FaPlus } from '@lib/icons';
 import React from 'react';
 import './WidgetGrid.css';
-import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
+import { usePerformanceProfile, getPerformanceProfileSync } from '../hooks/usePerformanceProfile';
 import { useI18n } from '../contexts/I18nContext';
 import { useStaggerAnimation } from '../hooks/animation';
+import { useDebouncedWindowSize } from '../hooks/useSharedEventListener';
 
-// ⚠️ 移动端检测 - 用于优化触摸事件性能
+// ⚗️ 移动端检测 - 使用统一的性能检测系统
 const getIsMobile = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia('(max-width: 767px)').matches ||
-         window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  return getPerformanceProfileSync().isMobile;
 };
 
 // 小组件尺寸配置
@@ -329,28 +328,23 @@ export default function WidgetGrid({
     return maxY;
   }, [widgets, autoHeight]);
 
-  // 响应式布局检测
+  // 响应式布局检测 - 使用共享的防抖窗口尺寸
+  const { width: windowWidth } = useDebouncedWindowSize(150);
+  
   useEffect(() => {
     if (customGridColumns) {
       setGridColumns(customGridColumns);
       return;
     }
 
-    const handleResize = () => {
-      const width = window.innerWidth;
-      if (width < 640) {
-        setGridColumns(4); // 手机
-      } else if (width < 1024) {
-        setGridColumns(8); // 平板
-      } else {
-        setGridColumns(16); // 桌面
-      }
-    };
-    
-    handleResize(); // 初始化
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    if (windowWidth < 640) {
+      setGridColumns(4); // 手机
+    } else if (windowWidth < 1024) {
+      setGridColumns(8); // 平板
+    } else {
+      setGridColumns(16); // 桌面
+    }
+  }, [windowWidth, customGridColumns]);
 
   // 紧凑模式布局计算 (自动重排)
   const compactLayout = useMemo(() => {

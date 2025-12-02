@@ -1,0 +1,378 @@
+/**
+ * 共享事件监听器 Hook
+ * 
+ * 多个组件监听同一事件时，合并为一个监听器，减少浏览器开销
+ * 
+ * @module useSharedEventListener
+ * @version 1.1
+ */
+
+import { useEffect, useCallback, useRef, useState, useMemo } from 'react';
+import { rafThrottle, debounce } from '../utils/performance';
+
+type EventCallback = (event: Event) => void;
+
+interface ListenerEntry {
+  callback: EventCallback;
+  priority: number;
+}
+
+/** 事件监听器管理器 */
+class SharedEventManager {
+  private listeners = new Map<string, Set<ListenerEntry>>();
+  private nativeListeners = new Map<string, EventCallback>();
+  private throttledCallbacks = new Map<string, EventCallback>();
+
+  /**
+   * 添加监听器
+   * @param eventType 事件类型
+   * @param callback 回调函数
+   * @param options 选项
+   */
+  add(
+    eventType: string,
+    callback: EventCallback,
+    options: { priority?: number; throttle?: boolean } = {}
+  ): () => void {
+    const { priority = 0, throttle = false } = options;
+    
+    if (!this.listeners.has(eventType)) {
+      this.listeners.set(eventType, new Set());
+      this.setupNativeListener(eventType, throttle);
+    }
+    
+    const entry: ListenerEntry = { callback, priority };
+    this.listeners.get(eventType)!.add(entry);
+    
+    // 返回移除函数
+    return () => {
+      const set = this.listeners.get(eventType);
+      if (set) {
+        set.delete(entry);
+        if (set.size === 0) {
+          this.removeNativeListener(eventType);
+          this.listeners.delete(eventType);
+        }
+      }
+    };
+  }
+
+  private setupNativeListener(eventType: string, throttle: boolean) {
+    const handler: EventCallback = (event) => {
+      const entries = this.listeners.get(eventType);
+      if (!entries) return;
+      
+      // 按优先级排序执行
+      const sorted = Array.from(entries).sort((a, b) => b.priority - a.priority);
+      for (const entry of sorted) {
+        try {
+          entry.callback(event);
+        } catch (e) {
+          console.error(`Error in ${eventType} listener:`, e);
+        }
+      }
+    };
+
+    const finalHandler = throttle ? rafThrottle(handler) : handler;
+    
+    this.nativeListeners.set(eventType, finalHandler);
+    if (throttle) {
+      this.throttledCallbacks.set(eventType, handler);
+    }
+    
+    window.addEventListener(eventType, finalHandler, { passive: true });
+  }
+
+  private removeNativeListener(eventType: string) {
+    const handler = this.nativeListeners.get(eventType);
+    if (handler) {
+      window.removeEventListener(eventType, handler);
+      this.nativeListeners.delete(eventType);
+      this.throttledCallbacks.delete(eventType);
+    }
+  }
+
+  /** 获取当前监听状态（调试用） */
+  getStats() {
+    const stats: Record<string, number> = {};
+    for (const [type, set] of this.listeners) {
+      stats[type] = set.size;
+    }
+    return stats;
+  }
+
+  /** 清理所有监听器 */
+  clear() {
+    for (const eventType of this.listeners.keys()) {
+      this.removeNativeListener(eventType);
+    }
+    this.listeners.clear();
+  }
+}
+
+/** 全局共享事件管理器 */
+export const sharedEventManager = new SharedEventManager();
+
+/**
+ * 使用共享的窗口事件监听
+ * 
+ * @param eventType 事件类型（如 'resize', 'scroll'）
+ * @param callback 回调函数
+ * @param options 选项
+ * 
+ * @example
+ * ```tsx
+ * // 多个组件都可以这样使用，内部只会有一个 resize 监听器
+ * useSharedEventListener('resize', () => {
+ *   setWidth(window.innerWidth);
+ * }, { throttle: true });
+ * ```
+ */
+export function useSharedEventListener(
+  eventType: string,
+  callback: EventCallback,
+  options: { priority?: number; throttle?: boolean; enabled?: boolean } = {}
+): void {
+  const { priority = 0, throttle = true, enabled = true } = options;
+  
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  
+  const stableCallback = useCallback((event: Event) => {
+    callbackRef.current(event);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    
+    const remove = sharedEventManager.add(eventType, stableCallback, {
+      priority,
+      throttle,
+    });
+    
+    return remove;
+  }, [eventType, stableCallback, priority, throttle, enabled]);
+}
+
+/**
+ * 共享的 resize 事件 Hook
+ * 使用 RAF 节流，多个组件共享一个监听器
+ * 
+ * @param callback 回调函数
+ * @param options 选项（支持防抖延迟）
+ */
+export function useSharedResize(
+  callback: () => void,
+  options: { priority?: number; enabled?: boolean; debounce?: number } = {}
+): void {
+  const { debounce: debounceMs, ...restOptions } = options;
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+
+  const handler = useCallback(() => {
+    if (debounceMs && debounceMs > 0) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        callbackRef.current();
+      }, debounceMs);
+    } else {
+      callbackRef.current();
+    }
+  }, [debounceMs]);
+
+  // 清理防抖定时器
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  useSharedEventListener('resize', handler, {
+    ...restOptions,
+    throttle: !debounceMs, // 如果使用防抖则不使用节流
+  });
+}
+
+/**
+ * 共享的 scroll 事件 Hook
+ * 使用 RAF 节流，多个组件共享一个监听器
+ */
+export function useSharedScroll(
+  callback: (event: Event) => void,
+  options: { priority?: number; enabled?: boolean } = {}
+): void {
+  useSharedEventListener('scroll', callback, {
+    ...options,
+    throttle: true,
+  });
+}
+
+/**
+ * 窗口尺寸 Hook - 使用共享监听器
+ * 
+ * @example
+ * ```tsx
+ * const { width, height } = useWindowSize();
+ * ```
+ */
+export function useWindowSize(): { width: number; height: number } {
+  const [size, setSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+  });
+
+  useSharedResize(() => {
+    setSize({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+  });
+
+  return size;
+}
+
+/**
+ * 防抖的窗口尺寸 Hook
+ * 适用于需要在 resize 结束后才执行操作的场景
+ * 使用共享监听器，减少重复注册
+ * 
+ * @param delay 防抖延迟（毫秒）
+ */
+export function useDebouncedWindowSize(delay = 150): { width: number; height: number } {
+  const [size, setSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+  });
+  
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const debouncedHandler = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    }, delay);
+  }, [delay]);
+
+  // 使用共享的 resize 监听器
+  useSharedResize(debouncedHandler);
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return size;
+}
+
+/**
+ * 媒体查询 Hook - 响应式断点检测
+ * 
+ * @param query 媒体查询字符串
+ * @returns 是否匹配
+ * 
+ * @example
+ * ```tsx
+ * const isMobile = useMediaQuery('(max-width: 767px)');
+ * const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
+ * ```
+ */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const mediaQuery = window.matchMedia(query);
+    setMatches(mediaQuery.matches);
+    
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, [query]);
+
+  return matches;
+}
+
+/**
+ * 预定义的响应式断点 Hook
+ */
+export function useBreakpoints() {
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const isTablet = useMediaQuery('(min-width: 768px) and (max-width: 1023px)');
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isLargeDesktop = useMediaQuery('(min-width: 1280px)');
+  
+  return useMemo(() => ({
+    isMobile,
+    isTablet,
+    isDesktop,
+    isLargeDesktop,
+    // 便捷属性
+    isTouchDevice: isMobile || isTablet,
+  }), [isMobile, isTablet, isDesktop, isLargeDesktop]);
+}
+
+/**
+ * 页面可见性 Hook
+ * 用于在页面不可见时暂停动画或网络请求
+ */
+export function usePageVisibility(): boolean {
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  });
+
+  useEffect(() => {
+    const handler = () => {
+      setIsVisible(document.visibilityState === 'visible');
+    };
+    
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+
+  return isVisible;
+}
+
+/**
+ * 在线状态 Hook
+ */
+export function useOnlineStatus(): boolean {
+  const [isOnline, setIsOnline] = useState(() => {
+    if (typeof navigator === 'undefined') return true;
+    return navigator.onLine;
+  });
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  return isOnline;
+}

@@ -267,18 +267,31 @@ class ResourceLoader {
    * 获取加载统计
    */
   getStats() {
+    // 性能优化：单次遍历替代多次 filter
+    const queuedByPriority = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      idle: 0,
+    };
+    
+    for (const task of this.queue) {
+      switch (task.priority) {
+        case LoadPriority.CRITICAL: queuedByPriority.critical++; break;
+        case LoadPriority.HIGH: queuedByPriority.high++; break;
+        case LoadPriority.MEDIUM: queuedByPriority.medium++; break;
+        case LoadPriority.LOW: queuedByPriority.low++; break;
+        case LoadPriority.IDLE: queuedByPriority.idle++; break;
+      }
+    }
+    
     return {
       queued: this.queue.length,
       active: this.activeLoads.size,
       completed: this.completedLoads.size,
       failed: this.failedLoads.size,
-      queuedByPriority: {
-        critical: this.queue.filter(t => t.priority === LoadPriority.CRITICAL).length,
-        high: this.queue.filter(t => t.priority === LoadPriority.HIGH).length,
-        medium: this.queue.filter(t => t.priority === LoadPriority.MEDIUM).length,
-        low: this.queue.filter(t => t.priority === LoadPriority.LOW).length,
-        idle: this.queue.filter(t => t.priority === LoadPriority.IDLE).length,
-      },
+      queuedByPriority,
     };
   }
 

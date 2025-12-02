@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import { getLibraryDataDeduped } from '../utils/requestDedup';
+import { useSharedResize } from '../hooks/useSharedEventListener';
 import PlatformIcon from './PlatformIcon';
 import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
@@ -413,27 +414,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         setLayouts(newLayouts);
     }, [filteredAllItems, filter]);
 
-    // 监听窗口大小变化和数据变化
+    // 使用共享的 resize 监听器
+    useSharedResize(computeLayout, { debounce: 150 });
+    
+    // 初始计算布局
     useEffect(() => {
-        const handleResize = () => {
-            computeLayout();
-        };
-        
-        // 初始计算
         computeLayout();
-
-        // 防抖监听
-        let timeoutId: NodeJS.Timeout;
-        const debouncedResize = () => {
-            clearTimeout(timeoutId);
-            timeoutId = setTimeout(handleResize, 150);
-        };
-
-        window.addEventListener('resize', debouncedResize);
-        return () => {
-            window.removeEventListener('resize', debouncedResize);
-            clearTimeout(timeoutId);
-        };
     }, [computeLayout]);
 
     // 滚动加载更多

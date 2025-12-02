@@ -1,3 +1,5 @@
+import { loadImagePooled } from './objectPool';
+
 /**
  * 性能优化工具函数库
  * 提供防抖、节流、RAF优化等性能工具
@@ -157,15 +159,14 @@ export async function measurePerformance<T>(
 }
 
 /**
- * 预加载图片
+ * 预加载图片（使用对象池）
  * @param src 图片URL
  */
 export function preloadImage(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = reject;
-    img.src = src;
+  return loadImagePooled(src).then(success => {
+    if (!success) {
+      throw new Error(`Failed to preload image: ${src}`);
+    }
   });
 }
 

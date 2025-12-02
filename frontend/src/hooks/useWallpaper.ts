@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { fetchJsonWithRetry } from '../utils/apiRetry';
 import { API_URL } from '../config';
+import { loadImagePooled } from '../utils/objectPool';
 import { 
   wallpaperState, 
   normalizeWallpaperUrl, 
@@ -196,33 +197,13 @@ async function resolveImageUrl(apiUrl: string, bustCache = false): Promise<strin
 }
 
 /**
- * 预加载图片（无缓存）
+ * 预加载图片（使用对象池）
  * 直接加载图片，不使用代理
  * @returns 加载成功返回true，失败返回false
  */
 function preloadImage(url: string, timeout = IMAGE_LOAD_TIMEOUT): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const img = new Image();
-    // 不设置 crossOrigin 以避免 CORS 问题
-    // 壁纸只用于显示，不需要 canvas 操作
-    
-    const timer = setTimeout(() => {
-      img.src = '';
-      resolve(false);
-    }, timeout);
-    
-    img.onload = () => {
-      clearTimeout(timer);
-      resolve(true);
-    };
-    
-    img.onerror = () => {
-      clearTimeout(timer);
-      resolve(false);
-    };
-    
-    img.src = url;
-  });
+  // 使用池化的图片加载，减少 GC 压力
+  return loadImagePooled(url, { timeout });
 }
 
 /**

@@ -13,6 +13,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useSharedResize, useSharedScroll } from '../hooks/useSharedEventListener';
 
 // 检测是否为移动端 - 使用多重检测确保准确性
 const getIsMobile = (): boolean => {
@@ -159,26 +160,23 @@ function CustomScrollbarInner() {
     lastScrollTopRef.current = scrollTop;
   }, []); // ⚠️ 修复: 空依赖数组，因为常量已移到组件外部
 
-  // 监听滚动、resize 和内容变化
-  // ⚠️ 关键优化: 移除 MutationObserver,避免监听整个 body 的 DOM 变化
-  // 只使用 ResizeObserver + scroll/resize 事件,大幅减少性能开销
+  // RAF 节流的更新处理器 - 使用 useCallback 确保引用稳定
+  const handleUpdate = useCallback(() => {
+    if (isDraggingRef.current) return;
+    updateThumb();
+  }, [updateThumb]);
+
+  // 使用共享的 scroll 和 resize 监听器
+  // ⚠️ 关键优化: 使用共享事件监听器，减少重复注册
+  // RAF 节流 (~60fps) 由共享监听器内部处理
+  useSharedScroll(handleUpdate);
+  useSharedResize(handleUpdate);
+
+  // ResizeObserver 用于监听文档高度变化
+  // ⚠️ 移除了 MutationObserver - 这是造成移动端崩溃的主要原因
   useEffect(() => {
-    let rafId: number | null = null;
     let throttleTimer: number | null = null;
 
-    const handleUpdate = () => {
-      if (isDraggingRef.current) return;
-
-      // 使用 RAF 去重，避免同一帧多次更新
-      if (rafId !== null) return;
-
-      rafId = requestAnimationFrame(() => {
-        updateThumb();
-        rafId = null;
-      });
-    };
-
-    // ⚠️ 节流版本的更新,用于高频事件(如 ResizeObserver)
     const handleUpdateThrottled = () => {
       if (throttleTimer !== null) return;
       throttleTimer = window.setTimeout(() => {
@@ -194,23 +192,15 @@ function CustomScrollbarInner() {
       setTimeout(() => updateThumb(), 100);
     });
 
-    // 监听滚动和窗口大小变化
-    window.addEventListener('scroll', handleUpdate, { passive: true });
-    window.addEventListener('resize', handleUpdate);
-
-    // ⚠️ 移除了 MutationObserver - 这是造成移动端崩溃的主要原因
-    // 只使用 ResizeObserver 监听文档高度变化,并使用节流版本
+    // 只使用 ResizeObserver 监听文档高度变化
     const resizeObserver = new ResizeObserver(handleUpdateThrottled);
-    resizeObserver.observe(document.documentElement); // 只监听 documentElement,不监听 body
+    resizeObserver.observe(document.documentElement);
 
     return () => {
-      window.removeEventListener('scroll', handleUpdate);
-      window.removeEventListener('resize', handleUpdate);
       resizeObserver.disconnect();
-      if (rafId !== null) cancelAnimationFrame(rafId);
       if (throttleTimer !== null) clearTimeout(throttleTimer);
     };
-  }, [updateThumb]);
+  }, [updateThumb, handleUpdate]);
 
   // 监听路由变化，触发平滑过渡
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { loadImagePooled } from '../utils/objectPool';
 
 interface UseLazyImageOptions {
   threshold?: number;
@@ -8,6 +9,11 @@ interface UseLazyImageOptions {
 
 /**
  * 图片懒加载 Hook - 使用 Intersection Observer 实现懒加载
+ * 
+ * 性能优化：
+ * - 使用对象池加载图片，减少 GC 压力
+ * - 支持可选的 IntersectionObserver 观察
+ * 
  * @param src 图片源地址
  * @param options 配置项
  * @returns 当前显示的图片地址和加载状态
@@ -25,31 +31,31 @@ export function useLazyImage(
   const [imageSrc, setImageSrc] = useState<string>(placeholder);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
-  const imgRef = useRef<HTMLImageElement | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const abortedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!src) return;
 
-    // 创建一个临时的 img 元素用于观察
-    const img = new Image();
-    imgRef.current = img;
+    abortedRef.current = false;
 
-    const loadImage = () => {
+    const loadImage = async () => {
       setIsLoading(true);
       setHasError(false);
 
-      img.onload = () => {
+      // 使用池化的图片加载
+      const success = await loadImagePooled(src, { timeout: 15000 });
+      
+      // 检查是否已被取消
+      if (abortedRef.current) return;
+      
+      if (success) {
         setImageSrc(src);
         setIsLoading(false);
-      };
-
-      img.onerror = () => {
+      } else {
         setHasError(true);
         setIsLoading(false);
-      };
-
-      img.src = src;
+      }
     };
 
     // 如果浏览器支持 IntersectionObserver
@@ -75,11 +81,8 @@ export function useLazyImage(
     }
 
     return () => {
+      abortedRef.current = true;
       observerRef.current?.disconnect();
-      if (imgRef.current) {
-        imgRef.current.onload = null;
-        imgRef.current.onerror = null;
-      }
     };
   }, [src, threshold, rootMargin]);
 

@@ -4,11 +4,16 @@
  * 从图片中提取主色调配色方案
  * 支持壁纸和音乐封面两种场景
  * 
+ * 性能优化：
+ * - 使用 Image 对象池减少 GC
+ * - 使用 Canvas 对象池减少 DOM 创建
+ * 
  * @module colorExtractor
- * @version 3.2
+ * @version 3.3
  */
 
 import { wallpaperState } from './wallpaperState';
+import { imagePool, withPooledCanvas } from './objectPool';
 
 // ============================================================================
 // 类型定义
@@ -327,57 +332,59 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
 }
 
 /**
- * 从图片提取颜色
+ * 从图片提取颜色（使用对象池优化）
  */
 async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<ColorPalette> {
-  // 加载图片
-  const img = new Image();
+  // 使用池化的 Image 对象
+  const pooled = imagePool.acquire();
+  const { img } = pooled;
   img.crossOrigin = 'anonymous';
   const cacheBuster = imageUrl.includes('?') ? `&_t=${Date.now()}` : `?_t=${Date.now()}`;
 
-  await new Promise<void>((resolve, reject) => {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new Error('Aborted before image load'));
+        return;
+      }
+      
+      const abortHandler = () => reject(new Error('Aborted during image load'));
+      signal.addEventListener('abort', abortHandler);
+      
+      img.onload = () => {
+        signal.removeEventListener('abort', abortHandler);
+        resolve();
+      };
+      img.onerror = () => {
+        signal.removeEventListener('abort', abortHandler);
+        reject(new Error('Failed to load image'));
+      };
+      img.src = imageUrl + cacheBuster;
+    });
+
     if (signal.aborted) {
-      reject(new Error('Aborted before image load'));
-      return;
+      throw new Error('Extraction cancelled after image load');
     }
-    
-    const abortHandler = () => reject(new Error('Aborted during image load'));
-    signal.addEventListener('abort', abortHandler);
-    
-    img.onload = () => {
-      signal.removeEventListener('abort', abortHandler);
-      resolve();
-    };
-    img.onerror = () => {
-      signal.removeEventListener('abort', abortHandler);
-      reject(new Error('Failed to load image'));
-    };
-    img.src = imageUrl + cacheBuster;
-  });
 
-  if (signal.aborted) {
-    throw new Error('Extraction cancelled after image load');
+    // 使用池化的 Canvas
+    const scale = Math.min(MAX_CANVAS_SIZE / img.width, MAX_CANVAS_SIZE / img.height, 1);
+    const width = Math.floor(img.width * scale);
+    const height = Math.floor(img.height * scale);
+
+    const imageData = withPooledCanvas(width, height, (ctx) => {
+      ctx.drawImage(img, 0, 0, width, height);
+      return ctx.getImageData(0, 0, width, height);
+    });
+
+    if (signal.aborted) {
+      throw new Error('Extraction cancelled after processing');
+    }
+
+    return analyzeImageColors(imageData);
+  } finally {
+    // 确保归还 Image 到池中
+    imagePool.release(pooled);
   }
-
-  // 创建Canvas并绘制
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error('Canvas context not available');
-  }
-
-  const scale = Math.min(MAX_CANVAS_SIZE / img.width, MAX_CANVAS_SIZE / img.height, 1);
-  canvas.width = Math.floor(img.width * scale);
-  canvas.height = Math.floor(img.height * scale);
-
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  if (signal.aborted) {
-    throw new Error('Extraction cancelled after processing');
-  }
-
-  return analyzeImageColors(imageData);
 }
 
 // ============================================================================
