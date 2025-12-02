@@ -119,17 +119,34 @@ class AnimationCoordinator {
   private readonly BATCH_SIZE = 8;
   
   // ==================== 帧率监控与管理 ====================
-  /** 帧时间预算（ms） - 60fps */
-  private readonly FRAME_BUDGET = 16;
-  /** FPS 采样窗口大小 */
-  private readonly FPS_SAMPLE_SIZE = 30;
-  /** 低帧率阈值 */
-  private readonly LOW_FPS_THRESHOLD = 45;
-  /** FPS 更新间隔（ms），避免频繁计算 */
-  private readonly FPS_UPDATE_INTERVAL = 500;
+  /** 帧时间预算（ms） - 60fps 基准，会根据检测到的刷新率动态调整 */
+  private frameBudget: number = 16;
+  /** 
+   * FPS 采样窗口大小 - 使用环形缓冲区
+   * 64 是 2 的幂，位运算取模更快
+   */
+  private readonly FPS_SAMPLE_SIZE = 64;
+  /** 
+   * 低帧率阈值比例 - 相对于检测到的显示器刷新率
+   * 🔧 优化：使用比例而非绝对值，适配任意刷新率
+   * 当前帧率 < 显示器刷新率 * 0.75 时视为低帧率
+   */
+  private readonly LOW_FPS_RATIO = 0.75;
+  /** 
+   * FPS 更新间隔（ms）
+   * 🔧 优化：延长到 1000ms，减少计算频率
+   */
+  private readonly FPS_UPDATE_INTERVAL = 1000;
   
-  /** 帧时间记录 */
-  private frameTimes: number[] = [];
+  /** 
+   * 帧时间环形缓冲区（避免 push/shift 开销）
+   * 🔧 优化：预分配固定大小数组
+   */
+  private frameTimes: Float32Array = new Float32Array(64);
+  /** 环形缓冲区写入指针 */
+  private frameTimeIndex: number = 0;
+  /** 已记录的帧数（用于判断缓冲区是否填满） */
+  private frameTimeCount: number = 0;
   /** 当前帧率 */
   private currentFps: number = 60;
   /** 是否处于低帧率模式 */
@@ -146,6 +163,29 @@ class AnimationCoordinator {
   private jankCount: number = 0;
   /** 总帧数 */
   private totalFrames: number = 0;
+  /** 
+   * 🔧 累计帧时间（用于快速计算平均值）
+   * 避免每次遍历整个数组
+   */
+  private frameTimeSum: number = 0;
+  /**
+   * 🔧 检测到的显示器刷新率
+   * 通过前几帧的最小帧时间推断
+   */
+  private detectedRefreshRate: number = 60;
+  /**
+   * 🔧 刷新率检测阶段的最小帧时间
+   * 用于推断显示器刷新率
+   */
+  private minFrameTime: number = Infinity;
+  /**
+   * 🔧 刷新率检测是否完成
+   */
+  private refreshRateDetected: boolean = false;
+  /**
+   * 🔧 低帧率阈值（动态计算）
+   */
+  private lowFpsThreshold: number = 45;
   
   // DOM 批量读写队列
   private domReadQueue: (() => void)[] = [];
@@ -1331,12 +1371,30 @@ class AnimationCoordinator {
   /**
    * 启动 FPS 监控
    * 用于检测帧率下降并自动降级
+   * 
+   * 🔧 优化策略：
+   * 1. 自动检测显示器刷新率（通过最小帧时间推断）
+   * 2. 使用环形缓冲区避免数组操作开销
+   * 3. 使用累加器快速计算平均值（O(1) vs O(n)）
+   * 4. 延长更新间隔减少计算频率
+   * 5. 使用加权移动平均提高稳定性
+   * 6. 低帧率阈值相对于检测到的刷新率动态计算
    */
   startFpsMonitor(): void {
     if (this.fpsMonitorRunning) return;
     this.fpsMonitorRunning = true;
     this.lastFrameTimestamp = performance.now();
     this.lastFpsUpdateTime = this.lastFrameTimestamp;
+    
+    // 重置环形缓冲区
+    this.frameTimeIndex = 0;
+    this.frameTimeCount = 0;
+    this.frameTimeSum = 0;
+    this.frameTimes.fill(0);
+    
+    // 重置刷新率检测状态
+    this.minFrameTime = Infinity;
+    this.refreshRateDetected = false;
     
     const measureFps = (timestamp: number) => {
       if (!this.fpsMonitorRunning) return;
@@ -1345,34 +1403,104 @@ class AnimationCoordinator {
       this.lastFrameTimestamp = timestamp;
       this.totalFrames++;
       
-      // 记录每一帧的帧时间（更准确的测量）
-      this.frameTimes.push(frameTime);
-      if (this.frameTimes.length > this.FPS_SAMPLE_SIZE) {
-        this.frameTimes.shift();
+      // 🔧 刷新率检测阶段（前 30 帧）
+      // 通过最小帧时间推断显示器刷新率
+      if (!this.refreshRateDetected && this.totalFrames <= 30) {
+        // 过滤掉异常短的帧时间（< 4ms，可能是测量误差）
+        if (frameTime > 4 && frameTime < this.minFrameTime) {
+          this.minFrameTime = frameTime;
+        }
+        
+        // 30 帧后确定刷新率
+        if (this.totalFrames === 30 && this.minFrameTime < Infinity) {
+          this.refreshRateDetected = true;
+          // 根据最小帧时间推断刷新率
+          // 添加小余量避免边界问题
+          const inferredRate = Math.round(1000 / this.minFrameTime);
+          // 对齐到常见刷新率: 60, 72, 75, 90, 120, 144, 165, 240, 360
+          this.detectedRefreshRate = this.snapToCommonRefreshRate(inferredRate);
+          // 动态计算帧时间预算和低帧率阈值
+          this.frameBudget = 1000 / this.detectedRefreshRate;
+          this.lowFpsThreshold = Math.round(this.detectedRefreshRate * this.LOW_FPS_RATIO);
+          // 初始 FPS 设为检测到的刷新率
+          this.currentFps = this.detectedRefreshRate;
+          
+          if (import.meta.env.DEV) {
+            console.log(`[FPS Monitor] Detected refresh rate: ${this.detectedRefreshRate}Hz (min frame time: ${this.minFrameTime.toFixed(2)}ms, threshold: ${this.lowFpsThreshold}fps)`);
+          }
+        }
       }
       
-      // 检测卡顿（帧时间 > 32ms 算卡顿）
-      if (frameTime > this.FRAME_BUDGET * 2) {
+      // 🔧 环形缓冲区写入（避免 push/shift）
+      const idx = this.frameTimeIndex;
+      const oldValue = this.frameTimes[idx];
+      this.frameTimes[idx] = frameTime;
+      // 位运算取模（64 = 2^6，所以 & 63 等价于 % 64）
+      this.frameTimeIndex = (idx + 1) & 63;
+      
+      // 🔧 增量更新累加器（O(1) 复杂度）
+      if (this.frameTimeCount < this.FPS_SAMPLE_SIZE) {
+        this.frameTimeCount++;
+        this.frameTimeSum += frameTime;
+      } else {
+        // 缓冲区已满，减去被覆盖的旧值，加上新值
+        this.frameTimeSum = this.frameTimeSum - oldValue + frameTime;
+      }
+      
+      // 检测卡顿（帧时间 > 2倍帧预算算卡顿）
+      if (frameTime > this.frameBudget * 2) {
         this.jankCount++;
       }
       
-      // 每 500ms 更新一次 FPS 显示值
+      // 每 1000ms 更新一次 FPS 显示值
       const timeSinceUpdate = timestamp - this.lastFpsUpdateTime;
-      if (timeSinceUpdate >= this.FPS_UPDATE_INTERVAL && this.frameTimes.length >= 5) {
+      if (timeSinceUpdate >= this.FPS_UPDATE_INTERVAL && this.frameTimeCount >= 10) {
         this.lastFpsUpdateTime = timestamp;
         
-        // 使用中位数而不是平均值，减少异常值影响
-        const sortedTimes = [...this.frameTimes].sort((a, b) => a - b);
-        const medianFrameTime = sortedTimes[Math.floor(sortedTimes.length / 2)];
+        // 🔧 使用累加器直接计算平均帧时间（O(1)）
+        const avgFrameTime = this.frameTimeSum / this.frameTimeCount;
         
-        this.currentFps = Math.round(1000 / medianFrameTime);
-        this.isLowFpsMode = this.currentFps < this.LOW_FPS_THRESHOLD;
+        // 🔧 平滑处理：与上一次 FPS 做加权平均，避免抖动
+        const rawFps = 1000 / avgFrameTime;
+        // 80% 新值 + 20% 旧值，提高稳定性
+        this.currentFps = Math.round(rawFps * 0.8 + this.currentFps * 0.2);
+        
+        // 🔧 使用动态计算的阈值
+        this.isLowFpsMode = this.currentFps < this.lowFpsThreshold;
       }
       
       this.fpsMonitorRafId = requestAnimationFrame(measureFps);
     };
     
     this.fpsMonitorRafId = requestAnimationFrame(measureFps);
+  }
+  
+  /**
+   * 🔧 将推断的刷新率对齐到常见值
+   * 避免因测量误差导致的奇怪数值
+   */
+  private snapToCommonRefreshRate(inferredRate: number): number {
+    // 常见刷新率列表
+    const commonRates = [60, 72, 75, 90, 120, 144, 165, 240, 360];
+    
+    // 找到最接近的常见刷新率
+    let closest = commonRates[0];
+    let minDiff = Math.abs(inferredRate - closest);
+    
+    for (const rate of commonRates) {
+      const diff = Math.abs(inferredRate - rate);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = rate;
+      }
+    }
+    
+    // 如果差距太大（>10%），使用原始推断值
+    if (minDiff > inferredRate * 0.1) {
+      return inferredRate;
+    }
+    
+    return closest;
   }
   
   /**
@@ -1411,9 +1539,17 @@ class AnimationCoordinator {
     jankCount: number;
     totalFrames: number;
     isMonitoring: boolean;
+    sampleCount: number;
+    /** 🔧 检测到的显示器刷新率 */
+    detectedRefreshRate: number;
+    /** 🔧 动态计算的低帧率阈值 */
+    lowFpsThreshold: number;
+    /** 🔧 刷新率检测是否完成 */
+    refreshRateDetected: boolean;
   } {
-    const avgFrameTime = this.frameTimes.length > 0
-      ? this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length
+    // 🔧 使用累加器直接计算，O(1) 复杂度
+    const avgFrameTime = this.frameTimeCount > 0
+      ? this.frameTimeSum / this.frameTimeCount
       : 16;
     
     return {
@@ -1423,18 +1559,33 @@ class AnimationCoordinator {
       jankCount: this.jankCount,
       totalFrames: this.totalFrames,
       isMonitoring: this.fpsMonitorRunning,
+      sampleCount: this.frameTimeCount,
+      detectedRefreshRate: this.detectedRefreshRate,
+      lowFpsThreshold: this.lowFpsThreshold,
+      refreshRateDetected: this.refreshRateDetected,
     };
+  }
+  
+  /**
+   * 获取检测到的显示器刷新率
+   */
+  getDetectedRefreshRate(): number {
+    return this.detectedRefreshRate;
   }
   
   /**
    * 重置帧率统计（可选）
    */
   resetFrameStats(): void {
-    this.frameTimes = [];
+    this.frameTimes.fill(0);
+    this.frameTimeIndex = 0;
+    this.frameTimeCount = 0;
+    this.frameTimeSum = 0;
     this.jankCount = 0;
     this.totalFrames = 0;
-    this.currentFps = 60;
+    this.currentFps = this.detectedRefreshRate; // 重置为检测到的刷新率
     this.isLowFpsMode = false;
+    // 注意：不重置 detectedRefreshRate，保留之前的检测结果
   }
   
   // ==================== DOM 批量操作 ====================

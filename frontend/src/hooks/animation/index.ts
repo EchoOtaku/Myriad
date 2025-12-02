@@ -226,6 +226,14 @@ export function resetFrameStats() {
   coordinator.resetFrameStats();
 }
 
+/**
+ * 获取检测到的显示器刷新率
+ * 通过前几帧的最小帧时间自动推断
+ */
+export function getDetectedRefreshRate(): number {
+  return coordinator.getDetectedRefreshRate();
+}
+
 // ==================== DOM 批量操作 API ====================
 
 /**
