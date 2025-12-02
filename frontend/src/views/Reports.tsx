@@ -209,10 +209,11 @@ const DanmakuWidget = memo(({ data, defaultDanmaku, triggerKey }: { data?: { dan
     enabled: anim.loop, // 低端设备禁用
   });
   
+  // 🆕 低性能模式：限制弹幕数量不超过3条
+  const maxDanmakuCount = anim.loop ? (Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5) : 3;
+  
   // 🚀 性能优化：预计算随机化的动画参数，避免弹幕重叠
   const animations = useMemo(() => {
-    // 动态控制弹幕数量：70%概率3-4条，30%概率5条
-    const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
     const lanes = 5; // 总轨道数量
     
     // 🚀 优化：使用 Fisher-Yates 洗牌算法随机分配轨道，避免 do-while 循环
@@ -222,18 +223,13 @@ const DanmakuWidget = memo(({ data, defaultDanmaku, triggerKey }: { data?: { dan
       [availableLanes[i], availableLanes[j]] = [availableLanes[j], availableLanes[i]];
     }
     
-    return texts.slice(0, count).map((_, i) => ({
+    return texts.slice(0, maxDanmakuCount).map((_, i) => ({
       duration: 6 + Math.random() * 4, // 6-10秒随机
       delay: i * 0.7 + Math.random() * 0.5, // 错开延迟，避免同时出现
       top: `${10 + availableLanes[i] * 18}%`, // 固定轨道位置，每条间隔18%
       opacity: 0.4 + Math.random() * 0.3, // 40%-70% 随机透明度
     }));
-  }, [texts]);
-  
-  // 低端设备或调度器未分配槽位时不渲染动画
-  if (!anim.loop || !isAnimating) {
-    return null;
-  }
+  }, [texts, maxDanmakuCount]);
   
   return (
     <div className="relative h-full w-full overflow-hidden">

@@ -153,39 +153,104 @@ const AlbumCover = memo(({
 
 AlbumCover.displayName = 'AlbumCover';
 
-// 播放状态指示器 - 使用静态动画常量
-const PlayingIndicator = memo(({ themeColor, scale = 1, anim }: { themeColor: string; scale?: number; anim: AnimationConfig }) => {
-  // 缓存 transitions
-  const barTransition1 = anim.loop ? BAR_TRANSITION_LOOP(0) : BAR_TRANSITION_ONCE(0);
-  const barTransition2 = anim.loop ? BAR_TRANSITION_LOOP(0.1) : BAR_TRANSITION_ONCE(0.1);
-  const barTransition3 = anim.loop ? BAR_TRANSITION_LOOP(0.2) : BAR_TRANSITION_ONCE(0.2);
+// 播放状态指示器 - 高性能实时频谱版本
+// 使用 ref 直接操作 DOM，避免 React 重渲染
+const PlayingIndicator = memo(({ 
+  themeColor, 
+  scale = 1, 
+  isPlaying = false,
+}: { 
+  themeColor: string; 
+  scale?: number; 
+  anim?: AnimationConfig; // 保留参数兼容性，但不再使用
+  isPlaying?: boolean;
+}) => {
+  // DOM refs - 直接操作避免重渲染
+  const bar1Ref = useRef<HTMLDivElement>(null);
+  const bar2Ref = useRef<HTMLDivElement>(null);
+  const bar3Ref = useRef<HTMLDivElement>(null);
+  const bar4Ref = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<number | null>(null);
+  const connectedRef = useRef(false);
+  
+  // 频谱动画循环 - 直接操作 DOM
+  useEffect(() => {
+    if (!isPlaying) {
+      // 停止时重置高度
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      // 重置为默认高度
+      if (bar1Ref.current) bar1Ref.current.style.height = '30%';
+      if (bar2Ref.current) bar2Ref.current.style.height = '50%';
+      if (bar3Ref.current) bar3Ref.current.style.height = '40%';
+      if (bar4Ref.current) bar4Ref.current.style.height = '35%';
+      return;
+    }
+    
+    // 尝试连接音频到分析器（只连接一次）
+    if (!connectedRef.current) {
+      const audio = audioManager.getCurrentAudio();
+      if (audio) {
+        audioManager.connectAudioToAnalyser(audio);
+        connectedRef.current = true;
+      }
+    }
+    
+    // 高性能动画循环
+    let lastUpdateTime = 0;
+    const UPDATE_INTERVAL = 60; // ~16fps，足够流畅且省电
+    
+    const updateSpectrum = (timestamp: number) => {
+      if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
+        const data = audioManager.getSpectrumData();
+        
+        // 直接操作 DOM，避免 React 重渲染
+        if (bar1Ref.current) bar1Ref.current.style.height = `${30 + data[0] * 70}%`;
+        if (bar2Ref.current) bar2Ref.current.style.height = `${30 + data[1] * 70}%`;
+        if (bar3Ref.current) bar3Ref.current.style.height = `${30 + data[2] * 70}%`;
+        if (bar4Ref.current) bar4Ref.current.style.height = `${30 + data[3] * 70}%`;
+        
+        lastUpdateTime = timestamp;
+      }
+      animationRef.current = requestAnimationFrame(updateSpectrum);
+    };
+    
+    animationRef.current = requestAnimationFrame(updateSpectrum);
+    
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isPlaying]);
+  
+  // 缓存样式对象
+  const containerStyle = useMemo(() => ({ 
+    gap: `${2 * scale}px`, 
+    height: `${16 * scale}px` 
+  }), [scale]);
+  
+  const barStyle = useMemo(() => ({ 
+    background: themeColor, 
+    width: `${2 * scale}px`,
+    transition: 'height 0.06s linear',
+  }), [themeColor, scale]);
   
   return (
     <motion.div 
       className="flex items-end"
-      style={{ gap: `${2 * scale}px`, height: `${16 * scale}px` }}
+      style={containerStyle}
       initial={INDICATOR_INITIAL}
       animate={INDICATOR_ANIMATE}
       transition={INDICATOR_TRANSITION}
     >
-      <motion.div 
-        className="rounded-full"
-        style={{ background: themeColor, width: `${2 * scale}px` }}
-        animate={BAR_ANIMATE_1}
-        transition={barTransition1}
-      />
-      <motion.div 
-        className="rounded-full"
-        style={{ background: themeColor, width: `${2 * scale}px` }}
-        animate={BAR_ANIMATE_2}
-        transition={barTransition2}
-      />
-      <motion.div 
-        className="rounded-full"
-        style={{ background: themeColor, width: `${2 * scale}px` }}
-        animate={BAR_ANIMATE_3}
-        transition={barTransition3}
-      />
+      <div ref={bar1Ref} className="rounded-full" style={{ ...barStyle, height: '30%' }} />
+      <div ref={bar2Ref} className="rounded-full" style={{ ...barStyle, height: '50%' }} />
+      <div ref={bar3Ref} className="rounded-full" style={{ ...barStyle, height: '40%' }} />
+      <div ref={bar4Ref} className="rounded-full" style={{ ...barStyle, height: '35%' }} />
     </motion.div>
   );
 });
@@ -198,15 +263,6 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const anim = useAnimationLevel();
   const uniqueId = useId();
   const { t } = useI18n();
-  
-  // 🆕 使用触发式动画 - 组件挂载时播放一次光效动画
-  const { isAnimating } = useLoopAnimation({
-    duration: 4000, // 光效动画约4秒周期
-    trigger: 'mount', // 固定值，组件首次渲染时触发一次
-    enabled: anim.loop, // 低端设备禁用
-  });
-  
-  const canAnimate = anim.loop && isAnimating;
   
   const currentSong = isPreview ? { 
     name: t.musicPlayer.sampleSong, 
@@ -222,6 +278,32 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
   const isEnabled = isPreview ? true : playerControl.isEnabled;
   const isPlaying = isPreview ? false : playerControl.isPlaying;
   const musicColor = isPreview ? '#ef4444' : playerControl.musicColor;
+  
+  // 🆕 使用触发式动画 - isPlaying 变化时重新触发动画，并持续循环
+  const animationTrigger = useRef(0);
+  
+  // 当 isPlaying 变为 true 时增加 trigger 计数，持续触发动画
+  useEffect(() => {
+    if (!isPlaying || !anim.loop) return;
+    
+    // 立即触发一次
+    animationTrigger.current += 1;
+    
+    // 设置间隔定时器，每 4 秒重新触发动画
+    const intervalId = setInterval(() => {
+      animationTrigger.current += 1;
+    }, 4000);
+    
+    return () => clearInterval(intervalId);
+  }, [isPlaying, anim.loop]);
+  
+  const { isAnimating } = useLoopAnimation({
+    duration: 4000, // 光效动画约4秒周期
+    trigger: isPlaying ? animationTrigger.current : 'stopped', // 播放时持续触发
+    enabled: anim.loop && isPlaying, // 低端设备禁用，且只在播放时启用
+  });
+  
+  const canAnimate = anim.loop && isAnimating && isPlaying;
 
   const handleClick = useCallback(() => {
     if (isPreview) return;
@@ -508,7 +590,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
            
            {/* 控制区 */}
            <div className="flex items-center gap-3 shrink-0">
-             {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale * 0.8} anim={anim} />}
+             {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale * 0.8} anim={anim} isPlaying={isPlaying} />}
              <motion.button
                 onClick={handleTogglePlay}
                 className="rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10"
@@ -653,7 +735,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
           </button>
           
           {/* 播放状态指示器 */}
-          {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale} anim={anim} />}
+          {isPlaying && <PlayingIndicator themeColor={themeColor} scale={scale} anim={anim} isPlaying={isPlaying} />}
         </motion.div>
       </div>
     </div>

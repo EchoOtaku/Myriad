@@ -545,11 +545,19 @@ export function highlightText(text: string, query: string): string {
 
 /**
  * 全局音频管理器 - 确保同一时间只有一个音频在播放
+ * 支持实时音频频谱分析
  */
 class GlobalAudioManager {
   private static instance: GlobalAudioManager;
   private currentAudio: HTMLAudioElement | null = null;
   private currentSong: Song | null = null;
+  
+  // Web Audio API 相关 - 用于频谱分析
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
+  private connectedAudio: HTMLAudioElement | null = null; // 追踪已连接的音频元素
+  private frequencyData: Uint8Array | null = null;
 
   private constructor() {}
 
@@ -725,6 +733,141 @@ class GlobalAudioManager {
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = state;
     }
+  }
+
+  /**
+   * 初始化 Web Audio API 用于频谱分析
+   * 注意：由于 CORS 限制，跨域音频无法进行频谱分析
+   */
+  private initAudioContext(): boolean {
+    if (this.audioContext) return true;
+    
+    try {
+      this.audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      this.analyser = this.audioContext.createAnalyser();
+      
+      // 配置分析器 - 使用较小的 FFT 以获得更快的响应
+      this.analyser.fftSize = 64; // 32 个频段
+      this.analyser.smoothingTimeConstant = 0.6; // 平滑系数，0-1
+      this.analyser.minDecibels = -90;
+      this.analyser.maxDecibels = -10;
+      
+      // 连接到音频输出
+      this.analyser.connect(this.audioContext.destination);
+      
+      // 初始化频率数据数组
+      this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+      
+      return true;
+    } catch (e) {
+      console.warn('Failed to initialize AudioContext for spectrum analysis:', e);
+      return false;
+    }
+  }
+
+  /**
+   * 连接音频元素到分析器
+   */
+  connectAudioToAnalyser(audio: HTMLAudioElement): boolean {
+    if (!this.initAudioContext() || !this.audioContext || !this.analyser) {
+      return false;
+    }
+    
+    // 如果已经连接了相同的音频元素，跳过
+    if (this.connectedAudio === audio && this.sourceNode) {
+      return true;
+    }
+    
+    try {
+      // 创建新的源节点
+      // 注意：每个音频元素只能创建一次 MediaElementAudioSourceNode
+      this.sourceNode = this.audioContext.createMediaElementSource(audio);
+      this.sourceNode.connect(this.analyser);
+      this.connectedAudio = audio;
+      
+      return true;
+    } catch (e) {
+      // 如果音频元素已经被连接过，会抛出错误
+      // 这种情况下频谱分析可能仍然可用
+      console.warn('Failed to connect audio to analyser (may already be connected):', e);
+      return false;
+    }
+  }
+
+  /**
+   * 获取当前频谱数据
+   * 返回一个包含 4 个值的数组，分别代表低频、中低频、中高频、高频的强度 (0-1)
+   * 性能优化：复用数组避免 GC
+   */
+  private spectrumResult: number[] = [0.3, 0.5, 0.4, 0.3]; // 复用数组
+  private lastSpectrumTime = 0;
+  private readonly SPECTRUM_THROTTLE = 50; // 节流间隔 ms
+  
+  getSpectrumData(): number[] {
+    // 节流：避免过于频繁的计算
+    const now = performance.now();
+    if (now - this.lastSpectrumTime < this.SPECTRUM_THROTTLE) {
+      return this.spectrumResult;
+    }
+    this.lastSpectrumTime = now;
+    
+    if (!this.analyser || !this.frequencyData) {
+      // 无分析器时返回模拟数据
+      this.spectrumResult[0] = 0.3 + Math.random() * 0.4;
+      this.spectrumResult[1] = 0.4 + Math.random() * 0.5;
+      this.spectrumResult[2] = 0.3 + Math.random() * 0.4;
+      this.spectrumResult[3] = 0.2 + Math.random() * 0.3;
+      return this.spectrumResult;
+    }
+    
+    try {
+      // 获取频率数据
+      this.analyser.getByteFrequencyData(this.frequencyData);
+      
+      // 将频率数据分成 4 个频段
+      const binCount = this.frequencyData.length; // 32 个频段
+      const bandSize = binCount >> 2; // 除以4，使用位运算更快
+      
+      let hasData = false;
+      for (let i = 0; i < 4; i++) {
+        let sum = 0;
+        const start = i * bandSize;
+        const end = start + bandSize;
+        
+        for (let j = start; j < end; j++) {
+          sum += this.frequencyData[j];
+        }
+        
+        // 归一化到 0-1 范围，应用 1.5x 增益
+        const value = Math.min(1, (sum / bandSize / 255) * 1.5);
+        this.spectrumResult[i] = value;
+        if (value > 0) hasData = true;
+      }
+      
+      // 如果数据全为 0（可能是 CORS 限制），返回模拟数据
+      if (!hasData) {
+        this.spectrumResult[0] = 0.3 + Math.random() * 0.4;
+        this.spectrumResult[1] = 0.4 + Math.random() * 0.5;
+        this.spectrumResult[2] = 0.3 + Math.random() * 0.4;
+        this.spectrumResult[3] = 0.2 + Math.random() * 0.3;
+      }
+      
+      return this.spectrumResult;
+    } catch {
+      // 异常时返回模拟数据
+      this.spectrumResult[0] = 0.3 + Math.random() * 0.4;
+      this.spectrumResult[1] = 0.4 + Math.random() * 0.5;
+      this.spectrumResult[2] = 0.3 + Math.random() * 0.4;
+      this.spectrumResult[3] = 0.2 + Math.random() * 0.3;
+      return this.spectrumResult;
+    }
+  }
+
+  /**
+   * 检查是否支持频谱分析
+   */
+  isSpectrumSupported(): boolean {
+    return !!(window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext);
   }
 }
 

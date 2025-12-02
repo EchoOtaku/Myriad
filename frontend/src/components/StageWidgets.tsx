@@ -37,12 +37,14 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
     enabled: anim.loop,
   });
   
+  // 🆕 低性能模式：限制弹幕数量不超过3条
+  const maxDanmakuCount = anim.loop ? (Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5) : 3;
+  
   const animations = useMemo(() => {
-    const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
     const lanes = 5;
     const usedLanes: number[] = [];
 
-    return texts.slice(0, count).map((_, i) => {
+    return texts.slice(0, maxDanmakuCount).map((_, i) => {
       let lane: number;
       do {
         lane = Math.floor(Math.random() * lanes);
@@ -56,50 +58,7 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
         opacity: 0.4 + Math.random() * 0.3,
       };
     });
-  }, [texts]);
-
-  // 🆕 低性能模式：显示静态弹幕（随机固定位置）
-  const staticDanmaku = useMemo(() => {
-    const count = 3; // 固定显示3条弹幕
-    const lanes = 5;
-    const usedLanes: number[] = [];
-
-    return texts.slice(0, count).map((text, i) => {
-      let lane: number;
-      do {
-        lane = Math.floor(Math.random() * lanes);
-      } while (usedLanes.includes(lane));
-      usedLanes.push(lane);
-
-      return {
-        text,
-        top: `${10 + lane * 18}%`,
-        left: `${15 + i * 30}%`, // 水平分散排列
-        opacity: 0.5 + Math.random() * 0.2,
-      };
-    });
-  }, [texts]);
-
-  // 低端设备、禁用动画、或调度器未分配槽位时显示静态弹幕
-  if (!anim.loop || !isAnimating) {
-    return (
-      <div className="relative h-full w-full overflow-hidden">
-        {staticDanmaku.map((item, i) => (
-          <div
-            key={`static-${item.text}-${i}`}
-            className="absolute whitespace-nowrap text-base font-bold danmaku-text-color"
-            style={{
-              top: item.top,
-              left: item.left,
-              opacity: item.opacity,
-            }}
-          >
-            {item.text}
-          </div>
-        ))}
-      </div>
-    );
-  }
+  }, [texts, maxDanmakuCount]);
   
   return (
     <div className="relative h-full w-full overflow-hidden">

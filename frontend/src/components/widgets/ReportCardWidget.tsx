@@ -88,66 +88,23 @@ const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { d
     enabled: allowLoop, // 低端设备禁用
   });
   
-  const canAnimate = allowLoop && isAnimating;
+  // 🆕 低性能模式：限制弹幕数量不超过3条
+  const maxDanmakuCount = allowLoop ? (Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5) : 3;
   
   const animations = useMemo(() => {
-    const count = Math.random() < 0.7 ? (Math.random() < 0.5 ? 3 : 4) : 5;
     // 🔧 使用预生成的 LANES_ARRAY 进行洗牌
     const availableLanes = [...LANES_ARRAY];
     for (let i = availableLanes.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [availableLanes[i], availableLanes[j]] = [availableLanes[j], availableLanes[i]];
     }
-    return texts.slice(0, count).map((_, i) => ({
+    return texts.slice(0, maxDanmakuCount).map((_, i) => ({
       duration: 6 + Math.random() * 4,
       delay: i * 0.7 + Math.random() * 0.5,
       top: `${10 + availableLanes[i] * 18}%`,
       opacity: 0.4 + Math.random() * 0.3,
     }));
-  }, [texts]);
-
-  // 🆕 低性能模式：显示静态弹幕（随机固定位置）
-  const staticDanmaku = useMemo(() => {
-    const count = 3; // 固定显示3条弹幕
-    const lanes = 5;
-    const usedLanes: number[] = [];
-
-    return texts.slice(0, count).map((text, i) => {
-      let lane: number;
-      do {
-        lane = Math.floor(Math.random() * lanes);
-      } while (usedLanes.includes(lane));
-      usedLanes.push(lane);
-
-      return {
-        text,
-        top: `${10 + lane * 18}%`,
-        left: `${15 + i * 30}%`, // 水平分散排列
-        opacity: 0.5 + Math.random() * 0.2,
-      };
-    });
-  }, [texts]);
-
-  // 低端设备或调度器未分配槽位时显示静态弹幕
-  if (!canAnimate) {
-    return (
-      <div className="relative h-full w-full overflow-hidden">
-        {staticDanmaku.map((item, i) => (
-          <div
-            key={`static-${item.text}-${i}`}
-            className="absolute whitespace-nowrap text-base font-bold danmaku-text-color"
-            style={{
-              top: item.top,
-              left: item.left,
-              opacity: item.opacity,
-            }}
-          >
-            {item.text}
-          </div>
-        ))}
-      </div>
-    );
-  }
+  }, [texts, maxDanmakuCount]);
   
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -169,6 +126,7 @@ const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { d
     </div>
   );
 });
+DanmakuWidget.displayName = 'DanmakuWidget';
 
 const BilibiliWidget = memo(({ data, showOverview, onContentChange, allowLoop = true }: any) => {
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
