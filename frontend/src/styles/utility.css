@@ -10,6 +10,14 @@
   66% { transform: translate3d(-20px, 20px, 0) scale(0.9); }
 }
 
+/* 高性能 blob 动画 - 用于高端 GPU */
+@keyframes blob-fast {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  25% { transform: translate3d(40px, -60px, 0) scale(1.15); }
+  50% { transform: translate3d(-30px, 30px, 0) scale(0.85); }
+  75% { transform: translate3d(20px, 40px, 0) scale(1.1); }
+}
+
 @keyframes gradient-shift {
   0% {
     background-position: 0% 50%;
@@ -27,7 +35,33 @@
 
 .animate-blob {
   animation: blob 7s infinite;
-  /* GPU优化已内置于keyframes的translate3d中 */
+  /* GPU加速优化 */
+  will-change: transform;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  /* 强制提升为独立合成层 */
+  isolation: isolate;
+}
+
+/* 高性能模式 blob 动画 - 更快更流畅 */
+.animate-blob-fast {
+  animation: blob-fast 5s infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  isolation: isolate;
+}
+
+/* 背景动画容器 - GPU 优化 */
+.bg-animation-container {
+  isolation: isolate;
+}
+
+/* 背景动画元素 - 强制 GPU 合成层 */
+.bg-blob-element {
+  will-change: transform;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
 }
 
 .animation-delay-2000 {

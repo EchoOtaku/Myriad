@@ -96,10 +96,10 @@ export interface CoordinatorConfig {
 
 /** 默认配置 */
 export const DEFAULT_CONFIG: CoordinatorConfig = {
-  baseConcurrent: 12,       // 稳态最多 12 个并发
-  burstConcurrent: 32,      // 爆发时最多 32 个并发
+  baseConcurrent: 16,       // 稳态最多 16 个并发（从 12 提升）
+  burstConcurrent: 48,      // 爆发时最多 48 个并发（从 32 提升）
   burstDuration: 5000,      // 爆发持续 5 秒
   minInterval: 16,
-  defaultStaggerDelay: 40,  // 略微减少交错延迟，加快首屏
+  defaultStaggerDelay: 35,  // 略微减少交错延迟，加快首屏
   flushInterval: 16,
 };

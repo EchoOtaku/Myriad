@@ -78,19 +78,20 @@ export function useAnimationLevel(): AnimationConfig {
       case 'light':
         // 低端设备，限制同时动画数量
         configureAnimationCoordinator({ 
-          baseConcurrent: isMobile ? 6 : 8,
-          burstConcurrent: isMobile ? 16 : 20,
+          baseConcurrent: isMobile ? 6 : 10,
+          burstConcurrent: isMobile ? 16 : 24,
           burstDuration: 6000,
           maxLoopSlots: isMobile ? 4 : 6,
         });
         break;
       case 'standard':
-        // 标准设备，允许较多动画
+        // 标准/高性能设备，允许更多并发动画
+        // 🔥 提高并发限制以充分利用高端 GPU
         configureAnimationCoordinator({ 
-          baseConcurrent: isMobile ? 10 : 12,
-          burstConcurrent: isMobile ? 24 : 32,
-          burstDuration: 8000,
-          maxLoopSlots: isMobile ? 6 : 8,
+          baseConcurrent: isMobile ? 12 : 20,
+          burstConcurrent: isMobile ? 32 : 64,
+          burstDuration: 10000,
+          maxLoopSlots: isMobile ? 8 : 16,
         });
         break;
     }
