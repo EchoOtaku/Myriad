@@ -14,6 +14,7 @@ import { SocialNetworkWidget } from '../widgets/SocialNetworkWidget';
 import { getCSRFToken } from '../../utils/csrf';
 import { useI18n } from '../../contexts/I18nContext';
 import { getUIConfigDeduped } from '../../utils/requestDedup';
+import { useHomeVisibilityInterval, useHomeResizeObserver } from '../../hooks/animation/pages/home';
 
 const API_URL = import.meta.env.PUBLIC_API_URL || '';
 
@@ -182,7 +183,10 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
     saveToBackend(updatedWidgets, rows);
   }, [widgets, saveToBackend]);
 
-  // 监听 WidgetGrid 的高度变化，通知父级控制面板重新计算高度 - 添加节流
+  // 🆕 使用首页原子化 ResizeObserver
+  const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver();
+
+  // 监听 WidgetGrid 的高度变化，通知父级控制面板重新计算高度
   useEffect(() => {
     const widgetContainer = containerRef.current;
     if (!widgetContainer) return;
@@ -190,7 +194,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
     let throttleTimer: ReturnType<typeof setTimeout> | null = null;
     const THROTTLE_MS = 150; // 最少150ms触发一次
 
-    const resizeObserver = new ResizeObserver(() => {
+    observeHomeResize(widgetContainer, () => {
       if (throttleTimer) return;
       
       throttleTimer = setTimeout(() => {
@@ -200,12 +204,11 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
       }, THROTTLE_MS);
     });
 
-    resizeObserver.observe(widgetContainer);
     return () => {
       if (throttleTimer) clearTimeout(throttleTimer);
-      resizeObserver.disconnect();
+      unobserveHomeResize(widgetContainer);
     };
-  }, []);
+  }, [observeHomeResize, unobserveHomeResize]);
 
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -307,31 +310,12 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
     }
   }, [maxPage, currentPage]);
 
-  // 自动切换页面 (10秒一次，仅在非编辑模式且有多页时)
-  useEffect(() => {
-    if (isEditMode || maxPage <= 0) return;
-
-    let cancelled = false;
-    const tick = () => {
-      if (cancelled || document.hidden) return;
-      setCurrentPage(prev => (prev >= maxPage ? 0 : prev + 1));
-      timeout = window.setTimeout(tick, 10000);
-    };
-    let timeout: number = window.setTimeout(tick, 10000);
-    const onVisibility = () => {
-      if (document.hidden && timeout) {
-        clearTimeout(timeout);
-      } else if (!document.hidden && !cancelled) {
-        timeout = window.setTimeout(tick, 10000);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      cancelled = true;
-      if (timeout) clearTimeout(timeout);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [isEditMode, maxPage]);
+  // 🔧 使用首页原子化可见性感知定时器自动切换页面 (10秒一次，仅在非编辑模式且有多页时)
+  useHomeVisibilityInterval(
+    () => setCurrentPage(prev => (prev >= maxPage ? 0 : prev + 1)),
+    10000,
+    !isEditMode && maxPage > 0
+  );
 
   // 根据 gridRows 过滤可用小组件（1行模式只显示支持 4x1/2x1/1x1 的小组件）
   const filteredWidgets = useMemo((): WidgetType[] => {

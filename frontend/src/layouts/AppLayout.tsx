@@ -23,6 +23,8 @@ import {
   saveColorToCache,
 } from '../utils/wallpaperColorCache';
 import { useIdleEffect, useIdleInterval } from '../hooks/useIdleCallback';
+import { useScrollOptimization } from '../hooks/useScrollOptimization';
+import { startFpsMonitor, stopFpsMonitor } from '../utils/performance';
 import './AppLayout.css';
 
 interface AppLayoutProps {
@@ -48,6 +50,15 @@ export function AppLayout({ children }: AppLayoutProps) {
   
   // ℹ️ 性能优化: 移动端/低端设备禁用背景动画
   const anim = useAnimationLevel();
+
+  // 🔧 帧率优化：启用滚动优化和 FPS 监控
+  useScrollOptimization({ enabled: true });
+  
+  // 启动/停止 FPS 监控
+  useEffect(() => {
+    startFpsMonitor();
+    return () => stopFpsMonitor();
+  }, []);
 
   // 壁纸管理 Hook
   const { loadWallpaper: loadWallpaperFromHook } = useWallpaper();

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { API_URL } from '../config';
 import { getLibraryDataDeduped } from '../utils/requestDedup';
 import { useSharedResize } from '../hooks/useSharedEventListener';
+import { useLibraryIntersectionObserver } from '../hooks/animation/pages/library';
 import PlatformIcon from './PlatformIcon';
 import { Spinner } from './Spinner';
 import { QuickTransition } from './SkeletonTransition';
@@ -429,25 +430,22 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
     const hasMore = visibleCount < filteredAllItems.length;
 
-    // 自动加载监听
+    // 🆕 使用资料库原子化 IntersectionObserver
+    const { observeLibraryIntersection, unobserveLibraryIntersection } = useLibraryIntersectionObserver();
     const observerTarget = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const observer = new IntersectionObserver(
-            entries => {
-                if (entries[0].isIntersecting && hasMore) {
-                    loadMore();
-                }
-            },
-            { threshold: 0.1, rootMargin: '100px' }
-        );
+        const target = observerTarget.current;
+        if (!target) return;
 
-        if (observerTarget.current) {
-            observer.observe(observerTarget.current);
-        }
+        observeLibraryIntersection(target, (entry) => {
+            if (entry.isIntersecting && hasMore) {
+                loadMore();
+            }
+        });
 
-        return () => observer.disconnect();
-    }, [hasMore, loadMore]);
+        return () => unobserveLibraryIntersection(target);
+    }, [hasMore, loadMore, observeLibraryIntersection, unobserveLibraryIntersection]);
 
     // 排序后的可见项目
     const visibleItems = useMemo(() => {

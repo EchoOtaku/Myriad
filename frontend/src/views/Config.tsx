@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import AnimatedView from '../components/AnimatedView';
+import { useConfigScheduler } from '../hooks/animation/pages/simple';
 
 import { useNavigate } from 'react-router-dom';
 import ConfigForm from '../components/ConfigForm';
@@ -13,6 +14,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
 
 export default function Config() {
+  // 🆕 初始化页面级调度器
+  useConfigScheduler();
+  
   const navigate = useNavigate();
   const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth();
   const [loading, setLoading] = useState(true);

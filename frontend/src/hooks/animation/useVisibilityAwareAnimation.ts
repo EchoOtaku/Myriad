@@ -53,29 +53,6 @@ export interface VisibilityAwareAnimationResult {
   recheckVisibility: () => void;
 }
 
-// 共享的 IntersectionObserver 实例（性能优化）
-const observerMap = new Map<string, IntersectionObserver>();
-
-/** 获取或创建 IntersectionObserver */
-function getObserver(
-  threshold: number,
-  rootMargin: string,
-  callback: IntersectionObserverCallback
-): IntersectionObserver {
-  const key = `${threshold}:${rootMargin}`;
-  
-  let observer = observerMap.get(key);
-  if (!observer) {
-    observer = new IntersectionObserver(callback, {
-      threshold,
-      rootMargin,
-    });
-    observerMap.set(key, observer);
-  }
-  
-  return observer;
-}
-
 /**
  * 基于可见性的动画 Hook
  * 
@@ -114,18 +91,9 @@ export function useVisibilityAwareAnimation(
   const [isVisible, setIsVisible] = useState(false);
   const [state, setState] = useState<AnimationState | null>(null);
   const elementRef = useRef<HTMLElement | null>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  const unobserveRef = useRef<(() => void) | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const isRegisteredRef = useRef(false);
-
-  // 处理可见性变化
-  const handleVisibilityChange = useCallback((entries: IntersectionObserverEntry[]) => {
-    for (const entry of entries) {
-      if (entry.target === elementRef.current) {
-        setIsVisible(entry.isIntersecting);
-      }
-    }
-  }, []);
 
   // 注册动画（元素可见时）
   const registerAnimation = useCallback(() => {
@@ -192,30 +160,36 @@ export function useVisibilityAwareAnimation(
     }
   }, [isVisible, enableVisibility, registerAnimation, unregisterAnimation]);
 
-  // ref 回调
+  // ref 回调 - 使用共享的 IntersectionObserver
   const setRef = useCallback(
     (node: HTMLElement | null) => {
       // 清理旧元素的观察
-      if (elementRef.current && observerRef.current) {
-        observerRef.current.unobserve(elementRef.current);
+      if (unobserveRef.current) {
+        unobserveRef.current();
+        unobserveRef.current = null;
       }
 
       elementRef.current = node;
 
       // 观察新元素
       if (node && enableVisibility) {
-        observerRef.current = getObserver(threshold, rootMargin, handleVisibilityChange);
-        observerRef.current.observe(node);
+        unobserveRef.current = coordinator.observeIntersection(
+          node,
+          (entry) => {
+            setIsVisible(entry.isIntersecting);
+          },
+          { threshold, rootMargin }
+        );
       }
     },
-    [threshold, rootMargin, enableVisibility, handleVisibilityChange]
+    [threshold, rootMargin, enableVisibility]
   );
 
   // 清理
   useEffect(() => {
     return () => {
-      if (elementRef.current && observerRef.current) {
-        observerRef.current.unobserve(elementRef.current);
+      if (unobserveRef.current) {
+        unobserveRef.current();
       }
       unsubscribeRef.current?.();
     };
@@ -302,62 +276,43 @@ export function useVisibilityObserver(
 
   const [visibleItems, setVisibleItems] = useState<Set<string>>(new Set());
   const elementMapRef = useRef<Map<string, HTMLElement>>(new Map());
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  const unobserveMapRef = useRef<Map<string, () => void>>(new Map());
 
-  // 创建 observer
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        setVisibleItems((prev) => {
-          const next = new Set(prev);
-          let changed = false;
-
-          for (const entry of entries) {
-            // 查找对应的 itemId
-            let foundId: string | null = null;
-            for (const [id, el] of elementMapRef.current) {
-              if (el === entry.target) {
-                foundId = id;
-                break;
-              }
-            }
-
-            if (foundId) {
-              if (entry.isIntersecting && !prev.has(foundId)) {
-                next.add(foundId);
-                changed = true;
-              } else if (!entry.isIntersecting && prev.has(foundId)) {
-                next.delete(foundId);
-                changed = true;
-              }
-            }
-          }
-
-          return changed ? next : prev;
-        });
-      },
-      { threshold, rootMargin }
-    );
-
-    return () => {
-      observerRef.current?.disconnect();
-    };
-  }, [threshold, rootMargin]);
-
-  // 创建 item ref
+  // 创建 item ref - 使用共享 IntersectionObserver
   const createItemRef = useCallback(
     (itemId: string): React.RefCallback<HTMLElement> => {
       return (node) => {
-        const oldElement = elementMapRef.current.get(itemId);
-        
         // 取消观察旧元素
-        if (oldElement && observerRef.current) {
-          observerRef.current.unobserve(oldElement);
+        const oldUnobserve = unobserveMapRef.current.get(itemId);
+        if (oldUnobserve) {
+          oldUnobserve();
+          unobserveMapRef.current.delete(itemId);
         }
 
         if (node) {
           elementMapRef.current.set(itemId, node);
-          observerRef.current?.observe(node);
+          
+          // 使用共享的 IntersectionObserver
+          const unobserve = coordinator.observeIntersection(
+            node,
+            (entry) => {
+              setVisibleItems((prev) => {
+                if (entry.isIntersecting && !prev.has(itemId)) {
+                  const next = new Set(prev);
+                  next.add(itemId);
+                  return next;
+                } else if (!entry.isIntersecting && prev.has(itemId)) {
+                  const next = new Set(prev);
+                  next.delete(itemId);
+                  return next;
+                }
+                return prev;
+              });
+            },
+            { threshold, rootMargin }
+          );
+          
+          unobserveMapRef.current.set(itemId, unobserve);
         } else {
           elementMapRef.current.delete(itemId);
           setVisibleItems((prev) => {
@@ -371,8 +326,16 @@ export function useVisibilityObserver(
         }
       };
     },
-    []
+    [threshold, rootMargin]
   );
+
+  // 清理
+  useEffect(() => {
+    return () => {
+      unobserveMapRef.current.forEach((unobserve) => unobserve());
+      unobserveMapRef.current.clear();
+    };
+  }, []);
 
   // 获取可见性
   const getVisibility = useCallback(

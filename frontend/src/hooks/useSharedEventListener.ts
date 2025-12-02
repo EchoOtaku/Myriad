@@ -4,11 +4,12 @@
  * 多个组件监听同一事件时，合并为一个监听器，减少浏览器开销
  * 
  * @module useSharedEventListener
- * @version 1.1
+ * @version 1.2
  */
 
 import { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { rafThrottle, debounce } from '../utils/performance';
+import { coordinator } from './animation/coordinator';
 
 type EventCallback = (event: Event) => void;
 
@@ -204,11 +205,29 @@ export function useSharedResize(
  */
 export function useSharedScroll(
   callback: (event: Event) => void,
-  options: { priority?: number; enabled?: boolean } = {}
+  options: { priority?: number; enabled?: boolean; throttleMs?: number } = {}
 ): void {
-  useSharedEventListener('scroll', callback, {
-    ...options,
-    throttle: true,
+  const { throttleMs, ...restOptions } = options;
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  
+  const lastCallTime = useRef(0);
+  
+  const handler = useCallback((event: Event) => {
+    if (throttleMs && throttleMs > 0) {
+      const now = performance.now();
+      if (now - lastCallTime.current >= throttleMs) {
+        lastCallTime.current = now;
+        callbackRef.current(event);
+      }
+    } else {
+      callbackRef.current(event);
+    }
+  }, [throttleMs]);
+
+  useSharedEventListener('scroll', handler, {
+    ...restOptions,
+    throttle: true, // RAF 节流作为基础
   });
 }
 
@@ -333,20 +352,14 @@ export function useBreakpoints() {
 /**
  * 页面可见性 Hook
  * 用于在页面不可见时暂停动画或网络请求
+ * 
+ * 🔧 使用统一的 coordinator 可见性管理，避免重复的事件监听器
  */
 export function usePageVisibility(): boolean {
-  const [isVisible, setIsVisible] = useState(() => {
-    if (typeof document === 'undefined') return true;
-    return document.visibilityState === 'visible';
-  });
+  const [isVisible, setIsVisible] = useState(() => coordinator.getPageVisibility());
 
   useEffect(() => {
-    const handler = () => {
-      setIsVisible(document.visibilityState === 'visible');
-    };
-    
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
+    return coordinator.onVisibilityChange(setIsVisible);
   }, []);
 
   return isVisible;

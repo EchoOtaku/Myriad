@@ -11,6 +11,7 @@ import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { GlowBackground } from './shared/GlowBackground';
 import { useLoopAnimation } from '../../hooks/animation';
+import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home';
 import { useI18n } from '../../contexts/I18nContext';
 
 // Navigation guide type definition
@@ -85,34 +86,12 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
     else setGreeting(t.greeting.night);
   }, [isPreview, t]);
 
-  // 轮播引导卡片 - 使用 timeout 链 + 可见性暂停
-  useEffect(() => {
-    if (isEditMode || isPreview) return;
-    let cancelled = false;
-    let timeoutId: number | null = null;
-    const tick = () => {
-      if (cancelled || document.hidden) return;
-      setCurrentGuideIndex((prev) => (prev + 1) % navigationGuides.length);
-      timeoutId = window.setTimeout(tick, 5000);
-    };
-    timeoutId = window.setTimeout(tick, 5000);
-    
-    const onVisibility = () => {
-      if (document.hidden && timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      } else if (!document.hidden && !cancelled && !timeoutId) {
-        tick();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [isEditMode, isPreview]);
+  // 🔧 使用首页原子化可见性感知定时器轮播引导卡片
+  useHomeVisibilityInterval(
+    () => setCurrentGuideIndex((prev) => (prev + 1) % navigationGuides.length),
+    5000,
+    !isEditMode && !isPreview
+  );
 
   const currentGuide = useMemo(
     () => navigationGuides[currentGuideIndex],

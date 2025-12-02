@@ -17,6 +17,7 @@ import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceConte
 import { I18nProvider } from './contexts/I18nContext';
 import CustomScrollbar from './components/CustomScrollbar';
 import { preloadCriticalRoutes } from './utils/codeSplitting';
+import { useRouteScheduler } from './hooks/animation';
 import './styles/fonts.css';
 import './styles/theme.css';
 import './styles/animations.css';
@@ -117,6 +118,10 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
  */
 function AppRoutes() {
   const location = useLocation();
+
+  // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
+  // 这会在路由切换时清理旧页面的订阅并初始化新页面
+  useRouteScheduler();
 
   // 记录每次路由变化
   // 页面动画状态由 AnimatedView 中的 usePageTransition 自动管理

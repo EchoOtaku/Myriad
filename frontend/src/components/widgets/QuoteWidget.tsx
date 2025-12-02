@@ -11,6 +11,7 @@ import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel } from '../../hooks/useAnimationLevel';
 import { GlowBackground } from './shared/GlowBackground';
 import { useI18n } from '../../contexts/I18nContext';
+import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home';
 
 // 缓存配置
 const CACHE_KEY = 'quote_data_cache';
@@ -88,33 +89,10 @@ export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetP
 
     // 然后获取最新一言
     fetchQuote();
-    
-    // 每小时更新一次一言 - 使用 timeout 链 + 可见性暂停
-    let cancelled = false;
-    let timeoutId: number | null = null;
-    const schedule = () => {
-      if (cancelled || document.hidden) return;
-      fetchQuote();
-      timeoutId = window.setTimeout(schedule, CACHE_DURATION);
-    };
-    timeoutId = window.setTimeout(schedule, CACHE_DURATION);
-    
-    const onVisibility = () => {
-      if (document.hidden && timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      } else if (!document.hidden && !cancelled && !timeoutId) {
-        schedule();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [loadFromCache, fetchQuote, isPreview]);
+  }, [loadFromCache, fetchQuote, isPreview, t.quoteWidget.defaultQuote, t.quoteWidget.anonymous]);
+
+  // 🔧 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
+  useHomeVisibilityInterval(fetchQuote, CACHE_DURATION, !isPreview);
 
   // 主题色获取 - 优化：使用 requestAnimationFrame 批处理避免强制重排
   const updateThemeColor = useCallback(() => {

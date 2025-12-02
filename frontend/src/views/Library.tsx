@@ -6,8 +6,12 @@
 import { useEffect, useState } from 'react';
 import LibraryGrid from '../components/LibraryGrid';
 import AnimatedView from '../components/AnimatedView';
+import { useLibraryScheduler } from '../hooks/animation/pages/library';
 
 export default function Library() {
+  // 🆕 初始化资料库调度器（Resize + Intersection + Idle）
+  useLibraryScheduler();
+  
   const [filter, setFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all');
 
   // 监听来自 AppLayout 的筛选变化

@@ -21,6 +21,12 @@ import {
   DEFAULT_CONFIG,
 } from './types';
 
+/** IdleDeadline 类型（用于 requestIdleCallback） */
+interface IdleDeadline {
+  didTimeout: boolean;
+  timeRemaining(): number;
+}
+
 /** 动画槽位信息 */
 interface AnimationSlot {
   id: string;
@@ -149,6 +155,88 @@ class AnimationCoordinator {
   // 分片延迟（让出主线程）
   private readonly YIELD_DELAY = 0;
   
+  // ==================== 帧率监控与管理 ====================
+  /** 帧时间预算（ms） - 60fps */
+  private readonly FRAME_BUDGET = 16;
+  /** FPS 采样窗口大小 */
+  private readonly FPS_SAMPLE_SIZE = 30;
+  /** 低帧率阈值 */
+  private readonly LOW_FPS_THRESHOLD = 45;
+  
+  /** 帧时间记录 */
+  private frameTimes: number[] = [];
+  /** 当前帧率 */
+  private currentFps: number = 60;
+  /** 是否处于低帧率模式 */
+  private isLowFpsMode: boolean = false;
+  /** FPS 监控 RAF ID */
+  private fpsMonitorRafId: number | null = null;
+  /** 上次帧时间 */
+  private lastFrameTimestamp: number = 0;
+  /** FPS 监控是否运行中 */
+  private fpsMonitorRunning: boolean = false;
+  /** 卡顿计数 */
+  private jankCount: number = 0;
+  /** 总帧数 */
+  private totalFrames: number = 0;
+  
+  // DOM 批量读写队列
+  private domReadQueue: (() => void)[] = [];
+  private domWriteQueue: (() => void)[] = [];
+  private domBatchScheduled: boolean = false;
+  
+  // ==================== ResizeObserver 管理器 ====================
+  /** 共享的 ResizeObserver 实例（单一观察者，多元素） */
+  private sharedResizeObserver: ResizeObserver | null = null;
+  /** 尺寸回调映射：element -> callback */
+  private resizeCallbacks = new WeakMap<Element, (entry: ResizeObserverEntry) => void>();
+  /** 被观察元素集合（用于统计和清理） */
+  private observedElements = new Set<Element>();
+  /** 尺寸更新批次队列 */
+  private resizeBatchQueue: Array<{ element: Element; entry: ResizeObserverEntry }> = [];
+  /** 尺寸批次是否已调度 */
+  private resizeBatchScheduled: boolean = false;
+  /** 尺寸更新节流时间（ms） */
+  private readonly RESIZE_THROTTLE_MS = 50;
+  /** 上次处理尺寸更新的时间戳 */
+  private lastResizeProcessTime: number = 0;
+  /** 尺寸变化阈值（px），小于此值的变化将被忽略 */
+  private readonly RESIZE_THRESHOLD_PX = 4;
+  /** 元素上次尺寸缓存 */
+  private elementSizeCache = new WeakMap<Element, { width: number; height: number }>();
+  
+  // ==================== IntersectionObserver 管理器 ====================
+  /** 共享的 IntersectionObserver 实例池（按配置分组） */
+  private intersectionObservers = new Map<string, IntersectionObserver>();
+  /** 可见性回调映射：element -> { callback, observerKey } */
+  private intersectionCallbacks = new WeakMap<Element, { 
+    callback: (entry: IntersectionObserverEntry) => void;
+    observerKey: string;
+  }>();
+  /** 被观察元素集合（IntersectionObserver） */
+  private intersectionObservedElements = new Set<Element>();
+  /** 可见性批次队列 */
+  private intersectionBatchQueue: IntersectionObserverEntry[] = [];
+  /** 可见性批次是否已调度 */
+  private intersectionBatchScheduled: boolean = false;
+  
+  // ==================== 页面可见性订阅管理 ====================
+  /** 页面可见性变化回调集合 */
+  private visibilitySubscribers = new Set<(isVisible: boolean) => void>();
+  
+  // ==================== 空闲任务调度器 ====================
+  /** 空闲任务队列 */
+  private idleTaskQueue: Array<{ 
+    id: string; 
+    task: () => void; 
+    timeout?: number;
+    priority: number; // 0=低, 1=中, 2=高
+  }> = [];
+  /** 空闲任务回调 ID */
+  private idleCallbackId: number | null = null;
+  /** 已注册的空闲任务 ID 集合（用于去重） */
+  private registeredIdleTasks = new Set<string>();
+  
   // ==================== 对象池（减少 GC 压力）====================
   // 🔧 等待队列 ID 索引，用于 O(1) 查找
   private waitingQueueIndex = new Map<string, number>();
@@ -169,6 +257,8 @@ class AnimationCoordinator {
     this.initMessageChannel();
     // 🔧 初始化页面可见性监听
     this.initVisibilityListener();
+    // 🔧 初始化共享 ResizeObserver
+    this.initSharedResizeObserver();
     // 启动超时检查器
     this.startTimeoutChecker();
     // 📌 初始化时立即进入超频模式，确保首屏动画流畅
@@ -233,9 +323,50 @@ class AnimationCoordinator {
         this.processWaitQueue();
         this.processLoopWaitQueue();
       }
+      
+      // 🔧 通知所有可见性订阅者
+      for (const subscriber of this.visibilitySubscribers) {
+        try {
+          subscriber(this.isPageVisible);
+        } catch (e) {
+          console.error('[Coordinator] Visibility subscriber error:', e);
+        }
+      }
     };
     
     document.addEventListener('visibilitychange', this.visibilityHandler);
+  }
+  
+  /**
+   * 🔧 订阅页面可见性变化
+   * 组件可以使用此方法来响应页面可见性变化，无需各自添加事件监听器
+   * 
+   * @param callback 可见性变化回调 (isVisible: boolean) => void
+   * @returns 取消订阅函数
+   * 
+   * @example
+   * ```ts
+   * // 在组件中使用
+   * useEffect(() => {
+   *   return coordinator.onVisibilityChange((isVisible) => {
+   *     if (isVisible) startPolling();
+   *     else stopPolling();
+   *   });
+   * }, []);
+   * ```
+   */
+  onVisibilityChange(callback: (isVisible: boolean) => void): () => void {
+    this.visibilitySubscribers.add(callback);
+    return () => {
+      this.visibilitySubscribers.delete(callback);
+    };
+  }
+  
+  /**
+   * 🔧 获取当前页面可见性状态
+   */
+  getPageVisibility(): boolean {
+    return this.isPageVisible;
   }
   
   // ==================== 时间戳缓存优化 ====================
@@ -1699,11 +1830,606 @@ class AnimationCoordinator {
     this.activateBurstMode(10000); // 首次加载也使用10s
   }
   
+  // ==================== 帧率监控 API ====================
+  
+  /**
+   * 启动 FPS 监控
+   * 用于检测帧率下降并自动降级
+   */
+  startFpsMonitor(): void {
+    if (this.fpsMonitorRunning) return;
+    this.fpsMonitorRunning = true;
+    this.lastFrameTimestamp = performance.now();
+    
+    const measureFps = (timestamp: number) => {
+      if (!this.fpsMonitorRunning) return;
+      
+      const frameTime = timestamp - this.lastFrameTimestamp;
+      this.lastFrameTimestamp = timestamp;
+      this.totalFrames++;
+      
+      // 记录帧时间
+      this.frameTimes.push(frameTime);
+      if (this.frameTimes.length > this.FPS_SAMPLE_SIZE) {
+        this.frameTimes.shift();
+      }
+      
+      // 计算 FPS
+      if (this.frameTimes.length >= 5) {
+        const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+        this.currentFps = Math.round(1000 / avgFrameTime);
+        this.isLowFpsMode = this.currentFps < this.LOW_FPS_THRESHOLD;
+      }
+      
+      // 检测卡顿
+      if (frameTime > this.FRAME_BUDGET * 2) {
+        this.jankCount++;
+      }
+      
+      this.fpsMonitorRafId = requestAnimationFrame(measureFps);
+    };
+    
+    this.fpsMonitorRafId = requestAnimationFrame(measureFps);
+  }
+  
+  /**
+   * 停止 FPS 监控
+   */
+  stopFpsMonitor(): void {
+    this.fpsMonitorRunning = false;
+    if (this.fpsMonitorRafId !== null) {
+      cancelAnimationFrame(this.fpsMonitorRafId);
+      this.fpsMonitorRafId = null;
+    }
+  }
+  
+  /**
+   * 获取当前 FPS
+   */
+  getFps(): number {
+    return this.currentFps;
+  }
+  
+  /**
+   * 是否处于低帧率模式
+   */
+  isLowFps(): boolean {
+    return this.isLowFpsMode;
+  }
+  
+  /**
+   * 获取帧率统计信息
+   */
+  getFrameStats(): {
+    fps: number;
+    avgFrameTime: number;
+    isLowFps: boolean;
+    jankCount: number;
+    totalFrames: number;
+  } {
+    const avgFrameTime = this.frameTimes.length > 0
+      ? this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length
+      : 16;
+    
+    return {
+      fps: this.currentFps,
+      avgFrameTime,
+      isLowFps: this.isLowFpsMode,
+      jankCount: this.jankCount,
+      totalFrames: this.totalFrames,
+    };
+  }
+  
+  // ==================== DOM 批量操作 ====================
+  
+  /**
+   * 批量 DOM 读取
+   * 将读取操作收集到队列，在下一帧统一执行，避免强制重排
+   */
+  batchRead(callback: () => void): void {
+    this.domReadQueue.push(callback);
+    this.scheduleDomBatch();
+  }
+  
+  /**
+   * 批量 DOM 写入
+   * 将写入操作收集到队列，在读取之后统一执行
+   */
+  batchWrite(callback: () => void): void {
+    this.domWriteQueue.push(callback);
+    this.scheduleDomBatch();
+  }
+  
+  /**
+   * 调度 DOM 批量处理
+   */
+  private scheduleDomBatch(): void {
+    if (this.domBatchScheduled) return;
+    this.domBatchScheduled = true;
+    
+    requestAnimationFrame(() => {
+      this.domBatchScheduled = false;
+      this.flushDomBatch();
+    });
+  }
+  
+  /**
+   * 执行 DOM 批量操作
+   * 先读后写，避免布局抖动
+   */
+  private flushDomBatch(): void {
+    // 先执行所有读取
+    const reads = this.domReadQueue;
+    this.domReadQueue = [];
+    for (const read of reads) {
+      try { read(); } catch (e) { console.error('DOM read error:', e); }
+    }
+    
+    // 再执行所有写入
+    const writes = this.domWriteQueue;
+    this.domWriteQueue = [];
+    for (const write of writes) {
+      try { write(); } catch (e) { console.error('DOM write error:', e); }
+    }
+  }
+  
+  /**
+   * 让出主线程
+   * 用于长任务中断
+   */
+  yieldToMain(): Promise<void> {
+    return new Promise(resolve => {
+      this.scheduleYield(resolve);
+    });
+  }
+  
+  /**
+   * 检查是否应该让出主线程
+   */
+  shouldYield(): boolean {
+    return this.isLowFpsMode || this.waitingQueue.length > 10;
+  }
+  
+  // ==================== ResizeObserver 管理 ====================
+  
+  /**
+   * 初始化共享 ResizeObserver
+   * 使用单一 Observer 观察所有元素，比每个元素一个 Observer 更高效
+   */
+  private initSharedResizeObserver(): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    
+    this.sharedResizeObserver = new ResizeObserver((entries) => {
+      // 页面不可见时跳过处理
+      if (!this.isPageVisible) return;
+      
+      // 批量收集变化
+      for (const entry of entries) {
+        const callback = this.resizeCallbacks.get(entry.target);
+        if (callback) {
+          // 检查尺寸变化是否超过阈值
+          const { width, height } = entry.contentRect;
+          const cached = this.elementSizeCache.get(entry.target);
+          
+          if (cached) {
+            const widthDiff = Math.abs(cached.width - width);
+            const heightDiff = Math.abs(cached.height - height);
+            
+            // 小于阈值的变化忽略
+            if (widthDiff < this.RESIZE_THRESHOLD_PX && heightDiff < this.RESIZE_THRESHOLD_PX) {
+              continue;
+            }
+          }
+          
+          // 更新缓存
+          this.elementSizeCache.set(entry.target, { width, height });
+          
+          // 加入批次队列
+          this.resizeBatchQueue.push({ element: entry.target, entry });
+        }
+      }
+      
+      // 调度批量处理
+      this.scheduleResizeBatch();
+    });
+  }
+  
+  /**
+   * 调度 resize 批量处理
+   * 使用节流避免过于频繁的更新
+   */
+  private scheduleResizeBatch(): void {
+    if (this.resizeBatchScheduled || this.resizeBatchQueue.length === 0) return;
+    
+    const now = this.getNow();
+    const timeSinceLastProcess = now - this.lastResizeProcessTime;
+    
+    if (timeSinceLastProcess >= this.RESIZE_THROTTLE_MS) {
+      // 足够时间了，立即处理
+      this.resizeBatchScheduled = true;
+      requestAnimationFrame(() => {
+        this.flushResizeBatch();
+      });
+    } else {
+      // 延迟到节流时间后处理
+      this.resizeBatchScheduled = true;
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          this.flushResizeBatch();
+        });
+      }, this.RESIZE_THROTTLE_MS - timeSinceLastProcess);
+    }
+  }
+  
+  /**
+   * 执行 resize 批量回调
+   */
+  private flushResizeBatch(): void {
+    this.resizeBatchScheduled = false;
+    this.lastResizeProcessTime = this.getNow();
+    
+    // 取出所有待处理项
+    const batch = this.resizeBatchQueue;
+    this.resizeBatchQueue = [];
+    
+    // 批量执行回调
+    for (const { element, entry } of batch) {
+      const callback = this.resizeCallbacks.get(element);
+      if (callback) {
+        try {
+          callback(entry);
+        } catch (e) {
+          console.error('ResizeObserver callback error:', e);
+        }
+      }
+    }
+  }
+  
+  /**
+   * 观察元素尺寸变化
+   * @param element 要观察的元素
+   * @param callback 尺寸变化回调（接收 ResizeObserverEntry）
+   * @param options 观察选项
+   * @returns 取消观察函数
+   */
+  observeResize(
+    element: Element,
+    callback: (entry: ResizeObserverEntry) => void,
+    options?: { immediate?: boolean }
+  ): () => void {
+    if (!this.sharedResizeObserver || !element) {
+      return () => {};
+    }
+    
+    // 注册回调
+    this.resizeCallbacks.set(element, callback);
+    this.observedElements.add(element);
+    
+    // 开始观察
+    this.sharedResizeObserver.observe(element, { box: 'border-box' });
+    
+    // 立即执行一次测量（可选）
+    if (options?.immediate) {
+      requestAnimationFrame(() => {
+        if (!element.isConnected) return;
+        const rect = element.getBoundingClientRect();
+        // 更新缓存
+        this.elementSizeCache.set(element, { width: rect.width, height: rect.height });
+        // 创建模拟的 entry
+        const fakeEntry = {
+          target: element,
+          contentRect: rect,
+          borderBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+          contentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+          devicePixelContentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        } as ResizeObserverEntry;
+        callback(fakeEntry);
+      });
+    }
+    
+    // 返回取消函数
+    return () => {
+      this.unobserveResize(element);
+    };
+  }
+  
+  /**
+   * 取消观察元素
+   */
+  unobserveResize(element: Element): void {
+    if (!this.sharedResizeObserver) return;
+    
+    this.sharedResizeObserver.unobserve(element);
+    this.resizeCallbacks.delete(element);
+    this.observedElements.delete(element);
+    this.elementSizeCache.delete(element);
+    
+    // 从批次队列中移除该元素的待处理项
+    this.resizeBatchQueue = this.resizeBatchQueue.filter(item => item.element !== element);
+  }
+  
+  /**
+   * 获取观察中的元素数量
+   */
+  getObservedElementCount(): number {
+    return this.observedElements.size;
+  }
+  
+  /**
+   * 获取元素的缓存尺寸（无需触发重排）
+   */
+  getCachedSize(element: Element): { width: number; height: number } | null {
+    return this.elementSizeCache.get(element) || null;
+  }
+  
+  // ==================== IntersectionObserver 管理 ====================
+  
+  /**
+   * 获取或创建 IntersectionObserver
+   * 相同配置的元素共享同一个 Observer
+   */
+  private getIntersectionObserver(threshold: number, rootMargin: string): IntersectionObserver {
+    const key = `${threshold}:${rootMargin}`;
+    
+    let observer = this.intersectionObservers.get(key);
+    if (!observer) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          // 页面不可见时跳过
+          if (!this.isPageVisible) return;
+          
+          // 批量收集
+          for (const entry of entries) {
+            this.intersectionBatchQueue.push(entry);
+          }
+          
+          // 调度批量处理
+          this.scheduleIntersectionBatch();
+        },
+        { threshold, rootMargin }
+      );
+      this.intersectionObservers.set(key, observer);
+    }
+    
+    return observer;
+  }
+  
+  /**
+   * 调度 IntersectionObserver 批量处理
+   */
+  private scheduleIntersectionBatch(): void {
+    if (this.intersectionBatchScheduled || this.intersectionBatchQueue.length === 0) return;
+    
+    this.intersectionBatchScheduled = true;
+    
+    // 使用 microtask 批量处理，比 RAF 更快响应
+    queueMicrotask(() => {
+      this.flushIntersectionBatch();
+    });
+  }
+  
+  /**
+   * 执行 IntersectionObserver 批量回调
+   */
+  private flushIntersectionBatch(): void {
+    this.intersectionBatchScheduled = false;
+    
+    const batch = this.intersectionBatchQueue;
+    this.intersectionBatchQueue = [];
+    
+    for (const entry of batch) {
+      const info = this.intersectionCallbacks.get(entry.target);
+      if (info) {
+        try {
+          info.callback(entry);
+        } catch (e) {
+          console.error('IntersectionObserver callback error:', e);
+        }
+      }
+    }
+  }
+  
+  /**
+   * 观察元素可见性变化
+   * @param element 要观察的元素
+   * @param callback 可见性变化回调
+   * @param options 观察选项
+   * @returns 取消观察函数
+   */
+  observeIntersection(
+    element: Element,
+    callback: (entry: IntersectionObserverEntry) => void,
+    options?: { threshold?: number; rootMargin?: string }
+  ): () => void {
+    if (!element) return () => {};
+    
+    const threshold = options?.threshold ?? 0;
+    const rootMargin = options?.rootMargin ?? '0px';
+    const observerKey = `${threshold}:${rootMargin}`;
+    
+    const observer = this.getIntersectionObserver(threshold, rootMargin);
+    
+    // 注册回调
+    this.intersectionCallbacks.set(element, { callback, observerKey });
+    this.intersectionObservedElements.add(element);
+    
+    // 开始观察
+    observer.observe(element);
+    
+    // 返回取消函数
+    return () => {
+      this.unobserveIntersection(element);
+    };
+  }
+  
+  /**
+   * 取消观察元素可见性
+   */
+  unobserveIntersection(element: Element): void {
+    const info = this.intersectionCallbacks.get(element);
+    if (!info) return;
+    
+    const observer = this.intersectionObservers.get(info.observerKey);
+    if (observer) {
+      observer.unobserve(element);
+    }
+    
+    this.intersectionCallbacks.delete(element);
+    this.intersectionObservedElements.delete(element);
+    
+    // 从批次队列中移除
+    this.intersectionBatchQueue = this.intersectionBatchQueue.filter(
+      entry => entry.target !== element
+    );
+  }
+  
+  /**
+   * 获取观察中的元素数量（IntersectionObserver）
+   */
+  getIntersectionObservedCount(): number {
+    return this.intersectionObservedElements.size;
+  }
+  
+  /**
+   * 获取 IntersectionObserver 实例数量
+   */
+  getIntersectionObserverCount(): number {
+    return this.intersectionObservers.size;
+  }
+
+  // ==================== 空闲任务调度器 ====================
+  
+  /**
+   * 🔧 调度空闲任务
+   * 在主线程空闲时执行非关键任务，避免阻塞用户交互
+   * 
+   * @param id 任务唯一标识（用于去重和取消）
+   * @param task 要执行的任务
+   * @param options 配置选项
+   * @returns 取消任务的函数
+   * 
+   * @example
+   * ```ts
+   * // 调度一个空闲任务
+   * const cancel = coordinator.scheduleIdleTask('prefetch-data', () => {
+   *   prefetchNextPageData();
+   * }, { timeout: 2000, priority: 'low' });
+   * 
+   * // 取消任务
+   * cancel();
+   * ```
+   */
+  scheduleIdleTask(
+    id: string,
+    task: () => void,
+    options: { 
+      timeout?: number; 
+      priority?: 'low' | 'normal' | 'high';
+      dedupe?: boolean; // 是否去重，默认 true
+    } = {}
+  ): () => void {
+    const { timeout, priority = 'normal', dedupe = true } = options;
+    
+    // 去重检查
+    if (dedupe && this.registeredIdleTasks.has(id)) {
+      return () => this.cancelIdleTask(id);
+    }
+    
+    const priorityValue = priority === 'high' ? 2 : priority === 'normal' ? 1 : 0;
+    
+    this.idleTaskQueue.push({ id, task, timeout, priority: priorityValue });
+    this.registeredIdleTasks.add(id);
+    
+    // 按优先级排序（高优先级在前）
+    this.idleTaskQueue.sort((a, b) => b.priority - a.priority);
+    
+    // 调度空闲回调
+    this.scheduleIdleCallback();
+    
+    return () => this.cancelIdleTask(id);
+  }
+  
+  /**
+   * 🔧 取消空闲任务
+   */
+  cancelIdleTask(id: string): boolean {
+    const index = this.idleTaskQueue.findIndex(t => t.id === id);
+    if (index !== -1) {
+      this.idleTaskQueue.splice(index, 1);
+      this.registeredIdleTasks.delete(id);
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * 🔧 调度 requestIdleCallback
+   */
+  private scheduleIdleCallback() {
+    if (this.idleCallbackId !== null || this.idleTaskQueue.length === 0) return;
+    
+    // 页面不可见时暂停
+    if (!this.isPageVisible) return;
+    
+    const scheduleIdle = typeof requestIdleCallback !== 'undefined'
+      ? requestIdleCallback
+      : (cb: IdleRequestCallback) => setTimeout(() => cb({ 
+          didTimeout: false, 
+          timeRemaining: () => 50 
+        }), 1);
+    
+    // 获取最高优先级任务的 timeout
+    const highestPriorityTask = this.idleTaskQueue[0];
+    
+    this.idleCallbackId = scheduleIdle(
+      (deadline: IdleDeadline) => {
+        this.idleCallbackId = null;
+        this.processIdleTasks(deadline);
+      },
+      highestPriorityTask?.timeout ? { timeout: highestPriorityTask.timeout } : undefined
+    ) as number;
+  }
+  
+  /**
+   * 🔧 处理空闲任务
+   */
+  private processIdleTasks(deadline: IdleDeadline) {
+    // 在时间允许内尽可能多地处理任务
+    while (
+      this.idleTaskQueue.length > 0 &&
+      (deadline.timeRemaining() > 5 || deadline.didTimeout)
+    ) {
+      const taskInfo = this.idleTaskQueue.shift();
+      if (taskInfo) {
+        this.registeredIdleTasks.delete(taskInfo.id);
+        try {
+          taskInfo.task();
+        } catch (e) {
+          console.error(`[Coordinator] Idle task "${taskInfo.id}" error:`, e);
+        }
+      }
+    }
+    
+    // 如果还有任务，继续调度
+    if (this.idleTaskQueue.length > 0) {
+      this.scheduleIdleCallback();
+    }
+  }
+  
+  /**
+   * 🔧 获取待处理的空闲任务数量
+   */
+  getIdleTaskCount(): number {
+    return this.idleTaskQueue.length;
+  }
+
   /**
    * 销毁协调器（清理定时器）
    */
   destroy() {
     this.reset();
+    // 停止 FPS 监控
+    this.stopFpsMonitor();
     if (this.timeoutCheckerId) {
       clearInterval(this.timeoutCheckerId);
       this.timeoutCheckerId = null;
@@ -1725,8 +2451,38 @@ class AnimationCoordinator {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
       this.visibilityHandler = null;
     }
+    // 🔧 清理可见性订阅者
+    this.visibilitySubscribers.clear();
     // 清理 elementRefs
     this.elementRefs.clear();
+    // 清理 DOM 批量队列
+    this.domReadQueue.length = 0;
+    this.domWriteQueue.length = 0;
+    // 🔧 清理 ResizeObserver
+    if (this.sharedResizeObserver) {
+      this.sharedResizeObserver.disconnect();
+      this.sharedResizeObserver = null;
+    }
+    this.observedElements.clear();
+    this.resizeBatchQueue.length = 0;
+    // 🔧 清理 IntersectionObserver
+    for (const observer of this.intersectionObservers.values()) {
+      observer.disconnect();
+    }
+    this.intersectionObservers.clear();
+    this.intersectionObservedElements.clear();
+    this.intersectionBatchQueue.length = 0;
+    // 🔧 清理空闲任务
+    if (this.idleCallbackId !== null) {
+      if (typeof cancelIdleCallback !== 'undefined') {
+        cancelIdleCallback(this.idleCallbackId);
+      } else {
+        clearTimeout(this.idleCallbackId);
+      }
+      this.idleCallbackId = null;
+    }
+    this.idleTaskQueue.length = 0;
+    this.registeredIdleTasks.clear();
   }
 }
 

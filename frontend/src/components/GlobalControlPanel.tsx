@@ -19,6 +19,7 @@ import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAuth } from '../contexts/AuthContext';
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext';
+import { observeResize } from '../hooks/animation';
 import { useI18n } from '../contexts/I18nContext';
 import { useThemeMode } from '../utils/themeSubscriber';
 
@@ -431,9 +432,8 @@ const GlobalControlPanel: React.FC = () => {
       };
     }
 
-    // 桌面端: 使用 Observer 监听变化
-    const resizeObserver = new ResizeObserver(() => measure());
-    resizeObserver.observe(contentEl);
+    // 桌面端: 使用共享 ResizeObserver 监听变化
+    const unobserve = observeResize(contentEl, () => measure());
 
     // ⚠️ 优化: 减少 MutationObserver 的监听范围
     // 只监听直接子节点变化,不监听 subtree 和 characterData
@@ -449,7 +449,7 @@ const GlobalControlPanel: React.FC = () => {
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      resizeObserver.disconnect();
+      unobserve();
       mutationObserver.disconnect();
       document.removeEventListener('visibilitychange', handleVisibility);
       if (measureTimeout !== null) {

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { observeIntersection } from './animation';
 
 /**
  * 动画可见性控制 Hook
  * 
  * 当元素不在视口内时自动暂停动画，节省 CPU/GPU 资源
+ * 使用共享的 IntersectionObserver（通过 AnimationCoordinator）
  * 
  * 使用方式：
  * ```tsx
@@ -36,6 +38,7 @@ export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(opti
   const [isVisible, setIsVisible] = useState(defaultVisible);
   const [shouldAnimate, setShouldAnimate] = useState(defaultVisible);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const unobserveRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const element = ref.current;
@@ -48,9 +51,10 @@ export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(opti
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
+    // 使用共享的 IntersectionObserver
+    unobserveRef.current = observeIntersection(
+      element,
+      (entry) => {
         const nowVisible = entry.isIntersecting;
         
         setIsVisible(nowVisible);
@@ -73,10 +77,11 @@ export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(opti
       { rootMargin, threshold }
     );
 
-    observer.observe(element);
-
     return () => {
-      observer.disconnect();
+      if (unobserveRef.current) {
+        unobserveRef.current();
+        unobserveRef.current = null;
+      }
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -88,52 +93,63 @@ export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(opti
 
 /**
  * 批量管理多个动画元素的可见性
- * 使用单个 IntersectionObserver 实例来优化性能
+ * 使用共享的 IntersectionObserver 来优化性能
  */
-export function useAnimationVisibilityBatch() {
-  const observerRef = useRef<IntersectionObserver | null>(null);
+export function useAnimationVisibilityBatch(options?: {
+  rootMargin?: string;
+  threshold?: number;
+}) {
+  const { rootMargin = '50px', threshold = 0 } = options || {};
   const [visibleSet, setVisibleSet] = useState<Set<Element>>(new Set());
+  const unobserveMap = useRef<Map<Element, () => void>>(new Map());
 
-  useEffect(() => {
-    if (!('IntersectionObserver' in window)) return;
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
+  const observe = useCallback((element: Element | null) => {
+    if (!element || !('IntersectionObserver' in window)) return;
+    
+    // 已经在观察
+    if (unobserveMap.current.has(element)) return;
+    
+    const unobserve = observeIntersection(
+      element,
+      (entry) => {
         setVisibleSet((prev) => {
           const next = new Set(prev);
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              next.add(entry.target);
-            } else {
-              next.delete(entry.target);
-            }
-          });
+          if (entry.isIntersecting) {
+            next.add(entry.target);
+          } else {
+            next.delete(entry.target);
+          }
           return next;
         });
       },
-      { rootMargin: '50px' }
+      { rootMargin, threshold }
     );
-
-    return () => {
-      observerRef.current?.disconnect();
-    };
-  }, []);
-
-  const observe = useCallback((element: Element | null) => {
-    if (element && observerRef.current) {
-      observerRef.current.observe(element);
-    }
-  }, []);
+    
+    unobserveMap.current.set(element, unobserve);
+  }, [rootMargin, threshold]);
 
   const unobserve = useCallback((element: Element | null) => {
-    if (element && observerRef.current) {
-      observerRef.current.unobserve(element);
-      setVisibleSet((prev) => {
-        const next = new Set(prev);
-        next.delete(element);
-        return next;
-      });
+    if (!element) return;
+    
+    const unobserveFn = unobserveMap.current.get(element);
+    if (unobserveFn) {
+      unobserveFn();
+      unobserveMap.current.delete(element);
     }
+    
+    setVisibleSet((prev) => {
+      const next = new Set(prev);
+      next.delete(element);
+      return next;
+    });
+  }, []);
+
+  // 清理
+  useEffect(() => {
+    return () => {
+      unobserveMap.current.forEach((unobserveFn) => unobserveFn());
+      unobserveMap.current.clear();
+    };
   }, []);
 
   const isVisible = useCallback(

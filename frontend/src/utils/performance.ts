@@ -1,9 +1,40 @@
 import { loadImagePooled } from './objectPool';
+import { 
+  startFpsMonitor as _startFpsMonitor, 
+  stopFpsMonitor as _stopFpsMonitor, 
+  isLowFps,
+  batchRead,
+  batchWrite,
+  yieldToMain,
+  shouldYield,
+} from '../hooks/animation';
 
 /**
  * 性能优化工具函数库
  * 提供防抖、节流、RAF优化等性能工具
  */
+
+// ============================================
+// 帧率感知 - 代理到 AnimationCoordinator
+// ============================================
+
+/** 检查是否处于低帧率模式 */
+export function isLowFpsMode(): boolean {
+  return isLowFps();
+}
+
+/** 启动 FPS 监控（自动降级） */
+export function startFpsMonitor(): void {
+  _startFpsMonitor();
+}
+
+/** 停止 FPS 监控 */
+export function stopFpsMonitor(): void {
+  _stopFpsMonitor();
+}
+
+// 重新导出 DOM 批量操作
+export { batchRead, batchWrite, yieldToMain, shouldYield };
 
 /**
  * 防抖函数 - 延迟执行
@@ -56,21 +87,101 @@ export function throttle<T extends (...args: any[]) => any>(
 
 /**
  * RAF节流 - 使用requestAnimationFrame限制执行
+ * 增强版：支持取消和帧率感知
+ * 
  * @param fn 要优化的函数
+ * @param options 选项
  */
 export function rafThrottle<T extends (...args: any[]) => any>(
-  fn: T
-): (...args: Parameters<T>) => void {
+  fn: T,
+  options?: { 
+    /** 低帧率时是否跳过执行 */
+    skipOnLowFps?: boolean;
+  }
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let rafId: number | null = null;
+  const { skipOnLowFps = false } = options || {};
   
-  return function(this: any, ...args: Parameters<T>) {
+  const throttled = function(this: any, ...args: Parameters<T>) {
     if (rafId !== null) {
+      return;
+    }
+    
+    // 低帧率时可选跳过
+    if (skipOnLowFps && _isLowFpsMode) {
       return;
     }
     
     rafId = requestAnimationFrame(() => {
       fn.apply(this, args);
       rafId = null;
+    });
+  } as ((...args: Parameters<T>) => void) & { cancel: () => void };
+  
+  throttled.cancel = () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  };
+  
+  return throttled;
+}
+
+/**
+ * 双缓冲 RAF - 确保平滑更新
+ * 使用两个 RAF 确保样式更改在下一帧生效
+ */
+export function doubleRaf(callback: () => void): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(callback);
+  });
+}
+
+/**
+ * 带最大等待时间的 RAF 节流
+ * 确保即使在高频调用时也能定期执行
+ */
+export function rafThrottleWithMaxWait<T extends (...args: any[]) => any>(
+  fn: T,
+  maxWait: number = 100
+): (...args: Parameters<T>) => void {
+  let rafId: number | null = null;
+  let lastExecute = 0;
+  let pendingArgs: Parameters<T> | null = null;
+  let context: any = null;
+  
+  return function(this: any, ...args: Parameters<T>) {
+    context = this;
+    pendingArgs = args;
+    
+    const now = performance.now();
+    const timeSinceLastExecute = now - lastExecute;
+    
+    // 如果超过最大等待时间，立即执行
+    if (timeSinceLastExecute >= maxWait) {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      lastExecute = now;
+      fn.apply(context, pendingArgs);
+      pendingArgs = null;
+      return;
+    }
+    
+    // 否则使用 RAF 节流
+    if (rafId !== null) {
+      return;
+    }
+    
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      lastExecute = performance.now();
+      if (pendingArgs) {
+        fn.apply(context, pendingArgs);
+        pendingArgs = null;
+      }
     });
   };
 }

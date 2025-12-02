@@ -5,6 +5,7 @@ import { FaTimes, FaSteam, FaGithub } from '@lib/icons';
 import { SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
 import { BilibiliWidget, SteamWidget, GithubWidget, NeteaseWidget } from './StageWidgets';
 import { useI18n } from '../contexts/I18nContext';
+import { useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 
 const DARK_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(10, 10, 10, 0.3) 45%, rgba(10, 10, 10, 0.5) 55%, rgba(10, 10, 10, 0.75) 70%, rgba(10, 10, 10, 0.9) 85%, rgba(10, 10, 10, 0.95) 100%)';
 const LIGHT_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.4) 55%, rgba(255, 255, 255, 0.9) 85%, rgba(255, 255, 255, 0.9) 100%)';
@@ -196,38 +197,11 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
   
   const [currentIndex, setCurrentIndex] = useState(0);
   
-  // 舞台模式轮播 - 使用 timeout 链 + 可见性暂停优化主线程占用
-  useEffect(() => {
-    if (shuffledItems.length === 0) return;
-    
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    
-    const tick = () => {
-      if (cancelled || document.hidden) return;
-      setCurrentIndex(prev => (prev + 1) % shuffledItems.length);
-      timeoutId = setTimeout(tick, 5000);
-    };
-    
-    timeoutId = setTimeout(tick, 5000);
-    
-    // 页面可见性变化处理
-    const onVisibility = () => {
-      if (document.hidden && timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      } else if (!document.hidden && !cancelled && !timeoutId) {
-        tick();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [shuffledItems.length]);
+  // 🔧 使用报告页原子化可见性感知定时器进行舞台模式轮播
+  useReportsVisibilityInterval(
+    () => setCurrentIndex(prev => (prev + 1) % shuffledItems.length),
+    shuffledItems.length > 0 ? 5000 : null
+  );
   
   if (shuffledItems.length === 0) return null;
   

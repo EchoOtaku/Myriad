@@ -12,6 +12,7 @@ import './WidgetGrid.css';
 import { usePerformanceProfile, getPerformanceProfileSync } from '../hooks/usePerformanceProfile';
 import { useI18n } from '../contexts/I18nContext';
 import { useStaggerAnimation } from '../hooks/animation';
+import { useHomeResizeObserver } from '../hooks/animation/pages/home';
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener';
 
 // ⚗️ 移动端检测 - 使用统一的性能检测系统
@@ -464,67 +465,36 @@ export default function WidgetGrid({
     }
   }, []);
 
+  // 🆕 使用首页原子化 ResizeObserver
+  const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver();
+
   // 计算网格单元格尺寸 - 使用 ResizeObserver 的 contentRect 避免强制重排
   const gridRef = useCallback((node: HTMLDivElement | null) => {
     // 清理旧的 observer
     if (containerRef.current) {
-      const oldObserver = (containerRef.current as any).__resizeObserver;
-      if (oldObserver) {
-        oldObserver.disconnect();
-        delete (containerRef.current as any).__resizeObserver;
-      }
+      unobserveHomeResize(containerRef.current);
     }
     
     containerRef.current = node;
     if (node) {
-      // 使用 ResizeObserver 监听宽度变化 - 直接使用 contentRect 避免 getBoundingClientRect
-      let resizeThrottleId: number | null = null;
-      const resizeObserver = new ResizeObserver(entries => {
-        const entry = entries[0];
-        if (!entry) return;
-        
-        // 使用节流避免过于频繁的更新
-        if (resizeThrottleId) return;
-        resizeThrottleId = window.setTimeout(() => {
-          resizeThrottleId = null;
-          // 直接使用 contentRect.width，避免调用 getBoundingClientRect
-          setContainerWidth(entry.contentRect.width);
-          // 🔧 同时更新 gridRect 缓存
-          gridRectRef.current = node.getBoundingClientRect();
-        }, 50); // 50ms 节流
+      // 使用首页原子化 ResizeObserver 监听宽度变化
+      observeHomeResize(node, (entry) => {
+        // 直接使用 contentRect.width，避免调用 getBoundingClientRect
+        setContainerWidth(entry.contentRect.width);
+        // 🔧 同时更新 gridRect 缓存（需要完整 rect）
+        gridRectRef.current = node.getBoundingClientRect();
       });
-      resizeObserver.observe(node);
-      
-      // 初始测量：使用 requestAnimationFrame 延迟避免同步重排
-      requestAnimationFrame(() => {
-        if (node) {
-          const rect = node.getBoundingClientRect();
-          setContainerWidth(rect.width);
-          gridRectRef.current = rect;
-        }
-      });
-      
-      // 保存 observer 和 throttleId 以便清理
-      (node as any).__resizeObserver = resizeObserver;
-      (node as any).__resizeThrottleId = resizeThrottleId;
     }
-  }, []);
+  }, [observeHomeResize, unobserveHomeResize]);
 
   // 清理 ResizeObserver
   useEffect(() => {
     return () => {
       if (containerRef.current) {
-        const observer = (containerRef.current as any).__resizeObserver;
-        const throttleId = (containerRef.current as any).__resizeThrottleId;
-        if (observer) {
-          observer.disconnect();
-        }
-        if (throttleId) {
-          clearTimeout(throttleId);
-        }
+        unobserveHomeResize(containerRef.current);
       }
     };
-  }, []);
+  }, [unobserveHomeResize]);
 
   // 开始拖拽现有小组件
   const handleWidgetDragStart = useCallback(

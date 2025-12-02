@@ -3,6 +3,8 @@
  * 支持响应式图片和WebP格式
  */
 
+import { observeIntersection, unobserveIntersection } from '../hooks/animation';
+
 /**
  * 生成响应式图片的srcset
  * @param src 原始图片路径
@@ -80,14 +82,16 @@ export async function getBestImageFormat(): Promise<'webp' | 'avif' | 'jpg'> {
 
 /**
  * 懒加载图片
+ * 使用共享 IntersectionObserver（通过 AnimationCoordinator）
  */
 export function lazyLoadImage(img: HTMLImageElement) {
   if ('loading' in HTMLImageElement.prototype) {
     img.loading = 'lazy';
   } else {
-    // Fallback: 使用Intersection Observer
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
+    // Fallback: 使用共享 Intersection Observer
+    observeIntersection(
+      img,
+      (entry) => {
         if (entry.isIntersecting) {
           const lazyImg = entry.target as HTMLImageElement;
           if (lazyImg.dataset.src) {
@@ -96,12 +100,11 @@ export function lazyLoadImage(img: HTMLImageElement) {
           if (lazyImg.dataset.srcset) {
             lazyImg.srcset = lazyImg.dataset.srcset;
           }
-          observer.unobserve(lazyImg);
+          unobserveIntersection(lazyImg);
         }
-      });
-    });
-    
-    observer.observe(img);
+      },
+      { rootMargin: '50px' }
+    );
   }
 }
 

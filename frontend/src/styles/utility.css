@@ -291,6 +291,162 @@
   transform: translateY(-2px);
 }
 
+/* ============================================
+   🔧 新增：帧率优化 CSS
+   降低 GPU/CPU 负载
+   ============================================ */
+
+/* 减少重绘的过渡 - 只允许 transform 和 opacity */
+.transition-gpu {
+  transition-property: transform, opacity;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 禁用所有过渡（用于批量 DOM 操作） */
+.no-transition {
+  transition: none !important;
+}
+
+/* 禁用所有动画 */
+.no-animation {
+  animation: none !important;
+}
+
+/* 低帧率模式 - 全局降级 */
+.low-fps-mode .animate-blob,
+.low-fps-mode .animation-delay-2000,
+.low-fps-mode .animation-delay-4000 {
+  animation: none !important;
+}
+
+.low-fps-mode [class*="backdrop-blur"],
+.low-fps-mode [class*="blur-"] {
+  backdrop-filter: none !important;
+  filter: none !important;
+}
+
+/* 滚动时降级（通过 JS 添加） */
+.is-scrolling .animate-blob {
+  animation-play-state: paused;
+}
+
+.is-scrolling [class*="transition-"] {
+  transition-duration: 0s !important;
+}
+
+/* 拖拽时降级 */
+.is-dragging * {
+  pointer-events: none !important;
+}
+
+.is-dragging [class*="transition-"]:not(.drag-item) {
+  transition: none !important;
+}
+
+/* 高性能滚动容器 */
+.scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  /* 使用 transform 创建独立层 */
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+/* 滚动时隐藏复杂内容 */
+.scroll-container.is-scrolling .complex-content {
+  visibility: hidden;
+}
+
+/* 虚拟滚动占位 */
+.virtual-item {
+  contain: strict;
+  content-visibility: auto;
+}
+
+/* ============================================
+   🔧 新增：Paint 优化
+   减少不必要的重绘
+   ============================================ */
+
+/* 隔离重绘区域 */
+.paint-isolated {
+  isolation: isolate;
+  contain: paint;
+}
+
+/* 固定尺寸元素（避免布局计算） */
+.size-fixed {
+  contain: size layout;
+}
+
+/* 仅样式隔离 */
+.style-isolated {
+  contain: style;
+}
+
+/* 完全隔离（最高性能） */
+.fully-isolated {
+  contain: strict;
+  content-visibility: auto;
+}
+
+/* ============================================
+   🔧 新增：Transform 优化
+   使用 3D 变换促进 GPU 加速
+   ============================================ */
+
+/* 启用 3D 加速 */
+.gpu-accelerated {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* 平滑的 transform 动画 */
+.transform-smooth {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* 退出 GPU 加速（节省内存） */
+.gpu-normal {
+  transform: none;
+  will-change: auto;
+  backface-visibility: visible;
+}
+
+/* ============================================
+   🔧 新增：图片优化
+   ============================================ */
+
+/* 图片加载占位 */
+.img-placeholder {
+  background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
+  background-size: 200% 100%;
+  animation: img-shimmer 1.5s linear infinite;
+}
+
+@keyframes img-shimmer {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+/* 图片加载完成后移除占位 */
+.img-loaded {
+  animation: none;
+  background: transparent;
+}
+
+/* 懒加载图片容器 */
+.lazy-img-container {
+  contain: layout style;
+  overflow: hidden;
+}
+
 /* 移动端禁用选择 */
 @media (max-width: 767px) {
   .nav-item,
@@ -304,5 +460,32 @@
   .animate-blob {
     animation: none;
     opacity: 0.1;
+  }
+  
+  /* 移动端减少 blur */
+  [class*="backdrop-blur-xl"],
+  [class*="backdrop-blur-2xl"],
+  [class*="backdrop-blur-3xl"] {
+    backdrop-filter: blur(8px) !important;
+  }
+}
+
+/* ============================================
+   🔧 新增：Reduce Motion 支持
+   为偏好减少动画的用户提供支持
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .animate-blob {
+    animation: none !important;
   }
 }

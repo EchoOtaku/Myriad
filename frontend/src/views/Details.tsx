@@ -5,8 +5,12 @@
 
 import AnimatedView from '../components/AnimatedView';
 import { useI18n } from '../contexts/I18nContext';
+import { useDetailsScheduler } from '../hooks/animation/pages/simple';
 
 export default function Details() {
+  // 🆕 初始化页面级调度器
+  useDetailsScheduler();
+  
   const { t } = useI18n();
   
   return (

@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { rafThrottle } from '../utils/performance';
+import { observeIntersection } from './animation';
 
 interface VirtualScrollOptions {
   itemHeight: number;          // 每个项目的高度
@@ -261,9 +262,13 @@ export function useVirtualGrid(
 /**
  * Intersection Observer Hook
  * 用于懒加载和可见性检测
+ * 使用共享的 IntersectionObserver（通过 AnimationCoordinator）
  */
 
-interface IntersectionObserverOptions extends IntersectionObserverInit {
+interface IntersectionObserverOptions {
+  threshold?: number;
+  rootMargin?: string;
+  root?: Element | null;
   once?: boolean;               // 是否只触发一次
 }
 
@@ -272,33 +277,46 @@ export function useIntersectionObserver(
   callback: (isIntersecting: boolean, entry: IntersectionObserverEntry) => void,
   options?: IntersectionObserverOptions
 ): void {
-  const { once = false, ...observerOptions } = options || {};
+  const { once = false, threshold = 0, rootMargin = '0px' } = options || {};
   const hasTriggered = useRef(false);
+  const unobserveRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const element = elementRef.current;
     if (!element || typeof IntersectionObserver === 'undefined') return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
+    // 清理旧观察
+    if (unobserveRef.current) {
+      unobserveRef.current();
+      unobserveRef.current = null;
+    }
+
+    // 使用共享的 IntersectionObserver
+    unobserveRef.current = observeIntersection(
+      element,
+      (entry) => {
         if (once && hasTriggered.current) return;
         
         callback(entry.isIntersecting, entry);
         
         if (entry.isIntersecting && once) {
           hasTriggered.current = true;
-          observer.disconnect();
+          if (unobserveRef.current) {
+            unobserveRef.current();
+            unobserveRef.current = null;
+          }
         }
       },
-      observerOptions
+      { threshold, rootMargin }
     );
 
-    observer.observe(element);
-
     return () => {
-      observer.disconnect();
+      if (unobserveRef.current) {
+        unobserveRef.current();
+        unobserveRef.current = null;
+      }
     };
-  }, [elementRef, callback, once, observerOptions]);
+  }, [elementRef, callback, once, threshold, rootMargin]);
 }
 
 /**

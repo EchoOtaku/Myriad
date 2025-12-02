@@ -20,6 +20,7 @@ import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget';
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget';
 import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget';
 import { usePageReady } from '../hooks/animation';
+import { useHomeScheduler } from '../hooks/animation/pages/home';
 import { getUserInfoWithCache, getCsrfTokenWithCache, UserInfo } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
@@ -27,6 +28,9 @@ import { useI18n } from '../contexts/I18nContext';
 import { getUIConfigDeduped } from '../utils/requestDedup';
 
 export default function Home() {
+  // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
+  useHomeScheduler();
+  
   const navigate = useNavigate();
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth();
   const { t } = useI18n();

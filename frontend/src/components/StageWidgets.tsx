@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, memo, useId } from 'react';
+import { useState, useEffect, useMemo, memo, useId, useRef } from 'react';
 import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim';
 import { API_URL } from '../config';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useLoopAnimation, LoopPriority } from '../hooks/animation';
+import { useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
 
 // 🔧 工具函数：处理B站图片URL，使用后端代理
@@ -140,14 +141,11 @@ export const BilibiliWidget = memo(({ data, onContentChange, showOverview }: {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
 
-  useEffect(() => {
-    if (!showOverview && libraryItems.length > 0) {
-       const timer = setInterval(() => {
-         setCurrentItemIndex(prev => (prev + 1) % libraryItems.length);
-       }, 5000);
-       return () => clearInterval(timer);
-    }
-  }, [showOverview, libraryItems.length]);
+  // 🔧 使用报告页原子化可见性感知定时器
+  useReportsVisibilityInterval(
+    () => setCurrentItemIndex(prev => (prev + 1) % libraryItems.length),
+    !showOverview && libraryItems.length > 0 ? 5000 : null
+  );
 
   const currentItem = libraryItems[currentItemIndex];
   
@@ -300,14 +298,11 @@ export const SteamWidget = memo(({ data, onContentChange, showOverview }: {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
 
-  useEffect(() => {
-    if (!showOverview && libraryItems.length > 0) {
-       const timer = setInterval(() => {
-         setCurrentItemIndex(prev => (prev + 1) % libraryItems.length);
-       }, 5000);
-       return () => clearInterval(timer);
-    }
-  }, [showOverview, libraryItems.length]);
+  // 🔧 使用报告页原子化可见性感知定时器
+  useReportsVisibilityInterval(
+    () => setCurrentItemIndex(prev => (prev + 1) % libraryItems.length),
+    !showOverview && libraryItems.length > 0 ? 5000 : null
+  );
 
   const currentItem = libraryItems[currentItemIndex];
   
@@ -553,14 +548,11 @@ export const GithubWidget = memo(({ data, onContentChange, showOverview }: {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items]);
 
-  useEffect(() => {
-    if (!showOverview && libraryItems.length > 0) {
-       const timer = setInterval(() => {
-         setCurrentItemIndex(prev => (prev + 1) % libraryItems.length);
-       }, 5000);
-       return () => clearInterval(timer);
-    }
-  }, [showOverview, libraryItems.length]);
+  // 🔧 使用报告页原子化可见性感知定时器
+  useReportsVisibilityInterval(
+    () => setCurrentItemIndex(prev => (prev + 1) % libraryItems.length),
+    !showOverview && libraryItems.length > 0 ? 5000 : null
+  );
 
   useEffect(() => {
     if (showOverview && libraryItems.length > 0) {
@@ -896,14 +888,11 @@ export const NeteaseWidget = memo(({
   const libraryItems = useMemo(() => processedData?.library_items || [], [processedData?.library_items]);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
 
-  useEffect(() => {
-    if (!showOverview && libraryItems.length > 0) {
-       const timer = setInterval(() => {
-         setCurrentItemIndex(prev => (prev + 2) % libraryItems.length);
-       }, 5000);
-       return () => clearInterval(timer);
-    }
-  }, [showOverview, libraryItems.length]);
+  // 🔧 使用报告页原子化可见性感知定时器（网易云每次跳2首）
+  useReportsVisibilityInterval(
+    () => setCurrentItemIndex(prev => (prev + 2) % libraryItems.length),
+    !showOverview && libraryItems.length > 0 ? 5000 : null
+  );
 
   const currentItems = [
     libraryItems[currentItemIndex],

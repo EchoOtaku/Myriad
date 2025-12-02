@@ -11,6 +11,7 @@ import { WidgetConfig } from '../WidgetGrid';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { GlowBackground } from './shared/GlowBackground';
 import { useLoopAnimation } from '../../hooks/animation';
+import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home';
 import { useI18n } from '../../contexts/I18nContext';
 import { TranslationKeys } from '../../i18n';
 
@@ -197,33 +198,10 @@ export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWid
     
     // 然后获取最新天气
     fetchWeather();
-    
-    // 每30分钟更新一次天气 - 使用 timeout 链 + 可见性暂停
-    let cancelled = false;
-    let timeoutId: number | null = null;
-    const schedule = () => {
-      if (cancelled || document.hidden) return;
-      fetchWeather();
-      timeoutId = window.setTimeout(schedule, CACHE_DURATION);
-    };
-    timeoutId = window.setTimeout(schedule, CACHE_DURATION);
-    
-    const onVisibility = () => {
-      if (document.hidden && timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      } else if (!document.hidden && !cancelled && !timeoutId) {
-        schedule();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [loadFromCache, fetchWeather, isPreview]);
+  }, [loadFromCache, fetchWeather, isPreview, t.weatherWidget.sunny, t.weatherWidget.sampleCity]);
+
+  // 🔧 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
+  useHomeVisibilityInterval(fetchWeather, CACHE_DURATION, !isPreview);
 
   // 根据天气状况选择主题色 - 使用 useMemo 缓存
   const themeColor = useMemo(() => {

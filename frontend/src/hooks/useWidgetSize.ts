@@ -6,6 +6,12 @@
  * - 紧凑尺寸 (66% - 2/3)
  * - 迷你尺寸 (50% - 1/2)
  *
+ * 性能优化：
+ * - 使用共享 ResizeObserver（通过 AnimationCoordinator）
+ * - 自动节流和尺寸变化阈值过滤
+ * - 页面不可见时暂停监测
+ * - 低端设备仅首次测量
+ *
  * @example
  * const { scale, isCompact, isMini, containerRef } = useWidgetSize();
  *
@@ -17,8 +23,10 @@
  * {isCompact && <CompactContent />}
  */
 
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { usePerformanceProfile } from './usePerformanceProfile';
+import { getCachedSize } from './animation';
+import { useHomeResizeObserver } from './animation/pages/home';
 import { WidgetSize } from '../components/WidgetGrid';
 
 // 标准尺寸映射 (像素值基于假设的标准单元格大小)
@@ -32,7 +40,7 @@ const STANDARD_DIMENSIONS: Record<WidgetSize, { width: number; height: number }>
   '1x2': { width: 80, height: 160 },
   '2x2': { width: 160, height: 160 },
   '2x4': { width: 160, height: 320 },
-  '4x2': { width: 320, height: 160 }, // 稍微增加标准宽度，使缩放比例略微减小，防止溢出
+  '4x2': { width: 320, height: 160 },
   '4x4': { width: 320, height: 320 },
 };
 
@@ -57,135 +65,85 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
   const [size, setSize] = useState({ width: 0, height: 0 });
   const elementRef = useRef<HTMLDivElement | null>(null);
   const perf = usePerformanceProfile();
-
-  // 测量节流/去抖定时器
-  const measureThrottleRef = useRef<number | null>(null);
-  // 可见性监听，避免后台标签持续计算
-  const pageHiddenRef = useRef<boolean>(typeof document !== 'undefined' ? document.hidden : false);
-  const lastMeasuredRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
-  
-  // 使用 ResizeObserver 的尺寸更新函数（避免调用 getBoundingClientRect 导致强制重排）
-  const updateSizeFromEntry = useCallback((width: number, height: number) => {
-    // 页面不可见时跳过测量，避免后台持续计算
-    if (pageHiddenRef.current) return;
-    
-    // 如果宽度为0 (可能是隐藏或未渲染)，不更新状态以避免闪烁
-    if (width > 0) {
-      // 检查尺寸是否真正变化（避免微小变化触发重渲染）
-      const widthDiff = Math.abs(lastMeasuredRef.current.width - width);
-      const heightDiff = Math.abs(lastMeasuredRef.current.height - height);
-      // 预置阈值：仅当 >=8px 时才更新
-      const THRESHOLD_PX = 8;
-      
-      if (widthDiff < THRESHOLD_PX && heightDiff < THRESHOLD_PX) {
-        return; // 变化太小，跳过
-      }
-      
-      lastMeasuredRef.current = { width, height };
-      
-      setSize(prev => {
-        // 二次阈值判断，进一步避免频繁状态更新
-        if (Math.abs(prev.width - width) < THRESHOLD_PX && Math.abs(prev.height - height) < THRESHOLD_PX) {
-          return prev;
-        }
-        return { width, height };
-      });
-    }
-  }, []);
-
-  // 兼容性：fallback 测量函数（仅在 ResizeObserver 不可用时使用）
-  const measureElement = useCallback(() => {
-    if (pageHiddenRef.current) return;
-    if (!elementRef.current) return;
-    // 使用 requestAnimationFrame 批处理，避免同步读取几何属性
-    requestAnimationFrame(() => {
-      if (!elementRef.current) return;
-      const rect = elementRef.current.getBoundingClientRect();
-      updateSizeFromEntry(rect.width, rect.height);
-    });
-  }, [updateSizeFromEntry]);
-
-  // 监听 widgetSize 变化，强制重新测量
-  // 使用 useLayoutEffect 确保在浏览器绘制前更新，减少闪烁
-  useLayoutEffect(() => {
-    // 监听页面可见性变化，恢复/暂停测量
-    const onVisibility = () => { pageHiddenRef.current = document.hidden; };
-    document.addEventListener('visibilitychange', onVisibility);
-
-    // 立即测量一次
-    measureElement();
-    
-    // 仅保留一个延时检查，作为 ResizeObserver 的兜底
-    // 确保动画结束后尺寸是正确的
-    const timer = setTimeout(measureElement, 300);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [measureElement, widgetSize]);
-
-  // 使用 ref 存储 lowEndDevice 值，避免 useCallback 依赖问题
   const lowEndDeviceRef = useRef(perf.lowEndDevice);
   lowEndDeviceRef.current = perf.lowEndDevice;
 
-  // Ref callback
-  const containerRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      elementRef.current = node;
+  // 🆕 使用首页原子化 ResizeObserver
+  const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver();
 
-      // 低端设备：默认不持续监听，改为按需测量
-      if (!lowEndDeviceRef.current) {
-        // 使用 ResizeObserver 监听尺寸变化 - 直接使用 entry.contentRect 避免强制重排
-        const resizeObserver = new ResizeObserver((entries) => {
-          if (pageHiddenRef.current) return;
-          // 使用 ResizeObserver 提供的尺寸，无需调用 getBoundingClientRect
-          const entry = entries[0];
-          if (!entry) return;
-          
-          // 使用节流避免过于频繁的更新
-          if (measureThrottleRef.current) return;
-          
-          measureThrottleRef.current = window.setTimeout(() => {
-            measureThrottleRef.current = null;
-            // 直接使用 contentRect，避免强制重排
-            const { width, height } = entry.contentRect;
-            updateSizeFromEntry(width, height);
-          }, 50); // 50ms 节流，足够响应式但不会过于频繁
-        });
-        resizeObserver.observe(node);
-        (node as any).__widgetResizeObserver = resizeObserver;
-        
-        // 初始测量：使用 requestAnimationFrame 延迟避免同步重排
-        requestAnimationFrame(() => {
-          if (node) {
-            const rect = node.getBoundingClientRect();
-            updateSizeFromEntry(rect.width, rect.height);
-          }
-        });
-      } else {
-        // 低端设备：仅在首次挂载测量一次即可
-        (node as any).__widgetResizeObserver = null;
-        requestAnimationFrame(() => {
-          if (node) {
-            const rect = node.getBoundingClientRect();
-            updateSizeFromEntry(rect.width, rect.height);
-          }
-        });
+  // 尺寸更新处理
+  const handleSizeChange = useCallback((entry: ResizeObserverEntry) => {
+    const { width, height } = entry.contentRect;
+    
+    // 宽度为0时不更新（可能是隐藏或未渲染）
+    if (width <= 0) return;
+    
+    setSize(prev => {
+      // 使用较大的阈值避免微小变化触发重渲染
+      const THRESHOLD = 8;
+      if (Math.abs(prev.width - width) < THRESHOLD && Math.abs(prev.height - height) < THRESHOLD) {
+        return prev;
       }
-    } else if (elementRef.current) {
-      // 清理
-      const observer = (elementRef.current as any).__widgetResizeObserver;
-      if (observer) {
-        observer.disconnect();
-      }
-      if (measureThrottleRef.current) {
-        window.clearTimeout(measureThrottleRef.current);
-        measureThrottleRef.current = null;
-      }
-      elementRef.current = null;
+      return { width, height };
+    });
+  }, []);
+
+  // Ref callback - 连接到首页原子化 ResizeObserver
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    // 清理旧观察
+    if (elementRef.current) {
+      unobserveHomeResize(elementRef.current);
     }
-  }, [updateSizeFromEntry]);
+    
+    elementRef.current = node;
+    
+    if (node) {
+      // 低端设备：仅首次测量，不持续监听
+      if (lowEndDeviceRef.current) {
+        // 尝试获取缓存尺寸
+        const cached = getCachedSize(node);
+        if (cached && cached.width > 0) {
+          setSize(cached);
+        } else {
+          // 延迟测量一次
+          requestAnimationFrame(() => {
+            if (node.isConnected) {
+              const rect = node.getBoundingClientRect();
+              if (rect.width > 0) {
+                setSize({ width: rect.width, height: rect.height });
+              }
+            }
+          });
+        }
+      } else {
+        // 正常设备：使用首页原子化 ResizeObserver 持续监听
+        observeHomeResize(node, handleSizeChange);
+      }
+    }
+  }, [handleSizeChange, observeHomeResize, unobserveHomeResize]);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      if (elementRef.current) {
+        unobserveHomeResize(elementRef.current);
+      }
+    };
+  }, [unobserveHomeResize]);
+
+  // widgetSize 变化时重新测量（针对低端设备）
+  useEffect(() => {
+    if (lowEndDeviceRef.current && elementRef.current && elementRef.current.isConnected) {
+      requestAnimationFrame(() => {
+        if (elementRef.current && elementRef.current.isConnected) {
+          const rect = elementRef.current.getBoundingClientRect();
+          if (rect.width > 0) {
+            setSize({ width: rect.width, height: rect.height });
+          }
+        }
+      });
+    }
+  }, [widgetSize]);
 
   // 计算缩放比例
   const scale = (() => {

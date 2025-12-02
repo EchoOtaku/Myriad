@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
 import { useI18n } from '../contexts/I18nContext';
 import { usePageReady } from '../hooks/animation';
+import { useDataManagementScheduler } from '../hooks/animation/pages/simple';
 import '../components/ConfigForm.css';
 
 // 平台定义
@@ -49,6 +50,9 @@ interface PlatformStatus {
 }
 
 export default function DataManagement() {
+  // 🆕 初始化页面级调度器
+  useDataManagementScheduler();
+  
   const navigate = useNavigate();
   const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth();
   const { t } = useI18n();

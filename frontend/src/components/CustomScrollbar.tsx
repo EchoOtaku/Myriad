@@ -14,6 +14,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSharedResize, useSharedScroll } from '../hooks/useSharedEventListener';
+import { observeResize } from '../hooks/animation';
 
 // 检测是否为移动端 - 使用多重检测确保准确性
 const getIsMobile = (): boolean => {
@@ -192,12 +193,11 @@ function CustomScrollbarInner() {
       setTimeout(() => updateThumb(), 100);
     });
 
-    // 只使用 ResizeObserver 监听文档高度变化
-    const resizeObserver = new ResizeObserver(handleUpdateThrottled);
-    resizeObserver.observe(document.documentElement);
+    // 使用共享 ResizeObserver 监听文档高度变化
+    const unobserve = observeResize(document.documentElement, handleUpdateThrottled);
 
     return () => {
-      resizeObserver.disconnect();
+      unobserve();
       if (throttleTimer !== null) clearTimeout(throttleTimer);
     };
   }, [updateThumb, handleUpdate]);

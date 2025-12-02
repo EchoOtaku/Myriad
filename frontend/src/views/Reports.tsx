@@ -26,6 +26,7 @@ import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard';
 import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useLoopAnimation, usePageReady, LoopPriority } from '../hooks/animation';
+import { useReportsScheduler, useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
 
 // 🚀 性能优化：防抖Hook
@@ -1169,6 +1170,9 @@ const NeteaseWidget = memo(({
 
 // 🚀 性能优化：将综合报告卡片提取为独立的 memo 组件
 export default function Reports() {
+  // 🆕 初始化报告页调度器（Visibility + Interval + RAF + DOMBatch）
+  useReportsScheduler();
+  
   const { t } = useI18n();
   const isPageReady = usePageReady();
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
@@ -1236,17 +1240,19 @@ export default function Reports() {
     active: t.reportsPage.active,
   }), [t.reportsPage.legendary, t.reportsPage.core, t.reportsPage.senior, t.reportsPage.prolific, t.reportsPage.active]);
 
+  // 🆕 使用可见性感知定时器 - 页面隐藏时自动暂停轮播
+  // 当舞台模式开启时，停止卡片轮播并保持在概览状态
+  useReportsVisibilityInterval(() => {
+    if (!isStageMode) {
+      setShowOverview(prev => !prev);
+    }
+  }, isStageMode ? null : 10000);
+  
+  // 舞台模式开启时重置为概览状态
   useEffect(() => {
-    // 当舞台模式开启时，停止卡片轮播并保持在概览状态
     if (isStageMode) {
       setShowOverview(true);
-      return;
     }
-
-    const interval = setInterval(() => {
-      setShowOverview(prev => !prev);
-    }, 10000);
-    return () => clearInterval(interval);
   }, [isStageMode]);
   
   // 🚀 修复：将卡片内容状态提升到父组件，避免在循环中使用 useState
