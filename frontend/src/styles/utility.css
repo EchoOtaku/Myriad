@@ -140,6 +140,157 @@
   contain: paint;
 }
 
+/* ============================================
+   🔧 新增：动画性能优化类
+   用于精确控制 GPU 资源分配
+   ============================================ */
+
+/* 准备进入动画 - 提前创建 GPU 层 */
+.anim-prepare {
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* 动画进行中 - 保持 GPU 加速 */
+.anim-active {
+  will-change: opacity, transform;
+  transform: translateZ(0);
+}
+
+/* 动画已完成 - 释放 GPU 资源 */
+.anim-done {
+  will-change: auto;
+  backface-visibility: visible;
+  perspective: none;
+  transform: none;
+}
+
+/* 等待动画 - 不分配资源，使用 visibility 避免布局影响 */
+.anim-waiting {
+  opacity: 0;
+  visibility: hidden;
+  /* 不设置 will-change，节省资源 */
+}
+
+/* 退出动画 - 脱离文档流，不影响其他元素 */
+.anim-exit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+/* ============================================
+   🔧 新增：DOM 节点稳定性优化
+   避免布局跳跃和重排
+   ============================================ */
+
+/* 占位容器 - 保持固定尺寸避免跳跃 */
+.placeholder-stable {
+  /* 使用 min-height 保持空间 */
+  min-height: var(--placeholder-height, 100px);
+  /* 禁止尺寸收缩 */
+  flex-shrink: 0;
+}
+
+/* 内容替换容器 - 平滑切换内容 */
+.content-swap {
+  position: relative;
+  /* 使用 contain 隔离布局影响 */
+  contain: layout style;
+}
+
+.content-swap > .swap-out {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.content-swap > .swap-in {
+  position: relative;
+}
+
+/* 骨架屏到内容的平滑过渡 */
+.skeleton-to-content {
+  position: relative;
+  contain: layout;
+}
+
+.skeleton-to-content > .skeleton-layer {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.3s ease;
+}
+
+.skeleton-to-content > .content-layer {
+  position: relative;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.skeleton-to-content.loading > .skeleton-layer {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.skeleton-to-content.loading > .content-layer {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.skeleton-to-content.loaded > .skeleton-layer {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skeleton-to-content.loaded > .content-layer {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ============================================
+   🔧 新增：渲染层优化
+   减少合成层数量
+   ============================================ */
+
+/* 强制创建独立合成层（谨慎使用） */
+.layer-promote {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* 避免不必要的层创建 */
+.layer-flatten {
+  transform: none;
+  will-change: auto;
+  isolation: auto;
+}
+
+/* 隔离渲染上下文 */
+.layer-isolate {
+  isolation: isolate;
+}
+
+/* ============================================
+   🔧 新增：交互状态优化
+   减少 hover/focus 时的重绘
+   ============================================ */
+
+/* 预设 hover 状态的 GPU 层（用于频繁交互的元素） */
+.hover-optimized {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-optimized:hover {
+  /* 使用 transform 而非 top/left 移动 */
+  transform: translateY(-2px);
+}
+
 /* 移动端禁用选择 */
 @media (max-width: 767px) {
   .nav-item,

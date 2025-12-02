@@ -8,6 +8,8 @@
  * - 元素级动画：等待页面就绪，支持交错延迟
  * - 单一 RAF 循环：批量更新，避免性能问题
  * - 事件驱动：无轮询，最小化开销
+ * - 🔧 资源池化：复用对象减少 GC 压力
+ * - 🔧 生命周期管理：动画完成后释放 GPU 资源
  * 
  * @example
  * ```tsx
@@ -39,6 +41,14 @@
  * function Card() {
  *   const isPageReady = usePageReady();
  *   return <div className={isPageReady ? 'visible' : 'hidden'} />;
+ * }
+ * 
+ * // 🔧 新增：生命周期管理
+ * function AnimatedCard() {
+ *   const { canAnimate, isComplete, className, style } = useAnimationLifecycle({
+ *     duration: 300,
+ *   });
+ *   return <div className={className} style={style}>...</div>;
  * }
  * ```
  */
@@ -79,6 +89,17 @@ export {
   type VisibilityObserverOptions,
   type VisibilityObserverResult,
 } from './useVisibilityAwareAnimation';
+
+// 🔧 新增：生命周期管理 Hook
+export {
+  useAnimationLifecycle,
+  useBatchAnimationLifecycle,
+  AnimationLifecyclePhase,
+  type AnimationLifecycleOptions,
+  type AnimationLifecycleResult,
+  type BatchAnimationOptions,
+  type BatchAnimationResult,
+} from './useAnimationLifecycle';
 
 // 便捷函数
 import { coordinator } from './coordinator';
