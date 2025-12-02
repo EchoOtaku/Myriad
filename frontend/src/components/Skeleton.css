@@ -69,6 +69,8 @@
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     overflow: hidden;
+    /* 性能优化：隔离布局计算 */
+    contain: layout style paint;
 }
 
 .noise-grid {
@@ -94,6 +96,8 @@
     position: relative;
     width: 100%;
     height: 100%;
+    /* 性能优化：严格隔离粒子布局 */
+    contain: strict;
 }
 
 .particle {

@@ -21,6 +21,7 @@ import {
 } from '../utils/musicPlayer';
 import { extractColorsFromImage } from '../utils/colorExtractor';
 import { loadResource } from '../utils/resourceLoader';
+import { getPerformanceProfileSync } from './usePerformanceProfile';
 
 // 播放模式类型
 export type PlayMode = 'loop' | 'single' | 'shuffle';
@@ -268,14 +269,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const startProgressBreathAnimation = useCallback(() => {
     if (!progressBarRef.current) return;
 
-    // ⚠️ 移动端/低端设备检测 - 禁用动画
-    const isMobile = window.matchMedia('(max-width: 767px)').matches ||
-                     window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-    const isLowEndDevice = (navigator as any).hardwareConcurrency <= 4 ||
-                          (navigator as any).deviceMemory <= 4;
+    // ⚠️ 使用统一的性能检测
+    const perf = getPerformanceProfileSync();
 
     // 移动端或低端设备直接返回,不启动动画
-    if (isMobile || isLowEndDevice) {
+    if (perf.isMobile || perf.lowEndDevice) {
       return;
     }
 
