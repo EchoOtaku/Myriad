@@ -92,38 +92,6 @@ const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.sv
 const DYNAMIC_EXTENSIONS = ['.php', '.jsp', '.asp', '.aspx', '.py'] as const;
 
 // ============================================================================
-// 图片预加载缓存 - 避免重复加载同一壁纸
-// ============================================================================
-
-/** 
- * 图片预加载缓存 
- * 缓存已加载的图片 URL，避免重复 fetch
- */
-const imagePreloadCache = new Map<string, {
-  loaded: boolean;
-  timestamp: number;
-  promise?: Promise<boolean>;
-}>();
-
-/** 图片缓存过期时间（10分钟） */
-const IMAGE_CACHE_TTL = 10 * 60 * 1000;
-
-/** 清理过期的图片缓存 */
-function cleanupImageCache(): void {
-  const now = Date.now();
-  for (const [url, entry] of imagePreloadCache.entries()) {
-    if (now - entry.timestamp > IMAGE_CACHE_TTL) {
-      imagePreloadCache.delete(url);
-    }
-  }
-}
-
-// 每 5 分钟清理一次过期缓存
-if (typeof window !== 'undefined') {
-  setInterval(cleanupImageCache, 5 * 60 * 1000);
-}
-
-// ============================================================================
 // 工具函数
 // ============================================================================
 
@@ -228,64 +196,33 @@ async function resolveImageUrl(apiUrl: string, bustCache = false): Promise<strin
 }
 
 /**
- * 预加载图片（带内存缓存）
- * 使用缓存避免同一图片被多次 fetch
+ * 预加载图片（无缓存）
+ * 直接加载图片，不使用代理
  * @returns 加载成功返回true，失败返回false
  */
 function preloadImage(url: string, timeout = IMAGE_LOAD_TIMEOUT): Promise<boolean> {
-  // 规范化 URL（移除时间戳参数用于缓存键）
-  const cacheKey = url.replace(/[?&]_t=\d+/, '').replace(/[?&]t=\d+/, '');
-  
-  // 检查缓存
-  const cached = imagePreloadCache.get(cacheKey);
-  if (cached) {
-    // 缓存未过期
-    if (Date.now() - cached.timestamp < IMAGE_CACHE_TTL) {
-      // 如果有正在进行的加载，返回其 Promise
-      if (cached.promise) {
-        return cached.promise;
-      }
-      // 已完成加载，直接返回结果
-      return Promise.resolve(cached.loaded);
-    }
-    // 缓存过期，删除
-    imagePreloadCache.delete(cacheKey);
-  }
-
-  // 创建加载 Promise
-  const loadPromise = new Promise<boolean>((resolve) => {
+  return new Promise<boolean>((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // 不设置 crossOrigin 以避免 CORS 问题
+    // 壁纸只用于显示，不需要 canvas 操作
     
     const timer = setTimeout(() => {
       img.src = '';
-      imagePreloadCache.set(cacheKey, { loaded: false, timestamp: Date.now() });
       resolve(false);
     }, timeout);
     
     img.onload = () => {
       clearTimeout(timer);
-      imagePreloadCache.set(cacheKey, { loaded: true, timestamp: Date.now() });
       resolve(true);
     };
     
     img.onerror = () => {
       clearTimeout(timer);
-      imagePreloadCache.set(cacheKey, { loaded: false, timestamp: Date.now() });
       resolve(false);
     };
     
     img.src = url;
   });
-
-  // 缓存 Promise（用于并发去重）
-  imagePreloadCache.set(cacheKey, { 
-    loaded: false, 
-    timestamp: Date.now(), 
-    promise: loadPromise 
-  });
-
-  return loadPromise;
 }
 
 /**

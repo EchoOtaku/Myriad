@@ -1,7 +1,8 @@
-// Service Worker v2.1 for Myriad
+// Service Worker v2.2 for Myriad
 // 性能优化版 - 缓存策略 + 安全过滤 + 206 响应处理
+// v2.2: 移除壁纸图片缓存，避免跨域问题
 
-const CACHE_VERSION = 'myriad-v2.1';
+const CACHE_VERSION = 'myriad-v2.2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
@@ -163,49 +164,56 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 图片请求 - 缓存优先策略(带过期检查)
+  // ⚠️ 壁纸图片不缓存，避免跨域问题
   if (request.destination === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)) {
     // 检查是否为壁纸 CDN 图片
     const isWallpaperCDN = WALLPAPER_CDN_DOMAINS.some(domain => url.hostname.includes(domain));
-    const cacheMaxAge = isWallpaperCDN ? CACHE_MAX_AGE.wallpaper : CACHE_MAX_AGE.images;
+    
+    // 壁纸图片不走缓存，直接网络请求（避免跨域缓存问题）
+    if (isWallpaperCDN) {
+      event.respondWith(
+        fetch(request, { mode: 'cors', credentials: 'omit' })
+          .catch((error) => {
+            console.warn('[SW] Wallpaper fetch failed:', request.url.slice(0, 80), error);
+            // 返回透明占位
+            return new Response(
+              new Blob([]),
+              {
+                status: 200,
+                headers: { 'Content-Type': 'image/svg+xml' }
+              }
+            );
+          })
+      );
+      return;
+    }
+    
+    const cacheMaxAge = CACHE_MAX_AGE.images;
     
     event.respondWith(
       caches.match(request)
         .then(async (cachedResponse) => {
           // 检查缓存是否过期
           if (cachedResponse && !isCacheExpired(cachedResponse, cacheMaxAge)) {
-            // 壁纸CDN图片命中缓存时记录日志
-            if (isWallpaperCDN) {
-              console.log('[SW] Wallpaper cache hit:', request.url.slice(0, 80));
-            }
             return cachedResponse;
           }
 
           try {
-            // 壁纸CDN使用 no-cors 模式（避免CORS问题）
-            const fetchOptions = isWallpaperCDN 
-              ? { mode: 'no-cors' }
-              : { mode: 'cors', credentials: 'omit' };
+            const response = await fetch(request, { mode: 'cors', credentials: 'omit' });
             
-            const response = await fetch(request, fetchOptions);
-            
-            // no-cors 响应是 opaque 的，status 为 0，但仍可缓存
-            if ((response.ok || response.type === 'opaque') && response.status !== 206) {
+            if (response.ok && response.status !== 206) {
               const responseClone = response.clone();
               await cacheWithTimestamp(IMAGE_CACHE, request, responseClone);
               limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE);
-              if (isWallpaperCDN) {
-                console.log('[SW] Wallpaper cached:', request.url.slice(0, 80));
-              }
             }
             return response;
           } catch (error) {
-            // 网络失败时返回过期缓存（包括 CORS 错误）
+            // 网络失败时返回过期缓存
             if (cachedResponse) {
               console.log('[SW] Using cached image after network error:', request.url);
               return cachedResponse;
             }
-            // CORS 错误时返回透明占位图
-            console.warn('[SW] Image fetch failed (possibly CORS):', request.url, error);
+            console.warn('[SW] Image fetch failed:', request.url, error);
             return new Response(
               new Blob([]),
               {
