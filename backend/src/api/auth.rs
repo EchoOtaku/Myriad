@@ -736,13 +736,31 @@ pub async fn github_callback(
     // 前端将完全依赖 HttpOnly Cookie 进行认证
     let redirect_url = format!("{}/?auth=success", frontend_url);
 
-    // 构建包含 Set-Cookie 的响应
-    let mut response = Redirect::to(&redirect_url).into_response();
+    // 使用 HTML 页面进行重定向，确保 Cookie 被正确设置
+    // 302 重定向在某些浏览器/配置下可能不会保存 Set-Cookie
+    let html_body = format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0;url={}">
+    <title>登录成功</title>
+</head>
+<body>
+    <p>登录成功，正在跳转...</p>
+    <script>window.location.href = "{}";</script>
+</body>
+</html>"#,
+        redirect_url, redirect_url
+    );
+
+    // 构建包含 Set-Cookie 的 HTML 响应
+    let mut response = axum::response::Html(html_body).into_response();
     response
         .headers_mut()
         .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
 
-    tracing::info!("✅ GitHub OAuth successful, redirecting with HttpOnly cookie (no URL token)");
+    tracing::info!("✅ GitHub OAuth successful, setting cookie and redirecting via HTML");
     Ok(response)
 }
 
