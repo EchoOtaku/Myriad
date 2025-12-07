@@ -722,10 +722,12 @@ pub async fn github_callback(
     tracing::info!("✅ JWT token created for user: {}", user_info.login);
 
     // ✅ 安全修复 P0: 设置 HttpOnly Cookie（安全）
+    // 注意：使用 SameSite=Lax 而不是 Strict，因为 OAuth 重定向是跨站请求
+    // Strict 会导致从 GitHub 重定向回来时 Cookie 不被设置
     let is_production =
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
     let cookie_value = format!(
-        "auth_token={}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
+        "auth_token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}",
         token,
         if is_production { "; Secure" } else { "" } // 生产环境启用 Secure 标志
     );

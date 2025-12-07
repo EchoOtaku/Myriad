@@ -293,10 +293,11 @@ pub async fn local_login(
     tracing::info!("✅ Local login successful: {}", username);
 
     // 设置 HttpOnly Cookie
+    // 使用 SameSite=Lax 保持与 OAuth 登录一致
     let is_production =
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
     let cookie_value = format!(
-        "auth_token={}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000{}",
+        "auth_token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}",
         token,
         if is_production { "; Secure" } else { "" }
     );
