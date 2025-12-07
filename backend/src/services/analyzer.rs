@@ -269,6 +269,73 @@ impl AiAnalyzer {
         Ok(analysis)
     }
 
+    /// 简单的分析方法（用于 Tapp API）
+    pub async fn analyze(&self, prompt: &str) -> Result<String> {
+        let data = serde_json::json!({ "prompt": prompt });
+        self.analyze_profile(&data).await
+    }
+
+    /// 带系统提示的分析方法（用于 Tapp API）
+    pub async fn analyze_with_system(&self, system: &str, prompt: &str) -> Result<String> {
+        match self.provider {
+            AiProvider::Gemini => {
+                let full_prompt = format!("{}\n\n{}", system, prompt);
+                let data = serde_json::json!({ "prompt": full_prompt });
+                self.analyze_profile(&data).await
+            }
+            AiProvider::OpenAI => {
+                let request_body = OpenAIRequest {
+                    model: self.model.clone(),
+                    messages: vec![
+                        OpenAIMessage {
+                            role: "system".to_string(),
+                            content: system.to_string(),
+                        },
+                        OpenAIMessage {
+                            role: "user".to_string(),
+                            content: prompt.to_string(),
+                        },
+                    ],
+                };
+
+                let base_url = self.base_url.as_deref().unwrap_or("https://api.openai.com");
+                let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+
+                let response = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header("Content-Type", "application/json")
+                    .json(&request_body)
+                    .send()
+                    .await
+                    .context("Failed to send request to OpenAI API")?;
+
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let error_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    return Err(anyhow::anyhow!("OpenAI API error {}: {}", status, error_text));
+                }
+
+                let openai_response: OpenAIResponse = response
+                    .json()
+                    .await
+                    .context("Failed to parse OpenAI API response")?;
+
+                let analysis = openai_response
+                    .choices
+                    .first()
+                    .map(|c| c.message.content.clone())
+                    .unwrap_or_else(|| "No analysis generated".to_string());
+
+                Ok(analysis)
+            }
+        }
+    }
+
     // TODO: Add more analysis methods
     // pub async fn generate_summary(&self, profiles: Vec<serde_json::Value>) -> Result<String>
     // pub async fn extract_skills(&self, profile_data: &serde_json::Value) -> Result<Vec<String>>

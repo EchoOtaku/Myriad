@@ -73,3 +73,11 @@ export {
   useSimpleDebounce,
   useSimpleThrottle,
 } from './simple';
+
+// Tapp 页面
+export {
+  useTappScheduler,
+  useTappStagger,
+  useTappVisibility,
+  cleanupTapp,
+} from './tapp';

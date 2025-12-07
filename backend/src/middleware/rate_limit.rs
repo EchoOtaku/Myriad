@@ -191,14 +191,17 @@ fn is_sensitive_endpoint(path: &str) -> bool {
         || path.contains("/setup/create-admin")
 }
 
-/// Check if endpoint is compute-intensive
+/// Check if endpoint is compute-intensive or abuse-prone
 fn is_compute_intensive(path: &str) -> bool {
     path.contains("/fetch")
         || path.contains("/analysis")
-        || path.contains("/persona/generate")
         || path.contains("/prompt/generate")
         || path.contains("/profile/report")
         || path.contains("/profile/refresh")
+        // Tapp 存储 API - 防止滥用
+        || path.contains("/tapp/storage")
+        // Tapp AI 聊天 API - 消耗 AI 配额
+        || path.contains("/tapp/ai/chat")
 }
 
 #[cfg(test)]

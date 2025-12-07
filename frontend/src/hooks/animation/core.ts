@@ -393,12 +393,6 @@ export function startPage(pageId: string): void {
   currentFeatures = PAGE_FEATURES[pageId] ?? 0;
   isActive = true;
   
-  // 开发环境打印页面功能配置
-  if (import.meta.env.DEV) {
-    const features = getFeatureList(pageId);
-    console.log(`[Core] Page "${pageId}" started with features:`, features.length ? features : ['none']);
-  }
-  
   // 根据页面配置预初始化必要模块
   // 这确保了只有当前页面需要的功能才会初始化
   if (hasFeature(pageId, Feature.Visibility) && !visibilityInitialized) {

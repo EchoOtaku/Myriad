@@ -154,3 +154,6 @@ temp/
 # -------------------------------------------
 /.claude/
 .claude/settings.local.json
+/backend/data/tapps
+/.astro
+/node_modules

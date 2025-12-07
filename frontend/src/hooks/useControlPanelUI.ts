@@ -1,14 +1,19 @@
 import { useReducer, useCallback } from 'react';
 import { WeatherData, QuoteData } from '../utils/dynamicContent';
+import type { DynamicContentType } from '../services/DynamicContentProvider';
 
 /**
  * 动态内容类型
  */
 export interface DynamicContent {
-  type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
+  type: DynamicContentType;
   icon: string;
   text: string;
   subtext?: string;
+  /** 是否显示副文本 */
+  showSubtext?: boolean;
+  /** 来源 Tapp ID */
+  sourceTappId?: string;
 }
 
 /**

@@ -94,14 +94,6 @@ impl MigrationTrait for Migration {
                         "user_id".into(),
                         false.into(),
                     ])
-                    .values_panic([
-                        "twitter".into(),
-                        "Twitter/X".into(),
-                        "twitter".into(),
-                        "https://api.twitter.com/2".into(),
-                        "bearer_token".into(),
-                        false.into(),
-                    ])
                     .on_conflict(OnConflict::column(Platforms::Name).do_nothing().to_owned())
                     .to_owned(),
             )

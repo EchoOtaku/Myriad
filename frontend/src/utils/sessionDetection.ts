@@ -17,9 +17,8 @@ const SESSION_HINT_KEY = 'myriad_session_hint';
 export function setSessionHint(): void {
   try {
     localStorage.setItem(SESSION_HINT_KEY, 'true');
-  } catch (e) {
+  } catch {
     // 忽略 localStorage 错误（私密浏览模式等）
-    console.debug('无法设置会话提示:', e);
   }
 }
 
@@ -45,9 +44,8 @@ export function hasSessionHint(): boolean {
 export function clearSessionHint(): void {
   try {
     localStorage.removeItem(SESSION_HINT_KEY);
-  } catch (e) {
+  } catch {
     // 忽略错误
-    console.debug('无法清除会话提示:', e);
   }
 }
 
@@ -66,7 +64,7 @@ export function clearAllSessionData(): void {
     // 清除认证相关的缓存
     localStorage.removeItem('myriad_profile_display_cache');
     localStorage.removeItem('myriad_profile_display_cache_time');
-  } catch (e) {
-    console.debug('清除会话数据失败:', e);
+  } catch {
+    // 忽略错误
   }
 }

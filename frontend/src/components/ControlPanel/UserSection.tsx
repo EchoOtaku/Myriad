@@ -3,10 +3,12 @@ import { createPortal } from 'react-dom';
 import { API_URL } from '../../config';
 import { clearPlaylistCache } from '../../utils/musicPlayer';
 import { invalidateAuthCache, invalidateUserInfoCache, clearAllUserCache } from '../../utils/userInfoCache';
+import { getCSRFToken } from '../../utils/csrf';
 import LoginForm from '../LoginForm';
 import { UserModal } from './UserModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useI18n } from '../../contexts/I18nContext';
+import { cleanupTemporaryTapps } from '../../tapp/services/TappApiService';
 
 interface User {
   username: string;
@@ -90,6 +92,8 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
       // 登录成功后清除缓存（AuthContext 会自动更新用户信息）
       invalidateAuthCache();
       invalidateUserInfoCache();
+      // 登录成功后立即获取 CSRF Token（强制刷新）
+      getCSRFToken(true).catch(console.warn);
     };
 
     window.addEventListener('auth-login-success', handleLoginSuccess);
@@ -137,6 +141,14 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
         isAdmin: false
       }
     }));
+    
+    try {
+      // 先清理用户临时安装的 Tapp
+      await cleanupTemporaryTapps();
+    } catch (error) {
+      // 静默处理清理错误
+      console.warn('[UserSection] Failed to cleanup temporary tapps:', error);
+    }
     
     try {
       await fetch('/api/auth/logout', {

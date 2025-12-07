@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaGithub, FaSteam, FaXTwitter, SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
+import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons';
 
 interface PlatformIconProps {
     platform: string;
@@ -19,9 +19,6 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(({ platform, classN
             return <SiBilibili className={className} style={style} />;
         case 'steam':
             return <FaSteam className={className} style={style} />;
-        case 'twitter':
-        case 'x':
-            return <FaXTwitter className={className} style={style} />;
         case 'netease music':
         case 'netease':
         case '网易云音乐':

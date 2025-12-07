@@ -24,9 +24,9 @@ mod oauth_url_builder;
 mod services;
 
 use config::{AppConfig, DynamicConfig};
+use sea_orm::ConnectionTrait;
 use services::config_service::ConfigService;
-use std::sync::atomic::{AtomicBool, Ordering};
-use sea_orm::ConnectionTrait; // P1: 用于数据库健康检查
+use std::sync::atomic::{AtomicBool, Ordering}; // P1: 用于数据库健康检查
 
 // Global flag to indicate if server is running in configuration mode
 pub static CONFIG_MODE: AtomicBool = AtomicBool::new(false);
@@ -356,7 +356,6 @@ async fn get_public_ui_config_wrapper() -> Response {
                 Json(json!({
                     "pet_enabled": true,
                     "pet_image_url": "",
-                    "persona_image_enabled": true,
                     "wallpaper_url": "",
                     "wallpaper_blur": 3
                 })),
@@ -449,6 +448,49 @@ async fn update_control_panel_config_wrapper(
             Json(json!({
                 "error": "Database not connected",
                 "message": "数据库未连接，配置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_permissions that gets DB from global state
+async fn get_permissions_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_permissions(axum::extract::State(db.clone()), headers).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，权限功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for update_permissions that gets DB from global state
+async fn update_permissions_wrapper(
+    Json(payload): Json<api::config::UpdatePermissionsPayload>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::update_permissions(axum::extract::State(db.clone()), Json(payload))
+                    .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，权限功能暂不可用"
             })),
         )
             .into_response(),
@@ -818,8 +860,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         // ✅ P2: 系统监控指标端点（内存、任务、连接等）- 🔒 需要管理员权限
         .route(
             "/api/metrics",
-            get(api::metrics::get_metrics)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            get(api::metrics::get_metrics).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // Authentication routes (use wrapper for dynamic DB access)
         .route("/api/auth/login", post(local_login_wrapper))
@@ -849,6 +890,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             post(update_control_panel_config_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
+        // 权限配置 API
+        .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限
+        .route(
+            "/api/config/permissions",
+            post(update_permissions_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)), // 🔒 仅管理员
+        )
         .route(
             "/api/config/test",
             post(test_platform_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
@@ -859,7 +907,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         // ✅ 安全修复 P0: CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
         // AI推荐API - 🔓 公开端点：图标推荐服务
-        .route("/api/ai/recommend-icon", post(api::ai_recommend::recommend_icon))
+        .route(
+            "/api/ai/recommend-icon",
+            post(api::ai_recommend::recommend_icon),
+        )
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)); // 🚀 性能优化：批量API
@@ -937,23 +988,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/prompt/generate",
                 post(api::prompt::generate_prompt)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            // Virtual persona routes - 🔒 REQUIRE AUTHENTICATION
-            .route(
-                "/api/persona/generate",
-                post(api::persona::generate_persona)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/persona/generate-image",
-                post(api::persona::generate_image)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route("/api/persona/list", get(api::persona::get_persona_list))
-            .route(
-                "/api/persona/delete",
-                post(api::persona::delete_persona)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // 后台任务管理 API - 🔒 REQUIRE AUTHENTICATION
@@ -1048,12 +1082,201 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // Reports routes (读取端点公开访问，支持未认证用户)
             .route("/api/reports/latest", get(get_latest_report_wrapper))
             .route(
+                "/api/reports/list",
+                get(api::tapp::list_reports)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
                 "/api/reports/comprehensive/list",
                 get(get_comprehensive_reports_list_wrapper),
             )
             .route(
                 "/api/reports/comprehensive/:id",
                 get(get_comprehensive_report_by_id_wrapper),
+            )
+            // ============ Tapp 应用管理 API ============
+            // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
+            .nest("/api/tapps", api::tapps::create_tapp_routes())
+            // ============ Tapp API ============
+            // Platform data API - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/tapp/platform/:platform/data",
+                get(api::tapp::get_platform_data)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/platform/:platform/stats",
+                get(api::tapp::get_platform_stats)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/platform/:platform/distribution/:dimension",
+                get(api::tapp::get_platform_distribution)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/platform/items",
+                post(api::tapp::add_platform_item)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/platform/items/batch",
+                post(api::tapp::add_platform_items_batch)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // AI API - � 支持权限下放（使用 optional_auth）
+            .route(
+                "/api/tapp/ai/generate",
+                post(api::tapp::ai_generate)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/ai/analyze",
+                post(api::tapp::ai_analyze).route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/ai/image",
+                post(api::tapp::ai_image_generate)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // ============ Tapp P0 扩展 API ============
+            // HTTP Proxy - 🔓 支持权限下放
+            .route(
+                "/api/tapp/fetch/proxy",
+                post(api::tapp::fetch_proxy)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // Data Processing - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/tapp/data/transform",
+                post(api::tapp::data_transform)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Context API - 🔓 支持权限下放（公开信息）
+            .route(
+                "/api/tapp/context/app",
+                get(api::tapp::get_context_app)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/context/user",
+                get(api::tapp::get_context_user)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/context/player",
+                get(api::tapp::get_context_player)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/context/navigation",
+                get(api::tapp::get_context_navigation)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/context/system",
+                get(api::tapp::get_context_system)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // ============ Tapp P1 扩展 API ============
+            // AI Chat - 🔓 支持权限下放
+            .route(
+                "/api/tapp/ai/chat",
+                post(api::tapp::ai_chat).route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // Report CRUD - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/tapp/reports",
+                post(api::tapp::create_report)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/reports/tapp/:tapp_id",
+                get(api::tapp::list_tapp_reports)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/reports/:tapp_id/:report_id",
+                get(api::tapp::get_tapp_report)
+                    .put(api::tapp::update_tapp_report)
+                    .delete(api::tapp::delete_tapp_report)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Media Control - 🔓 支持权限下放
+            .route(
+                "/api/tapp/media/control",
+                post(api::tapp::media_control)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/media/status",
+                get(api::tapp::media_status)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // P2: Component Registration
+            .route(
+                "/api/tapp/components/register",
+                post(api::tapp::register_component)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/components/:tapp_id/:component_type/:component_id",
+                delete(api::tapp::unregister_component)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/components/:tapp_id",
+                get(api::tapp::list_components)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/components/all/:component_type",
+                get(api::tapp::list_all_components_by_type)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // P2: Shortcut Registration
+            .route(
+                "/api/tapp/shortcuts/register",
+                post(api::tapp::register_shortcut)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/shortcuts/:tapp_id/:shortcut_id",
+                delete(api::tapp::unregister_shortcut)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/shortcuts",
+                get(api::tapp::list_shortcuts)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // P2: Event Bus
+            .route(
+                "/api/tapp/events/publish",
+                post(api::tapp::publish_event)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/events/subscriptions/:tapp_id",
+                get(api::tapp::get_event_subscriptions)
+                    .put(api::tapp::update_event_subscriptions)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Metrics & Rate Limit
+            .route(
+                "/api/tapp/metrics",
+                get(api::tapp::get_tapp_metrics)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/metrics/reset",
+                post(api::tapp::reset_tapp_metrics)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/rate-limit/:tapp_id",
+                get(api::tapp::get_rate_limit_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))
@@ -1138,7 +1361,9 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // 每5分钟
         loop {
             cleanup_interval.tick().await;
-            services::background_processor::BACKGROUND_PROCESSOR.cleanup_old_tasks().await;
+            services::background_processor::BACKGROUND_PROCESSOR
+                .cleanup_old_tasks()
+                .await;
             tracing::info!("🧹 Background task cleanup completed");
         }
     });
@@ -1238,10 +1463,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             let db_opt = DB_CONNECTION.read().await;
             if let Some(db) = db_opt.as_ref() {
                 // 执行简单查询测试连接
-                match db.execute(sea_orm::Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    "SELECT 1".to_owned(),
-                )).await {
+                match db
+                    .execute(sea_orm::Statement::from_string(
+                        sea_orm::DatabaseBackend::Postgres,
+                        "SELECT 1".to_owned(),
+                    ))
+                    .await
+                {
                     Ok(_) => {
                         tracing::debug!("💚 Database health check passed");
                     }
@@ -1254,7 +1482,9 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                         let config = GLOBAL_CONFIG.read().await;
                         if !config.database_url.is_empty() {
                             tracing::info!("🔄 Attempting to reconnect to database...");
-                            match crate::db::connection::establish_connection(&config.database_url).await {
+                            match crate::db::connection::establish_connection(&config.database_url)
+                                .await
+                            {
                                 Ok(new_db) => {
                                     *DB_CONNECTION.write().await = Some(new_db);
                                     tracing::info!("✅ Database reconnected successfully");

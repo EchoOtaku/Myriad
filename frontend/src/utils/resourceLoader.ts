@@ -330,16 +330,10 @@ if (import.meta.env.DEV) {
   // 将资源加载器暴露到全局，方便调试
   (window as any).__resourceLoader = globalResourceLoader;
   
-  // 调试统计 - 仅在有活动任务时打印，且间隔更长
-  let lastStatsLog = 0;
+  // 调试统计 - 仅在有活动任务时处理
   setInterval(() => {
-    const stats = globalResourceLoader.getStats();
-    const now = Date.now();
-    // 只有在有活动任务且距离上次日志超过15秒时才打印
-    if ((stats.queued > 0 || stats.active > 0) && now - lastStatsLog > 15000) {
-      lastStatsLog = now;
-      console.log('[Resource Loader Stats]', stats);
-    }
+    // 保持间隔检查以便调试时可运行断点
+    globalResourceLoader.getStats();
   }, 10000);
 }
 

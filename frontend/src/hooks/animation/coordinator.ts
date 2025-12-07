@@ -1424,10 +1424,6 @@ class AnimationCoordinator {
           this.lowFpsThreshold = Math.round(this.detectedRefreshRate * this.LOW_FPS_RATIO);
           // 初始 FPS 设为检测到的刷新率
           this.currentFps = this.detectedRefreshRate;
-          
-          if (import.meta.env.DEV) {
-            console.log(`[FPS Monitor] Detected refresh rate: ${this.detectedRefreshRate}Hz (min frame time: ${this.minFrameTime.toFixed(2)}ms, threshold: ${this.lowFpsThreshold}fps)`);
-          }
         }
       }
       

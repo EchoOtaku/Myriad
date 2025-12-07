@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './GlobalControlPanel.css';
 import {
@@ -22,12 +22,24 @@ import { useAnimationPreference } from '../contexts/AnimationPreferenceContext';
 import { observeResize } from '../hooks/animation';
 import { useI18n } from '../contexts/I18nContext';
 import { useThemeMode } from '../utils/themeSubscriber';
+import { 
+  getDynamicContentProvider, 
+  type DynamicContentItem,
+  type DynamicContentType,
+} from '../services/DynamicContentProvider';
 
+/** 扩展的动态内容类型（包含 Tapp 自定义类型） */
 interface DynamicContent {
-  type: 'greeting' | 'weather' | 'quote' | 'theme' | 'music';
+  type: DynamicContentType;
   icon: string;
   text: string;
   subtext?: string;
+  /** 是否显示副文本 */
+  showSubtext?: boolean;
+  /** 来源 Tapp ID */
+  sourceTappId?: string;
+  /** 歌词持续时间（秒）- 仅用于 music 类型 */
+  lyricDuration?: number;
 }
 
 const GlobalControlPanel: React.FC = () => {
@@ -42,6 +54,22 @@ const GlobalControlPanel: React.FC = () => {
   const isDark = useThemeMode();
   const [user, setUser] = useState<User | null>(null);
 
+  // 页面可见性状态 - 用于冻结动态内容更新
+  const [isPageVisible, setIsPageVisible] = useState(!document.hidden);
+  const pendingUpdatesRef = useRef<Array<(prev: DynamicContent[]) => DynamicContent[]>>([]);
+
+  // 监听页面可见性变化
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = !document.hidden;
+      setIsPageVisible(visible);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   // 动态内容状态
   const [dynamicContents, setDynamicContents] = useState<DynamicContent[]>([]);
   const [currentContentIndex, setCurrentContentIndex] = useState(0);
@@ -49,6 +77,48 @@ const GlobalControlPanel: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
+
+  // 安全的动态内容更新函数 - 页面隐藏时暂存更新
+  const safeSetDynamicContents = useCallback((updater: (prev: DynamicContent[]) => DynamicContent[]) => {
+    if (document.hidden) {
+      // 页面隐藏时，暂存更新
+      pendingUpdatesRef.current.push(updater);
+    } else {
+      // 页面可见时，直接应用更新
+      setDynamicContents(updater);
+    }
+  }, []);
+
+  // 页面恢复可见时，应用所有暂存的更新
+  useEffect(() => {
+    if (isPageVisible && pendingUpdatesRef.current.length > 0) {
+      // 合并所有暂存的更新
+      setDynamicContents(prev => {
+        let result = prev;
+        for (const updater of pendingUpdatesRef.current) {
+          result = updater(result);
+        }
+        return result;
+      });
+      // 清空暂存
+      pendingUpdatesRef.current = [];
+    }
+  }, [isPageVisible]);
+
+  // 过滤掉空白内容，获取有效的动态内容列表（提前定义，供轮播逻辑使用）
+  const validContents = useMemo(() => {
+    return dynamicContents.filter(c => {
+      // 必须有图标和文本
+      if (!c.icon || !c.text) return false;
+      // 文本不能是空字符串或只有空白
+      if (typeof c.text === 'string' && c.text.trim().length === 0) return false;
+      return true;
+    });
+  }, [dynamicContents]);
+
+  // 文本引用，用于检测是否需要滚动
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [needsScroll, setNeedsScroll] = useState(false);
 
   // 壁纸管理 Hook（替代之前的独立状态和函数）
   const { wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper();
@@ -98,110 +168,239 @@ const GlobalControlPanel: React.FC = () => {
   // 注意：壁纸颜色提取完全由 AppLayout 负责
   // GlobalControlPanel 不再处理壁纸颜色，只处理音乐封面颜色
 
+  // 获取动态内容提供者
+  const dynamicContentProvider = getDynamicContentProvider();
+
+  // 同步语言设置到动态内容提供者
+  useEffect(() => {
+    dynamicContentProvider.setLocale(locale);
+  }, [locale, dynamicContentProvider]);
+
+  // 订阅 Tapp 动态内容更新
+  useEffect(() => {
+    const unsubscribe = dynamicContentProvider.addListener((event) => {
+      // 当 Tapp 内容更新时，刷新动态内容列表
+      if (event.type === 'add' || event.type === 'update' || event.type === 'remove' || event.type === 'clear') {
+        refreshTappContents();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [dynamicContentProvider]);
+
+  // 刷新 Tapp 提供的动态内容
+  const refreshTappContents = useCallback(() => {
+    safeSetDynamicContents(prev => {
+      // 移除旧的 Tapp 内容
+      const builtinContents = prev.filter(c => !c.type.toString().startsWith('tapp-'));
+      
+      // 获取所有 Tapp 内容
+      const tappContents = dynamicContentProvider.getAllContents()
+        .filter(c => c.type.toString().startsWith('tapp-'))
+        .map(c => ({
+          type: c.type,
+          icon: c.icon,
+          text: c.text,
+          subtext: c.subtext,
+          showSubtext: c.showSubtext,
+          sourceTappId: c.sourceTappId,
+        }));
+
+      // 合并内容
+      return [...builtinContents, ...tappContents];
+    });
+  }, [dynamicContentProvider, safeSetDynamicContents]);
+
+  // 天气文本翻译辅助函数（提取出来以便复用）
+  const getWeatherText = useCallback((code: number): string => {
+    const weatherT = t.weather ?? {};
+    if (code === 0 || code === 1) return weatherT.sunny ?? 'Sunny';
+    if (code === 2 || code === 3) return weatherT.cloudy ?? 'Cloudy';
+    if (code === 45 || code === 48) return weatherT.foggy ?? 'Foggy';
+    if (code >= 51 && code <= 67) return weatherT.rainy ?? 'Rainy';
+    if (code >= 80 && code <= 82) return weatherT.rainy ?? 'Rainy';
+    if (code >= 71 && code <= 77) return weatherT.snowy ?? 'Snowy';
+    if (code >= 85 && code <= 86) return weatherT.snowy ?? 'Snowy';
+    if (code >= 95 && code <= 99) return weatherT.thunderstorm ?? 'Thunderstorm';
+    return weatherT.unavailable ?? 'Unknown';
+  }, [t.weather]);
+
   // 加载动态内容
   const loadDynamicContents = useCallback(async () => {
     const contents: DynamicContent[] = [];
 
     // 1. 问候语（始终显示，立即加载）
     const greetingTranslations = {
-      morning: t.greeting.morning,
-      noon: t.greeting.noon,
-      afternoon: t.greeting.afternoon,
-      evening: t.greeting.evening,
-      night: t.greeting.night,
+      morning: t.greeting?.morning ?? 'Good morning',
+      noon: t.greeting?.noon ?? 'Good afternoon',
+      afternoon: t.greeting?.afternoon ?? 'Good afternoon',
+      evening: t.greeting?.evening ?? 'Good evening',
+      night: t.greeting?.night ?? 'Good night',
     };
     const greeting = getGreeting(user?.username, greetingTranslations, locale);
     contents.push({
       type: 'greeting',
       icon: greeting.icon,
-      text: greeting.text,
+      text: greeting.text || greetingTranslations.afternoon,
       subtext: greeting.time
     });
 
-    // 立即显示问候语
-    setDynamicContents([...contents]);
-
-    // 2. 天气信息（高优先级）
-    loadResource.high('weather-info', async () => {
-      try {
-        const weather = await getWeatherInfo();
-        if (weather) {
-          setWeatherData(weather);
-          setDynamicContents(prev => {
-            // 检查是否已存在天气信息
-            const hasWeather = prev.some(c => c.type === 'weather');
-            if (hasWeather) return prev;
-            
-            // Helper to translate weather code
-            const getWeatherText = (code: number) => {
-              if (code === 0 || code === 1) return t.weather.sunny;
-              if (code === 2 || code === 3) return t.weather.cloudy;
-              if (code === 45 || code === 48) return t.weather.foggy;
-              if (code >= 51 && code <= 67) return t.weather.rainy;
-              if (code >= 80 && code <= 82) return t.weather.rainy;
-              if (code >= 71 && code <= 77) return t.weather.snowy;
-              if (code >= 85 && code <= 86) return t.weather.snowy;
-              if (code >= 95 && code <= 99) return t.weather.thunderstorm;
-              return t.weather.unavailable;
-            };
-
-            // 在问候语后插入天气信息
-            const newContents = [...prev];
-            newContents.splice(1, 0, {
-              type: 'weather',
-              icon: weather.icon,
-              text: `${weather.temperature} ${getWeatherText(weather.weatherCode)}`,
-              subtext: weather.city
-            });
-            return newContents;
-          });
-        }
-      } catch (error) {
-        // 静默处理错误
-      }
+    // 立即显示问候语（保留音乐和 Tapp 内容，只更新内置内容）
+    safeSetDynamicContents(prev => {
+      // 保留音乐和 Tapp 类型的内容
+      const preserved = prev.filter(c => c.type === 'music' || c.type.toString().startsWith('tapp-'));
+      return [...contents, ...preserved];
     });
 
-    // 3. 一言警句（高优先级）
-    loadResource.high('quote-info', async () => {
-      try {
-        const quote = await getRandomQuote(locale);
-        if (quote) {
-          setQuoteData(quote);
-          setDynamicContents(prev => {
-            // 检查是否已存在名言
-            const hasQuote = prev.some(c => c.type === 'quote');
-            if (hasQuote) return prev;
+    // 同步问候语到动态内容提供者（供 Tapp 读取）
+    dynamicContentProvider.setContent('builtin', {
+      type: 'greeting',
+      icon: greeting.icon,
+      text: greeting.text || greetingTranslations.afternoon,
+      subtext: greeting.time,
+      priority: 100,
+    });
+
+    // 2. 天气信息（高优先级）
+    // 如果已有天气数据，直接使用缓存数据更新（语言切换时）
+    if (weatherData) {
+      const weatherText = `${weatherData.temperature} ${getWeatherText(weatherData.weatherCode)}`;
+      const weatherCity = weatherData.city || '';
+      
+      safeSetDynamicContents(prev => {
+        // 移除旧的天气内容，添加新的翻译版本
+        const filtered = prev.filter(c => c.type !== 'weather');
+        // 在问候语后插入天气信息
+        const greetingIndex = filtered.findIndex(c => c.type === 'greeting');
+        const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0;
+        filtered.splice(insertIndex, 0, {
+          type: 'weather',
+          icon: weatherData.icon,
+          text: weatherText,
+          subtext: weatherCity,
+          showSubtext: true,
+        });
+        return filtered;
+      });
+
+      // 同步到动态内容提供者
+      dynamicContentProvider.setContent('builtin', {
+        type: 'weather',
+        icon: weatherData.icon,
+        text: weatherText,
+        subtext: weatherCity,
+        priority: 90,
+        showSubtext: true,
+      });
+    } else {
+      // 首次加载天气数据
+      loadResource.high('weather-info', async () => {
+        try {
+          const weather = await getWeatherInfo();
+          if (weather) {
+            setWeatherData(weather);
             
-            // 添加到列表中
-            return [...prev, {
+            const weatherText = `${weather.temperature} ${getWeatherText(weather.weatherCode)}`;
+            const weatherCity = weather.city || '';
+
+            safeSetDynamicContents(prev => {
+              // 移除旧的天气内容（如果有）
+              const filtered = prev.filter(c => c.type !== 'weather');
+              // 在问候语后插入天气信息
+              const greetingIndex = filtered.findIndex(c => c.type === 'greeting');
+              const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0;
+              filtered.splice(insertIndex, 0, {
+                type: 'weather',
+                icon: weather.icon,
+                text: weatherText,
+                subtext: weatherCity,
+                showSubtext: true,
+              });
+              return filtered;
+            });
+
+            // 同步到动态内容提供者
+            dynamicContentProvider.setContent('builtin', {
+              type: 'weather',
+              icon: weather.icon,
+              text: weatherText,
+              subtext: weatherCity,
+              priority: 90,
+              showSubtext: true,
+            });
+          }
+        } catch (error) {
+          // 静默处理错误 - 天气不可用时不显示
+          console.debug('[GlobalControlPanel] Weather unavailable:', error);
+        }
+      });
+    }
+
+    // 3. 一言警句（高优先级）
+    // 如果已有一言数据，直接复用（一言不需要翻译，只有备用句子需要根据语言切换）
+    if (quoteData) {
+      safeSetDynamicContents(prev => {
+        // 移除旧的一言内容，重新添加
+        const filtered = prev.filter(c => c.type !== 'quote');
+        return [...filtered, {
+          type: 'quote',
+          icon: '💭',
+          text: quoteData.text,
+          subtext: quoteData.author || undefined,
+          showSubtext: false,
+        }];
+      });
+
+      // 同步到动态内容提供者
+      dynamicContentProvider.setContent('builtin', {
+        type: 'quote',
+        icon: '💭',
+        text: quoteData.text,
+        subtext: quoteData.author || undefined,
+        priority: 50,
+        showSubtext: false,
+      });
+    } else {
+      // 首次加载一言数据
+      loadResource.high('quote-info', async () => {
+        try {
+          const quote = await getRandomQuote(locale);
+          if (quote && quote.text) {
+            setQuoteData(quote);
+            safeSetDynamicContents(prev => {
+              // 移除旧的一言内容（如果有）
+              const filtered = prev.filter(c => c.type !== 'quote');
+              return [...filtered, {
+                type: 'quote',
+                icon: '💭',
+                text: quote.text,
+                subtext: quote.author || undefined,
+                showSubtext: false,
+              }];
+            });
+
+            // 同步到动态内容提供者
+            dynamicContentProvider.setContent('builtin', {
               type: 'quote',
               icon: '💭',
               text: quote.text,
-              subtext: quote.author
-            }];
-          });
+              subtext: quote.author || undefined,
+              priority: 50,
+              showSubtext: false,
+            });
+          }
+        } catch (error) {
+          // 静默处理错误 - 一言不可用时不显示
+          console.debug('[GlobalControlPanel] Quote unavailable:', error);
         }
-      } catch (error) {
-        // 静默处理错误
-      }
-    });
+      });
+    }
 
-    // 4. 主题状态 - 立即显示
-    const theme = getThemeInfo();
-    const themeTexts = [
-      t.controlPanel.themeSwitch,
-      t.controlPanel.wallpaperSwitch,
-      t.controlPanel.appearanceSettings
-    ];
-    const randomText = themeTexts[Math.floor(Math.random() * themeTexts.length)];
-    
-    setDynamicContents(prev => [...prev, {
-      type: 'theme',
-      icon: '⚙️',
-      text: randomText,
-      subtext: t.controlPanel.clickToExpand
-    }]);
-  }, [user?.username, t, locale]);
+    // 4. 加载 Tapp 提供的动态内容
+    refreshTappContents();
+  }, [user?.username, t, locale, dynamicContentProvider, refreshTappContents, safeSetDynamicContents, weatherData, quoteData, getWeatherText]);
 
   // 同步 AuthContext 的用户信息到本地状态
   useEffect(() => {
@@ -219,6 +418,12 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, [user, loadDynamicContents]);
 
+  // 当语言变化时，重新加载动态内容以更新问候语、天气等文本
+  useEffect(() => {
+    loadDynamicContents();
+    // loadDynamicContents 依赖 t 和 locale，当语言变化时会自动使用新的翻译
+  }, [locale, loadDynamicContents]);
+
   // 壁纸加载和刷新功能已由 useWallpaper Hook 提供
   // loadWallpaperConfig 和 refreshWallpaper 已废弃
 
@@ -228,17 +433,17 @@ const GlobalControlPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 仅在组件挂载时运行一次
 
-  // 确保 currentContentIndex 在有效范围内
+  // 确保 currentContentIndex 在有效范围内（使用 validContents）
   useEffect(() => {
-    if (dynamicContents.length > 0 && currentContentIndex >= dynamicContents.length) {
+    if (validContents.length > 0 && currentContentIndex >= validContents.length) {
       setCurrentContentIndex(0);
     }
-  }, [dynamicContents.length, currentContentIndex]);
+  }, [validContents.length, currentContentIndex]);
 
-  // 动态内容轮播（带淡入淡出效果）
+  // 动态内容轮播（带淡入淡出效果）- 仅在有有效内容时运行
   useEffect(() => {
-    // 在以下情况禁用轮播：展开面板 / 悬停 / 动态内容为空 / 页面隐藏
-    if (dynamicContents.length === 0 || isExpanded || isHovering) return;
+    // 在以下情况禁用轮播：展开面板 / 悬停 / 有效内容为空 / 页面隐藏
+    if (validContents.length === 0 || isExpanded || isHovering) return;
 
     let timerId: number | null = null;
     let cancelled = false;
@@ -248,17 +453,18 @@ const GlobalControlPanel: React.FC = () => {
       setIsTransitioning(true);
       timerId = window.setTimeout(() => {
         if (cancelled) return;
-        setCurrentContentIndex((prev) => (prev + 1) % dynamicContents.length);
-        window.setTimeout(() => setIsTransitioning(false), 50);
-        // 下一次循环：低端设备延长到 16s，正常 8s
-        const base = 8000;
+        setCurrentContentIndex((prev) => (prev + 1) % validContents.length);
+        // 稍等一帧后开始淡入，确保内容已更新
+        window.setTimeout(() => setIsTransitioning(false), 80);
+        // 下一次循环：延长停留时间到 15秒，低端设备 30秒
+        const base = 15000;
         const nextDelay = Math.round(base * (anim.durationScale || 1));
         timerId = window.setTimeout(cycle, nextDelay);
       }, 300);
     };
 
-    // 首次延迟启动，避免首屏竞争
-    const startDelay = Math.round(3000 * (anim.durationScale || 1));
+    // 首次延迟启动，等待 6 秒后开始轮播
+    const startDelay = Math.round(6000 * (anim.durationScale || 1));
     timerId = window.setTimeout(cycle, startDelay);
 
     const handleVisibility = () => {
@@ -282,7 +488,7 @@ const GlobalControlPanel: React.FC = () => {
       if (timerId) clearTimeout(timerId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [dynamicContents.length, isExpanded, isHovering, anim.durationScale]);
+  }, [validContents.length, isExpanded, isHovering, anim.durationScale]);
 
   // 主题变化已通过 useThemeMode() hook 自动响应
   // 无需额外的 MutationObserver
@@ -552,6 +758,7 @@ const GlobalControlPanel: React.FC = () => {
     const { currentSong, isPlaying, lyrics, currentLyricIndex } = musicPlayer;
     
     // 早期返回：面板展开时不更新动态内容
+    // 注意：页面隐藏时由 safeSetDynamicContents 自动暂存更新
     if (isExpanded) return;
     
     if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0) {
@@ -565,15 +772,26 @@ const GlobalControlPanel: React.FC = () => {
       lastSongIdRef.current = currentSong.id;
       lastPlayingStateRef.current = true;
 
+      // 计算当前歌词的持续时间（到下一句歌词的时间差）
+      let lyricDuration = 5; // 默认5秒
+      if (currentLyricIndex < lyrics.length - 1) {
+        const nextLyric = lyrics[currentLyricIndex + 1];
+        lyricDuration = Math.max(1, nextLyric.time - currentLyric.time);
+      } else {
+        // 最后一句歌词，默认8秒
+        lyricDuration = 8;
+      }
+
       // 播放时显示歌词 - 使用函数式更新避免闭包问题
-      setDynamicContents(prev => {
+      safeSetDynamicContents(prev => {
         const filtered = prev.filter(c => c.type !== 'music');
         return [
           {
             type: 'music' as const,
             icon: '🎵',
             text: currentLyric.text,
-            subtext: `${currentSong.name} - ${currentSong.artist}`
+            subtext: `${currentSong.name} - ${currentSong.artist}`,
+            lyricDuration, // 传入歌词持续时间
           },
           ...filtered
         ];
@@ -593,7 +811,7 @@ const GlobalControlPanel: React.FC = () => {
       lastPlayingStateRef.current = isPlaying;
 
       // 暂停时或没有歌词时只显示歌曲名
-      setDynamicContents(prev => {
+      safeSetDynamicContents(prev => {
         const filtered = prev.filter(c => c.type !== 'music');
         return [
           {
@@ -610,12 +828,122 @@ const GlobalControlPanel: React.FC = () => {
       lastLyricTextRef.current = '';
       lastSongIdRef.current = '';
       lastPlayingStateRef.current = false;
-      setDynamicContents(prev => prev.filter(c => c.type !== 'music'));
+      safeSetDynamicContents(prev => prev.filter(c => c.type !== 'music'));
     }
-  }, [musicPlayer.currentSong?.id, musicPlayer.lyrics.length, musicPlayer.currentLyricIndex, musicPlayer.isPlaying, isExpanded]);
+  }, [musicPlayer.currentSong?.id, musicPlayer.lyrics.length, musicPlayer.currentLyricIndex, musicPlayer.isPlaying, isExpanded, safeSetDynamicContents]);
 
+  // 确保索引在有效范围内
+  const safeContentIndex = validContents.length > 0 
+    ? Math.min(currentContentIndex, validContents.length - 1) 
+    : 0;
+  
   // 获取当前显示的动态内容
-  const currentContent = dynamicContents[currentContentIndex];
+  const currentContent = validContents.length > 0 ? validContents[safeContentIndex] : null;
+
+  // 用于跟踪上一次歌词文本，实现切换时的淡入淡出
+  const prevLyricTextRef = useRef<string>('');
+
+  // 检测文本是否超出2行，需要垂直滚动
+  useEffect(() => {
+    if (textRef.current && currentContent) {
+      const element = textRef.current;
+      const isMusic = currentContent.type === 'music';
+      const textChanged = isMusic && prevLyricTextRef.current !== '' && prevLyricTextRef.current !== currentContent.text;
+      
+      // 歌词切换时添加淡入淡出效果
+      if (textChanged) {
+        // 先淡出
+        element.classList.add('lyric-transition');
+        
+        // 100ms 后移除淡出类（让新内容淡入）
+        setTimeout(() => {
+          element.classList.remove('lyric-transition');
+        }, 100);
+      }
+      
+      // 更新上一次歌词文本
+      if (isMusic) {
+        prevLyricTextRef.current = currentContent.text;
+      } else {
+        prevLyricTextRef.current = '';
+      }
+      
+      // 计算2行的高度（line-height 1.3 * font-size 0.8125rem * 2 ≈ 2.1rem ≈ 34px）
+      const twoLineHeight = 34;
+      const actualHeight = element.scrollHeight;
+      // 只有当文本高度超过2行（约34px）时才启用滚动
+      const overflowAmount = actualHeight - twoLineHeight;
+      const shouldScroll = overflowAmount > 5; // 超过5px才算溢出
+      
+      if (shouldScroll) {
+        // 设置 CSS 变量来控制垂直滚动距离（负值向上滚动）
+        element.style.setProperty('--scroll-distance', `-${overflowAmount}px`);
+        
+        // 根据内容类型计算滚动时间和延迟
+        let duration: number;
+        let delay: string;
+        if (currentContent.type === 'music' && currentContent.lyricDuration) {
+          // 歌词：使用歌词时间轴，留出 0.3 秒的延迟
+          // 滚动时间 = 歌词持续时间 - 0.5秒（延迟+缓冲），最短1.5秒
+          duration = Math.max(1.5, currentContent.lyricDuration - 0.5);
+          delay = '0.3s'; // 歌词用更短的延迟
+        } else if (currentContent.type === 'music') {
+          // 没有时间轴的歌词，默认 4 秒
+          duration = 4;
+          delay = '0.5s';
+        } else {
+          // 普通内容：每20px需要1秒，最短10秒，最长20秒
+          duration = Math.max(10, Math.min(20, Math.ceil(overflowAmount / 20) + 10));
+          delay = '1.5s';
+        }
+        element.style.setProperty('--scroll-duration', `${duration}s`);
+        element.style.setProperty('--scroll-delay', delay);
+        
+        // 需要先重置动画再启用，确保动画从头开始
+        // 先禁用滚动，强制重置位置
+        setNeedsScroll(false);
+        // 强制重排，确保位置重置
+        void element.offsetHeight;
+        // 下一帧启用滚动动画
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setNeedsScroll(true);
+          });
+        });
+      } else {
+        element.style.removeProperty('--scroll-distance');
+        element.style.removeProperty('--scroll-duration');
+        element.style.removeProperty('--scroll-delay');
+        setNeedsScroll(false);
+      }
+    } else {
+      setNeedsScroll(false);
+    }
+  }, [currentContent?.text, currentContent?.type, currentContent?.lyricDuration, currentContentIndex]);
+
+  /**
+   * 判断是否应该显示副文本
+   * - 显式指定 showSubtext 时使用指定值
+   * - 默认规则：天气、主题、Tapp 内容显示副文本；问候语、一言、音乐不显示
+   */
+  const shouldShowSubtext = useCallback((content: DynamicContent): boolean => {
+    // 显式指定时使用指定值
+    if (content.showSubtext !== undefined) {
+      return content.showSubtext;
+    }
+
+    // Tapp 类型内容默认显示副文本
+    if (content.type.toString().startsWith('tapp-')) {
+      return !!content.subtext;
+    }
+
+    // 默认规则：天气和主题显示副文本
+    const typesWithSubtext: DynamicContentType[] = ['weather', 'theme'];
+    return typesWithSubtext.includes(content.type);
+  }, []);
+
+  // 是否有有效内容可显示
+  const hasValidContent = validContents.length > 0;
 
   return (
     <React.Fragment>
@@ -628,8 +956,8 @@ const GlobalControlPanel: React.FC = () => {
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={() => setIsHovering(false)}
           >
-            {/* 动态轮播内容 - 通过 JS 控制显示/隐藏 */}
-            {currentContent && (
+            {/* 动态轮播内容 - 仅在有有效内容时显示 */}
+            {hasValidContent && currentContent && (
               <div
                 className={`dynamic-content-wrapper ${!showDynamicContent || isTransitioning ? 'hidden' : ''}`}
                 onClick={handleTogglePanel}
@@ -638,12 +966,29 @@ const GlobalControlPanel: React.FC = () => {
                   {currentContent.icon}
                 </span>
                 <div className="dynamic-text">
-                  <span className="dynamic-text-main">{currentContent.text}</span>
-                  {/* 只显示天气和主题的 subtext，问候语和一言不显示 */}
-                  {currentContent.subtext && (currentContent.type === 'weather' || currentContent.type === 'theme') && (
+                  <span 
+                    ref={textRef}
+                    className={`dynamic-text-main ${needsScroll ? 'scrolling' : ''}`}
+                  >
+                    {currentContent.text}
+                  </span>
+                  {/* 根据 showSubtext 属性或类型判断是否显示副文本 */}
+                  {currentContent.subtext && shouldShowSubtext(currentContent) && (
                     <span className="dynamic-text-sub">{currentContent.subtext}</span>
                   )}
                 </div>
+                <svg className="dynamic-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            )}
+
+            {/* 无有效内容时，仍需保持可点击区域以展开面板 */}
+            {!hasValidContent && !isExpanded && (
+              <div
+                className={`dynamic-content-wrapper empty-state ${!showDynamicContent ? 'hidden' : ''}`}
+                onClick={handleTogglePanel}
+              >
                 <svg className="dynamic-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>

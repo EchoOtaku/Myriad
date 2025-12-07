@@ -60,13 +60,47 @@ export const routes: RouteConfig[] = [
     component: () => import('../views/Setup.tsx'),
     title: '初始化设置 - Myriad',
   },
+  // Tapp 路由
+  {
+    path: '/tapp',
+    component: () => import('../tapp/pages/TappListPage.tsx'),
+    title: 'Tapp 应用 - Myriad',
+    description: '管理和运行扩展应用',
+  },
+  {
+    path: '/tapp/run/:id',
+    component: () => import('../views/TappRunView.tsx'),
+    title: 'Tapp - Myriad',
+  },
+  {
+    path: '/tapp/detail/:id',
+    component: () => import('../views/TappDetailView.tsx'),
+    title: 'Tapp 详情 - Myriad',
+  },
 ];
 
 /**
  * 根据路径查找路由配置
+ * 支持带参数的路由（如 /tapp/run/:id）
  */
 export function findRoute(path: string): RouteConfig | undefined {
-  return routes.find(route => route.path === path);
+  // 先尝试精确匹配
+  const exactMatch = routes.find(route => route.path === path);
+  if (exactMatch) return exactMatch;
+
+  // 再尝试模式匹配
+  for (const route of routes) {
+    if (route.path.includes(':')) {
+      // 转换路由模式为正则
+      const pattern = route.path.replace(/:\w+/g, '[^/]+');
+      const regex = new RegExp(`^${pattern}$`);
+      if (regex.test(path)) {
+        return route;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 /**

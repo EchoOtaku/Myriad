@@ -26,6 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasSessionHint } from '../utils/sessionDetection';
 import { useI18n } from '../contexts/I18nContext';
 import { getUIConfigDeduped } from '../utils/requestDedup';
+import { useTappWidgets } from '../hooks/useTappWidgets';
 
 export default function Home() {
   // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
@@ -145,6 +146,14 @@ export default function Home() {
     },
   ], [t]);
 
+  // 获取 Tapp 注册的小组件
+  const { tappWidgets, isLoading: isTappWidgetsLoading } = useTappWidgets();
+
+  // 合并系统小组件和 Tapp 小组件
+  const ALL_AVAILABLE_WIDGETS = useMemo(() => {
+    return [...AVAILABLE_WIDGETS, ...tappWidgets];
+  }, [AVAILABLE_WIDGETS, tappWidgets]);
+
   // 检查是否需要初始化设置
   useEffect(() => {
     async function checkSetup() {
@@ -182,8 +191,7 @@ export default function Home() {
         // 总是获取公开用户信息（站长资料），不需要等待认证检查
         const info = await getUserInfoWithCache(true); // 跳过认证检查
         setUserInfo(info);
-      } catch (error) {
-        console.debug(t.home.fetchUserInfoFailed, error);
+      } catch {
         // 设置默认访客信息
         setUserInfo({
           name: 'Myriad Dashboard',
@@ -205,8 +213,8 @@ export default function Home() {
           if (token) {
             setCsrfToken(token);
           }
-        } catch (error) {
-          console.debug('获取 CSRF Token 失败:', error);
+        } catch {
+          // CSRF Token 获取失败时静默处理
         }
       }
     }
@@ -214,26 +222,32 @@ export default function Home() {
   }, [isAuthenticated, hasChecked]);
 
   // 从后端加载小组件配置（使用去重机制）
+  // 存储原始布局数据，用于 Tapp widgets 加载后重新验证
+  const [rawLayoutData, setRawLayoutData] = useState<WidgetConfig[] | null>(null);
+  
   useEffect(() => {
     async function loadDashboardConfig() {
       try {
         const data = await getUIConfigDeduped();
-        let loadedWidgets = null;
 
         if (data.dashboard_layout) {
           try {
             const parsedLayout = JSON.parse(data.dashboard_layout);
             if (Array.isArray(parsedLayout)) {
-              // 过滤掉未注册的小组件
-              const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
-              loadedWidgets = parsedLayout.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type));
+              // 保存原始布局，待 Tapp widgets 加载后再过滤
+              setRawLayoutData(parsedLayout);
+              // 先用当前可用的组件过滤
+              const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map(w => w.id));
+              const loadedWidgets = parsedLayout.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type));
+              setWidgets(loadedWidgets.length > 0 ? loadedWidgets : DEFAULT_WIDGETS);
             }
           } catch (e) {
             console.error('解析仪表盘布局失败:', e);
+            setWidgets(DEFAULT_WIDGETS);
           }
+        } else {
+          setWidgets(DEFAULT_WIDGETS);
         }
-
-        setWidgets(loadedWidgets || DEFAULT_WIDGETS);
 
         if (data.dashboard_title) {
           setDashboardTitle(data.dashboard_title);
@@ -248,10 +262,23 @@ export default function Home() {
     loadDashboardConfig();
   }, []);
 
+  // 当 Tapp widgets 加载完成后，重新验证布局中的小组件
+  useEffect(() => {
+    if (isTappWidgetsLoading || !rawLayoutData || tappWidgets.length === 0) return;
+    
+    // 使用完整的可用组件列表重新过滤
+    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map(w => w.id));
+    const validWidgets = rawLayoutData.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type));
+    
+    if (validWidgets.length > 0) {
+      setWidgets(validWidgets);
+    }
+  }, [isTappWidgetsLoading, tappWidgets, rawLayoutData, ALL_AVAILABLE_WIDGETS]);
+
   // 保存小组件配置到后端
   const handleWidgetsChange = async (newWidgets: WidgetConfig[]) => {
-    // 过滤掉未注册的小组件（已丢失/删除的组件）
-    const registeredWidgetIds = new Set(AVAILABLE_WIDGETS.map(w => w.id));
+    // 过滤掉未注册的小组件（已丢失/删除的组件，包括 Tapp 小组件）
+    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map(w => w.id));
     const validWidgets = newWidgets.filter(w => registeredWidgetIds.has(w.type));
 
     setWidgets(validWidgets);
@@ -337,7 +364,7 @@ export default function Home() {
           {/* 小组件网格区域 - 占满整个可用空间 */}
           <WidgetGrid
             widgets={widgets}
-            availableWidgets={AVAILABLE_WIDGETS}
+            availableWidgets={ALL_AVAILABLE_WIDGETS}
             onWidgetsChange={handleWidgetsChange}
             isEditMode={isEditMode}
             onToggleEditMode={setIsEditMode}

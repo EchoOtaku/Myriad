@@ -509,8 +509,6 @@ pub struct EnvUpdateRequest {
     pub openai_api_key: Option<String>,
     pub openai_model: Option<String>,
     pub openai_base_url: Option<String>,
-    pub deepseek_api_key: Option<String>,
-    pub deepseek_model: Option<String>,
     pub ai_provider: Option<String>,
     pub topic_style: Option<String>,
     pub github_username: Option<String>,
@@ -519,8 +517,6 @@ pub struct EnvUpdateRequest {
     pub steam_api_key: Option<String>,
     pub steam_id: Option<String>,
     pub netease_user_id: Option<String>,
-    pub twitter_username: Option<String>,
-    pub twitter_bearer_token: Option<String>,
     pub github_client_id: Option<String>,
     pub github_client_secret: Option<String>,
     pub github_redirect_url: Option<String>,
@@ -631,12 +627,6 @@ pub async fn update_env_file(
                 if let Some(v) = config.openai_base_url {
                     db_updates.insert("openai_base_url".to_string(), json!(v));
                 }
-                if let Some(v) = config.deepseek_api_key {
-                    db_updates.insert("deepseek_api_key".to_string(), json!(v));
-                }
-                if let Some(v) = config.deepseek_model {
-                    db_updates.insert("deepseek_model".to_string(), json!(v));
-                }
                 if let Some(v) = config.topic_style {
                     db_updates.insert("topic_style".to_string(), json!(v));
                 }
@@ -657,9 +647,6 @@ pub async fn update_env_file(
                 }
                 if let Some(v) = config.netease_user_id {
                     db_updates.insert("netease_user_id".to_string(), json!(v));
-                }
-                if let Some(v) = config.twitter_bearer_token {
-                    db_updates.insert("twitter_bearer_token".to_string(), json!(v));
                 }
                 if let Some(v) = config.github_client_id {
                     db_updates.insert("github_client_id".to_string(), json!(v));
@@ -690,8 +677,6 @@ pub async fn update_env_file(
                     || config.openai_api_key.is_some()
                     || config.openai_model.is_some()
                     || config.openai_base_url.is_some()
-                    || config.deepseek_api_key.is_some()
-                    || config.deepseek_model.is_some()
                     || config.topic_style.is_some()
                     || config.github_username.is_some()
                     || config.github_token.is_some()
@@ -699,7 +684,6 @@ pub async fn update_env_file(
                     || config.steam_api_key.is_some()
                     || config.steam_id.is_some()
                     || config.netease_user_id.is_some()
-                    || config.twitter_bearer_token.is_some()
                     || config.github_client_id.is_some()
                     || config.github_client_secret.is_some()
                     || config.github_redirect_url.is_some();

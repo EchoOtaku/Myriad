@@ -113,16 +113,27 @@ html.dark .control-bar-trigger.expanded {
   cursor: pointer;
   white-space: nowrap;
   opacity: 1;
+  /* 柔和的淡入效果 - 使用 ease-out 曲线，从快到慢 */
   transition:
-    opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
 }
 
 .dynamic-content-wrapper.hidden {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1);
+  /* 柔和的淡出效果 - 使用 ease-in 曲线，从慢到快 */
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* 无内容时的居中样式 */
+.dynamic-content-wrapper.empty-state {
+  justify-content: center;
+}
+
+.dynamic-content-wrapper.empty-state .dynamic-arrow {
+  opacity: 0.6;
 }
 
 .dynamic-icon {
@@ -141,22 +152,57 @@ html.dark .control-bar-trigger.expanded {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  max-width: calc(100% - 3rem); /* 预留图标和箭头空间 */
+  /* 固定高度为2行，用于裁剪溢出内容 */
+  max-height: 2.2rem;
 }
 
 .dynamic-text-main {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-primary, #1f2937);
+  /* 允许换行 */
   white-space: normal;
-  overflow: hidden;
-  max-height: 2rem;
-  line-height: 1.3;
   word-break: break-word;
-  transition: color 0.2s ease;
+  max-width: 100%;
+  line-height: 1.3;
+  /* 歌词切换时的淡入淡出效果 - 更柔和 */
+  transition: color 0.3s ease, opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+}
+
+/* 歌词切换时的淡出效果 - 通过 JS 添加此类 */
+.dynamic-text-main.lyric-transition {
+  opacity: 0;
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* 超过2行时启用垂直滚动动画 */
+.dynamic-text-main.scrolling {
+  /* 缓慢单向滚动 - 滚动到底部后固定，不循环 */
+  animation: text-scroll-vertical var(--scroll-duration, 12s) linear forwards;
+  animation-delay: var(--scroll-delay, 1.5s); /* 默认延迟1.5秒 */
+}
+
+@keyframes text-scroll-vertical {
+  /* 起点停留 */
+  0%, 8% {
+    transform: translateY(0);
+  }
+  /* 缓慢滚动到底部并固定 */
+  100% {
+    transform: translateY(var(--scroll-distance, -1rem));
+  }
+}
+
+/* 悬停时暂停滚动 */
+.control-bar-trigger:hover .dynamic-text-main.scrolling {
+  animation-play-state: paused;
 }
 
 .dynamic-text-main::-webkit-scrollbar {
-  width: 3px;
+  display: none;
 }
 
 .dynamic-text-main::-webkit-scrollbar-track {

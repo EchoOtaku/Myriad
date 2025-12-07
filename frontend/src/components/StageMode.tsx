@@ -286,7 +286,7 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
                 loading="lazy"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600">
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--color-primary,#10b981)] to-[var(--color-accent,#059669)]">
                 <span className="text-6xl">
                   {currentItem.type === 'game' ? '🎮' :
                    currentItem.type === 'video' || currentItem.type === 'anime' || currentItem.type === 'tv_series' ? '📺' :

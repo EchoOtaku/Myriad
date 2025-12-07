@@ -1,8 +1,11 @@
 pub use sea_orm_migration::prelude::*;
 
-// 单一统一的数据库结构定义
+// 数据库结构定义
 #[path = "001_initial_schema.rs"]
 mod initial_schema;
+
+#[path = "002_tapp_system.rs"]
+mod tapp_system;
 
 pub struct Migrator;
 
@@ -11,6 +14,7 @@ impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
             Box::new(initial_schema::Migration),
+            Box::new(tapp_system::Migration),
         ]
     }
 }

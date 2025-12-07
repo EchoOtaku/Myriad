@@ -297,6 +297,7 @@ async function applyWallpaperToDOM(
  * 获取壁纸配置（带自动重试）
  */
 async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
+  console.debug('[Wallpaper] Fetching wallpaper config...');
   try {
     const data = await fetchJsonWithRetry<any>(`${API_URL}/api/config/ui`, {
       maxRetries: 3,
@@ -308,6 +309,8 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
       },
     });
 
+    console.debug('[Wallpaper] Config received:', { wallpaper_url: data.wallpaper_url, blur: data.wallpaper_blur });
+    
     if (data.wallpaper_url) {
       return {
         wallpaper_url: data.wallpaper_url,
@@ -315,6 +318,7 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
         wallpaper_parallax: data.wallpaper_parallax ?? true,
       };
     }
+    console.debug('[Wallpaper] No wallpaper_url in config');
     return null;
   } catch (error) {
     console.error('壁纸配置获取失败:', error);
@@ -357,9 +361,11 @@ export function useWallpaper() {
    */
   const loadWallpaper = useCallback(async (): Promise<LoadWallpaperResult | null> => {
     const now = Date.now();
+    console.debug('[Wallpaper] loadWallpaper called');
     
     // 1秒内的重复调用，直接返回上次结果
     if (lastLoadResult && now - lastLoadTimestamp < LOAD_DEBOUNCE_MS) {
+      console.debug('[Wallpaper] Returning cached result (debounce)');
       // 同步本地状态
       if (lastLoadResult.actualUrl) {
         setWallpaperUrl(lastLoadResult.actualUrl);
@@ -370,6 +376,7 @@ export function useWallpaper() {
     
     // 如果有正在进行的加载，等待其完成
     if (pendingLoadWallpaper) {
+      console.debug('[Wallpaper] Waiting for pending load...');
       const result = await pendingLoadWallpaper;
       // 同步本地状态
       if (result?.actualUrl) {
@@ -379,6 +386,7 @@ export function useWallpaper() {
       return result;
     }
     
+    console.debug('[Wallpaper] Starting new load...');
     // 执行实际加载
     const doLoad = async (): Promise<LoadWallpaperResult | null> => {
       try {

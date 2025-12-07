@@ -591,8 +591,6 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
             case 'netease music':
             case 'netease': return '#d33a31';
             case 'github': return '#24292e';
-            case 'twitter':
-            case 'x': return '#000000';
             default: return '#6b7280';
         }
     }, []);

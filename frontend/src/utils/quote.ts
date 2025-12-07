@@ -1,4 +1,4 @@
-import { API_URL } from '../config';
+﻿import { API_URL } from '../config';
 
 export interface QuoteData {
   text: string;
@@ -52,16 +52,7 @@ export async function getRandomQuote(locale?: string): Promise<QuoteData | null>
  * 本地备用句子库
  */
 function getLocalQuote(locale?: string): QuoteData {
-  const isEnglish = locale === 'en-US';
-  
-  const quotes = isEnglish ? [
-    { text: 'Code is like humor. When you have to explain it, it’s bad.', author: 'Cory House' },
-    { text: 'Simplicity is the soul of efficiency.', author: 'Austin Freeman' },
-    { text: 'Make it work, make it right, make it fast.', author: 'Kent Beck' },
-    { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds' },
-    { text: 'Software is eating the world.', author: 'Marc Andreessen' },
-    { text: 'The best way to predict the future is to invent it.', author: 'Alan Kay' },
-  ] : [
+  const quotesZhCN = [
     { text: '代码如诗，优雅至上', author: '程序员格言' },
     { text: '简洁是可靠的前提', author: 'Edsger Dijkstra' },
     { text: '过早优化是万恶之源', author: 'Donald Knuth' },
@@ -71,6 +62,36 @@ function getLocalQuote(locale?: string): QuoteData {
     { text: '代码是写给人看的，顺便让机器执行', author: 'Harold Abelson' },
     { text: '测试不能证明程序没有 bug，只能证明 bug 的存在', author: 'Edsger Dijkstra' }
   ];
+
+  const quotesEnUS = [
+    { text: "Code is like humor. When you have to explain it, it's bad.", author: 'Cory House' },
+    { text: 'Simplicity is the soul of efficiency.', author: 'Austin Freeman' },
+    { text: 'Make it work, make it right, make it fast.', author: 'Kent Beck' },
+    { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds' },
+    { text: 'Software is eating the world.', author: 'Marc Andreessen' },
+    { text: 'The best way to predict the future is to invent it.', author: 'Alan Kay' },
+  ];
+
+  const quotesJaJP = [
+    { text: 'コードは詩のように、優雅であれ', author: 'プログラマーの格言' },
+    { text: 'シンプルさは信頼性の前提条件である', author: 'Edsger Dijkstra' },
+    { text: '早すぎる最適化は諸悪の根源', author: 'Donald Knuth' },
+    { text: '動くようにしてから、正しくしてから、速くする', author: 'Kent Beck' },
+    { text: '良いコードは最高のドキュメントである', author: 'Steve McConnell' },
+    { text: '未来を予測する最良の方法は、それを発明することだ', author: 'Alan Kay' },
+  ];
+
+  let quotes: QuoteData[];
+  switch (locale) {
+    case 'en-US':
+      quotes = quotesEnUS;
+      break;
+    case 'ja-JP':
+      quotes = quotesJaJP;
+      break;
+    default:
+      quotes = quotesZhCN;
+  }
 
   return quotes[Math.floor(Math.random() * quotes.length)];
 }

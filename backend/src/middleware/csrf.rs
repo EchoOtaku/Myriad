@@ -40,7 +40,11 @@ static CSRF_TOKENS: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, CsrfToken>>
                 });
                 let removed = before_count - tokens.len();
                 if removed > 0 {
-                    tracing::info!("🧹 CSRF cleanup: removed {} expired tokens, {} remaining", removed, tokens.len());
+                    tracing::info!(
+                        "🧹 CSRF cleanup: removed {} expired tokens, {} remaining",
+                        removed,
+                        tokens.len()
+                    );
                 }
             }
         });
@@ -88,6 +92,11 @@ fn extract_session_id(headers: &HeaderMap) -> Option<String> {
 
 /// CSRF 防护中间件
 /// ✅ 安全修复 P0: 验证所有状态变更请求的 CSRF Token
+///
+/// 安全策略：
+/// - 对于已认证用户：必须提供有效的 CSRF Token
+/// - 对于未认证用户（游客）：跳过 CSRF 验证（CSRF 攻击对游客无意义，因为没有 session 可劫持）
+/// - 某些公开 API 直接豁免（如登录、健康检查等）
 pub async fn csrf_middleware(req: Request, next: Next) -> Response {
     let method = req.method();
     let path = req.uri().path();
@@ -108,20 +117,21 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
     let headers = req.headers();
 
     // 提取会话 ID
-    let session_id = match extract_session_id(headers) {
-        Some(id) => id,
-        None => {
-            tracing::warn!("🚨 CSRF check failed: No session ID found");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error": "Unauthorized",
-                    "message": "Authentication required for CSRF protection"
-                })),
-            )
-                .into_response();
-        }
-    };
+    let session_id = extract_session_id(headers);
+
+    // 如果没有 session（游客），跳过 CSRF 验证
+    // 理由：CSRF 攻击的目的是劫持已登录用户的 session 执行操作
+    // 游客没有 session，无法被 CSRF 攻击利用
+    // 后端 API 会通过权限下放配置决定游客能访问什么
+    if session_id.is_none() {
+        tracing::debug!(
+            "⏭️ CSRF check skipped: No session (guest user) for {}",
+            path
+        );
+        return next.run(req).await;
+    }
+
+    let session_id = session_id.unwrap();
 
     // 从请求头获取 CSRF Token
     let client_token = headers
@@ -202,6 +212,8 @@ fn is_csrf_exempt(path: &str) -> bool {
         || path.starts_with("/health")
         || path.starts_with("/api/proxy/") // 图片代理等公开接口
         || path.starts_with("/api/ai/") // AI 推荐等公开接口
+                                        // 注意: /api/tapps/ 和 /api/tapp/ 不在豁免列表
+                                        // 已登录用户需要 CSRF 保护，游客通过上面的 session 检查自动跳过
 }
 
 /// 生成并返回 CSRF Token 的接口
@@ -220,6 +232,24 @@ pub async fn get_csrf_token(headers: HeaderMap) -> impl IntoResponse {
                 .into_response();
         }
     };
+
+    // 先检查是否已存在有效的 Token
+    {
+        let tokens = CSRF_TOKENS.read().await;
+        if let Some(existing) = tokens.get(&session_id) {
+            // 如果 Token 未过期（还有超过 5 分钟有效期），复用现有 Token
+            if Instant::now().duration_since(existing.created_at) < Duration::from_secs(3300) {
+                tracing::debug!("✅ Reusing existing CSRF token for session");
+                return (
+                    StatusCode::OK,
+                    Json(json!({
+                        "csrf_token": existing.token.clone()
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
 
     // 生成新的 CSRF Token
     let token = generate_csrf_token();
@@ -279,6 +309,11 @@ mod tests {
         assert!(is_csrf_exempt("/api/setup/init-database"));
         assert!(is_csrf_exempt("/health"));
         assert!(is_csrf_exempt("/api/proxy/image"));
+
+        // Tapp API 不在豁免列表（通过 session 检查决定是否需要 CSRF）
+        assert!(!is_csrf_exempt("/api/tapp/ai/chat"));
+        assert!(!is_csrf_exempt("/api/tapps/install"));
+        assert!(!is_csrf_exempt("/api/tapps/my-app/start"));
 
         assert!(!is_csrf_exempt("/api/config"));
         assert!(!is_csrf_exempt("/api/profile/report"));

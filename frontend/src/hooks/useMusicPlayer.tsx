@@ -960,6 +960,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       const currentTime = audio.currentTime;
       setCurrentTime(currentTime);
       
+      // 更新 Media Session 位置状态（移动端后台播放关键）
+      if (audio.duration && isFinite(audio.duration)) {
+        audioManager.updatePositionState(audio.duration, currentTime, audio.playbackRate);
+      }
+      
       if (lyricsRef.current.length > 0) {
         const index = getCurrentLyricIndex(lyricsRef.current, currentTime);
         if (index !== currentLyricIndexRef.current) {
@@ -1163,11 +1168,25 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       }
     };
     
+    // 处理系统级暂停事件（移动端浏览器切后台时可能触发）
+    const handlePause = () => {
+      setIsPlaying(false);
+      audioManager.setPlaybackState('paused');
+    };
+    
+    // 处理系统级播放事件（从系统媒体控制恢复播放）
+    const handlePlay = () => {
+      setIsPlaying(true);
+      audioManager.setPlaybackState('playing');
+    };
+    
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('play', handlePlay);
     
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
@@ -1175,6 +1194,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('play', handlePlay);
     };
   }, [volume, playlist, currentSongIndex, selectSong, preloadedSongIndex, preloadNextSong, playMode, generateNextShuffleIndex, excludeVipSongs]);
   
@@ -1183,6 +1204,65 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     preloadCacheRef.current.clear();
     setPreloadedSongIndex(-1);
   }, [playlist]);
+  
+  // 移动端后台播放恢复 - 页面可见性变化时检查音频状态
+  // 使用 ref 存储状态避免频繁重建监听器
+  const isPlayingRef = useRef(isPlaying);
+  const currentSongRef = useRef(currentSong);
+  // 记录页面进入后台前的播放状态（持久化在 ref 中）
+  const wasPlayingBeforeHiddenRef = useRef(false);
+  isPlayingRef.current = isPlaying;
+  currentSongRef.current = currentSong;
+  
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      
+      if (document.hidden) {
+        // 页面进入后台：记录当前播放状态
+        // 注意：此时 audio.paused 可能还没被浏览器设置为 true
+        wasPlayingBeforeHiddenRef.current = isPlayingRef.current || !audio.paused;
+        
+        // 更新 Media Session 状态以保持系统媒体控制可用
+        if (wasPlayingBeforeHiddenRef.current) {
+          audioManager.setPlaybackState('playing');
+          // 强制更新位置状态
+          if (audio.duration && isFinite(audio.duration)) {
+            audioManager.updatePositionState(audio.duration, audio.currentTime, audio.playbackRate);
+          }
+        }
+      } else {
+        // 页面恢复到前台
+        // 1. 恢复可能被暂停的 AudioContext（用于频谱分析）
+        await audioManager.resumeAudioContext();
+        
+        // 2. 检查是否需要恢复播放（某些移动端浏览器会在后台暂停音频）
+        if (wasPlayingBeforeHiddenRef.current && audio.paused && currentSongRef.current) {
+          // 尝试恢复播放 - 这是关键！
+          try {
+            await audio.play();
+            setIsPlaying(true);
+            audioManager.setPlaybackState('playing');
+          } catch (error) {
+            console.warn('Failed to resume playback after visibility change:', error);
+          }
+        } else if (!audio.paused) {
+          // 同步播放状态
+          setIsPlaying(true);
+          audioManager.setPlaybackState('playing');
+        }
+        
+        // 重置标记
+        wasPlayingBeforeHiddenRef.current = false;
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []); // 只在挂载时设置一次
   
   // 初始化 Media Session API - 使用 ref 存储回调避免频繁重建
   const playPreviousRef = useRef(playPrevious);
@@ -1244,6 +1324,32 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     window.addEventListener('play-song', handlePlaySong);
     return () => {
       window.removeEventListener('play-song', handlePlaySong);
+    };
+  }, []); // 只在挂载时设置一次
+  
+  // 监听播放指定索引歌曲事件 - 用于 Tapp 调用
+  const playlistRef = useRef(playlist);
+  playlistRef.current = playlist;
+  const setCurrentSongIndexRef = useRef(setCurrentSongIndex);
+  setCurrentSongIndexRef.current = setCurrentSongIndex;
+  
+  useEffect(() => {
+    const handlePlaySongAtIndex = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { index, song } = customEvent.detail || {};
+      if (typeof index === 'number' && index >= 0 && index < playlistRef.current.length) {
+        // 直接设置索引，触发播放
+        setCurrentSongIndexRef.current(index);
+        const targetSong = song || playlistRef.current[index];
+        if (targetSong) {
+          playSongRef.current(targetSong);
+        }
+      }
+    };
+    
+    window.addEventListener('play-song-at-index', handlePlaySongAtIndex);
+    return () => {
+      window.removeEventListener('play-song-at-index', handlePlaySongAtIndex);
     };
   }, []); // 只在挂载时设置一次
   

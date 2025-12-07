@@ -130,8 +130,6 @@ pub struct DynamicConfig {
     pub openai_api_key: Option<String>,
     pub openai_model: String,
     pub openai_base_url: String,
-    pub deepseek_api_key: Option<String>,
-    pub deepseek_model: String,
     pub openai_max_tokens: i32,
     pub topic_style: String,
 
@@ -142,8 +140,6 @@ pub struct DynamicConfig {
     pub steam_api_key: Option<String>,
     pub steam_id: Option<String>,
     pub netease_user_id: Option<String>,
-    pub twitter_bearer_token: Option<String>,
-    pub linkedin_access_token: Option<String>,
 
     // UI 配置
     pub ui_wallpaper_url: Option<String>,
@@ -165,17 +161,15 @@ pub struct DynamicConfig {
     pub music_source: Option<String>,
     pub music_playlist_id: Option<String>,
 
-    // Twitter 额外字段
-    pub twitter_username: Option<String>,
-
-    // 功能配置
-    pub persona_image_enabled: bool,
-    pub persona_image_provider: String, // "pollinations" 或 "imaginepro"
-    pub persona_image_model: String,
-    pub persona_image_width: i32,
-    pub persona_image_height: i32,
+    // AI 图片生成配置（从虚拟人设移动过来）
+    pub ai_image_provider: String, // "pollinations" 或 "imaginepro"
+    pub ai_image_model: String,
+    pub ai_image_width: i32,
+    pub ai_image_height: i32,
     pub imaginepro_api_key: Option<String>,
     pub imaginepro_callback_url: Option<String>,
+
+    // 自动数据获取配置
     pub enable_auto_fetch: bool,
     pub fetch_interval_hours: i32,
 
@@ -192,6 +186,72 @@ pub struct DynamicConfig {
     // 控制面板小组件配置
     pub control_panel_layout: Option<String>,
     pub control_panel_rows: i32,
+
+    // ========== Tapp 权限下放配置 ==========
+    // 基于 Tapp 系统的 elevated 级别权限（共12个）
+    // 这些权限默认只有管理员可用，可以配置下放给普通用户或游客
+    // 注意：basic 级别权限（10个）默认所有用户都有
+    // 注意：privileged 级别权限（component:agent, platform:write, platform:register）始终只限管理员
+
+    // ===== 普通用户可使用的 elevated 权限 (10个) =====
+    /// ai:generate - AI 生成内容
+    pub user_perm_ai_generate: bool,
+    /// ai:analyze - AI 分析数据
+    pub user_perm_ai_analyze: bool,
+    /// ai:chat - AI 对话
+    pub user_perm_ai_chat: bool,
+    /// ai:image - AI 图片生成
+    pub user_perm_ai_image: bool,
+    /// report:write - 写入/生成报告
+    pub user_perm_report_write: bool,
+    /// network:fetch - 发起网络请求
+    pub user_perm_network_fetch: bool,
+    /// media:control - 控制媒体播放
+    pub user_perm_media_control: bool,
+    /// component:theme - 注册主题组件
+    pub user_perm_component_theme: bool,
+    /// shortcut:register - 注册快捷键
+    pub user_perm_shortcut_register: bool,
+    /// event:publish - 发布事件
+    pub user_perm_event_publish: bool,
+
+    // ===== 游客可使用的 elevated 权限 (10个，platform:write 和 platform:register 已升为 privileged) =====
+    /// ai:generate - AI 生成内容（游客）
+    pub guest_perm_ai_generate: bool,
+    /// ai:analyze - AI 分析数据（游客）
+    pub guest_perm_ai_analyze: bool,
+    /// ai:chat - AI 对话（游客）
+    pub guest_perm_ai_chat: bool,
+    /// ai:image - AI 图片生成（游客）
+    pub guest_perm_ai_image: bool,
+    /// report:write - 写入/生成报告（游客）
+    pub guest_perm_report_write: bool,
+    /// network:fetch - 发起网络请求（游客）
+    pub guest_perm_network_fetch: bool,
+    /// media:control - 控制媒体播放（游客）
+    pub guest_perm_media_control: bool,
+    /// component:theme - 注册主题组件（游客）
+    pub guest_perm_component_theme: bool,
+    /// shortcut:register - 注册快捷键（游客）
+    pub guest_perm_shortcut_register: bool,
+    /// event:publish - 发布事件（游客）
+    pub guest_perm_event_publish: bool,
+
+    // ===== AI 使用限额配置（当权限已下放时生效） =====
+    // 这些限额只对非管理员用户生效，管理员无限制
+    /// 普通用户每日 AI 调用次数限制（所有 AI 权限共享）
+    pub user_ai_daily_calls: i32,
+    /// 普通用户每日 AI Token 限制
+    pub user_ai_daily_tokens: i32,
+    /// 普通用户 AI 调用冷却时间（秒）
+    pub user_ai_cooldown_seconds: i32,
+
+    /// 游客每日 AI 调用次数限制
+    pub guest_ai_daily_calls: i32,
+    /// 游客每日 AI Token 限制
+    pub guest_ai_daily_tokens: i32,
+    /// 游客 AI 调用冷却时间（秒）
+    pub guest_ai_cooldown_seconds: i32,
 }
 
 impl Default for DynamicConfig {
@@ -203,8 +263,6 @@ impl Default for DynamicConfig {
             openai_api_key: None,
             openai_model: "gpt-4".to_string(),
             openai_base_url: "https://api.openai.com/v1".to_string(),
-            deepseek_api_key: None,
-            deepseek_model: "deepseek-chat".to_string(),
             openai_max_tokens: 2000,
             topic_style: "balanced".to_string(),
 
@@ -214,8 +272,6 @@ impl Default for DynamicConfig {
             steam_api_key: None,
             steam_id: None,
             netease_user_id: None,
-            twitter_bearer_token: None,
-            linkedin_access_token: None,
 
             ui_wallpaper_url: None,
             ui_wallpaper_blur: 3,
@@ -234,13 +290,11 @@ impl Default for DynamicConfig {
             music_source: None,
             music_playlist_id: None,
 
-            twitter_username: None,
-
-            persona_image_enabled: true,
-            persona_image_provider: "pollinations".to_string(),
-            persona_image_model: "flux-anime".to_string(),
-            persona_image_width: 512,
-            persona_image_height: 768,
+            // AI 图片生成配置
+            ai_image_provider: "pollinations".to_string(),
+            ai_image_model: "flux-anime".to_string(),
+            ai_image_width: 512,
+            ai_image_height: 768,
             imaginepro_api_key: None,
             imaginepro_callback_url: None,
             enable_auto_fetch: false,
@@ -256,6 +310,43 @@ impl Default for DynamicConfig {
 
             control_panel_layout: None,
             control_panel_rows: 2,
+
+            // ===== 普通用户 elevated 权限默认值 (10个) =====
+            // 默认全部关闭，管理员可选择性开放
+            user_perm_ai_generate: false,
+            user_perm_ai_analyze: false,
+            user_perm_ai_chat: false,
+            user_perm_ai_image: false,
+            user_perm_report_write: false,
+            user_perm_network_fetch: false,
+            user_perm_media_control: false,
+            user_perm_component_theme: false,
+            user_perm_shortcut_register: false,
+            user_perm_event_publish: false,
+
+            // ===== 游客 elevated 权限默认值 =====
+            // 默认全部关闭
+            guest_perm_ai_generate: false,
+            guest_perm_ai_analyze: false,
+            guest_perm_ai_chat: false,
+            guest_perm_ai_image: false,
+            guest_perm_report_write: false,
+            guest_perm_network_fetch: false,
+            guest_perm_media_control: false,
+            guest_perm_component_theme: false,
+            guest_perm_shortcut_register: false,
+            guest_perm_event_publish: false,
+
+            // ===== AI 使用限额默认值 =====
+            // 普通用户: 每日 50 次调用, 20000 tokens, 5 秒冷却
+            user_ai_daily_calls: 50,
+            user_ai_daily_tokens: 20000,
+            user_ai_cooldown_seconds: 5,
+
+            // 游客: 每日 10 次调用, 5000 tokens, 10 秒冷却
+            guest_ai_daily_calls: 10,
+            guest_ai_daily_tokens: 5000,
+            guest_ai_cooldown_seconds: 10,
         }
     }
 }

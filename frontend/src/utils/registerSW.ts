@@ -15,22 +15,13 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         scope: '/'
       });
 
-      if (import.meta.env.DEV) {
-        console.log('[SW] Service Worker registered successfully:', registration.scope);
-      }
-
       // 监听更新
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // 新版本可用
-              if (import.meta.env.DEV) {
-                console.log('[SW] New version available! Refresh to update.');
-              }
-
-              // 可以在这里通知用户有新版本
+              // 新版本可用 - 可以在这里通知用户
               const event = new CustomEvent('sw-update-available', {
                 detail: { registration }
               });
@@ -62,9 +53,6 @@ export async function unregisterServiceWorker(): Promise<boolean> {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
         const success = await registration.unregister();
-        if (import.meta.env.DEV) {
-          console.log('[SW] Service Worker unregistered:', success);
-        }
         return success;
       }
     } catch (error) {
@@ -82,9 +70,6 @@ export async function clearServiceWorkerCache(): Promise<void> {
     try {
       const keys = await caches.keys();
       await Promise.all(keys.map(key => caches.delete(key)));
-      if (import.meta.env.DEV) {
-        console.log('[SW] All caches cleared');
-      }
     } catch (error) {
       console.error('[SW] Failed to clear caches:', error);
     }

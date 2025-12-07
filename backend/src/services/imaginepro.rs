@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// ImaginePro API 客户端
+#[allow(dead_code)]
 pub struct ImagineProClient {
     api_key: String,
     client: Client,
@@ -10,6 +11,7 @@ pub struct ImagineProClient {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct ImagineRequest {
     prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -62,6 +64,7 @@ pub struct ImagineResponse {
 
 /// Upscale按钮请求
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct ButtonRequest {
     #[serde(rename = "messageId")]
     message_id: String,
@@ -74,12 +77,14 @@ struct ButtonRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ImagineErrorResponse {
     error: String,
     #[serde(default)]
     message: Option<String>,
 }
 
+#[allow(dead_code)]
 impl ImagineProClient {
     /// 创建新的 ImaginePro 客户端
     pub fn new(api_key: String, callback_url: Option<String>) -> Self {

@@ -73,7 +73,6 @@ export class TokenManager {
       
       // HttpOnly Cookie 由后端在 Set-Cookie 头中设置，前端无法设置
       // Token 仅存储在 HttpOnly Cookie 中，JavaScript 无法访问
-      console.info('✅ Token should be set via HttpOnly Cookie by backend');
     } catch (e) {
       console.error('Failed to validate token:', e);
       throw e;

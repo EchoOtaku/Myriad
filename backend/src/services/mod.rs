@@ -11,4 +11,6 @@ pub mod metadata_filter;   // ✅ 5W元数据过滤器（旧版）
 pub mod metadata_service;
 pub mod netease_service;  // ✅ 网易云音乐统一服务层
 pub mod netease_utils;     // ✅ 网易云音乐工具函数
+pub mod permission_service; // ✅ 权限服务（细粒度权限配置）
 pub mod smart_filter;      // ✅ 智能内容过滤器（新版，使用数据库）
+

@@ -252,11 +252,6 @@ export async function measurePerformance<T>(
     performance.mark(endMark);
     performance.measure(measureName, startMark, endMark);
     
-    if (import.meta.env.DEV) {
-      const measure = performance.getEntriesByName(measureName)[0];
-      console.log(`⏱️ ${name}: ${measure.duration.toFixed(2)}ms`);
-    }
-    
     return result;
   } catch (error) {
     performance.mark(endMark);

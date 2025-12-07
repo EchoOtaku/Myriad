@@ -189,10 +189,6 @@ export const globalCache = new IndexedDBCache();
 // 自动清理过期缓存(每小时)
 if (typeof window !== 'undefined') {
   setInterval(() => {
-    globalCache.cleanupExpired().then(count => {
-      if (count > 0 && import.meta.env.DEV) {
-        console.log(`🧹 Cleaned ${count} expired cache entries`);
-      }
-    });
+    globalCache.cleanupExpired();
   }, 60 * 60 * 1000);
 }

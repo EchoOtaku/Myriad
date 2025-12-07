@@ -1,5 +1,5 @@
 /**
- * 壁纸颜色提取调试工具 v2.0
+ * 壁纸颜色提取调试工具 v2.1
  * 
  * 在浏览器控制台中使用：
  * - window.__debugColors.current()         查看当前应用的颜色
@@ -12,7 +12,7 @@
  * - window.__debugColors.help()            显示帮助信息
  * 
  * @module debugColors
- * @version 2.0
+ * @version 2.1
  */
 
 import { applyColorPalette, extractColorsFromImage, clearColorCache } from './colorExtractor';
@@ -24,13 +24,13 @@ import { wallpaperState, extractBackgroundUrl } from './wallpaperState';
 // ============================================================================
 
 /** 截断URL用于显示 */
-function truncateUrl(url: string | null, maxLen = 80): string | null {
+function truncateUrl(url: string | null | undefined, maxLen = 80): string | null {
   if (!url) return null;
   return url.length > maxLen ? `${url.substring(0, maxLen)}...` : url;
 }
 
 /** 格式化时间间隔 */
-function formatTimeAgo(timestamp: number | null): string {
+function formatTimeAgo(timestamp: number | null | undefined): string {
   if (!timestamp) return '未记录';
   const seconds = Math.round((Date.now() - timestamp) / 1000);
   if (seconds < 60) return `${seconds}秒前`;
@@ -84,18 +84,22 @@ export const debugColorTools = {
    */
   wallpaperStatus() {
     const debugInfo = wallpaperState.getDebugInfo();
-    const domUrl = extractBackgroundUrl(document.body);
+    // extractBackgroundUrl 接收元素ID（string），不是 HTMLElement
+    const domUrl = extractBackgroundUrl('wallpaper');
+    
+    // 从 state 快照获取正确的属性
+    const activeUrl = debugInfo.state?.activeUrl ?? null;
+    const appliedAt = debugInfo.state?.appliedAt ?? null;
     
     const status = {
-      activeUrl: truncateUrl(debugInfo.activeUrl),
-      activeUrlFull: debugInfo.activeUrl,
+      activeUrl: truncateUrl(activeUrl),
+      activeUrlFull: activeUrl,
       domUrl: truncateUrl(domUrl),
       domUrlFull: domUrl,
-      isConsistent: domUrl ? wallpaperState.isUrlActive(domUrl) : false,
-      isDOMConsistent: debugInfo.activeUrl === domUrl,
-      lastApplied: formatTimeAgo(debugInfo.timestamp),
-      version: debugInfo.version,
-      timestamp: debugInfo.timestamp,
+      isConsistent: debugInfo.isConsistent,
+      isDOMConsistent: activeUrl === domUrl,
+      lastApplied: formatTimeAgo(appliedAt),
+      listenerCount: debugInfo.listenerCount,
     };
     
     if (status.isConsistent && status.isDOMConsistent) {
@@ -111,7 +115,7 @@ export const debugColorTools = {
       'DOM URL': status.domUrl || '(无)',
       '一致性': status.isConsistent ? '✓' : '✗',
       '最后应用': status.lastApplied,
-      '版本': status.version,
+      '监听器数量': status.listenerCount,
     });
     
     return status;
@@ -134,17 +138,18 @@ export const debugColorTools = {
     
     console.log('💾 缓存信息:');
     console.table({
-      '有效缓存': info.hasValidCache ? '是' : '否',
-      '缓存URL': truncateUrl(info.url) || '(无)',
-      '缓存时间': info.timestamp ? new Date(info.timestamp).toLocaleString() : '(无)',
-      '缓存年龄': info.age || '(无)',
-      '缓存版本': info.version,
-      '条目数量': info.entries,
+      '缓存存在': info.exists ? '是' : '否',
+      '条目数量': info.count ?? 0,
+      '缓存大小': info.totalSize ? `${info.totalSize} bytes` : '(无)',
     });
     
-    if (info.palette) {
-      console.log('🎨 缓存的配色方案:');
-      console.table(info.palette);
+    if (info.items && info.items.length > 0) {
+      console.log('🎨 缓存条目:');
+      console.table(info.items.map(item => ({
+        'URL': item.url,
+        '缓存年龄': `${item.age}秒`,
+        '访问次数': item.accessCount,
+      })));
     }
     
     return info;
@@ -171,7 +176,7 @@ export const debugColorTools = {
       
       // 颜色预览
       const preview = Object.entries(colors)
-        .map(([name, color]) => `%c ${name} %c`)
+        .map(([name]) => `%c ${name} %c`)
         .join('');
       
       const styles = Object.values(colors).flatMap(color => [
@@ -201,9 +206,10 @@ export const debugColorTools = {
   verify(url: string) {
     const isActive = wallpaperState.isUrlActive(url);
     const debugInfo = wallpaperState.getDebugInfo();
+    const activeUrl = debugInfo.state?.activeUrl ?? null;
     
     console.log('🔍 验证URL:', truncateUrl(url, 100));
-    console.log('📍 当前活动URL:', truncateUrl(debugInfo.activeUrl, 100));
+    console.log('📍 当前活动URL:', truncateUrl(activeUrl, 100));
     
     if (isActive) {
       console.log('✅ URL与当前壁纸一致');
@@ -230,7 +236,8 @@ export const debugColorTools = {
    * 重置壁纸状态
    */
   reset() {
-    wallpaperState.setActiveUrl(null);
+    // 使用正确的 API: clearState() 而不是 setActiveUrl()
+    wallpaperState.clearState();
     clearColorCache();
     clearWallpaperCache();
     console.log('🔄 壁纸状态已重置');
@@ -242,7 +249,7 @@ export const debugColorTools = {
    */
   help() {
     console.log(`
-%c🎨 壁纸颜色提取调试工具 v2.0%c
+%c🎨 壁纸颜色提取调试工具 v2.1%c
 
 %c状态检查%c
   current()         - 查看当前应用的CSS颜色变量

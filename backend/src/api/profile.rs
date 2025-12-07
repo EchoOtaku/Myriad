@@ -373,21 +373,6 @@ fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-/// 获取缓存或新鲜数据（内部使用，返回原始数据）
-pub async fn get_cached_or_fresh_data(
-    db: &DatabaseConnection,
-) -> Result<Value, Box<dyn std::error::Error>> {
-    // 先检查缓存
-    if let Some(cache) = load_platform_data_cache() {
-        tracing::info!("📦 Using cached platform data");
-        return Ok(cache.data);
-    }
-
-    // 缓存不存在或已过期，获取新鲜数据
-    tracing::info!("🔄 Fetching fresh platform data...");
-    fetch_fresh_platform_data(db, None).await
-}
-
 /// 一键获取所有平台数据（带缓存）
 pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     tracing::info!("Starting fetch all data...");
@@ -1269,38 +1254,6 @@ pub fn filter_data_for_ai(data: &Value) -> Value {
         }
 
         filtered["github"] = github_filtered;
-    }
-
-    // ===== Twitter/X 数据筛选 =====
-    if let Some(twitter) = data.get("twitter") {
-        let mut twitter_filtered = json!({});
-
-        // Who: 用户信息
-        if let Some(user) = twitter.get("user") {
-            twitter_filtered["user"] = json!({
-                "username": user.get("username"),        // 谁
-                "name": user.get("name"),
-                "description": user.get("description"),  // 为什么（个人简介）
-            });
-        }
-
-        // What: 推文列表
-        if let Some(tweets) = twitter.get("tweets").and_then(|t| t.as_array()) {
-            let filtered_tweets: Vec<Value> = tweets
-                .iter()
-                .map(|tweet| {
-                    json!({
-                        "text": tweet.get("text"),          // 什么内容
-                        "created_at": tweet.get("created_at"), // 何时
-                        "public_metrics": tweet.get("public_metrics"), // 影响力
-                    })
-                })
-                .collect();
-            twitter_filtered["tweets"] = json!(filtered_tweets);
-            twitter_filtered["total_tweets"] = json!(filtered_tweets.len());
-        }
-
-        filtered["twitter"] = twitter_filtered;
     }
 
     // ===== Pixiv 数据筛选 =====

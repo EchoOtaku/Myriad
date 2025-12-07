@@ -77,15 +77,6 @@ impl ConfigService {
             }
         }
 
-        if let Some(v) = map.get("deepseek_api_key") {
-            config.deepseek_api_key = v.as_str().map(|s| s.to_string());
-        }
-
-        if let Some(v) = map.get("deepseek_model") {
-            if let Some(s) = v.as_str() {
-                config.deepseek_model = s.to_string();
-            }
-        }
         if let Some(v) = map.get("openai_max_tokens") {
             if let Some(n) = v.as_i64() {
                 config.openai_max_tokens = n as i32;
@@ -123,14 +114,6 @@ impl ConfigService {
             config.netease_user_id = v.as_str().map(|s| s.to_string());
         }
 
-        if let Some(v) = map.get("twitter_bearer_token") {
-            config.twitter_bearer_token = v.as_str().map(|s| s.to_string());
-        }
-
-        if let Some(v) = map.get("linkedin_access_token") {
-            config.linkedin_access_token = v.as_str().map(|s| s.to_string());
-        }
-
         // UI 配置
         if let Some(v) = map.get("ui_wallpaper_url") {
             config.ui_wallpaper_url = v.as_str().map(|s| s.to_string());
@@ -154,30 +137,25 @@ impl ConfigService {
             config.pet_image_url = v.as_str().map(|s| s.to_string());
         }
 
-        // 功能配置
-        if let Some(v) = map.get("persona_image_enabled") {
-            if let Some(b) = v.as_bool() {
-                config.persona_image_enabled = b;
-            }
-        }
-        if let Some(v) = map.get("persona_image_provider") {
+        // AI 图片生成配置
+        if let Some(v) = map.get("ai_image_provider") {
             if let Some(s) = v.as_str() {
-                config.persona_image_provider = s.to_string();
+                config.ai_image_provider = s.to_string();
             }
         }
-        if let Some(v) = map.get("persona_image_model") {
+        if let Some(v) = map.get("ai_image_model") {
             if let Some(s) = v.as_str() {
-                config.persona_image_model = s.to_string();
+                config.ai_image_model = s.to_string();
             }
         }
-        if let Some(v) = map.get("persona_image_width") {
+        if let Some(v) = map.get("ai_image_width") {
             if let Some(n) = v.as_i64() {
-                config.persona_image_width = n as i32;
+                config.ai_image_width = n as i32;
             }
         }
-        if let Some(v) = map.get("persona_image_height") {
+        if let Some(v) = map.get("ai_image_height") {
             if let Some(n) = v.as_i64() {
-                config.persona_image_height = n as i32;
+                config.ai_image_height = n as i32;
             }
         }
         if let Some(v) = map.get("imaginepro_api_key") {
@@ -271,6 +249,111 @@ impl ConfigService {
         }
         if let Some(v) = map.get("music_playlist_id") {
             config.music_playlist_id = v.as_str().map(|s| s.to_string());
+        }
+
+        // ========== Tapp 权限下放配置 ==========
+        // 普通用户 elevated 权限 (10个, platform:write 和 platform:register 已升为 privileged)
+        if let Some(v) = map.get("user_perm_ai_generate") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_ai_generate = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_ai_analyze") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_ai_analyze = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_ai_chat") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_ai_chat = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_ai_image") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_ai_image = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_report_write") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_report_write = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_network_fetch") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_network_fetch = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_media_control") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_media_control = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_component_theme") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_component_theme = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_shortcut_register") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_shortcut_register = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_event_publish") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_event_publish = b;
+            }
+        }
+
+        // 游客 elevated 权限 (10个, platform:write 和 platform:register 已升为 privileged)
+        if let Some(v) = map.get("guest_perm_ai_generate") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_ai_generate = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_ai_analyze") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_ai_analyze = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_ai_chat") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_ai_chat = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_ai_image") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_ai_image = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_report_write") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_report_write = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_network_fetch") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_network_fetch = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_media_control") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_media_control = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_component_theme") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_component_theme = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_shortcut_register") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_shortcut_register = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_event_publish") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_event_publish = b;
+            }
         }
 
         config

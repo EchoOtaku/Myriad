@@ -96,8 +96,8 @@ async function getAuthInfoRealtime(): Promise<{ isLoggedIn: boolean; is_admin: b
         display_name: data.display_name,
       };
     }
-  } catch (e) {
-    console.debug('获取认证信息失败:', e);
+  } catch {
+    // 获取认证信息失败时静默处理
   }
 
   return { isLoggedIn: false, is_admin: false };

@@ -1131,7 +1131,6 @@ export default function WidgetGrid({
                 onTouchStart={(e: React.TouchEvent) => handleNewWidgetDragStart(e, widgetType.id)}
                 whileHover={{ scale: 1.05, zIndex: 10 }}
                 whileTap={{ scale: 0.95 }}
-                layout
               >
                 {/* 缩放容器 */}
                 <div 

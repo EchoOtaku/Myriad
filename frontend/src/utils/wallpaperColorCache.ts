@@ -53,7 +53,7 @@ const CACHE_VERSION = 5; // 升级版本号
 const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6小时
 const CACHE_KEY = 'myriad_wallpaper_color_cache_v5';
 const MAX_CACHE_ITEMS = 10;
-const MIN_IMAGE_SIZE = 400; // 最小图片尺寸
+const MIN_IMAGE_SIZE = 100; // 最小图片尺寸（降低要求以支持更多图片源）
 
 // ============================================================================
 // 缓存存储操作
@@ -129,6 +129,7 @@ function cleanupCacheStore(store: WallpaperColorCacheStore): void {
 
 /**
  * 检查URL是否适合进行颜色提取，并验证与当前壁纸的一致性
+ * 简化验证流程，避免重复加载图片
  */
 export async function shouldApplyColorExtraction(url: string): Promise<ColorExtractionCheckResult> {
   if (!url) {
@@ -146,6 +147,10 @@ export async function shouldApplyColorExtraction(url: string): Promise<ColorExtr
   // 验证与当前活跃壁纸的一致性
   if (!wallpaperState.isUrlActive(url)) {
     const activeUrl = wallpaperState.getActiveUrl();
+    console.debug('[ColorCache] URL mismatch:', { 
+      provided: url.substring(0, 60), 
+      active: activeUrl?.substring(0, 60) 
+    });
     return { 
       shouldApply: false, 
       reason: activeUrl 
@@ -154,40 +159,22 @@ export async function shouldApplyColorExtraction(url: string): Promise<ColorExtr
     };
   }
   
-  // 验证DOM一致性
+  // 验证DOM一致性（可选，跳过时更宽容）
   const domUrl = extractBackgroundUrl();
   if (domUrl && !areUrlsEquivalent(domUrl, url)) {
-    return { 
-      shouldApply: false, 
-      reason: 'URL与DOM显示壁纸不一致',
-    };
+    // 仅记录警告，不阻止提取（DOM可能还未更新）
+    console.debug('[ColorCache] DOM URL mismatch (may be timing issue):', {
+      provided: url.substring(0, 60),
+      dom: domUrl.substring(0, 60)
+    });
   }
 
-  // 加载图片检查尺寸
-  try {
-    const imageValid = await validateImage(url);
-    if (!imageValid.valid) {
-      return { shouldApply: false, reason: imageValid.reason };
-    }
-
-    // 图片加载完成后再次验证壁纸一致性
-    if (!wallpaperState.isUrlActive(url)) {
-      return { 
-        shouldApply: false, 
-        reason: '图片加载期间壁纸已变更',
-      };
-    }
-
-    return { 
-      shouldApply: true, 
-      cacheKey: normalizeWallpaperUrl(url),
-    };
-  } catch (error) {
-    return { 
-      shouldApply: false, 
-      reason: `验证失败: ${error instanceof Error ? error.message : '未知错误'}`,
-    };
-  }
+  // 不再预加载验证图片尺寸，由 extractFromImage 处理
+  // 这避免了重复加载图片的性能问题
+  return { 
+    shouldApply: true, 
+    cacheKey: normalizeWallpaperUrl(url),
+  };
 }
 
 /**

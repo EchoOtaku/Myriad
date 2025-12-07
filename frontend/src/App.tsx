@@ -18,6 +18,8 @@ import { I18nProvider } from './contexts/I18nContext';
 import CustomScrollbar from './components/CustomScrollbar';
 import { preloadCriticalRoutes } from './utils/codeSplitting';
 import { useRouteScheduler } from './hooks/animation';
+// TappBackgroundRunner 懒加载，避免其错误阻塞主应用
+const TappBackgroundRunner = lazy(() => import('./tapp/components/TappBackgroundRunner'));
 import './styles/fonts.css';
 import './styles/theme.css';
 import './styles/animations.css';
@@ -37,6 +39,11 @@ const DataManagement = lazy(() => import('./views/DataManagement.tsx'));
 const Login = lazy(() => import('./views/Login.tsx'));
 const Details = lazy(() => import('./views/Details.tsx'));
 const Setup = lazy(() => import('./views/Setup.tsx'));
+
+// Tapp 页面
+const TappList = lazy(() => import('./tapp/pages/TappListPage.tsx'));
+const TappRun = lazy(() => import('./views/TappRunView.tsx'));
+const TappDetail = lazy(() => import('./views/TappDetailView.tsx'));
 
 /**
  * 路由守卫：检查认证状态
@@ -219,6 +226,11 @@ function AppRoutes() {
         <Route path="/login" element={<SuspensePage><Login /></SuspensePage>} />
         <Route path="/details" element={<SuspensePage><Details /></SuspensePage>} />
         <Route path="/setup" element={<SuspensePage><Setup /></SuspensePage>} />
+        
+        {/* Tapp 路由 */}
+        <Route path="/tapp" element={<SuspensePage><TappList /></SuspensePage>} />
+        <Route path="/tapp/run/:id" element={<SuspensePage><TappRun /></SuspensePage>} />
+        <Route path="/tapp/detail/:id" element={<SuspensePage><TappDetail /></SuspensePage>} />
 
         {/* 404 页面 - 重定向到首页 */}
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -231,11 +243,13 @@ function AppRoutes() {
  * 主应用组件
  */
 export function App() {
+  console.debug('[App] App component rendering...');
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   
   // 在 React 应用挂载完成后标记就绪状态
   // 注意：这只是通知基本框架已加载，各个组件会独立控制自己的淡入显示
   useEffect(() => {
+    console.debug('[App] App useEffect running...');
     // 使用双帧延迟确保基础布局已渲染
     const rafId = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -270,6 +284,9 @@ export function App() {
               <MusicPlayerProvider>
                 <RouteLoader />
                 <CustomScrollbar />
+                <Suspense fallback={null}>
+                  <TappBackgroundRunner />
+                </Suspense>
                 <AppLayout>
                   <AppRoutes />
                 </AppLayout>

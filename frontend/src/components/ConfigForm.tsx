@@ -43,17 +43,13 @@ interface AiConfig {
   model: string;
   api_key: string;
   enabled: boolean;
+  // AI 图片生成配置
+  image_provider: string;
   config_fields: ConfigField[];
 }
 
 interface ReportConfig {
   topic_style: string;
-  config_fields: ConfigField[];
-}
-
-interface PersonaConfig {
-  enabled: boolean;
-  provider: string;
   config_fields: ConfigField[];
 }
 
@@ -70,7 +66,6 @@ interface Config {
   platforms: PlatformConfig[];
   ai_config: AiConfig;
   report_config: ReportConfig;
-  persona_config: PersonaConfig;
   ui_config: UiConfig;
 }
 
@@ -143,6 +138,117 @@ const ModernConfigForm: React.FC = () => {
     return saved ? JSON.parse(saved) : ['platforms', 'ai'];
   });
 
+  // Tapp 权限下放配置状态（9个 elevated 权限 × 2 角色 + AI 限额配置）
+  const [permissionConfig, setPermissionConfig] = useState({
+    // 普通用户 elevated 权限 (platform:write 和 platform:register 已升为 privileged)
+    user_perm_ai_generate: false,
+    user_perm_ai_analyze: false,
+    user_perm_ai_chat: false,
+    user_perm_report_write: false,
+    user_perm_network_fetch: false,
+    user_perm_media_control: false,
+    user_perm_component_theme: false,
+    user_perm_shortcut_register: false,
+    user_perm_event_publish: false,
+    // 游客 elevated 权限
+    guest_perm_ai_generate: false,
+    guest_perm_ai_analyze: false,
+    guest_perm_ai_chat: false,
+    guest_perm_report_write: false,
+    guest_perm_network_fetch: false,
+    guest_perm_media_control: false,
+    guest_perm_component_theme: false,
+    guest_perm_shortcut_register: false,
+    guest_perm_event_publish: false,
+    // AI 使用限额配置
+    user_ai_daily_calls: 50,
+    user_ai_daily_tokens: 20000,
+    user_ai_cooldown_seconds: 5,
+    guest_ai_daily_calls: 10,
+    guest_ai_daily_tokens: 5000,
+    guest_ai_cooldown_seconds: 10,
+  });
+  const [permissionLoading, setPermissionLoading] = useState(false);
+
+  // 更新权限配置
+  const updatePermissionConfig = useCallback(async (key: string, value: boolean | number) => {
+    const prevValue = permissionConfig[key as keyof typeof permissionConfig];
+    setPermissionConfig(prev => ({ ...prev, [key]: value }));
+    
+    // 自动保存权限配置
+    try {
+      // 强制刷新 CSRF Token 确保有效
+      const csrfToken = await getCSRFToken(true);
+      const response = await fetchJson(`${API_URL}/api/config/permissions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({ [key]: value }),
+      });
+      
+      if (response.success) {
+        setMessage(t.config.permissionsSaved);
+        setTimeout(() => setMessage(''), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to save permission:', error);
+      setMessage(t.config.permissionsSaveFailed);
+      // 回滚
+      setPermissionConfig(prev => ({ ...prev, [key]: prevValue }));
+    }
+  }, [t, permissionConfig]);
+
+  // 加载权限配置
+  const loadPermissionConfig = useCallback(async () => {
+    try {
+      setPermissionLoading(true);
+      const response = await fetchJson(`${API_URL}/api/config/permissions`, {
+        credentials: 'include',
+      });
+      
+      if (response.success && response.config) {
+        const { guest, user, user_ai_quota, guest_ai_quota } = response.config;
+        setPermissionConfig({
+          // 普通用户权限 (9个 elevated)
+          user_perm_ai_generate: user.ai_generate,
+          user_perm_ai_analyze: user.ai_analyze,
+          user_perm_ai_chat: user.ai_chat,
+          user_perm_report_write: user.report_write,
+          user_perm_network_fetch: user.network_fetch,
+          user_perm_media_control: user.media_control,
+          user_perm_component_theme: user.component_theme,
+          user_perm_shortcut_register: user.shortcut_register,
+          user_perm_event_publish: user.event_publish,
+          // 游客权限 (9个 elevated)
+          guest_perm_ai_generate: guest.ai_generate,
+          guest_perm_ai_analyze: guest.ai_analyze,
+          guest_perm_ai_chat: guest.ai_chat,
+          guest_perm_report_write: guest.report_write,
+          guest_perm_network_fetch: guest.network_fetch,
+          guest_perm_media_control: guest.media_control,
+          guest_perm_component_theme: guest.component_theme,
+          guest_perm_shortcut_register: guest.shortcut_register,
+          guest_perm_event_publish: guest.event_publish,
+          // AI 使用限额配置
+          user_ai_daily_calls: user_ai_quota?.daily_calls ?? 50,
+          user_ai_daily_tokens: user_ai_quota?.daily_tokens ?? 20000,
+          user_ai_cooldown_seconds: user_ai_quota?.cooldown_seconds ?? 5,
+          guest_ai_daily_calls: guest_ai_quota?.daily_calls ?? 10,
+          guest_ai_daily_tokens: guest_ai_quota?.daily_tokens ?? 5000,
+          guest_ai_cooldown_seconds: guest_ai_quota?.cooldown_seconds ?? 10,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load permissions:', error);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }, []);
+
+
   // 获取翻译后的字段标签（覆盖后端返回的标签）
   const getFieldLabel = useCallback((fieldKey: string, originalLabel: string): string => {
     const fieldLabels: Record<string, string> = {
@@ -181,10 +287,10 @@ const ModernConfigForm: React.FC = () => {
     { id: 'platforms', label: t.config.platforms, icon: '🌐', section: 'platforms' },
     { id: 'data', label: t.config.data, icon: '💾', section: 'data' },
     { id: 'ai', label: t.config.ai, icon: '🤖', section: 'ai' },
-    { id: 'persona', label: t.config.persona, icon: '🎭', section: 'persona' },
     { id: 'ui', label: t.config.ui, icon: '🎨', section: 'ui' },
     { id: 'music', label: t.config.music, icon: '🎵', section: 'music' },
     { id: 'oauth', label: t.config.oauth, icon: '🔐', section: 'oauth' },
+    { id: 'permissions', label: t.config.permissions, icon: '👥', section: 'permissions' },
   ], [t]);
 
   // 搜索功能
@@ -210,16 +316,7 @@ const ModernConfigForm: React.FC = () => {
       section: 'ai',
       title: t.config.ai,
       description: t.config.aiDesc,
-      keywords: ['ai', 'gemini', 'openai', 'api', '模型', '智能']
-    });
-    
-    // 虚拟人设
-    items.push({
-      type: 'section',
-      section: 'persona',
-      title: t.config.persona,
-      description: t.config.personaDesc,
-      keywords: ['虚拟', '人设', 'persona', '图片', '生成', 'ai']
+      keywords: ['ai', 'gemini', 'openai', 'api', '模型', '智能', '图片', '生成', 'image']
     });
     
     // UI配置
@@ -389,20 +486,13 @@ const ModernConfigForm: React.FC = () => {
           ...data.ai_config,
           enabled: false,
           api_key: '',
-          config_fields: data.ai_config.config_fields.map((field: any) => ({
-            ...field,
-            value: field.key === 'model' ? 'gemini-pro' : '',
-          })),
-        },
-        persona_config: {
-          ...data.persona_config,
-          config_fields: data.persona_config.config_fields.map((field: any) => {
+          config_fields: data.ai_config.config_fields.map((field: any) => {
             let defaultValue = '';
-            if (field.key === 'persona_image_enabled') defaultValue = 'true';
-            else if (field.key === 'persona_image_provider') defaultValue = 'pollinations';
-            else if (field.key === 'persona_image_model') defaultValue = 'flux-anime';
-            else if (field.key === 'persona_image_width') defaultValue = '512';
-            else if (field.key === 'persona_image_height') defaultValue = '768';
+            if (field.key === 'model') defaultValue = 'gemini-pro';
+            else if (field.key === 'ai_image_provider') defaultValue = 'pollinations';
+            else if (field.key === 'ai_image_model') defaultValue = 'flux-anime';
+            else if (field.key === 'ai_image_width') defaultValue = '512';
+            else if (field.key === 'ai_image_height') defaultValue = '768';
             return { ...field, value: defaultValue };
           }),
         },
@@ -489,7 +579,8 @@ const ModernConfigForm: React.FC = () => {
 
   useEffect(() => {
     loadConfig();
-  }, [loadConfig]);
+    loadPermissionConfig();
+  }, [loadConfig, loadPermissionConfig]);
 
   useEffect(() => {
     const handleSaveEvent = () => handleSave();
@@ -550,14 +641,14 @@ const ModernConfigForm: React.FC = () => {
   }, [config]);
 
   const updateConfigField = React.useCallback((
-    section: 'ai' | 'persona' | 'ui',
+    section: 'ai' | 'ui',
     fieldKey: string,
     value: string,
     providerFieldKey?: string
   ) => {
     if (!config) return;
 
-    const sectionKey = `${section}_config` as 'ai_config' | 'persona_config' | 'ui_config';
+    const sectionKey = `${section}_config` as 'ai_config' | 'ui_config';
     const sectionConfig = config[sectionKey];
     const newFields = [...sectionConfig.config_fields];
     const field = newFields.find(f => f.key === fieldKey);
@@ -613,11 +704,6 @@ const ModernConfigForm: React.FC = () => {
 
   const updateAiFieldValue = React.useCallback((fieldKey: string, value: string) => {
     updateConfigField('ai', fieldKey, value, 'provider');
-  }, [updateConfigField]);
-
-
-  const updatePersonaFieldValue = React.useCallback((fieldKey: string, value: string) => {
-    updateConfigField('persona', fieldKey, value, 'persona_image_provider');
   }, [updateConfigField]);
 
   const updateUiFieldValue = React.useCallback((fieldKey: string, value: string) => {
@@ -942,6 +1028,8 @@ const ModernConfigForm: React.FC = () => {
                   return config.ai_config.config_fields
                     .filter(field => {
                       if (field.key === 'provider') return false;
+                      // 排除 AI 图片生成相关字段，这些字段在后面单独渲染
+                      if (field.key.startsWith('ai_image_') || field.key.startsWith('imaginepro_')) return false;
                       
                       if (currentProvider === 'gemini') {
                         return field.key.startsWith('gemini_');
@@ -974,55 +1062,14 @@ const ModernConfigForm: React.FC = () => {
                       </div>
                     ));
                 })()}
-              </div>
-            </motion.div>
-          )}
 
-          {/* 虚拟人设配置 */}
-          {activeSection === 'persona' && (
-            <motion.div 
-              className="config-section"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="section-header">
-                <div className="section-header-left">
-                  <span className="section-icon icon-persona">🎭</span>
-                  <div>
-                    <h2 className="section-title">{t.config.personaConfigTitle}</h2>
-                    <p className="section-description">{t.config.personaConfigDesc}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="config-form">
-                <div className="info-card">
-                  <p className="info-title">{t.config.personaUsageTitle}</p>
+                {/* AI 图片生成配置 */}
+                <div className="info-card" style={{ marginTop: '1.5rem' }}>
+                  <p className="info-title">🎨 {t.config.aiImageTitle}</p>
                   <p className="info-text">
                     <strong>Pollinations AI</strong>：{t.config.pollinationsDescription}<br/>
-                    <strong>ImaginePro</strong>：{t.config.imagineproDescription}<br/>
-                    {t.config.personaUsageDescription}
+                    <strong>ImaginePro</strong>：{t.config.imagineproDescription}
                   </p>
-                </div>
-
-                {/* 开关和Provider选择 - 横向布局 */}
-                <div className="config-field-row">
-                  <div className="field-label-inline">
-                    <span>{t.config.enableVirtualPersona}</span>
-                    <span className="field-hint">{t.config.virtualPersonaDesc}</span>
-                  </div>
-                  <div className="field-control">
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={config.persona_config.config_fields.find(f => f.key === 'persona_image_enabled')?.value === 'true'}
-                        onChange={(e) => updatePersonaFieldValue('persona_image_enabled', e.target.checked.toString())}
-                        aria-label="Enable Virtual Persona"
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
                 </div>
 
                 <div className="config-field-row">
@@ -1033,9 +1080,9 @@ const ModernConfigForm: React.FC = () => {
                     <div className="provider-selector">
                       <button
                         type="button"
-                        onClick={() => updatePersonaFieldValue('persona_image_provider', 'pollinations')}
+                        onClick={() => updateAiFieldValue('ai_image_provider', 'pollinations')}
                         className={`provider-option ${
-                          config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'pollinations'
+                          config.ai_config.config_fields.find(f => f.key === 'ai_image_provider')?.value === 'pollinations'
                             ? 'active'
                             : ''
                         }`}
@@ -1046,9 +1093,9 @@ const ModernConfigForm: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => updatePersonaFieldValue('persona_image_provider', 'imaginepro')}
+                        onClick={() => updateAiFieldValue('ai_image_provider', 'imaginepro')}
                         className={`provider-option ${
-                          config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'imaginepro'
+                          config.ai_config.config_fields.find(f => f.key === 'ai_image_provider')?.value === 'imaginepro'
                             ? 'active'
                             : ''
                         }`}
@@ -1061,14 +1108,14 @@ const ModernConfigForm: React.FC = () => {
                   </div>
                 </div>
 
-                {config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'pollinations' && (
+                {config.ai_config.config_fields.find(f => f.key === 'ai_image_provider')?.value === 'pollinations' && (
                   <div className="config-compact-group">
                     <div className="config-field">
-                      <label htmlFor="persona-model" className="field-label">{t.config.aiModel}</label>
+                      <label htmlFor="ai-image-model" className="field-label">{t.config.aiModel}</label>
                       <select
-                        id="persona-model"
-                        value={config.persona_config.config_fields.find(f => f.key === 'persona_image_model')?.value || 'flux-anime'}
-                        onChange={(e) => updatePersonaFieldValue('persona_image_model', e.target.value)}
+                        id="ai-image-model"
+                        value={config.ai_config.config_fields.find(f => f.key === 'ai_image_model')?.value || 'flux-anime'}
+                        onChange={(e) => updateAiFieldValue('ai_image_model', e.target.value)}
                         className="field-select"
                       >
                         <option value="flux-anime">{t.config.fluxAnimeRecommend}</option>
@@ -1078,35 +1125,35 @@ const ModernConfigForm: React.FC = () => {
                       </select>
                     </div>
                     <div className="config-field">
-                      <label htmlFor="persona-width" className="field-label">{t.config.width}</label>
+                      <label htmlFor="ai-image-width" className="field-label">{t.config.width}</label>
                       <input
-                        id="persona-width"
+                        id="ai-image-width"
                         type="number"
                         min="256"
                         max="1024"
                         step="64"
-                        value={config.persona_config.config_fields.find(f => f.key === 'persona_image_width')?.value || '512'}
-                        onChange={(e) => updatePersonaFieldValue('persona_image_width', e.target.value)}
+                        value={config.ai_config.config_fields.find(f => f.key === 'ai_image_width')?.value || '512'}
+                        onChange={(e) => updateAiFieldValue('ai_image_width', e.target.value)}
                         className="field-input"
                       />
                     </div>
                     <div className="config-field">
-                      <label htmlFor="persona-height" className="field-label">{t.config.height}</label>
+                      <label htmlFor="ai-image-height" className="field-label">{t.config.height}</label>
                       <input
-                        id="persona-height"
+                        id="ai-image-height"
                         type="number"
                         min="256"
                         max="1024"
                         step="64"
-                        value={config.persona_config.config_fields.find(f => f.key === 'persona_image_height')?.value || '768'}
-                        onChange={(e) => updatePersonaFieldValue('persona_image_height', e.target.value)}
+                        value={config.ai_config.config_fields.find(f => f.key === 'ai_image_height')?.value || '768'}
+                        onChange={(e) => updateAiFieldValue('ai_image_height', e.target.value)}
                         className="field-input"
                       />
                     </div>
                   </div>
                 )}
 
-                {config.persona_config.config_fields.find(f => f.key === 'persona_image_provider')?.value === 'imaginepro' && (
+                {config.ai_config.config_fields.find(f => f.key === 'ai_image_provider')?.value === 'imaginepro' && (
                   <>
                     <div className="config-field">
                       <label htmlFor="imaginepro-key" className="field-label">
@@ -1115,8 +1162,8 @@ const ModernConfigForm: React.FC = () => {
                       <input
                         id="imaginepro-key"
                         type="password"
-                        value={config.persona_config.config_fields.find(f => f.key === 'imaginepro_api_key')?.value || ''}
-                        onChange={(e) => updatePersonaFieldValue('imaginepro_api_key', e.target.value)}
+                        value={config.ai_config.config_fields.find(f => f.key === 'imaginepro_api_key')?.value || ''}
+                        onChange={(e) => updateAiFieldValue('imaginepro_api_key', e.target.value)}
                         onFocus={(e) => {
                           const isMasked = e.target.value === '••••••••' || e.target.value === '********';
                           if (isMasked) {
@@ -1130,28 +1177,28 @@ const ModernConfigForm: React.FC = () => {
 
                     <div className="config-compact-group">
                       <div className="config-field">
-                        <label htmlFor="persona-width-mj" className="field-label">{t.config.width}</label>
+                        <label htmlFor="ai-image-width-mj" className="field-label">{t.config.width}</label>
                         <input
-                          id="persona-width-mj"
+                          id="ai-image-width-mj"
                           type="number"
                           min="512"
                           max="2048"
                           step="128"
-                          value={config.persona_config.config_fields.find(f => f.key === 'persona_image_width')?.value || '1024'}
-                          onChange={(e) => updatePersonaFieldValue('persona_image_width', e.target.value)}
+                          value={config.ai_config.config_fields.find(f => f.key === 'ai_image_width')?.value || '1024'}
+                          onChange={(e) => updateAiFieldValue('ai_image_width', e.target.value)}
                           className="field-input"
                         />
                       </div>
                       <div className="config-field">
-                        <label htmlFor="persona-height-mj" className="field-label">{t.config.height}</label>
+                        <label htmlFor="ai-image-height-mj" className="field-label">{t.config.height}</label>
                         <input
-                          id="persona-height-mj"
+                          id="ai-image-height-mj"
                           type="number"
                           min="512"
                           max="2048"
                           step="128"
-                          value={config.persona_config.config_fields.find(f => f.key === 'persona_image_height')?.value || '1536'}
-                          onChange={(e) => updatePersonaFieldValue('persona_image_height', e.target.value)}
+                          value={config.ai_config.config_fields.find(f => f.key === 'ai_image_height')?.value || '1536'}
+                          onChange={(e) => updateAiFieldValue('ai_image_height', e.target.value)}
                           className="field-input"
                         />
                       </div>
@@ -1454,6 +1501,498 @@ const ModernConfigForm: React.FC = () => {
                     <span>🗑️</span>
                     <span>{t.config.clearMusicCacheBtn}</span>
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Tapp 权限下放配置 */}
+          {activeSection === 'permissions' && (
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="section-header">
+                <div className="section-header-left">
+                  <span className="section-icon icon-permissions">🔐</span>
+                  <div>
+                    <h2 className="section-title">{t.config.permissionsTitle}</h2>
+                    <p className="section-description">{t.config.permissionsDesc}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="config-form">
+                <div className="info-card info-card-spaced">
+                  <p className="info-title">💡 {t.config.tappPermissionsInfoTitle}</p>
+                  <p className="info-text">{t.config.tappPermissionsInfo}</p>
+                </div>
+
+                {/* 普通用户 elevated 权限 (9个) */}
+                <div className="permission-group">
+                  <h3 className="permission-group-title">{t.config.userElevatedPermissions}</h3>
+                  <p className="permission-group-desc">{t.config.userElevatedPermissionsDesc}</p>
+                  
+                  <div className="permission-items">
+                    {/* AI 权限组 */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>ai:generate</code> {t.config.permAiGenerate}</span>
+                        <span className="field-hint">{t.config.permAiGenerateHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_ai_generate}
+                            onChange={(e) => updatePermissionConfig('user_perm_ai_generate', e.target.checked)}
+                            aria-label="ai:generate"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>ai:analyze</code> {t.config.permAiAnalyze}</span>
+                        <span className="field-hint">{t.config.permAiAnalyzeHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_ai_analyze}
+                            onChange={(e) => updatePermissionConfig('user_perm_ai_analyze', e.target.checked)}
+                            aria-label="ai:analyze"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>ai:chat</code> {t.config.permAiChat}</span>
+                        <span className="field-hint">{t.config.permAiChatHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_ai_chat}
+                            onChange={(e) => updatePermissionConfig('user_perm_ai_chat', e.target.checked)}
+                            aria-label="ai:chat"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* report:write */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>report:write</code> {t.config.permReportWrite}</span>
+                        <span className="field-hint">{t.config.permReportWriteHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_report_write}
+                            onChange={(e) => updatePermissionConfig('user_perm_report_write', e.target.checked)}
+                            aria-label="report:write"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* network:fetch */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>network:fetch</code> {t.config.permNetworkFetch}</span>
+                        <span className="field-hint">{t.config.permNetworkFetchHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_network_fetch}
+                            onChange={(e) => updatePermissionConfig('user_perm_network_fetch', e.target.checked)}
+                            aria-label="network:fetch"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* media:control */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>media:control</code> {t.config.permMediaControl}</span>
+                        <span className="field-hint">{t.config.permMediaControlHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_media_control}
+                            onChange={(e) => updatePermissionConfig('user_perm_media_control', e.target.checked)}
+                            aria-label="media:control"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* component:theme */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>component:theme</code> {t.config.permComponentTheme}</span>
+                        <span className="field-hint">{t.config.permComponentThemeHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_component_theme}
+                            onChange={(e) => updatePermissionConfig('user_perm_component_theme', e.target.checked)}
+                            aria-label="component:theme"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* shortcut:register */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>shortcut:register</code> {t.config.permShortcutRegister}</span>
+                        <span className="field-hint">{t.config.permShortcutRegisterHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_shortcut_register}
+                            onChange={(e) => updatePermissionConfig('user_perm_shortcut_register', e.target.checked)}
+                            aria-label="shortcut:register"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* event:publish */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>event:publish</code> {t.config.permEventPublish}</span>
+                        <span className="field-hint">{t.config.permEventPublishHint}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.user_perm_event_publish}
+                            onChange={(e) => updatePermissionConfig('user_perm_event_publish', e.target.checked)}
+                            aria-label="event:publish"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 游客 elevated 权限 (9个) */}
+                <div className="permission-group">
+                  <h3 className="permission-group-title">{t.config.guestElevatedPermissions}</h3>
+                  <p className="permission-group-desc">{t.config.guestElevatedPermissionsDesc}</p>
+                  
+                  <div className="permission-items">
+                    {/* 游客权限 - 与用户权限相同结构 */}
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>ai:generate</code> {t.config.permAiGenerate}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_ai_generate}
+                            onChange={(e) => updatePermissionConfig('guest_perm_ai_generate', e.target.checked)}
+                            aria-label="guest ai:generate"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>ai:analyze</code> {t.config.permAiAnalyze}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_ai_analyze}
+                            onChange={(e) => updatePermissionConfig('guest_perm_ai_analyze', e.target.checked)}
+                            aria-label="guest ai:analyze"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>ai:chat</code> {t.config.permAiChat}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_ai_chat}
+                            onChange={(e) => updatePermissionConfig('guest_perm_ai_chat', e.target.checked)}
+                            aria-label="guest ai:chat"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>report:write</code> {t.config.permReportWrite}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_report_write}
+                            onChange={(e) => updatePermissionConfig('guest_perm_report_write', e.target.checked)}
+                            aria-label="guest report:write"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>network:fetch</code> {t.config.permNetworkFetch}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_network_fetch}
+                            onChange={(e) => updatePermissionConfig('guest_perm_network_fetch', e.target.checked)}
+                            aria-label="guest network:fetch"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>media:control</code> {t.config.permMediaControl}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_media_control}
+                            onChange={(e) => updatePermissionConfig('guest_perm_media_control', e.target.checked)}
+                            aria-label="guest media:control"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>component:theme</code> {t.config.permComponentTheme}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_component_theme}
+                            onChange={(e) => updatePermissionConfig('guest_perm_component_theme', e.target.checked)}
+                            aria-label="guest component:theme"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>shortcut:register</code> {t.config.permShortcutRegister}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_shortcut_register}
+                            onChange={(e) => updatePermissionConfig('guest_perm_shortcut_register', e.target.checked)}
+                            aria-label="guest shortcut:register"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="config-field-row">
+                      <div className="field-label-inline">
+                        <span><code>event:publish</code> {t.config.permEventPublish}</span>
+                      </div>
+                      <div className="field-control">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={permissionConfig.guest_perm_event_publish}
+                            onChange={(e) => updatePermissionConfig('guest_perm_event_publish', e.target.checked)}
+                            aria-label="guest event:publish"
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI 使用限额配置 */}
+                <div className="permission-group">
+                  <h3 className="permission-group-title">{t.config.aiQuotaTitle}</h3>
+                  <p className="permission-group-desc">{t.config.aiQuotaDesc}</p>
+                  
+                  {/* 普通用户 AI 限额 */}
+                  <div className="quota-config-section">
+                    <h4 className="quota-section-title">{t.config.userAiQuota}</h4>
+                    <div className="quota-config-grid">
+                      <div className="config-field-row">
+                        <div className="field-label-inline">
+                          <span>{t.config.aiDailyCalls}</span>
+                          <span className="field-hint">{t.config.aiDailyCallsHint}</span>
+                        </div>
+                        <div className="field-control">
+                          <input
+                            type="number"
+                            className="quota-input"
+                            value={permissionConfig.user_ai_daily_calls}
+                            onChange={(e) => updatePermissionConfig('user_ai_daily_calls', parseInt(e.target.value) || 0)}
+                            min="0"
+                            max="10000"
+                            aria-label="user daily AI calls"
+                          />
+                        </div>
+                      </div>
+                      <div className="config-field-row">
+                        <div className="field-label-inline">
+                          <span>{t.config.aiDailyTokens}</span>
+                          <span className="field-hint">{t.config.aiDailyTokensHint}</span>
+                        </div>
+                        <div className="field-control">
+                          <input
+                            type="number"
+                            className="quota-input"
+                            value={permissionConfig.user_ai_daily_tokens}
+                            onChange={(e) => updatePermissionConfig('user_ai_daily_tokens', parseInt(e.target.value) || 0)}
+                            min="0"
+                            max="1000000"
+                            aria-label="user daily AI tokens"
+                          />
+                        </div>
+                      </div>
+                      <div className="config-field-row">
+                        <div className="field-label-inline">
+                          <span>{t.config.aiCooldownSeconds}</span>
+                          <span className="field-hint">{t.config.aiCooldownSecondsHint}</span>
+                        </div>
+                        <div className="field-control">
+                          <input
+                            type="number"
+                            className="quota-input"
+                            value={permissionConfig.user_ai_cooldown_seconds}
+                            onChange={(e) => updatePermissionConfig('user_ai_cooldown_seconds', parseInt(e.target.value) || 0)}
+                            min="0"
+                            max="3600"
+                            aria-label="user AI cooldown seconds"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 游客 AI 限额 */}
+                  <div className="quota-config-section">
+                    <h4 className="quota-section-title">{t.config.guestAiQuota}</h4>
+                    <div className="quota-config-grid">
+                      <div className="config-field-row">
+                        <div className="field-label-inline">
+                          <span>{t.config.aiDailyCalls}</span>
+                          <span className="field-hint">{t.config.aiDailyCallsHint}</span>
+                        </div>
+                        <div className="field-control">
+                          <input
+                            type="number"
+                            className="quota-input"
+                            value={permissionConfig.guest_ai_daily_calls}
+                            onChange={(e) => updatePermissionConfig('guest_ai_daily_calls', parseInt(e.target.value) || 0)}
+                            min="0"
+                            max="10000"
+                            aria-label="guest daily AI calls"
+                          />
+                        </div>
+                      </div>
+                      <div className="config-field-row">
+                        <div className="field-label-inline">
+                          <span>{t.config.aiDailyTokens}</span>
+                          <span className="field-hint">{t.config.aiDailyTokensHint}</span>
+                        </div>
+                        <div className="field-control">
+                          <input
+                            type="number"
+                            className="quota-input"
+                            value={permissionConfig.guest_ai_daily_tokens}
+                            onChange={(e) => updatePermissionConfig('guest_ai_daily_tokens', parseInt(e.target.value) || 0)}
+                            min="0"
+                            max="1000000"
+                            aria-label="guest daily AI tokens"
+                          />
+                        </div>
+                      </div>
+                      <div className="config-field-row">
+                        <div className="field-label-inline">
+                          <span>{t.config.aiCooldownSeconds}</span>
+                          <span className="field-hint">{t.config.aiCooldownSecondsHint}</span>
+                        </div>
+                        <div className="field-control">
+                          <input
+                            type="number"
+                            className="quota-input"
+                            value={permissionConfig.guest_ai_cooldown_seconds}
+                            onChange={(e) => updatePermissionConfig('guest_ai_cooldown_seconds', parseInt(e.target.value) || 0)}
+                            min="0"
+                            max="3600"
+                            aria-label="guest AI cooldown seconds"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="info-card info-card-spaced">
+                    <p className="info-text">💡 {t.config.aiQuotaAdminNote}</p>
+                  </div>
                 </div>
               </div>
             </motion.div>

@@ -736,6 +736,41 @@ class GlobalAudioManager {
   }
 
   /**
+   * 更新 Media Session 位置状态（移动端后台播放关键）
+   * 需要定期调用以保持系统媒体控制的同步
+   */
+  updatePositionState(duration: number, position: number, playbackRate: number = 1): void {
+    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+      try {
+        // 确保参数有效
+        if (duration > 0 && position >= 0 && position <= duration) {
+          navigator.mediaSession.setPositionState({
+            duration,
+            playbackRate,
+            position,
+          });
+        }
+      } catch {
+        // Position state update not supported or invalid parameters
+      }
+    }
+  }
+
+  /**
+   * 恢复 AudioContext（移动端后台播放时可能被暂停）
+   * 当页面恢复可见时调用
+   */
+  async resumeAudioContext(): Promise<void> {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+      } catch {
+        // AudioContext resume failed
+      }
+    }
+  }
+
+  /**
    * 初始化 Web Audio API 用于频谱分析
    * 注意：由于 CORS 限制，跨域音频无法进行频谱分析
    */

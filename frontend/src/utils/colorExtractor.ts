@@ -339,7 +339,10 @@ async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<
   const pooled = imagePool.acquire();
   const { img } = pooled;
   img.crossOrigin = 'anonymous';
-  const cacheBuster = imageUrl.includes('?') ? `&_t=${Date.now()}` : `?_t=${Date.now()}`;
+  
+  // 注意：不添加 cacheBuster，因为浏览器缓存的图片可以直接使用
+  // 添加 cacheBuster 会导致重新请求图片，增加延迟
+  // 如果需要强制刷新，可以在 options 中传入 forceRefresh
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -359,7 +362,7 @@ async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<
         signal.removeEventListener('abort', abortHandler);
         reject(new Error('Failed to load image'));
       };
-      img.src = imageUrl + cacheBuster;
+      img.src = imageUrl;
     });
 
     if (signal.aborted) {
@@ -415,20 +418,24 @@ export async function extractColorsFromImage(
   }
 
   try {
-    // 壁纸提取时验证一致性
+    // 壁纸提取时验证一致性（软验证，只记录警告）
     if (isWallpaper && !wallpaperState.isUrlActive(imageUrl)) {
-      throw new Error('Wallpaper URL is no longer active');
+      console.debug('[ColorExtractor] Wallpaper URL may have changed, but continuing extraction');
+      // 不再抛出错误，继续提取（因为用户可能正在等待颜色）
     }
 
     // 检查缓存
     if (!options.forceRefresh) {
       const cached = memoryCache.get(imageUrl) || getLocalStorageCache(imageUrl);
       if (cached) {
+        console.debug('[ColorExtractor] Using cached palette');
         memoryCache.set(imageUrl, cached);
         return cached;
       }
     }
 
+    console.debug('[ColorExtractor] Starting extraction for:', imageUrl.substring(0, 80));
+    
     // 提取颜色
     const palette = await extractFromImage(imageUrl, myController.signal);
 
@@ -438,26 +445,33 @@ export async function extractColorsFromImage(
 
     // 验证URL未变化
     if (!isMusic && currentExtractionUrl !== imageUrl) {
-      throw new Error('URL changed during extraction');
+      console.debug('[ColorExtractor] URL changed during extraction, but using result anyway');
     }
     
-    // 壁纸提取完成后再次验证
+    // 壁纸提取完成后验证（软验证）
     if (isWallpaper && !wallpaperState.isUrlActive(imageUrl)) {
-      throw new Error('Wallpaper changed during extraction');
+      console.debug('[ColorExtractor] Wallpaper changed during extraction, but applying colors anyway');
     }
 
     // 缓存结果
     memoryCache.set(imageUrl, palette);
     saveToLocalStorage(imageUrl, palette);
+    
+    console.debug('[ColorExtractor] Extraction completed:', palette.primary);
 
     return palette;
 
   } catch (error) {
+    // 记录错误以便调试
+    console.debug('[ColorExtractor] Extraction failed:', error instanceof Error ? error.message : error);
+    
     if (error instanceof Error) {
+      // 只在取消或壁纸变更时抛出错误
       if (error.message.includes('cancel') || error.message.includes('Wallpaper')) {
         throw error;
       }
     }
+    // 其他错误返回默认颜色
     return { ...DEFAULT_PALETTE };
   } finally {
     if (!isMusic && currentExtractionController === myController) {

@@ -75,6 +75,10 @@ export interface TranslationKeys {
     currentFilterTvSeries: string;
     currentTabPlatform: string;
     currentTabComprehensive: string;
+    // Tapp
+    tapp: string;
+    tappStore: string;
+    openTappStore: string;
   };
   
   // 问候语
@@ -203,8 +207,6 @@ export interface TranslationKeys {
     platformsDesc: string;
     ai: string;
     aiDesc: string;
-    persona: string;
-    personaDesc: string;
     ui: string;
     uiDesc: string;
     oauth: string;
@@ -230,8 +232,6 @@ export interface TranslationKeys {
     configReset: string;
     testConnection: string;
     testFailed: string;
-    enableVirtualPersona: string;
-    virtualPersonaDesc: string;
     imageGenService: string;
     free: string;
     aiModel: string;
@@ -291,13 +291,14 @@ export interface TranslationKeys {
     geminiDescription: string;
     openaiCompatible: string;
     openaiDescription: string;
-    personaConfigTitle: string;
-    personaConfigDesc: string;
-    personaUsageTitle: string;
-    personaUsageInfo: string;
+    // AI Image Generation
+    aiImageTitle: string;
+    aiImageDesc: string;
+    aiImageUsageTitle: string;
+    enableAiImage: string;
+    aiImageHint: string;
     pollinationsDescription: string;
     imagineproDescription: string;
-    personaUsageDescription: string;
     pollinationsFree: string;
     imagineproMJ: string;
     fluxAnimeRecommend: string;
@@ -344,6 +345,52 @@ export interface TranslationKeys {
     saveConfigLabel: string;
     clearSearchLabel: string;
     closeLabel: string;
+    // Tapp permission delegation settings
+    permissions: string;
+    permissionsDesc: string;
+    permissionsTitle: string;
+    tappPermissionsInfoTitle: string;
+    tappPermissionsInfo: string;
+    // User elevated permissions
+    userElevatedPermissions: string;
+    userElevatedPermissionsDesc: string;
+    // Guest elevated permissions
+    guestElevatedPermissions: string;
+    guestElevatedPermissionsDesc: string;
+    // 11 elevated permissions (9 configurable, platform:write and platform:register are privileged)
+    permAiGenerate: string;
+    permAiGenerateHint: string;
+    permAiAnalyze: string;
+    permAiAnalyzeHint: string;
+    permAiChat: string;
+    permAiChatHint: string;
+    permReportWrite: string;
+    permReportWriteHint: string;
+    permNetworkFetch: string;
+    permNetworkFetchHint: string;
+    permMediaControl: string;
+    permMediaControlHint: string;
+    permComponentTheme: string;
+    permComponentThemeHint: string;
+    permShortcutRegister: string;
+    permShortcutRegisterHint: string;
+    permEventPublish: string;
+    permEventPublishHint: string;
+    permissionsSaved: string;
+    permissionsSaveFailed: string;
+    loadPermissionsFailed: string;
+    // AI 使用限额配置
+    aiQuotaTitle: string;
+    aiQuotaDesc: string;
+    userAiQuota: string;
+    guestAiQuota: string;
+    aiDailyCalls: string;
+    aiDailyCallsHint: string;
+    aiDailyTokens: string;
+    aiDailyTokensHint: string;
+    aiCooldownSeconds: string;
+    aiCooldownSecondsHint: string;
+    aiQuotaAdminNote: string;
   };
   
   // 小组件
@@ -921,6 +968,206 @@ export interface TranslationKeys {
     close: string;
     delete: string;
     longPressToEdit: string;
+  };
+  
+  // Tapp 相关
+  tapp: {
+    // 通用
+    apps: string;
+    store: string;
+    install: string;
+    uninstall: string;
+    start: string;
+    stop: string;
+    settings: string;
+    running: string;
+    stopped: string;
+    installed: string;
+    installing: string;
+    version: string;
+    author: string;
+    
+    // 分类
+    categoryAI: string;
+    categoryDataExtension: string;
+    categoryWidget: string;
+    categoryPageApp: string;
+    categoryTool: string;
+    categoryGame: string;
+    categoryDemo: string;
+    categoryTest: string;
+    categoryPlatform: string;
+    categoryProductivity: string;
+    categoryEntertainment: string;
+    categoryDevelopment: string;
+    categorySocial: string;
+    categoryMedia: string;
+    categoryUtilities: string;
+    categoryMusic: string;
+    categoryVisualization: string;
+    categoryData: string;
+    
+    // 权限
+    permissions: string;
+    noPermissions: string;
+    basicPermission: string;
+    elevatedPermission: string;
+    privilegedPermission: string;
+    grantedPermissions: string;
+    
+    // 权限标签
+    permRegisterWidget: string;
+    permReadPlatform: string;
+    permWritePlatform: string;
+    permRegisterPlatform: string;
+    permAiGenerate: string;
+    permAiAnalyze: string;
+    permAiChat: string;
+    permReadReport: string;
+    permWriteReport: string;
+    permStorage: string;
+    permNotification: string;
+    permFullscreen: string;
+    permReadTheme: string;
+    permConfirm: string;
+    permNetworkFetch: string;
+    permMediaControl: string;
+    permMediaRead: string;
+    permRegisterTheme: string;
+    permRegisterAgent: string;
+    permRegisterShortcut: string;
+    permPublishEvent: string;
+    permSubscribeEvent: string;
+    
+    // 权限描述
+    permRegisterWidgetDesc: string;
+    permReadPlatformDesc: string;
+    permWritePlatformDesc: string;
+    permRegisterPlatformDesc: string;
+    permAiGenerateDesc: string;
+    permAiAnalyzeDesc: string;
+    permAiChatDesc: string;
+    permReadReportDesc: string;
+    permWriteReportDesc: string;
+    permStorageDesc: string;
+    permNotificationDesc: string;
+    permFullscreenDesc: string;
+    permReadThemeDesc: string;
+    permConfirmDesc: string;
+    permNetworkFetchDesc: string;
+    permMediaControlDesc: string;
+    permMediaReadDesc: string;
+    permRegisterThemeDesc: string;
+    permRegisterAgentDesc: string;
+    permRegisterShortcutDesc: string;
+    permPublishEventDesc: string;
+    permSubscribeEventDesc: string;
+    
+    // 列表页面
+    listTitle: string;
+    listSubtitle: string;
+    noAppsInstalled: string;
+    noAppsInstalledDesc: string;
+    browseStore: string;
+    manualInstall: string;
+    clickToOpen: string;
+    confirmUninstall: string;
+    noPermissionToOperate: string;
+    loginRequiredToInstall: string;
+    export: string;
+    exportFailed: string;
+    
+    // 安装弹窗
+    installTappTitle: string;
+    dropTappFile: string;
+    orClickToSelect: string;
+    selectTappFile: string;
+    invalidTappFile: string;
+    installFailed: string;
+    installSuccess: string;
+    
+    // 运行页面
+    loadingApp: string;
+    pleaseWait: string;
+    cannotLoadApp: string;
+    appNotExist: string;
+    appCodeLoadFailed: string;
+    loadAppFailed: string;
+    backToAppList: string;
+    exitFullscreen: string;
+    fullscreen: string;
+    stopApp: string;
+    back: string;
+    
+    // 详情页面
+    appSettings: string;
+    customizeBehavior: string;
+    noSettingsAvailable: string;
+    noSettingsDesc: string;
+    appInfo: string;
+    detailInfo: string;
+    appId: string;
+    installedAt: string;
+    lastRunAt: string;
+    homepage: string;
+    visit: string;
+    loading: string;
+    
+    // AI 配额
+    aiQuota: string;
+    premiumQuota: string;
+    standardQuota: string;
+    dailyCalls: string;
+    tokenUsage: string;
+    
+    // 商店
+    storeTitle: string;
+    storeSourceSettings: string;
+    storeClose: string;
+    refreshStore: string;
+    searchApps: string;
+    allApps: string;
+    installedApps: string;
+    loadingRemoteApps: string;
+    loadRemoteFailed: string;
+    noMatchingApps: string;
+    totalApps: string;
+    installedCount: string;
+    remoteStore: string;
+    cancel: string;
+    retry: string;
+    uninstallFailed: string;
+    unknownError: string;
+    
+    // 商店源设置
+    sourceManagement: string;
+    addSource: string;
+    sourceName: string;
+    sourceUrl: string;
+    official: string;
+    disabled: string;
+    enable: string;
+    disable: string;
+    deleteSource: string;
+    fillNameAndUrl: string;
+    invalidUrl: string;
+    addSourceFailed: string;
+    refreshAllStores: string;
+    confirmDeleteSource: string;
+    
+    // 动态内容 API
+    dynamicContent: string;
+    dynamicContentDesc: string;
+    dynamicContentSet: string;
+    dynamicContentRemoved: string;
+  };
+  
+  // 动态内容
+  dynamicContent: {
+    unavailable: string;
+    noContent: string;
+    loading: string;
+    tappContent: string;
   };
 }
 

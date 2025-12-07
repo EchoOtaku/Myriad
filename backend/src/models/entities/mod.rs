@@ -7,5 +7,9 @@ pub mod metadata_history;
 pub mod platform_metadata;
 pub mod platform_reports;
 pub mod reports;
-pub mod virtual_persona;
-pub mod virtual_personas;
+
+// Tapp 系统实体
+pub mod tapp_storage;
+pub mod tapp_store_sources;
+pub mod tapp_widgets;
+pub mod tapps;

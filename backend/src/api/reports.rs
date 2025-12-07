@@ -176,216 +176,216 @@ async fn generate_platform_reports_internal(
                 }
             };
 
+            // 3. 基于元数据生成平台报告
+            tracing::debug!("🤖 Generating AI report for {}", platform);
+            let (summary, ai_insights, mut card_visuals) =
+                match generate_ai_report(&metadata, &platform).await {
+                    Ok(res) => {
+                        tracing::info!("✅ AI report generated for {}", platform);
+                        res
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "⚠️ Failed to generate AI report for {}: {}, using fallback",
+                            platform,
+                            e
+                        );
+                        (
+                            format!(
+                                "{} 在 {} 平台上活跃",
+                                metadata.user_summary.username, metadata.platform
+                            ),
+                            vec![],
+                            json!({}),
+                        )
+                    }
+                };
 
-        // 3. 基于元数据生成平台报告
-        tracing::debug!("🤖 Generating AI report for {}", platform);
-        let (summary, ai_insights, mut card_visuals) =
-            match generate_ai_report(&metadata, &platform).await {
-                Ok(res) => {
-                    tracing::info!("✅ AI report generated for {}", platform);
-                    res
+            // 4. 对于bilibili平台，额外添加资料库内容到card_visuals
+            if platform == "bilibili" {
+                if let Ok(library_items) = extract_bilibili_library_items(&metadata).await {
+                    // 确保 card_visuals 是对象类型
+                    if !card_visuals.is_object() {
+                        card_visuals = json!({});
+                    }
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        "⚠️ Failed to generate AI report for {}: {}, using fallback",
-                        platform,
-                        e
-                    );
-                    (
-                        format!(
-                            "{} 在 {} 平台上活跃",
-                            metadata.user_summary.username, metadata.platform
-                        ),
-                        vec![],
-                        json!({}),
-                    )
+            }
+
+            // 5. 对于steam平台，额外添加资料库内容到card_visuals
+            if platform == "steam" {
+                if let Ok(library_items) = extract_steam_library_items(&metadata).await {
+                    // 确保 card_visuals 是对象类型
+                    if !card_visuals.is_object() {
+                        card_visuals = json!({});
+                    }
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
                 }
+            }
+
+            // 6. 对于github平台，强制覆盖关键数据字段（避免AI生成不稳定的值）
+            if platform == "github" {
+                if let crate::services::smart_filter::ContentAnalysis::GitHub(analysis) =
+                    &metadata.content_analysis
+                {
+                    // 确保 card_visuals 是对象类型
+                    if !card_visuals.is_object() {
+                        card_visuals = json!({});
+                    }
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        // ✅ 使用真实数据强制覆盖关键字段
+                        let total_contributions = analysis
+                            .contribution_calendar
+                            .as_ref()
+                            .map(|calendar| {
+                                let sum: i64 = calendar.iter().map(|day| day.count).sum();
+                                sum
+                            })
+                            .unwrap_or(0);
+
+                        let repos_count = analysis.recent_repos.len();
+
+                        // 根据真实数据计算贡献等级
+                        let contribution_level = if total_contributions > 1000 && repos_count > 20 {
+                            "传奇开发者"
+                        } else if total_contributions > 500 && repos_count > 10 {
+                            "资深工程师"
+                        } else if total_contributions > 200 || repos_count > 5 {
+                            "活跃开发者"
+                        } else {
+                            "新兴贡献者"
+                        };
+
+                        // 强制覆盖这些字段（忽略AI可能生成的值）
+                        obj.insert(
+                            "total_contributions".to_string(),
+                            json!(total_contributions),
+                        );
+                        obj.insert("repos_count".to_string(), json!(repos_count));
+                        obj.insert("contribution_level".to_string(), json!(contribution_level));
+                        obj.insert(
+                            "contribution_calendar".to_string(),
+                            json!(analysis.contribution_calendar),
+                        );
+
+                        tracing::info!(
+                            "✅ GitHub card_visuals: contributions={}, repos={}, level={}",
+                            total_contributions,
+                            repos_count,
+                            contribution_level
+                        );
+                    }
+                }
+
+                // 添加资料库内容
+                if let Ok(library_items) = extract_github_library_items(&metadata).await {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+            }
+
+            // 7. 对于bilibili平台，额外添加用户统计数据到card_visuals
+            if platform == "bilibili" {
+                // 确保 card_visuals 是对象类型
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+
+                // 从原始platform_data中提取用户统计数据
+                if let Ok(stats) = extract_bilibili_user_stats(&metadata).await {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("user_level".to_string(), stats.level);
+                        obj.insert("follower_count".to_string(), stats.follower_count);
+                        obj.insert("following_count".to_string(), stats.following_count);
+                    }
+                }
+            }
+
+            // 8. 对于netease平台，额外添加资料库内容和用户统计数据到card_visuals
+            if platform == "netease" {
+                // 确保 card_visuals 是对象类型
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+
+                // 添加library_items
+                if let Ok(library_items) = extract_netease_library_items(&metadata).await {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+
+                // 添加用户统计数据
+                if let Ok(stats) = extract_netease_user_stats(&metadata).await {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("follower_count".to_string(), stats.follower_count);
+                        obj.insert("playlist_count".to_string(), stats.playlist_count);
+                        // level 由 AI 在 card_visuals 中生成，不需要手动插入
+                    }
+                }
+            }
+
+            let mut insights = ai_insights;
+
+            // 如果AI没有生成洞察，使用备用逻辑
+            if insights.is_empty() {
+                match &metadata.content_analysis {
+                    crate::services::smart_filter::ContentAnalysis::Bilibili(analysis) => {
+                        insights.push(analysis.video_summary.clone());
+                        if !analysis.anime_analysis.is_empty() {
+                            let top_genre = analysis.anime_analysis[0]
+                                .genres
+                                .iter()
+                                .max_by_key(|entry| entry.1)
+                                .map(|(k, _)| k.as_str())
+                                .unwrap_or("未知");
+                            insights.push(format!("追番偏好：{}", top_genre));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Steam(analysis) => {
+                        insights.push(analysis.game_summary.clone());
+                        if !analysis.genre_analysis.is_empty() {
+                            insights
+                                .push(format!("最爱类型：{}", analysis.genre_analysis[0].genre));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::GitHub(analysis) => {
+                        insights.push(analysis.repo_summary.clone());
+                        if let Some((lang, _)) = analysis
+                            .language_distribution
+                            .iter()
+                            .max_by_key(|(_, v)| *v)
+                        {
+                            insights.push(format!("主要语言：{}", lang));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Netease(analysis) => {
+                        insights.push(analysis.music_summary.clone());
+                        if !analysis.artist_analysis.favorite_artists.is_empty() {
+                            insights.push(format!(
+                                "最爱歌手：{}",
+                                analysis.artist_analysis.favorite_artists.join("、")
+                            ));
+                        }
+                    }
+                }
+            }
+
+            let report = PlatformReport {
+                platform: platform.clone(),
+                metadata: metadata.clone(),
+                summary,
+                insights,
+                card_visuals: card_visuals.clone(),
+                created_at: chrono::Utc::now().to_rfc3339(),
             };
 
-        // 4. 对于bilibili平台，额外添加资料库内容到card_visuals
-        if platform == "bilibili" {
-            if let Ok(library_items) = extract_bilibili_library_items(&metadata).await {
-                // 确保 card_visuals 是对象类型
-                if !card_visuals.is_object() {
-                    card_visuals = json!({});
-                }
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    obj.insert("library_items".to_string(), json!(library_items));
-                }
-            }
-        }
-
-        // 5. 对于steam平台，额外添加资料库内容到card_visuals
-        if platform == "steam" {
-            if let Ok(library_items) = extract_steam_library_items(&metadata).await {
-                // 确保 card_visuals 是对象类型
-                if !card_visuals.is_object() {
-                    card_visuals = json!({});
-                }
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    obj.insert("library_items".to_string(), json!(library_items));
-                }
-            }
-        }
-
-        // 6. 对于github平台，强制覆盖关键数据字段（避免AI生成不稳定的值）
-        if platform == "github" {
-            if let crate::services::smart_filter::ContentAnalysis::GitHub(analysis) =
-                &metadata.content_analysis
-            {
-                // 确保 card_visuals 是对象类型
-                if !card_visuals.is_object() {
-                    card_visuals = json!({});
-                }
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    // ✅ 使用真实数据强制覆盖关键字段
-                    let total_contributions = analysis
-                        .contribution_calendar
-                        .as_ref()
-                        .map(|calendar| {
-                            let sum: i64 = calendar.iter().map(|day| day.count).sum();
-                            sum
-                        })
-                        .unwrap_or(0);
-
-                    let repos_count = analysis.recent_repos.len();
-
-                    // 根据真实数据计算贡献等级
-                    let contribution_level = if total_contributions > 1000 && repos_count > 20 {
-                        "传奇开发者"
-                    } else if total_contributions > 500 && repos_count > 10 {
-                        "资深工程师"
-                    } else if total_contributions > 200 || repos_count > 5 {
-                        "活跃开发者"
-                    } else {
-                        "新兴贡献者"
-                    };
-
-                    // 强制覆盖这些字段（忽略AI可能生成的值）
-                    obj.insert(
-                        "total_contributions".to_string(),
-                        json!(total_contributions),
-                    );
-                    obj.insert("repos_count".to_string(), json!(repos_count));
-                    obj.insert("contribution_level".to_string(), json!(contribution_level));
-                    obj.insert(
-                        "contribution_calendar".to_string(),
-                        json!(analysis.contribution_calendar),
-                    );
-
-                    tracing::info!(
-                        "✅ GitHub card_visuals: contributions={}, repos={}, level={}",
-                        total_contributions,
-                        repos_count,
-                        contribution_level
-                    );
-                }
-            }
-
-            // 添加资料库内容
-            if let Ok(library_items) = extract_github_library_items(&metadata).await {
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    obj.insert("library_items".to_string(), json!(library_items));
-                }
-            }
-        }
-
-        // 7. 对于bilibili平台，额外添加用户统计数据到card_visuals
-        if platform == "bilibili" {
-            // 确保 card_visuals 是对象类型
-            if !card_visuals.is_object() {
-                card_visuals = json!({});
-            }
-
-            // 从原始platform_data中提取用户统计数据
-            if let Ok(stats) = extract_bilibili_user_stats(&metadata).await {
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    obj.insert("user_level".to_string(), stats.level);
-                    obj.insert("follower_count".to_string(), stats.follower_count);
-                    obj.insert("following_count".to_string(), stats.following_count);
-                }
-            }
-        }
-
-        // 8. 对于netease平台，额外添加资料库内容和用户统计数据到card_visuals
-        if platform == "netease" {
-            // 确保 card_visuals 是对象类型
-            if !card_visuals.is_object() {
-                card_visuals = json!({});
-            }
-
-            // 添加library_items
-            if let Ok(library_items) = extract_netease_library_items(&metadata).await {
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    obj.insert("library_items".to_string(), json!(library_items));
-                }
-            }
-
-            // 添加用户统计数据
-            if let Ok(stats) = extract_netease_user_stats(&metadata).await {
-                if let Some(obj) = card_visuals.as_object_mut() {
-                    obj.insert("follower_count".to_string(), stats.follower_count);
-                    obj.insert("playlist_count".to_string(), stats.playlist_count);
-                    // level 由 AI 在 card_visuals 中生成，不需要手动插入
-                }
-            }
-        }
-
-        let mut insights = ai_insights;
-
-        // 如果AI没有生成洞察，使用备用逻辑
-        if insights.is_empty() {
-            match &metadata.content_analysis {
-                crate::services::smart_filter::ContentAnalysis::Bilibili(analysis) => {
-                    insights.push(analysis.video_summary.clone());
-                    if !analysis.anime_analysis.is_empty() {
-                        let top_genre = analysis.anime_analysis[0]
-                            .genres
-                            .iter()
-                            .max_by_key(|entry| entry.1)
-                            .map(|(k, _)| k.as_str())
-                            .unwrap_or("未知");
-                        insights.push(format!("追番偏好：{}", top_genre));
-                    }
-                }
-                crate::services::smart_filter::ContentAnalysis::Steam(analysis) => {
-                    insights.push(analysis.game_summary.clone());
-                    if !analysis.genre_analysis.is_empty() {
-                        insights.push(format!("最爱类型：{}", analysis.genre_analysis[0].genre));
-                    }
-                }
-                crate::services::smart_filter::ContentAnalysis::GitHub(analysis) => {
-                    insights.push(analysis.repo_summary.clone());
-                    if let Some((lang, _)) = analysis
-                        .language_distribution
-                        .iter()
-                        .max_by_key(|(_, v)| *v)
-                    {
-                        insights.push(format!("主要语言：{}", lang));
-                    }
-                }
-                crate::services::smart_filter::ContentAnalysis::Netease(analysis) => {
-                    insights.push(analysis.music_summary.clone());
-                    if !analysis.artist_analysis.favorite_artists.is_empty() {
-                        insights.push(format!(
-                            "最爱歌手：{}",
-                            analysis.artist_analysis.favorite_artists.join("、")
-                        ));
-                    }
-                }
-            }
-        }
-
-        let report = PlatformReport {
-            platform: platform.clone(),
-            metadata: metadata.clone(),
-            summary,
-            insights,
-            card_visuals: card_visuals.clone(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-
-        Some(report)
+            Some(report)
         }
     });
 
@@ -993,13 +993,19 @@ async fn get_platform_data(
     let batch_saver = crate::services::batch_saver::BatchSaver::new(db.clone());
 
     if let Ok(Some(platform_data)) = batch_saver.load_chunked_metadata(user_id, platform).await {
-        tracing::info!("✓ Loaded {} from database (with chunked data support)", platform);
+        tracing::info!(
+            "✓ Loaded {} from database (with chunked data support)",
+            platform
+        );
 
         // 处理并缓存该平台数据
         let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
             .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
 
-        tracing::info!("✓ Successfully processed and cached {} from database", platform);
+        tracing::info!(
+            "✓ Successfully processed and cached {} from database",
+            platform
+        );
         return Ok(filtered_data);
     }
 
@@ -1038,18 +1044,6 @@ async fn generate_ai_report(
             config.openai_api_key.clone(),
             config.openai_model.clone(),
             Some(config.openai_base_url.clone()),
-        ),
-        "deepseek" => (
-            AiProvider::OpenAI, // Deepseek is OpenAI compatible
-            config.deepseek_api_key.clone(),
-            config.deepseek_model.clone(),
-            Some("https://api.deepseek.com".to_string()),
-        ),
-        "gemini" => (
-            AiProvider::Gemini,
-            config.gemini_api_key.clone(),
-            config.gemini_model.clone(),
-            None,
         ),
         _ => (
             AiProvider::Gemini,
@@ -1628,7 +1622,8 @@ async fn extract_bilibili_library_items(
             if let Ok(content) = fs::read_to_string(&raw_cache_path) {
                 if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
                     // 提取 bangumi 数据构建标题->封面映射
-                    if let Some(bangumi_array) = raw_json.get("bangumi").and_then(|v| v.as_array()) {
+                    if let Some(bangumi_array) = raw_json.get("bangumi").and_then(|v| v.as_array())
+                    {
                         for item in bangumi_array {
                             if let (Some(title), Some(cover)) = (
                                 item.get("title").and_then(|v| v.as_str()),
@@ -1943,7 +1938,10 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
                                 );
                             }
                         }
-                        println!("  - 从 cache/raw/netease.json 加载了 {} 首歌曲", song_map.len());
+                        println!(
+                            "  - 从 cache/raw/netease.json 加载了 {} 首歌曲",
+                            song_map.len()
+                        );
 
                         // 打印前3个song_map条目作为样本
                         let sample: Vec<_> = song_map.iter().take(3).collect();
@@ -1982,9 +1980,15 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
             println!("  - 从recent_songs构建了{}首歌曲的map", song_map.len());
         }
 
-        println!("  - 开始从 {} 位喜爱艺术家中筛选歌曲...", analysis.artist_analysis.favorite_artists.len());
+        println!(
+            "  - 开始从 {} 位喜爱艺术家中筛选歌曲...",
+            analysis.artist_analysis.favorite_artists.len()
+        );
         println!("  - song_map大小: {}", song_map.len());
-        println!("  - 喜爱艺术家列表: {:?}", analysis.artist_analysis.favorite_artists);
+        println!(
+            "  - 喜爱艺术家列表: {:?}",
+            analysis.artist_analysis.favorite_artists
+        );
 
         for artist_name in &analysis.artist_analysis.favorite_artists {
             let mut artist_song_count = 0;
@@ -2011,10 +2015,14 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
 
                 // 使用包含关系匹配，因为艺术家名可能格式不完全一致
                 // 例如："YOASOBI" vs "YOASOBI/幾田りら"
-                let matches = song_artist.contains(artist_name) || artist_name.contains(song_artist);
+                let matches =
+                    song_artist.contains(artist_name) || artist_name.contains(song_artist);
 
                 if matches {
-                    println!("    ✓ 匹配成功! '{}' (目标) vs '{}' (歌曲艺术家) -> 歌曲: {}", artist_name, song_artist, song_name);
+                    println!(
+                        "    ✓ 匹配成功! '{}' (目标) vs '{}' (歌曲艺术家) -> 歌曲: {}",
+                        artist_name, song_artist, song_name
+                    );
 
                     library_items.push(json!({
                         "title": song_name,
@@ -2027,7 +2035,10 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
 
                     // 达到该艺术家的歌曲上限，切换到下一个艺术家
                     if artist_song_count >= MAX_SONGS_PER_ARTIST {
-                        println!("    → {} 已达到上限({}/{}首)，切换下一位艺术家", artist_name, artist_song_count, MAX_SONGS_PER_ARTIST);
+                        println!(
+                            "    → {} 已达到上限({}/{}首)，切换下一位艺术家",
+                            artist_name, artist_song_count, MAX_SONGS_PER_ARTIST
+                        );
                         break;
                     }
 

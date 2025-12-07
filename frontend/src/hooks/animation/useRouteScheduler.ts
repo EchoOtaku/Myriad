@@ -17,7 +17,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { startPage, pauseScheduler, resumeScheduler, isPageVisible, getFeatureList } from './index';
+import { startPage, pauseScheduler, resumeScheduler, isPageVisible } from './index';
 import { cleanupHome } from './pages/home';
 import { cleanupLibrary } from './pages/library';
 import { cleanupReports } from './pages/reports';
@@ -89,9 +89,6 @@ export function useRouteScheduler(): void {
       const cleanup = pageCleanupMap[lastPageIdRef.current];
       if (cleanup) {
         cleanup();
-        if (import.meta.env.DEV) {
-          console.log(`[RouteScheduler] Cleaned up page: ${lastPageIdRef.current}`);
-        }
       }
     }
     
@@ -102,12 +99,6 @@ export function useRouteScheduler(): void {
     // 调用原子化核心的 startPage
     // 这会根据页面配置初始化所需功能
     startPage(pageId);
-    
-    // 开发环境下打印调度器状态变更
-    if (import.meta.env.DEV) {
-      const features = getFeatureList(pageId);
-      console.log(`[RouteScheduler] Page "${pageId}" started with features:`, features.length ? features : ['none']);
-    }
   }, [location.pathname]);
   
   // 首次挂载时确保调度器状态正确

@@ -17,6 +17,7 @@ import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkW
 import { invalidateAuthCache, getUserAvatarWithCache } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../contexts/I18nContext';
+import { SiAppstore } from '@lib/icons';
 import {
   shouldApplyColorExtraction,
   getColorFromCache,
@@ -157,6 +158,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     appendIconGroup(parent);
     appendIconGroup(parent, 'nav-group-spaced');
     appendIconGroup(parent, 'nav-group-spaced');
+    appendIconGroup(parent, 'nav-group-spaced'); // Tapp 按钮
     if (routeContext === 'library') {
       appendDividerGroup(parent);
       appendIconGroup(parent);
@@ -741,11 +743,15 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 加载壁纸和颜色（使用 Hook）
   const loadWallpaper = useCallback(async () => {
+    console.debug('[AppLayout] loadWallpaper starting...');
     const wallpaperResult = await loadWallpaperFromHook();
     
     if (!wallpaperResult) {
+      console.debug('[AppLayout] No wallpaper result from hook');
       return;
     }
+    
+    console.debug('[AppLayout] Wallpaper loaded:', wallpaperResult.actualUrl.substring(0, 80));
     
     // 更新视差效果配置
     setWallpaperParallaxEnabled(wallpaperResult.parallaxEnabled);
@@ -770,6 +776,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         // 🔒 应用缓存颜色前再次验证
         if (wallpaperState.isUrlActive(actualUrl)) {
           applyColorPalette(cachedColors);
+          console.debug('[AppLayout] Applied cached colors');
         }
         return;
       }
@@ -777,20 +784,20 @@ export function AppLayout({ children }: AppLayoutProps) {
       // 检查是否为有效壁纸（包含一致性验证）
       const checkResult = await shouldApplyColorExtraction(actualUrl);
       if (!checkResult.shouldApply) {
-        if (checkResult.reason) {
-          console.debug('跳过颜色提取:', checkResult.reason);
-        }
+        console.debug('[AppLayout] Color extraction skipped:', checkResult.reason);
         return;
       }
 
       // 提取颜色
       try {
+        console.debug('[AppLayout] Starting color extraction for:', actualUrl.substring(0, 80));
         const colors = await extractColorsFromImage(actualUrl, { context: 'wallpaper' });
         
         // 🔒 应用颜色前验证壁纸是否仍然一致
         if (wallpaperState.isUrlActive(actualUrl)) {
           applyColorPalette(colors);
           saveColorToCache(actualUrl, colors);
+          console.debug('[AppLayout] Color extraction completed and applied');
         } else {
           console.warn('颜色提取完成，但壁纸已变更，放弃应用');
         }
@@ -872,8 +879,14 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
+    console.debug('[AppLayout] Initializing wallpaper load...');
     (async () => {
-      await loadWallpaper();
+      try {
+        await loadWallpaper();
+        console.debug('[AppLayout] Wallpaper load completed');
+      } catch (error) {
+        console.error('[AppLayout] Wallpaper load failed:', error);
+      }
     })();
     // 认证检查现在由 AuthContext 管理，按需触发
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -916,10 +929,12 @@ export function AppLayout({ children }: AppLayoutProps) {
       const newUrl = customEvent.detail?.url;
 
       if (!newUrl) return;
+      
+      console.debug('[AppLayout] wallpaperChanged event received:', newUrl.substring(0, 80));
 
       // 🔒 验证URL与当前活跃壁纸一致
       if (!wallpaperState.isUrlActive(newUrl)) {
-        console.debug('壁纸变更事件URL与当前活跃壁纸不一致，可能是过时事件');
+        console.debug('[AppLayout] wallpaperChanged: URL not active, skipping');
         return;
       }
 
@@ -929,6 +944,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         // 🔒 应用前再次验证
         if (wallpaperState.isUrlActive(newUrl)) {
           applyColorPalette(cachedColors);
+          console.debug('[AppLayout] wallpaperChanged: Applied cached colors');
         }
         return;
       }
@@ -936,9 +952,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       // 检查是否为有效壁纸（包含一致性验证）
       const checkResult = await shouldApplyColorExtraction(newUrl);
       if (!checkResult.shouldApply) {
-        if (checkResult.reason) {
-          console.debug('壁纸变更事件跳过颜色提取:', checkResult.reason);
-        }
+        console.debug('[AppLayout] wallpaperChanged: Extraction skipped:', checkResult.reason);
         return;
       }
 
@@ -950,8 +964,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         if (wallpaperState.isUrlActive(newUrl)) {
           applyColorPalette(colors);
           saveColorToCache(newUrl, colors);
-        } else {
-          console.debug('颜色提取完成，但壁纸已变更，放弃应用');
+          console.debug('[AppLayout] wallpaperChanged: Colors extracted and applied');
         }
       } catch (error) {
         console.error('颜色提取失败:', error);
@@ -1447,6 +1460,19 @@ export function AppLayout({ children }: AppLayoutProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                     </svg>
                   </button>
+                </div>
+
+                {/* Tapp 应用商店按钮 */}
+                <div className="nav-group nav-group-spaced" data-group="tapp">
+                  <a
+                    href="/tapp"
+                    className="nav-item"
+                    title={t.nav.tappStore}
+                    aria-label={t.nav.openTappStore}
+                    onClick={(e) => { e.preventDefault(); navigate('/tapp'); }}
+                  >
+                    <SiAppstore className="w-5 h-5" />
+                  </a>
                 </div>
 
                 {/* 分隔符 - 仅在资料库页面且未显示筛选时显示 */}
