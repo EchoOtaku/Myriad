@@ -14,9 +14,61 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
+use std::time::{Duration as StdDuration, Instant};
+use tokio::sync::RwLock;
 
 use crate::oauth_url_builder::OAuthUrlBuilder;
+
+// ✅ 安全修复 P0: OAuth CSRF State 存储
+// 存储 OAuth state 参数，防止 CSRF 攻击
+#[derive(Debug, Clone)]
+struct OAuthState {
+    #[allow(dead_code)] // 用于调试时查看
+    state: String,
+    created_at: Instant,
+    purpose: OAuthPurpose, // 区分 login 和 link_account
+    user_id: Option<i32>,  // LinkAccount 时存储当前登录用户的 ID
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum OAuthPurpose {
+    Login,
+    LinkAccount,
+}
+
+// 全局 OAuth State 存储（内存存储，生产环境建议使用 Redis）
+static OAUTH_STATES: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, OAuthState>>>> =
+    once_cell::sync::Lazy::new(|| {
+        let store: Arc<RwLock<HashMap<String, OAuthState>>> = Arc::new(RwLock::new(HashMap::new()));
+        let store_clone = store.clone();
+
+        // 启动清理任务：每 60 秒清理过期的 state（有效期 10 分钟）
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(StdDuration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let mut states = store_clone.write().await;
+                let now = Instant::now();
+                let before_count = states.len();
+                states.retain(|_, oauth_state| {
+                    now.duration_since(oauth_state.created_at) < StdDuration::from_secs(600)
+                });
+                let removed = before_count - states.len();
+                if removed > 0 {
+                    tracing::debug!(
+                        "🧹 OAuth state cleanup: removed {} expired states, {} remaining",
+                        removed,
+                        states.len()
+                    );
+                }
+            }
+        });
+
+        store
+    });
 
 // JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
@@ -113,11 +165,39 @@ pub async fn github_login(
     )
     .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap());
 
-    let (auth_url, _csrf_token) = client
+    let (auth_url, csrf_token) = client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("read:user".to_string()))
         .add_scope(Scope::new("user:email".to_string()))
         .url();
+
+    // ✅ 安全修复 P0: 存储 OAuth state，防止 CSRF 攻击
+    let state_value = csrf_token.secret().to_string();
+    {
+        let mut states = OAUTH_STATES.write().await;
+        // 限制存储大小，防止内存耗尽攻击
+        const MAX_OAUTH_STATES: usize = 10000;
+        if states.len() >= MAX_OAUTH_STATES {
+            // 删除最旧的 state
+            if let Some(oldest_key) = states
+                .iter()
+                .min_by_key(|(_, v)| v.created_at)
+                .map(|(k, _)| k.clone())
+            {
+                states.remove(&oldest_key);
+            }
+        }
+        states.insert(
+            state_value.clone(),
+            OAuthState {
+                state: state_value,
+                created_at: Instant::now(),
+                purpose: OAuthPurpose::Login,
+                user_id: None, // Login 流程不需要 user_id
+            },
+        );
+        tracing::debug!("🔐 OAuth state stored (total: {})", states.len());
+    }
 
     Ok(Redirect::to(auth_url.as_str()))
 }
@@ -125,12 +205,52 @@ pub async fn github_login(
 /// GET /api/auth/github/callback
 /// Handle GitHub OAuth callback
 /// 支持动态环境检测，自动适配开发/生产环境
+/// 支持两种流程：Login（登录）和 LinkAccount（绑定账户）
 pub async fn github_callback(
     Query(params): Query<AuthCallbackQuery>,
     State(_db): State<DatabaseConnection>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     tracing::info!("🔐 GitHub OAuth callback received");
+
+    // ✅ 安全修复 P0: 验证 OAuth CSRF state，防止 CSRF 攻击
+    let state_value = &params.state;
+    let oauth_state = {
+        let mut states = OAUTH_STATES.write().await;
+        states.remove(state_value) // 一次性使用，验证后立即删除
+    };
+
+    let stored_state = match oauth_state {
+        Some(stored_state) => {
+            // 检查是否过期（10分钟有效期）
+            if Instant::now().duration_since(stored_state.created_at) > StdDuration::from_secs(600)
+            {
+                tracing::warn!("🚨 OAuth state expired");
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": "OAuth state expired",
+                        "message": "Session expired. Please try again."
+                    })),
+                ));
+            }
+            tracing::debug!(
+                "✅ OAuth state verified, purpose: {:?}",
+                stored_state.purpose
+            );
+            stored_state
+        }
+        None => {
+            tracing::warn!("🚨 OAuth CSRF check failed: state not found or already used");
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Invalid OAuth state",
+                    "message": "OAuth state invalid or expired. This may be a CSRF attack. Please try again."
+                })),
+            ));
+        }
+    };
 
     let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
         tracing::error!("GITHUB_CLIENT_ID not set");
@@ -213,6 +333,133 @@ pub async fn github_callback(
     // For now, we'll use raw SQL queries via SeaORM
     use sea_orm::Value as SeaValue;
 
+    // ========== LinkAccount 流程处理 ==========
+    // 如果是账户绑定流程，执行绑定逻辑并返回
+    if stored_state.purpose == OAuthPurpose::LinkAccount {
+        let admin_user_id = stored_state.user_id.ok_or_else(|| {
+            tracing::error!("LinkAccount state missing user_id");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Invalid link state"})),
+            )
+        })?;
+
+        tracing::info!(
+            "🔗 Processing LinkAccount: admin_id={}, github_login={}",
+            admin_user_id,
+            user_info.login
+        );
+
+        // 验证用户仍然是本地管理员
+        let admin_check = _db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT id, username, auth_provider, is_admin FROM users 
+                 WHERE id = $1 AND auth_provider = 'local' AND is_admin = true",
+                vec![SeaValue::Int(Some(admin_user_id))],
+            ))
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to verify admin: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Database error"})),
+                )
+            })?;
+
+        if admin_check.is_none() {
+            tracing::warn!("Admin user {} not found or not admin", admin_user_id);
+            let redirect_url = format!("{}/?link=error&reason=not_admin", frontend_url);
+            return Ok(Redirect::to(&redirect_url).into_response());
+        }
+
+        // 检查此 GitHub 账户是否已被其他用户绑定
+        let existing_link = _db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT id FROM users WHERE linked_github_id = $1 AND id != $2",
+                vec![
+                    SeaValue::BigInt(Some(user_info.id)),
+                    SeaValue::Int(Some(admin_user_id)),
+                ],
+            ))
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check existing link: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Database error"})),
+                )
+            })?;
+
+        if existing_link.is_some() {
+            tracing::warn!(
+                "GitHub account {} already linked to another user",
+                user_info.id
+            );
+            let redirect_url = format!("{}/?link=error&reason=already_linked", frontend_url);
+            return Ok(Redirect::to(&redirect_url).into_response());
+        }
+
+        // 先删除可能存在的独立 GitHub 用户记录（避免冲突）
+        let delete_result = _db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "DELETE FROM users WHERE github_id = $1 AND auth_provider = 'github'",
+                vec![SeaValue::BigInt(Some(user_info.id))],
+            ))
+            .await;
+
+        if let Ok(result) = delete_result {
+            if result.rows_affected() > 0 {
+                tracing::info!(
+                    "🗑️  Deleted existing GitHub user record (github_id: {}) before linking to admin",
+                    user_info.id
+                );
+            }
+        }
+
+        // 执行绑定：更新管理员账户
+        _db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE users SET
+                linked_github_id = $1,
+                local_login_disabled = true,
+                avatar_url = $2,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $3",
+            vec![
+                SeaValue::BigInt(Some(user_info.id)),
+                SeaValue::String(Some(Box::new(user_info.avatar_url.clone()))),
+                SeaValue::Int(Some(admin_user_id)),
+            ],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to link GitHub account: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to link GitHub account"})),
+            )
+        })?;
+
+        tracing::info!(
+            "✅ GitHub account linked successfully: admin_id={} -> github_login={} (github_id: {})",
+            admin_user_id,
+            user_info.login,
+            user_info.id
+        );
+
+        // 重定向到前端，带成功参数
+        let redirect_url = format!(
+            "{}/?link=success&github_username={}",
+            frontend_url,
+            urlencoding::encode(&user_info.login)
+        );
+        return Ok(Redirect::to(&redirect_url).into_response());
+    }
+
+    // ========== Login 流程处理 ==========
     // 账户处理策略：
     // 1. 检查是否有管理员已绑定此 GitHub ID (linked_github_id) -> 使用管理员账户登录
     // 2. 检查是否有 GitHub 用户已存在 (github_id) -> 更新并使用该用户
@@ -648,9 +895,47 @@ pub async fn get_current_user(
 /// GET /api/auth/github/link
 /// Redirect user to GitHub OAuth page for linking account
 /// 支持动态环境检测，自动适配开发/生产环境
+/// 🔒 需要先登录（通过 auth_middleware 保护）
 pub async fn github_link(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
+    // ✅ 从 JWT 获取当前登录用户 ID（已通过 auth_middleware 验证）
+    use crate::middleware::auth::verify_jwt_token;
+
+    let claims = verify_jwt_token(&headers).map_err(|_| {
+        tracing::error!("Failed to verify JWT for github_link");
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Unauthorized",
+                "message": "Please login first before linking GitHub account."
+            })),
+        )
+    })?;
+
+    let user_id: i32 = claims.sub.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Invalid token",
+                "message": "User ID in token is invalid"
+            })),
+        )
+    })?;
+
+    // 验证用户是管理员
+    if !claims.is_admin {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Forbidden",
+                "message": "Only administrators can link GitHub accounts."
+            })),
+        ));
+    }
+
+    tracing::info!("🔗 Admin user {} initiating GitHub link", user_id);
+
     let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
         tracing::error!("GITHUB_CLIENT_ID environment variable not set");
         (
@@ -684,221 +969,73 @@ pub async fn github_link(
     )
     .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap());
 
-    // Use state to indicate this is a link request
-    let (auth_url, _csrf_token) = client
-        .authorize_url(|| CsrfToken::new("link_account".to_string()))
+    // ✅ 安全修复: 使用随机 state 并存储，防止 CSRF 攻击
+    let (auth_url, csrf_token) = client
+        .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("read:user".to_string()))
         .add_scope(Scope::new("user:email".to_string()))
         .url();
+
+    // 存储 state，标记为 LinkAccount 用途，并记录用户 ID
+    let state_value = csrf_token.secret().to_string();
+    {
+        let mut states = OAUTH_STATES.write().await;
+        const MAX_OAUTH_STATES: usize = 10000;
+        if states.len() >= MAX_OAUTH_STATES {
+            if let Some(oldest_key) = states
+                .iter()
+                .min_by_key(|(_, v)| v.created_at)
+                .map(|(k, _)| k.clone())
+            {
+                states.remove(&oldest_key);
+            }
+        }
+        states.insert(
+            state_value.clone(),
+            OAuthState {
+                state: state_value,
+                created_at: Instant::now(),
+                purpose: OAuthPurpose::LinkAccount,
+                user_id: Some(user_id), // ✅ 存储当前登录用户 ID
+            },
+        );
+        tracing::debug!(
+            "🔐 OAuth state stored for link_account (user_id: {}, total: {})",
+            user_id,
+            states.len()
+        );
+    }
 
     Ok(Redirect::to(auth_url.as_str()))
 }
 
 /// POST /api/auth/link-github
-/// Link GitHub account to local admin (called after OAuth callback)
-/// 🔒 SECURITY FIX: user_id is extracted from JWT token, not from request body
+/// ⚠️ DEPRECATED: 此 API 已废弃
+/// 绑定流程已改为通过 /api/auth/github/link -> GitHub -> /api/auth/github/callback 完成
+/// 保留此端点仅为向后兼容，返回提示使用新流程
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct LinkGitHubRequest {
     pub code: String,
-    // ✅ P1 安全修复：移除 user_id 字段
-    // 原因：客户端提供的 user_id 不可信，攻击者可以伪造
-    // 现在从 JWT token 中提取 user_id，确保身份真实性
+    pub state: String,
 }
 
 pub async fn link_github_account(
-    State(db): State<DatabaseConnection>,
-    headers: HeaderMap, // ✅ 添加 HeaderMap 参数用于提取 JWT
-    Json(request): Json<LinkGitHubRequest>,
+    State(_db): State<DatabaseConnection>,
+    _headers: HeaderMap,
+    Json(_request): Json<LinkGitHubRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    // ✅ P1 安全修复：从 JWT token 提取 user_id，而不是信任客户端
-    use crate::middleware::auth::verify_jwt_token;
-
-    let claims = verify_jwt_token(&headers).map_err(|_err_response| {
-        tracing::error!("Failed to verify JWT token for link-github operation");
-        // verify_jwt_token 返回 Box<Response>，我们需要解包
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": "Unauthorized",
-                "message": "Invalid or missing authentication token. Please login first."
-            })),
-        )
-    })?;
-
-    // 从 JWT 的 sub (subject) 字段提取 user_id
-    let user_id: i32 = claims.sub.parse().map_err(|e| {
-        tracing::error!("Invalid user ID in JWT token: {:?}", e);
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid token",
-                "message": "User ID in token is invalid"
-            })),
-        )
-    })?;
-
-    tracing::info!(
-        "🔗 Linking GitHub account for authenticated user: {} (from JWT token, not client)",
-        user_id
+    // 返回废弃提示
+    tracing::warn!(
+        "⚠️ Deprecated API /api/auth/link-github called. Use /api/auth/github/link instead."
     );
-
-    // Verify user is local admin
-    use sea_orm::Value as SeaValue;
-
-    let user_query = "SELECT id, username, auth_provider, is_admin 
-                      FROM users 
-                      WHERE id = $1 AND auth_provider = 'local' AND is_admin = true";
-
-    let user_result = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            user_query,
-            vec![SeaValue::Int(Some(user_id))], // ✅ 使用从 JWT 提取的 user_id
-        ))
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
-
-    let _user_row = user_result.ok_or_else(|| {
-        tracing::warn!(
-            "User not found or not local admin: {} (JWT verified but admin check failed)",
-            user_id
-        );
-        (
-            StatusCode::FORBIDDEN,
-            Json(json!({
-                "error": "Permission denied",
-                "message": "Only local administrator can link GitHub account"
-            })),
-        )
-    })?;
-
-    // Exchange code for GitHub access token
-    let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "GitHub OAuth not configured"})),
-        )
-    })?;
-
-    let client_secret = env::var("GITHUB_CLIENT_SECRET").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "GitHub OAuth not configured"})),
-        )
-    })?;
-
-    // 使用智能URL构建器（账户链接流程也需要正确的回调URL）
-    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(None);
-
-    let client = BasicClient::new(
-        ClientId::new(client_id),
-        Some(ClientSecret::new(client_secret)),
-        AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-        Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
-    )
-    .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap());
-
-    let token_result = client
-        .exchange_code(AuthorizationCode::new(request.code))
-        .request_async(async_http_client)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to exchange code: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to exchange authorization code"})),
-            )
-        })?;
-
-    let access_token = token_result.access_token().secret();
-
-    // Get GitHub user info
-    let http_client = reqwest::Client::new();
-    let github_user: GitHubUser = http_client
-        .get("https://api.github.com/user")
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("User-Agent", "Myriad-App")
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get GitHub user info: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to get GitHub user info"})),
-            )
-        })?
-        .json()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to parse GitHub user info: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to parse GitHub user info"})),
-            )
-        })?;
-
-    // 先删除可能存在的独立 GitHub 用户记录（避免冲突）
-    let delete_result = db
-        .execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "DELETE FROM users WHERE github_id = $1 AND auth_provider = 'github'",
-            vec![SeaValue::BigInt(Some(github_user.id))],
-        ))
-        .await;
-
-    if let Ok(result) = delete_result {
-        if result.rows_affected() > 0 {
-            tracing::info!(
-                "🗑️  Deleted existing GitHub user record (github_id: {}) before linking to admin",
-                github_user.id
-            );
-        }
-    }
-
-    // Update user: set linked_github_id and disable local login
-    let update_query = "UPDATE users
-                        SET linked_github_id = $1,
-                            local_login_disabled = true,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = $2
-                        RETURNING id";
-
-    db.query_one(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        update_query,
-        vec![
-            SeaValue::BigInt(Some(github_user.id)),
-            SeaValue::Int(Some(user_id)), // ✅ 使用从 JWT 提取的 user_id
-        ],
+    Err((
+        StatusCode::GONE,
+        Json(json!({
+            "error": "API deprecated",
+            "message": "This API is deprecated. Please use GET /api/auth/github/link to initiate GitHub account linking. The callback will be handled automatically."
+        })),
     ))
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to link GitHub account: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to link GitHub account"})),
-        )
-    })?;
-
-    tracing::info!(
-        "✅ GitHub account linked successfully: {} -> {} (github_id: {}) [JWT-verified user_id]",
-        user_id, // ✅ 使用从 JWT 提取的 user_id
-        github_user.login,
-        github_user.id
-    );
-
-    Ok(Json(json!({
-        "success": true,
-        "message": "GitHub account linked successfully. Local login has been disabled.",
-        "github_username": github_user.login,
-        "github_id": github_user.id
-    })))
 }
 
 /// POST /api/auth/logout

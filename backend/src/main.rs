@@ -77,6 +77,30 @@ async fn run_server() -> anyhow::Result<()> {
         tracing::warn!("⚠️  GitHub OAuth validation warning: {}", e);
     }
 
+    // ✅ 安全修复: 验证 JWT 密钥强度
+    match std::env::var("JWT_SECRET") {
+        Ok(secret) => {
+            if secret.len() < 32 {
+                tracing::error!(
+                    "🚨 JWT_SECRET is too weak ({} chars). Minimum 32 characters required for security.",
+                    secret.len()
+                );
+                if std::env::var("ENVIRONMENT").unwrap_or_default() == "production" {
+                    anyhow::bail!(
+                        "JWT_SECRET must be at least 32 characters in production environment"
+                    );
+                } else {
+                    tracing::warn!("⚠️  Continuing with weak JWT_SECRET in development mode. DO NOT use in production!");
+                }
+            } else {
+                tracing::info!("✅ JWT_SECRET strength validated ({} chars)", secret.len());
+            }
+        }
+        Err(_) => {
+            tracing::warn!("⚠️  JWT_SECRET not configured. Authentication features will not work.");
+        }
+    }
+
     // Try to initialize database connection if URL is configured
     if !config.database_url.is_empty() {
         match db::connection::establish_connection(&config.database_url).await {
@@ -1132,7 +1156,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             .route(
                 "/api/tapp/ai/analyze",
-                post(api::tapp::ai_analyze).route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+                post(api::tapp::ai_analyze)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/ai/image",
@@ -1182,7 +1207,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // AI Chat - 🔓 支持权限下放
             .route(
                 "/api/tapp/ai/chat",
-                post(api::tapp::ai_chat).route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+                post(api::tapp::ai_chat)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // Report CRUD - 🔒 REQUIRE AUTHENTICATION
             .route(
