@@ -724,12 +724,18 @@ pub async fn github_callback(
     // ✅ 安全修复 P0: 设置 HttpOnly Cookie（安全）
     // 注意：使用 SameSite=Lax 而不是 Strict，因为 OAuth 重定向是跨站请求
     // Strict 会导致从 GitHub 重定向回来时 Cookie 不被设置
-    let is_production =
-        env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
+
+    // 智能判断是否为生产环境：
+    // 1. 显式设置 ENVIRONMENT=production
+    // 2. 或者 frontend_url 是 HTTPS（说明部署在生产环境）
+    let is_production = env::var("ENVIRONMENT")
+        .map(|e| e == "production")
+        .unwrap_or_else(|_| frontend_url.starts_with("https://"));
 
     tracing::info!(
-        "🍪 Cookie config: is_production={}, ENVIRONMENT={:?}",
+        "🍪 Cookie config: is_production={}, frontend_url={}, ENVIRONMENT={:?}",
         is_production,
+        frontend_url,
         env::var("ENVIRONMENT").ok()
     );
 

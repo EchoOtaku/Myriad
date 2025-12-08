@@ -76,11 +76,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // 懒加载：只在有组件需要时才检查
-  // 不在应用启动时自动检查
+  // 但如果 URL 中有 auth=success 或 link=success，立即检查（OAuth 回调）
   useEffect(() => {
-    // 留空，不自动检查
-    // 由需要认证的组件主动调用 checkAuth
-  }, []);
+    const urlParams = new URLSearchParams(window.location.search);
+    const authSuccess = urlParams.get('auth') === 'success';
+    const linkSuccess = urlParams.get('link') === 'success';
+    
+    if (authSuccess || linkSuccess) {
+      // OAuth 登录/绑定成功，立即检查认证状态
+      console.debug('[AuthContext] OAuth callback detected, checking auth...');
+      checkAuth();
+      
+      // 清理 URL 参数，避免刷新时重复触发
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 🔧 性能优化：使用 useMemo 缓存 context value，避免不必要的重渲染
   const value = useMemo(() => ({
