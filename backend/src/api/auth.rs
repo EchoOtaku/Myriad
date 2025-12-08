@@ -726,10 +726,22 @@ pub async fn github_callback(
     // Strict 会导致从 GitHub 重定向回来时 Cookie 不被设置
     let is_production =
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
+
+    tracing::info!(
+        "🍪 Cookie config: is_production={}, ENVIRONMENT={:?}",
+        is_production,
+        env::var("ENVIRONMENT").ok()
+    );
+
     let cookie_value = format!(
         "auth_token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}",
         token,
         if is_production { "; Secure" } else { "" } // 生产环境启用 Secure 标志
+    );
+
+    tracing::info!("🍪 Set-Cookie header (token truncated): auth_token={}...; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}", 
+        &token[..20.min(token.len())],
+        if is_production { "; Secure" } else { "" }
     );
 
     // ✅ 安全修复 P0: 移除 URL 中的 token 参数，防止通过历史记录/Referer泄露
