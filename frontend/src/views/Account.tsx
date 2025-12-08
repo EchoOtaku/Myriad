@@ -149,48 +149,70 @@ export default function Account() {
 
                 {user && (
                   <div className="bg-white/50 dark:bg-neutral-900/50 rounded-lg p-3 md:p-4 border border-gray-200/50 dark:border-neutral-700/50">
-                    <div className="flex items-center gap-4">
-                      <img 
-                        src={avatarUrl} 
-                        className="w-16 h-16 rounded-full shadow-md" 
-                        alt={user.username}
-                        onError={(e) => { 
-                          e.currentTarget.src = `https://ui-avatars.com/api/?name=${user.username}`; 
-                        }}
-                      />
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800 text-lg">{user.username}</p>
-                        <p className="text-sm text-gray-600 mt-0.5">
-                          {user.is_admin ? t.accountPage.adminRole : t.accountPage.normalUser} · {user.auth_provider === 'local' ? t.accountPage.localAccount : t.accountPage.githubAccount}
-                        </p>
-                        {user.display_name && (
-                          <p className="text-xs text-gray-500 mt-1">{t.accountPage.displayName}: {user.display_name}</p>
-                        )}
+                    <div className="flex flex-col gap-4">
+                      {/* 用户基本信息 */}
+                      <div className="flex items-center gap-4">
+                        <img 
+                          src={avatarUrl} 
+                          className="w-16 h-16 rounded-full shadow-md" 
+                          alt={user.username}
+                          onError={(e) => { 
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${user.username}`; 
+                          }}
+                        />
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">{user.username}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                            {user.is_admin ? t.accountPage.adminRole : t.accountPage.normalUser}
+                          </p>
+                          {user.display_name && user.display_name !== user.username && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t.accountPage.displayName}: {user.display_name}</p>
+                          )}
+                        </div>
                       </div>
 
-                      {user.auth_provider === 'local' && !user.linked_github_id && (
-                        <a 
-                          href={`${API_URL}/api/auth/github/link`}
-                          className="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg flex items-center gap-2 transition-all duration-300 text-sm font-semibold shadow-md"
-                        >
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
-                          </svg>
-                          {t.accountPage.bindGithub}
-                        </a>
-                      )}
-
-                      {user.linked_github_id && (
-                        <div className="flex items-center gap-2 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
-                          <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                          </svg>
-                          <div className="text-sm">
-                            <p className="text-green-700 font-semibold">{t.accountPage.githubBound}</p>
-                            <p className="text-green-600 text-xs">{t.accountPage.localLoginEnabled}</p>
-                          </div>
+                      {/* 账户类型和绑定状态 */}
+                      <div className="flex flex-wrap gap-2">
+                        {/* 账户类型标签 */}
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
+                          user.auth_provider === 'github' 
+                            ? 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-neutral-700' 
+                            : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                        }`}>
+                          {user.auth_provider === 'github' ? (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          )}
+                          <span>{user.auth_provider === 'local' ? t.accountPage.localAccount : t.accountPage.githubAccount}</span>
                         </div>
-                      )}
+
+                        {/* GitHub 绑定状态（仅本地账户显示） */}
+                        {user.auth_provider === 'local' && (
+                          user.linked_github_id ? (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                              </svg>
+                              <span>{t.accountPage.githubBound}</span>
+                            </div>
+                          ) : (
+                            <a 
+                              href={`${API_URL}/api/auth/github/link`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-900 dark:bg-gray-700 hover:bg-gray-800 dark:hover:bg-gray-600 text-white transition-all duration-300"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
+                              </svg>
+                              <span>{t.accountPage.bindGithub}</span>
+                            </a>
+                          )
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

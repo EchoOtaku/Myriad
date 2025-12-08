@@ -840,7 +840,8 @@ pub async fn get_current_user(
     // Query user from database
     use sea_orm::Value as SeaValue;
 
-    let query = "SELECT id, username, auth_provider, is_admin, avatar_url, github_id 
+    let query =
+        "SELECT id, username, auth_provider, is_admin, avatar_url, github_id, linked_github_id 
                  FROM users 
                  WHERE id = $1";
 
@@ -893,6 +894,7 @@ pub async fn get_current_user(
         .try_get("", "avatar_url")
         .unwrap_or_else(|_| "https://github.com/ghost.png".to_string());
     let github_id: Option<i64> = user_row.try_get("", "github_id").ok();
+    let linked_github_id: Option<String> = user_row.try_get("", "linked_github_id").ok();
     let bio: Option<String> = user_row.try_get("", "bio").ok();
 
     tracing::info!("User info retrieved: {} (ID: {})", username, id);
@@ -905,6 +907,7 @@ pub async fn get_current_user(
         "is_admin": is_admin,
         "avatar_url": avatar_url,
         "github_id": github_id,
+        "linked_github_id": linked_github_id,
         "bio": bio,
     })))
 }

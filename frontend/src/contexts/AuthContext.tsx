@@ -13,6 +13,7 @@ interface User {
   is_admin: boolean;
   auth_provider?: string;
   linked_github_id?: string;
+  github_id?: number;
 }
 
 interface AuthContextType {
