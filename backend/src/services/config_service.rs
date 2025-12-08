@@ -188,6 +188,11 @@ impl ConfigService {
             }
         }
 
+        // 站点 URL 配置
+        if let Some(v) = map.get("base_url") {
+            config.base_url = v.as_str().map(|s| s.to_string());
+        }
+
         // 仪表盘配置
         if let Some(v) = map.get("dashboard_layout") {
             // 如果是字符串直接使用，如果是对象/数组则转为字符串

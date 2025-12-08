@@ -207,8 +207,8 @@ export interface TranslationKeys {
     platformsDesc: string;
     ai: string;
     aiDesc: string;
-    ui: string;
-    uiDesc: string;
+    basic: string;
+    basicDesc: string;
     oauth: string;
     oauthDesc: string;
     music: string;
@@ -314,8 +314,12 @@ export interface TranslationKeys {
     enablePlatform: string;
     testingConnection: string;
     howToGetToken: string;
-    uiConfigTitle: string;
-    uiConfigDesc: string;
+    basicConfigTitle: string;
+    basicConfigDesc: string;
+    siteUrlConfig: string;
+    baseUrl: string;
+    baseUrlPlaceholder: string;
+    baseUrlHint: string;
     oauthConfigTitle: string;
     oauthConfigDesc: string;
     oauthGuideTitle: string;
@@ -323,6 +327,9 @@ export interface TranslationKeys {
     oauthGuideStep2: string;
     oauthGuideStep3: string;
     oauthGuideStep4: string;
+    currentCallbackUrl: string;
+    currentCallbackUrlHint: string;
+    callbackUrlNotConfigured: string;
     githubClientId: string;
     githubClientIdPlaceholder: string;
     githubClientSecret: string;

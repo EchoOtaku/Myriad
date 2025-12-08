@@ -71,9 +71,9 @@ async fn run_server() -> anyhow::Result<()> {
     *GLOBAL_CONFIG.write().await = config.clone();
     tracing::info!("✅ Configuration loaded and cached globally");
 
-    // Validate OAuth configuration
+    // Validate OAuth configuration (now async, needs database config)
     use oauth_url_builder::OAuthUrlBuilder;
-    if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config() {
+    if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config().await {
         tracing::warn!("⚠️  GitHub OAuth validation warning: {}", e);
     }
 

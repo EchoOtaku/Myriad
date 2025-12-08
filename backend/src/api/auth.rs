@@ -126,44 +126,34 @@ pub struct User {
 /// Redirect user to GitHub OAuth page
 /// 支持动态环境检测，自动适配开发/生产环境
 pub async fn github_login(
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
-    let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
-        tracing::error!("GITHUB_CLIENT_ID environment variable not set");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "GitHub OAuth not configured",
-                "message": "GITHUB_CLIENT_ID environment variable is not set. Please configure GitHub OAuth in .env file."
-            })),
-        )
-    })?;
+    // 使用新的统一 OAuth 配置获取（支持数据库 + 环境变量 + 自动推断）
+    let oauth_config = OAuthUrlBuilder::get_github_oauth_config()
+        .await
+        .map_err(|e| {
+            tracing::error!("GitHub OAuth not configured: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "GitHub OAuth not configured",
+                    "message": e
+                })),
+            )
+        })?;
 
-    let client_secret = env::var("GITHUB_CLIENT_SECRET").map_err(|_| {
-        tracing::error!("GITHUB_CLIENT_SECRET environment variable not set");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "GitHub OAuth not configured",
-                "message": "GITHUB_CLIENT_SECRET environment variable is not set. Please configure GitHub OAuth in .env file."
-            })),
-        )
-    })?;
-
-    // 使用智能URL构建器，支持环境变量和请求头检测
-    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
     tracing::info!(
         "🔐 GitHub OAuth login initiated with redirect URL: {}",
-        redirect_url
+        oauth_config.redirect_url
     );
 
     let client = BasicClient::new(
-        ClientId::new(client_id),
-        Some(ClientSecret::new(client_secret)),
+        ClientId::new(oauth_config.client_id),
+        Some(ClientSecret::new(oauth_config.client_secret)),
         AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
         Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
     )
-    .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap());
+    .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
 
     let (auth_url, csrf_token) = client
         .authorize_url(CsrfToken::new_random)
@@ -209,7 +199,7 @@ pub async fn github_login(
 pub async fn github_callback(
     Query(params): Query<AuthCallbackQuery>,
     State(_db): State<DatabaseConnection>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     tracing::info!("🔐 GitHub OAuth callback received");
 
@@ -252,39 +242,32 @@ pub async fn github_callback(
         }
     };
 
-    let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
-        tracing::error!("GITHUB_CLIENT_ID not set");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "GitHub OAuth not configured"})),
-        )
-    })?;
+    // 使用新的统一 OAuth 配置获取（支持数据库 + 环境变量 + 自动推断）
+    let oauth_config = OAuthUrlBuilder::get_github_oauth_config()
+        .await
+        .map_err(|e| {
+            tracing::error!("GitHub OAuth not configured: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "GitHub OAuth not configured", "message": e})),
+            )
+        })?;
 
-    let client_secret = env::var("GITHUB_CLIENT_SECRET").map_err(|_| {
-        tracing::error!("GITHUB_CLIENT_SECRET not set");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "GitHub OAuth not configured"})),
-        )
-    })?;
-
-    // 使用智能URL构建器，确保与登录时使用的URL一致
-    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
-    let frontend_url = OAuthUrlBuilder::get_frontend_url(Some(&headers));
+    let frontend_url = OAuthUrlBuilder::get_frontend_url().await;
 
     tracing::info!(
         "🔐 OAuth callback - redirect_url: {}, frontend_url: {}",
-        redirect_url,
+        oauth_config.redirect_url,
         frontend_url
     );
 
     let client = BasicClient::new(
-        ClientId::new(client_id),
-        Some(ClientSecret::new(client_secret)),
+        ClientId::new(oauth_config.client_id),
+        Some(ClientSecret::new(oauth_config.client_secret)),
         AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
         Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
     )
-    .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap());
+    .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
 
     // Exchange code for token
     let token_result = client
@@ -725,18 +708,14 @@ pub async fn github_callback(
     // 注意：使用 SameSite=Lax 而不是 Strict，因为 OAuth 重定向是跨站请求
     // Strict 会导致从 GitHub 重定向回来时 Cookie 不被设置
 
-    // 智能判断是否为生产环境：
-    // 1. 显式设置 ENVIRONMENT=production
-    // 2. 或者 frontend_url 是 HTTPS（说明部署在生产环境）
-    let is_production = env::var("ENVIRONMENT")
-        .map(|e| e == "production")
-        .unwrap_or_else(|_| frontend_url.starts_with("https://"));
+    // 使用 SiteConfig 判断是否为生产环境（基于 base_url 是否为 HTTPS）
+    use crate::oauth_url_builder::SiteConfig;
+    let is_production = SiteConfig::is_production().await;
 
     tracing::info!(
-        "🍪 Cookie config: is_production={}, frontend_url={}, ENVIRONMENT={:?}",
+        "🍪 Cookie config: is_production={}, frontend_url={}",
         is_production,
-        frontend_url,
-        env::var("ENVIRONMENT").ok()
+        frontend_url
     );
 
     let cookie_value = format!(
@@ -974,38 +953,27 @@ pub async fn github_link(
 
     tracing::info!("🔗 Admin user {} initiating GitHub link", user_id);
 
-    let client_id = env::var("GITHUB_CLIENT_ID").map_err(|_| {
-        tracing::error!("GITHUB_CLIENT_ID environment variable not set");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "GitHub OAuth not configured",
-                "message": "GITHUB_CLIENT_ID environment variable is not set. Please configure GitHub OAuth in .env file."
-            })),
-        )
-    })?;
-
-    let client_secret = env::var("GITHUB_CLIENT_SECRET").map_err(|_| {
-        tracing::error!("GITHUB_CLIENT_SECRET environment variable not set");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "GitHub OAuth not configured",
-                "message": "GITHUB_CLIENT_SECRET environment variable is not set. Please configure GitHub OAuth in .env file."
-            })),
-        )
-    })?;
-
-    // 使用智能URL构建器，支持环境变量和请求头检测
-    let redirect_url = OAuthUrlBuilder::get_github_redirect_url(Some(&headers));
+    // 使用新的统一 OAuth 配置获取（支持数据库 + 环境变量 + 自动推断）
+    let oauth_config = OAuthUrlBuilder::get_github_oauth_config()
+        .await
+        .map_err(|e| {
+            tracing::error!("GitHub OAuth not configured: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "GitHub OAuth not configured",
+                    "message": e
+                })),
+            )
+        })?;
 
     let client = BasicClient::new(
-        ClientId::new(client_id),
-        Some(ClientSecret::new(client_secret)),
+        ClientId::new(oauth_config.client_id),
+        Some(ClientSecret::new(oauth_config.client_secret)),
         AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
         Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
     )
-    .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap());
+    .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
 
     // ✅ 安全修复: 使用随机 state 并存储，防止 CSRF 攻击
     let (auth_url, csrf_token) = client

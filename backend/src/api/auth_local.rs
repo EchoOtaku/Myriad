@@ -294,17 +294,9 @@ pub async fn local_login(
 
     // 设置 HttpOnly Cookie
     // 使用 SameSite=Lax 保持与 OAuth 登录一致
-    // 智能判断是否为生产环境：
-    // 1. 显式设置 ENVIRONMENT=production
-    // 2. 或者 BASE_URL/FRONTEND_URL 是 HTTPS
-    let is_production = env::var("ENVIRONMENT")
-        .map(|e| e == "production")
-        .unwrap_or_else(|_| {
-            env::var("BASE_URL")
-                .or_else(|_| env::var("FRONTEND_URL"))
-                .map(|url| url.starts_with("https://"))
-                .unwrap_or(false)
-        });
+    // 使用 SiteConfig 判断是否为生产环境（基于 base_url 是否为 HTTPS）
+    use crate::oauth_url_builder::SiteConfig;
+    let is_production = SiteConfig::is_production().await;
     let cookie_value = format!(
         "auth_token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}",
         token,

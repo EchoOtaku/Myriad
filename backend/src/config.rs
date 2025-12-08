@@ -178,6 +178,9 @@ pub struct DynamicConfig {
     pub github_client_secret: Option<String>,
     pub github_redirect_url: String,
 
+    // 站点 URL 配置（用于自动生成 OAuth 回调等 URL）
+    pub base_url: Option<String>,
+
     // 仪表盘配置
     pub dashboard_layout: Option<String>,
     pub dashboard_title: Option<String>,
@@ -302,7 +305,9 @@ impl Default for DynamicConfig {
 
             github_client_id: None,
             github_client_secret: None,
-            github_redirect_url: "http://localhost:3000/api/auth/github/callback".to_string(),
+            github_redirect_url: String::new(), // 自动从 base_url 生成
+
+            base_url: None,
 
             dashboard_layout: None,
             dashboard_title: None,

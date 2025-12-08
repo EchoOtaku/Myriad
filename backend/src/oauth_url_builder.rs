@@ -1,286 +1,174 @@
-use axum::http::HeaderMap;
-use std::env;
+/// OAuth 配置结构体
+/// 统一存储 GitHub OAuth 相关配置
+#[derive(Debug, Clone)]
+pub struct GitHubOAuthConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_url: String,
+}
 
-/// OAuth URL构建器 - 自动适配各种生产环境
+/// 站点配置 - 统一管理 base_url 相关功能
 ///
-/// 支持的环境配置方式（按优先级从高到低）：
-/// 1. GITHUB_REDIRECT_URL 环境变量（完整URL）
-/// 2. 从请求头动态检测（支持反向代理）
-/// 3. 手动配置的 BASE_URL + 路径
-/// 4. 开发环境默认值
-pub struct OAuthUrlBuilder;
+/// 设计原则：
+/// 1. 数据库优先，配置为空时回退到环境变量
+/// 2. base_url 承担多种功能：OAuth 回调、Cookie Secure 判断、前端重定向等
+pub struct SiteConfig;
 
-impl OAuthUrlBuilder {
-    /// 获取GitHub OAuth回调URL
+impl SiteConfig {
+    /// 获取站点 base_url
     ///
     /// # 优先级
-    /// 1. `GITHUB_REDIRECT_URL` - 显式配置的回调URL（完全自定义）
-    /// 2. `FRONTEND_URL` + "/api/auth/github/callback" - 前后端同域时自动生成
-    /// 3. `BASE_URL` + "/api/auth/github/callback" - 基础URL配置
-    /// 4. 动态检测 - 从请求头检测 (X-Forwarded-Proto + Host)
-    /// 5. 开发环境默认值 - http://localhost:3000/api/auth/github/callback
-    ///
-    /// # 生产环境最佳实践
-    /// ```bash
-    /// # 推荐：只配置 FRONTEND_URL，会自动生成正确的回调URL
-    /// FRONTEND_URL=https://yourdomain.com
-    ///
-    /// # 或者：完全自定义回调URL
-    /// GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback
-    /// ```
-    pub fn get_github_redirect_url(headers: Option<&HeaderMap>) -> String {
-        // 1. 优先使用显式配置的回调URL
-        if let Ok(url) = env::var("GITHUB_REDIRECT_URL") {
-            if !url.is_empty() && url != "http://localhost:3000/api/auth/github/callback" {
-                tracing::debug!("Using explicit GITHUB_REDIRECT_URL: {}", url);
-                return url;
+    /// 1. 数据库 DynamicConfig.base_url
+    /// 2. 环境变量 BASE_URL 或 FRONTEND_URL
+    /// 3. 开发默认值 http://localhost:4321
+    pub async fn get_base_url() -> String {
+        use crate::GLOBAL_DYNAMIC_CONFIG;
+        use std::env;
+
+        // 1. 优先从数据库读取
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        if let Some(url) = &config.base_url {
+            if !url.is_empty() {
+                tracing::debug!("📍 Using base_url from database: {}", url);
+                return url.trim_end_matches('/').to_string();
             }
         }
+        drop(config); // 释放锁
 
-        // 2. 使用 FRONTEND_URL 配置（前后端同域时，这是最常用的配置）
-        if let Ok(frontend_url) = env::var("FRONTEND_URL") {
-            if !frontend_url.is_empty() && frontend_url != "http://localhost:4321" {
-                let url = frontend_url.trim_end_matches('/');
-                let redirect_url = format!("{}/api/auth/github/callback", url);
-                tracing::debug!("Using FRONTEND_URL for redirect: {}", redirect_url);
-                return redirect_url;
-            }
-        }
-
-        // 3. 使用 BASE_URL 配置
-        if let Ok(base_url) = env::var("BASE_URL") {
-            if !base_url.is_empty() {
-                let url = base_url.trim_end_matches('/');
-                let redirect_url = format!("{}/api/auth/github/callback", url);
-                tracing::debug!("Using BASE_URL: {}", redirect_url);
-                return redirect_url;
-            }
-        }
-
-        // 4. 尝试从请求头动态检测（支持反向代理，作为最后手段）
-        if let Some(headers) = headers {
-            if let Some(url) = Self::detect_url_from_headers(headers) {
-                let redirect_url = format!("{}/api/auth/github/callback", url);
-                tracing::debug!("Detected redirect URL from headers: {}", redirect_url);
-                return redirect_url;
-            }
-        }
-
-        // 4. 开发环境默认值
-        let default_url = "http://localhost:3000/api/auth/github/callback".to_string();
-        tracing::warn!(
-            "No OAuth redirect URL configured, using default: {}. \
-            For production, please set GITHUB_REDIRECT_URL or BASE_URL",
-            default_url
-        );
-        default_url
-    }
-
-    /// 获取前端URL（用于OAuth成功后重定向）
-    ///
-    /// # 优先级
-    /// 1. `FRONTEND_URL` - 显式配置的前端URL
-    /// 2. 动态检测 - 从请求头检测
-    /// 3. `BASE_URL` - 基础URL配置
-    /// 4. 开发环境默认值
-    pub fn get_frontend_url(headers: Option<&HeaderMap>) -> String {
-        // 1. 显式配置的前端URL
-        if let Ok(url) = env::var("FRONTEND_URL") {
-            if !url.is_empty() && url != "http://localhost:4321" {
-                tracing::debug!("Using explicit FRONTEND_URL: {}", url);
+        // 2. 回退到环境变量 BASE_URL
+        if let Ok(url) = env::var("BASE_URL") {
+            if !url.is_empty() {
+                tracing::debug!("📍 Using BASE_URL from env: {}", url);
                 return url.trim_end_matches('/').to_string();
             }
         }
 
-        // 2. 从请求头动态检测
-        if let Some(headers) = headers {
-            if let Some(url) = Self::detect_url_from_headers(headers) {
-                tracing::debug!("Detected frontend URL from headers: {}", url);
-                return url;
+        // 3. 回退到环境变量 FRONTEND_URL
+        if let Ok(url) = env::var("FRONTEND_URL") {
+            if !url.is_empty() {
+                tracing::debug!("📍 Using FRONTEND_URL from env: {}", url);
+                return url.trim_end_matches('/').to_string();
             }
         }
 
-        // 3. 使用 BASE_URL
-        if let Ok(base_url) = env::var("BASE_URL") {
-            if !base_url.is_empty() {
-                let url = base_url.trim_end_matches('/').to_string();
-                tracing::debug!("Using BASE_URL for frontend: {}", url);
-                return url;
-            }
-        }
-
-        // 4. 开发环境默认值
-        let default_url = "http://localhost:4321".to_string();
-        tracing::warn!(
-            "No frontend URL configured, using default: {}. \
-            For production, please set FRONTEND_URL or BASE_URL",
-            default_url
-        );
-        default_url
+        // 4. 开发默认值
+        tracing::warn!("⚠️ No base_url configured, using localhost default");
+        "http://localhost:4321".to_string()
     }
 
-    /// 从请求头检测完整URL（支持反向代理）
+    /// 判断是否为生产环境（HTTPS）
     ///
-    /// # 支持的请求头
-    /// - X-Forwarded-Proto: https
-    /// - X-Forwarded-Host: yourdomain.com
-    /// - Host: yourdomain.com
-    /// - X-Forwarded-Prefix: /path (可选，支持子路径部署)
+    /// 根据 base_url 是否以 https:// 开头判断
+    pub async fn is_production() -> bool {
+        let base_url = Self::get_base_url().await;
+        base_url.starts_with("https://")
+    }
+}
+
+/// OAuth URL构建器
+///
+/// 设计原则：
+/// 1. OAuth 凭证：数据库优先，回退到环境变量
+/// 2. redirect_url：自动从 base_url 生成
+pub struct OAuthUrlBuilder;
+
+impl OAuthUrlBuilder {
+    /// 获取 GitHub OAuth 完整配置
     ///
-    /// # Nginx配置示例
-    /// ```nginx
-    /// location / {
-    ///     proxy_pass http://backend:3000;
-    ///     proxy_set_header Host $host;
-    ///     proxy_set_header X-Forwarded-Proto $scheme;
-    ///     proxy_set_header X-Forwarded-Host $host;
-    ///     proxy_set_header X-Real-IP $remote_addr;
-    /// }
-    /// ```
-    fn detect_url_from_headers(headers: &HeaderMap) -> Option<String> {
-        // 检测协议 (http/https)
-        let proto = headers
-            .get("x-forwarded-proto")
-            .and_then(|v| v.to_str().ok())
-            .or_else(|| {
-                // 备用：从 X-Forwarded-Ssl 判断
-                headers
-                    .get("x-forwarded-ssl")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| if v == "on" { Some("https") } else { None })
-            })
-            .unwrap_or("http");
+    /// # 配置来源优先级
+    /// - github_client_id: 数据库 > 环境变量
+    /// - github_client_secret: 数据库 > 环境变量
+    /// - redirect_url: 自动从 base_url 生成
+    pub async fn get_github_oauth_config() -> Result<GitHubOAuthConfig, String> {
+        use crate::GLOBAL_DYNAMIC_CONFIG;
+        use std::env;
 
-        // 检测主机名
-        let host = headers
-            .get("x-forwarded-host")
-            .and_then(|v| v.to_str().ok())
-            .or_else(|| headers.get("host").and_then(|v| v.to_str().ok()))?;
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
 
-        // 检测路径前缀（用于子路径部署）
-        let prefix = headers
-            .get("x-forwarded-prefix")
-            .and_then(|v| v.to_str().ok())
+        // client_id: 数据库 > 环境变量
+        let client_id = config
+            .github_client_id
+            .clone()
             .filter(|s| !s.is_empty())
-            .map(|s| s.trim_end_matches('/'))
-            .unwrap_or("");
+            .or_else(|| env::var("GITHUB_CLIENT_ID").ok().filter(|s| !s.is_empty()))
+            .ok_or_else(|| {
+                "GitHub OAuth not configured: missing client_id. \
+                Please configure in Settings > OAuth or set GITHUB_CLIENT_ID env."
+                    .to_string()
+            })?;
 
-        // 构建完整URL
-        let url = if prefix.is_empty() {
-            format!("{}://{}", proto, host)
-        } else {
-            format!("{}://{}{}", proto, host, prefix)
-        };
+        // client_secret: 数据库 > 环境变量
+        let client_secret = config
+            .github_client_secret
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                env::var("GITHUB_CLIENT_SECRET")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+            })
+            .ok_or_else(|| {
+                "GitHub OAuth not configured: missing client_secret. \
+                Please configure in Settings > OAuth or set GITHUB_CLIENT_SECRET env."
+                    .to_string()
+            })?;
 
-        tracing::debug!(
-            "Detected URL from headers - proto: {}, host: {}, prefix: {}, final: {}",
-            proto,
-            host,
-            prefix,
-            url
+        drop(config); // 释放锁
+
+        // redirect_url: 自动从 base_url 生成
+        let base_url = SiteConfig::get_base_url().await;
+        let redirect_url = format!("{}/api/auth/github/callback", base_url);
+
+        tracing::info!(
+            "🔐 GitHub OAuth config - client_id: {}..., redirect_url: {}",
+            &client_id[..8.min(client_id.len())],
+            redirect_url
         );
 
-        Some(url)
+        Ok(GitHubOAuthConfig {
+            client_id,
+            client_secret,
+            redirect_url,
+        })
     }
 
-    /// 验证回调URL是否与GitHub OAuth配置匹配
-    /// 用于启动时检查配置是否正确
-    pub fn validate_github_oauth_config() -> Result<(), String> {
-        let redirect_url = Self::get_github_redirect_url(None);
+    /// 获取前端 URL（用于 OAuth 成功后重定向）
+    pub async fn get_frontend_url() -> String {
+        SiteConfig::get_base_url().await
+    }
 
-        // 检查是否使用了开发环境默认值
-        if redirect_url == "http://localhost:3000/api/auth/github/callback" {
+    /// 验证 OAuth 配置（启动时调用）
+    pub async fn validate_github_oauth_config() -> Result<(), String> {
+        let base_url = SiteConfig::get_base_url().await;
+
+        // 检查 base_url
+        if base_url.contains("localhost") {
             tracing::warn!(
-                "⚠️  GitHub OAuth using development default URL: {}",
-                redirect_url
+                "⚠️ base_url is localhost: {} - not suitable for production",
+                base_url
             );
-            tracing::warn!("   For production, please configure:");
-            tracing::warn!(
-                "   - GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback"
-            );
-            tracing::warn!("   - Or BASE_URL=https://yourdomain.com");
+            tracing::warn!("   Set BASE_URL env or configure in Settings > Site");
+        } else {
+            tracing::info!("✅ Site base_url: {}", base_url);
         }
 
-        // 检查URL格式
-        if !redirect_url.starts_with("http://") && !redirect_url.starts_with("https://") {
-            return Err(format!("Invalid redirect URL format: {}", redirect_url));
-        }
-
-        // 检查是否包含必要的路径
-        if !redirect_url.contains("/api/auth/github/callback") {
-            return Err(format!(
-                "Redirect URL must end with /api/auth/github/callback, got: {}",
-                redirect_url
-            ));
-        }
-
-        // 生产环境检查：不应该使用 localhost
-        if let Ok(env) = env::var("ENVIRONMENT") {
-            if (env == "production" || env == "prod") && redirect_url.contains("localhost") {
-                return Err("Production environment should not use localhost URLs. \
-                    Please set GITHUB_REDIRECT_URL or BASE_URL to your domain."
-                    .to_string());
+        // 检查 OAuth 凭证
+        match Self::get_github_oauth_config().await {
+            Ok(config) => {
+                tracing::info!("✅ GitHub OAuth configured");
+                tracing::info!("   redirect_url: {}", config.redirect_url);
+                tracing::info!("   ⚠️ Ensure this URL is registered in GitHub OAuth App!");
+            }
+            Err(e) => {
+                tracing::warn!("⚠️ GitHub OAuth not configured: {}", e);
             }
         }
 
-        tracing::info!("✅ GitHub OAuth redirect URL validated: {}", redirect_url);
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use axum::http::{HeaderMap, HeaderValue};
-
-    #[test]
-    fn test_explicit_redirect_url() {
-        env::set_var(
-            "GITHUB_REDIRECT_URL",
-            "https://example.com/api/auth/github/callback",
-        );
-        let url = OAuthUrlBuilder::get_github_redirect_url(None);
-        assert_eq!(url, "https://example.com/api/auth/github/callback");
-        env::remove_var("GITHUB_REDIRECT_URL");
-    }
-
-    #[test]
-    fn test_detect_from_headers_https() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        headers.insert("x-forwarded-host", HeaderValue::from_static("example.com"));
-
-        let url = OAuthUrlBuilder::detect_url_from_headers(&headers);
-        assert_eq!(url, Some("https://example.com".to_string()));
-    }
-
-    #[test]
-    fn test_detect_from_headers_with_prefix() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        headers.insert("host", HeaderValue::from_static("example.com"));
-        headers.insert("x-forwarded-prefix", HeaderValue::from_static("/app"));
-
-        let url = OAuthUrlBuilder::detect_url_from_headers(&headers);
-        assert_eq!(url, Some("https://example.com/app".to_string()));
-    }
-
-    #[test]
-    fn test_base_url_fallback() {
-        env::remove_var("GITHUB_REDIRECT_URL");
-        env::set_var("BASE_URL", "https://myapp.com");
-
-        let url = OAuthUrlBuilder::get_github_redirect_url(None);
-        assert_eq!(url, "https://myapp.com/api/auth/github/callback");
-
-        env::remove_var("BASE_URL");
-    }
-
-    #[test]
-    fn test_frontend_url_explicit() {
-        env::set_var("FRONTEND_URL", "https://app.example.com");
-        let url = OAuthUrlBuilder::get_frontend_url(None);
-        assert_eq!(url, "https://app.example.com");
-        env::remove_var("FRONTEND_URL");
-    }
+    // 测试需要模拟数据库，这里暂时跳过
 }

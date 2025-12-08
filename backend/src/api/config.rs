@@ -612,13 +612,11 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     required: false,
                 },
                 ConfigField {
-                    key: "github_redirect_url".to_string(),
-                    label: "GitHub OAuth Redirect URL".to_string(),
+                    key: "base_url".to_string(),
+                    label: "Site Base URL".to_string(),
                     field_type: "text".to_string(),
-                    value: std::env::var("GITHUB_REDIRECT_URL").unwrap_or_else(|_| {
-                        "http://localhost:3000/api/auth/github/callback".to_string()
-                    }),
-                    placeholder: "http://localhost:3000/api/auth/github/callback".to_string(),
+                    value: db_config.as_ref().and_then(|c| c.base_url.clone()).unwrap_or_default(),
+                    placeholder: "https://yourdomain.com (用于生成 OAuth 回调 URL)".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -871,10 +869,7 @@ async fn save_to_database(
                 "github_client_secret",
                 JsonValue::String(field.value.clone()),
             ),
-            "github_redirect_url" => (
-                "github_redirect_url",
-                JsonValue::String(field.value.clone()),
-            ),
+            "base_url" => ("base_url", JsonValue::String(field.value.clone())),
             "music_enabled" => {
                 let enabled = field.value == "true";
                 ("music_enabled", JsonValue::Bool(enabled))
@@ -1004,7 +999,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "site_favicon" => "SITE_FAVICON",
             "github_client_id" => "GITHUB_CLIENT_ID",
             "github_client_secret" => "GITHUB_CLIENT_SECRET",
-            "github_redirect_url" => "GITHUB_REDIRECT_URL",
+            "base_url" => "BASE_URL",
             "music_enabled" => "MUSIC_ENABLED",
             "music_source" => "MUSIC_SOURCE",
             "music_playlist_id" => "MUSIC_PLAYLIST_ID",

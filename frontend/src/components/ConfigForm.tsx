@@ -287,7 +287,7 @@ const ModernConfigForm: React.FC = () => {
     { id: 'platforms', label: t.config.platforms, icon: '🌐', section: 'platforms' },
     { id: 'data', label: t.config.data, icon: '💾', section: 'data' },
     { id: 'ai', label: t.config.ai, icon: '🤖', section: 'ai' },
-    { id: 'ui', label: t.config.ui, icon: '🎨', section: 'ui' },
+    { id: 'ui', label: t.config.basic, icon: '⚙️', section: 'ui' },
     { id: 'music', label: t.config.music, icon: '🎵', section: 'music' },
     { id: 'oauth', label: t.config.oauth, icon: '🔐', section: 'oauth' },
     { id: 'permissions', label: t.config.permissions, icon: '👥', section: 'permissions' },
@@ -323,9 +323,9 @@ const ModernConfigForm: React.FC = () => {
     items.push({
       type: 'section',
       section: 'ui',
-      title: t.config.ui,
-      description: t.config.uiDesc,
-      keywords: ['ui', '界面', '主题', '背景', '样式', 'theme']
+      title: t.config.basic,
+      description: t.config.basicDesc,
+      keywords: ['basic', '基础', '站点', '主题', '背景', '样式', 'theme', 'url']
     });
     
     // OAuth配置
@@ -1219,15 +1219,35 @@ const ModernConfigForm: React.FC = () => {
             >
               <div className="section-header">
                 <div className="section-header-left">
-                  <span className="section-icon icon-ui">🎨</span>
+                  <span className="section-icon icon-ui">⚙️</span>
                   <div>
-                    <h2 className="section-title">{t.config.uiConfigTitle}</h2>
-                    <p className="section-description">{t.config.uiConfigDesc}</p>
+                    <h2 className="section-title">{t.config.basicConfigTitle}</h2>
+                    <p className="section-description">{t.config.basicConfigDesc}</p>
                   </div>
                 </div>
               </div>
 
               <div className="config-form">
+                {/* 站点 URL 配置 */}
+                <div className="metadata-section">
+                  <h3 className="section-subtitle">🔗 {t.config.siteUrlConfig}</h3>
+                  <div className="config-field">
+                    <label htmlFor="base-url" className="field-label">
+                      {t.config.baseUrl}
+                    </label>
+                    <input
+                      id="base-url"
+                      type="text"
+                      value={config.ui_config.config_fields.find(f => f.key === 'base_url')?.value || ''}
+                      onChange={(e) => updateUiFieldValue('base_url', e.target.value)}
+                      placeholder={t.config.baseUrlPlaceholder}
+                      className="field-input"
+                    />
+                    <p className="field-hint">{t.config.baseUrlHint}</p>
+                  </div>
+                </div>
+
+                {/* 站点元数据 */}
                 <div className="metadata-section">
                   <h3 className="section-subtitle">🌐 {t.config.siteMetadata}</h3>
                   {config.ui_config.config_fields
@@ -1264,7 +1284,7 @@ const ModernConfigForm: React.FC = () => {
                 <div>
                   <h3 className="section-subtitle">🎨 {t.config.backgroundAndTheme}</h3>
                   {config.ui_config.config_fields
-                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !['site_title', 'site_description', 'site_favicon'].includes(field.key))
+                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !['site_title', 'site_description', 'site_favicon', 'base_url'].includes(field.key))
                     .map((field) => (
                       <div key={field.key} className="config-field">
                         <label htmlFor={`ui-${field.key}`} className="field-label">
@@ -1327,9 +1347,41 @@ const ModernConfigForm: React.FC = () => {
                   <p className="info-text">
                     1. {t.config.oauthGuideStep1} <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer">GitHub Developer Settings</a><br/>
                     2. {t.config.oauthGuideStep2}<br/>
-                    3. {t.config.oauthGuideStep3} <code className="inline-code">{API_URL}/api/auth/github/callback</code><br/>
+                    3. {t.config.oauthGuideStep3}<br/>
                     4. {t.config.oauthGuideStep4}
                   </p>
+                </div>
+
+                {/* 当前回调地址显示 */}
+                <div className="config-field">
+                  <label className="field-label">
+                    {t.config.currentCallbackUrl}
+                  </label>
+                  {(() => {
+                    const baseUrl = config.ui_config.config_fields.find(f => f.key === 'base_url')?.value;
+                    const callbackUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/api/auth/github/callback` : null;
+                    
+                    return callbackUrl ? (
+                      <div className="callback-url-display">
+                        <code className="inline-code callback-url-code">{callbackUrl}</code>
+                        <button
+                          type="button"
+                          className="copy-btn"
+                          onClick={() => {
+                            navigator.clipboard.writeText(callbackUrl);
+                          }}
+                          title="Copy"
+                        >
+                          📋
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="callback-url-not-configured">
+                        ⚠️ {t.config.callbackUrlNotConfigured}
+                      </div>
+                    );
+                  })()}
+                  <p className="field-hint">{t.config.currentCallbackUrlHint}</p>
                 </div>
 
                 <div className="config-field">
@@ -1363,18 +1415,6 @@ const ModernConfigForm: React.FC = () => {
                       }
                     }}
                     placeholder={t.config.githubClientSecretPlaceholder}
-                    className="field-input"
-                  />
-                </div>
-
-                <div className="config-field">
-                  <label htmlFor="github-redirect-url" className="field-label">{t.config.redirectUrl}</label>
-                  <input
-                    id="github-redirect-url"
-                    type="text"
-                    value={config.ui_config.config_fields.find(f => f.key === 'github_redirect_url')?.value || `${API_URL}/api/auth/github/callback`}
-                    onChange={(e) => updateUiFieldValue('github_redirect_url', e.target.value)}
-                    placeholder={`${API_URL}/api/auth/github/callback`}
                     className="field-input"
                   />
                 </div>
