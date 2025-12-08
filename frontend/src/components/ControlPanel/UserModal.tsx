@@ -1,7 +1,10 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { API_URL } from '../../config';
 import { getCSRFToken } from '../../utils/csrf';
 import { useI18n } from '../../contexts/I18nContext';
+import { listTapps, type TappListItem } from '../../tapp/services/TappApiService';
+import { useNavigate } from 'react-router-dom';
+import '../UserModal.css';
 
 interface User {
   username: string;
@@ -28,7 +31,7 @@ interface UserModalProps {
 
 /**
  * 用户信息弹窗组件（已登录状态）
- * 显示用户详细信息、修改密码、绑定GitHub等功能
+ * 全新设计：头像居中、信息整合、浮动关闭按钮
  */
 export const UserModal: React.FC<UserModalProps> = ({
   user,
@@ -40,7 +43,31 @@ export const UserModal: React.FC<UserModalProps> = ({
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [tapps, setTapps] = useState<TappListItem[]>([]);
+  const [tappsLoading, setTappsLoading] = useState(true);
   const { t } = useI18n();
+  const navigate = useNavigate();
+
+  // 加载 Tapp 列表
+  useEffect(() => {
+    const loadTapps = async () => {
+      try {
+        const list = await listTapps();
+        setTapps(list);
+      } catch (error) {
+        console.error('Failed to load tapps:', error);
+      } finally {
+        setTappsLoading(false);
+      }
+    };
+    loadTapps();
+  }, []);
+
+  // 获取最近使用的 Tapp（按 last_run_at 排序，取前3个）
+  const recentTapps = [...tapps]
+    .filter(t => t.last_run_at)
+    .sort((a, b) => new Date(b.last_run_at!).getTime() - new Date(a.last_run_at!).getTime())
+    .slice(0, 3);
 
   // 处理修改密码
   const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -70,7 +97,6 @@ export const UserModal: React.FC<UserModalProps> = ({
     setPasswordSubmitting(true);
 
     try {
-      // 获取 CSRF Token
       const csrfToken = await getCSRFToken(true);
       if (!csrfToken) {
         setPasswordError(t.userModal.cannotGetCsrf);
@@ -107,177 +133,230 @@ export const UserModal: React.FC<UserModalProps> = ({
     }
   };
 
+  const handleTappClick = (tappId: string) => {
+    onClose();
+    navigate(`/tapp/run/${tappId}`);
+  };
+
+  const handleViewAllTapps = () => {
+    onClose();
+    navigate('/tapp');
+  };
+
   return (
     <div className={`user-modal ${isClosing ? 'closing' : ''}`}>
-      <div className="user-modal-header">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">{t.userModal.title}</h3>
-        <button
-          onClick={onClose}
-          className="control-close-btn"
-          aria-label={t.common.close}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+      {/* 浮动关闭按钮 */}
+      <button
+        onClick={onClose}
+        className="user-modal-close-float"
+        aria-label={t.common.close}
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
 
-      <div className="user-modal-content">
-        <div className="user-profile-section max-w-md mx-auto">
-          <div className="user-profile-header">
-            <img
-              src={userInfo.avatar}
-              alt={userInfo.name}
-              className="user-profile-avatar"
-              onError={(e) => {
-                e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`;
-              }}
-            />
-            <div className="user-profile-info">
-              <h4 className="user-profile-name">{userInfo.name}</h4>
-              <p className="user-profile-platform">{t.userModal.from} {userInfo.platform}</p>
-            </div>
-          </div>
+      {/* 上部区域：用户信息（约60%） */}
+      <div className="user-modal-hero">
+        {/* 装饰背景 */}
+        <div className="user-modal-hero-bg" />
+        
+        {/* 头像 - 居中 */}
+        <div className="user-modal-avatar-wrapper">
+          <img
+            src={userInfo.avatar}
+            alt={userInfo.name}
+            className="user-modal-avatar-lg"
+            onError={(e) => {
+              e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}&size=128&background=6366f1&color=fff`;
+            }}
+          />
+          {/* 在线状态指示器 */}
+          <div className="user-modal-online-dot" />
+        </div>
 
-          <div className="user-profile-bio">
-            <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t.userModal.bio}</h5>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{userInfo.bio}</p>
-          </div>
-
-          <div className="user-profile-meta">
-            <div className="user-meta-item">
-              <span className="user-meta-label">{t.userModal.account}</span>
-              <span className="user-meta-value">{user.username}</span>
-            </div>
-            <div className="user-meta-item">
-              <span className="user-meta-label">{t.userModal.role}</span>
-              <span className="user-meta-value">
-                {user.is_admin ? t.userModal.admin : t.userModal.normalUser}
+        {/* 用户名和角色 */}
+        <div className="user-modal-identity">
+          <h3 className="user-modal-username">{userInfo.name}</h3>
+          <div className="user-modal-badges">
+            {/* 角色徽章 */}
+            <span className={`user-modal-badge ${user.is_admin ? 'badge-admin' : 'badge-user'}`}>
+              {user.is_admin ? '👑 Admin' : '👤 User'}
+            </span>
+            {/* 账户类型徽章 */}
+            <span className={`user-modal-badge ${user.auth_provider === 'github' ? 'badge-github' : 'badge-local'}`}>
+              {user.auth_provider === 'github' ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
+                  </svg>
+                  GitHub
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Local
+                </>
+              )}
+            </span>
+            {/* GitHub 绑定状态 */}
+            {user.auth_provider === 'local' && user.linked_github_id && (
+              <span className="user-modal-badge badge-linked">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                </svg>
+                {t.userModal.githubLinked}
               </span>
-            </div>
-            <div className="user-meta-item">
-              <span className="user-meta-label">{t.userModal.authMethod}</span>
-              <span className="user-meta-value">{user.auth_provider}</span>
-            </div>
-            {user.linked_github_id && (
-              <div className="user-meta-item">
-                <span className="user-meta-label">GitHub</span>
-                <span className="user-meta-value text-green-600 dark:text-green-400">{t.userModal.githubLinked}</span>
-              </div>
             )}
           </div>
+        </div>
 
-          {/* 绑定 GitHub 按钮 */}
+        {/* 简介 */}
+        {userInfo.bio && userInfo.bio !== t.userModal.defaultBio && (
+          <p className="user-modal-bio">{userInfo.bio}</p>
+        )}
+
+        {/* 操作按钮组 */}
+        <div className="user-modal-actions">
+          {/* 绑定 GitHub */}
           {user.auth_provider === 'local' && !user.linked_github_id && (
             <a
               href={`${API_URL}/api/auth/github/link`}
-              className="user-action-btn user-action-github"
+              className="user-modal-action-btn action-github"
             >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
               </svg>
               {t.userModal.bindGithub}
             </a>
           )}
 
-          {/* 修改密码按钮（仅本地账户且未绑定GitHub） */}
-          {user.auth_provider === 'local' && !user.linked_github_id && (
-            <>
-              {!showChangePassword ? (
-                <button
-                  onClick={() => setShowChangePassword(true)}
-                  className="user-action-btn user-action-secondary"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  {t.userModal.changePassword}
-                </button>
-              ) : (
-                <div className="change-password-form">
-                  <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">{t.userModal.changePassword}</h5>
-                  <form onSubmit={handleChangePassword} className="space-y-3">
-                    <div>
-                      <label htmlFor="old-password" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        {t.userModal.currentPassword}
-                      </label>
-                      <input
-                        type="password"
-                        id="old-password"
-                        name="old-password"
-                        required
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder={t.userModal.enterCurrentPassword}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="new-password" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        {t.userModal.newPassword}
-                      </label>
-                      <input
-                        type="password"
-                        id="new-password"
-                        name="new-password"
-                        required
-                        minLength={8}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder={t.userModal.atLeast8Chars}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="confirm-password" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        {t.userModal.confirmNewPassword}
-                      </label>
-                      <input
-                        type="password"
-                        id="confirm-password"
-                        name="confirm-password"
-                        required
-                        minLength={8}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder={t.userModal.enterPasswordAgain}
-                      />
-                    </div>
-                    {passwordError && (
-                      <div className="text-red-500 dark:text-red-400 text-xs">
-                        {passwordError}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        disabled={passwordSubmitting}
-                        className="flex-1 px-3 py-2 text-sm bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-lg transition-all disabled:opacity-50"
-                      >
-                        {passwordSubmitting ? t.userModal.changing : t.userModal.confirmChange}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowChangePassword(false);
-                          setPasswordError('');
-                        }}
-                        className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-neutral-800 dark:hover:bg-neutral-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-all"
-                      >
-                        {t.common.cancel}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-            </>
+          {/* 修改密码 */}
+          {user.auth_provider === 'local' && !user.linked_github_id && !showChangePassword && (
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="user-modal-action-btn action-password"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              {t.userModal.changePassword}
+            </button>
           )}
 
-          <button
-            onClick={onLogout}
-            className="user-logout-btn"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* 退出登录 */}
+          <button onClick={onLogout} className="user-modal-action-btn action-logout">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             {t.userModal.logout}
           </button>
         </div>
+
+        {/* 修改密码表单 */}
+        {showChangePassword && (
+          <div className="user-modal-password-form">
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <input
+                type="password"
+                name="old-password"
+                required
+                className="user-modal-input"
+                placeholder={t.userModal.currentPassword}
+              />
+              <input
+                type="password"
+                name="new-password"
+                required
+                minLength={8}
+                className="user-modal-input"
+                placeholder={t.userModal.newPassword}
+              />
+              <input
+                type="password"
+                name="confirm-password"
+                required
+                minLength={8}
+                className="user-modal-input"
+                placeholder={t.userModal.confirmNewPassword}
+              />
+              {passwordError && (
+                <p className="text-red-500 text-xs text-center">{passwordError}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={passwordSubmitting}
+                  className="flex-1 user-modal-action-btn action-confirm"
+                >
+                  {passwordSubmitting ? t.userModal.changing : t.userModal.confirmChange}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowChangePassword(false); setPasswordError(''); }}
+                  className="user-modal-action-btn action-cancel"
+                >
+                  {t.common.cancel}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+
+      {/* 下部区域：Tapp 信息（约40%） */}
+      <div className="user-modal-tapps">
+        <div className="user-modal-tapps-header">
+          <div className="user-modal-tapps-title">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span>Tapp</span>
+          </div>
+          {/* 已安装数 + 查看全部合并 */}
+          <button onClick={handleViewAllTapps} className="user-modal-tapps-count-btn" title={t.userModal.viewAllTapps || 'View all Tapps'}>
+            {tappsLoading ? (
+              <span className="user-modal-tapps-loading" />
+            ) : (
+              <>
+                <span className="user-modal-tapps-number">{tapps.length}</span>
+                <span className="user-modal-tapps-label">{t.userModal.installedApps || 'installed'}</span>
+                <svg className="user-modal-tapps-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* 最近使用的 Tapp */}
+        {!tappsLoading && recentTapps.length > 0 && (
+          <div className="user-modal-recent-tapps">
+            <p className="user-modal-recent-label">{t.userModal.recentlyUsed || 'Recently used'}</p>
+            <div className="user-modal-recent-list">
+              {recentTapps.map((tapp) => (
+                <button
+                  key={tapp.id}
+                  onClick={() => handleTappClick(tapp.id)}
+                  className="user-modal-tapp-item"
+                >
+                  <div className="user-modal-tapp-icon">
+                    {tapp.icon ? (
+                      <span>{tapp.icon}</span>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="user-modal-tapp-name">{tapp.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

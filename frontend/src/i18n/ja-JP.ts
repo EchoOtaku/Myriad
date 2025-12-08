@@ -608,7 +608,11 @@ export const jaJP: TranslationKeys = {
     admin: '👑 管理者',
     normalUser: '👤 一般ユーザー',
     authMethod: '認証方法',
+    localAccount: 'ローカルアカウント',
+    githubAccount: 'GitHubアカウント',
+    githubBinding: 'GitHub連携',
     githubLinked: '✓ 連携済み',
+    githubNotLinked: '未連携',
     bindGithub: 'GitHubアカウントを連携',
     changePassword: 'パスワード変更',
     currentPassword: '現在のパスワード',
@@ -629,6 +633,9 @@ export const jaJP: TranslationKeys = {
     pleaseLogin: 'まずログインしてください',
     unknownUser: '不明なユーザー',
     defaultBio: 'この人はとても怠惰で、自己紹介がありません',
+    installedApps: 'インストール済み',
+    recentlyUsed: '最近使用',
+    viewAllTapps: 'すべてのTappを見る',
   },
   
   // ウィジェットグリッド

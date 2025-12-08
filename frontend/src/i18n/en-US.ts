@@ -607,7 +607,11 @@ export const enUS: TranslationKeys = {
     admin: '👑 Admin',
     normalUser: '👤 User',
     authMethod: 'Auth Method',
+    localAccount: 'Local Account',
+    githubAccount: 'GitHub Account',
+    githubBinding: 'GitHub Binding',
     githubLinked: '✓ Linked',
+    githubNotLinked: 'Not Linked',
     bindGithub: 'Link GitHub Account',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',
@@ -628,6 +632,9 @@ export const enUS: TranslationKeys = {
     pleaseLogin: 'Please login',
     unknownUser: 'Unknown User',
     defaultBio: 'No bio available',
+    installedApps: 'installed',
+    recentlyUsed: 'Recently used',
+    viewAllTapps: 'View all Tapps',
   },
   
   // Widget Grid

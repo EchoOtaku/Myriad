@@ -608,7 +608,11 @@ export const zhCN: TranslationKeys = {
     admin: '👑 管理员',
     normalUser: '👤 普通用户',
     authMethod: '认证方式',
+    localAccount: '本地账户',
+    githubAccount: 'GitHub 账户',
+    githubBinding: 'GitHub 绑定',
     githubLinked: '✓ 已绑定',
+    githubNotLinked: '未绑定',
     bindGithub: '绑定 GitHub 账户',
     changePassword: '修改密码',
     currentPassword: '当前密码',
@@ -629,6 +633,9 @@ export const zhCN: TranslationKeys = {
     pleaseLogin: '请先登录',
     unknownUser: '未知用户',
     defaultBio: '这家伙很懒，没有介绍呢',
+    installedApps: '已安装',
+    recentlyUsed: '最近使用',
+    viewAllTapps: '查看全部 Tapp',
   },
   
   // 小组件网格

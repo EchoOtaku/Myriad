@@ -609,7 +609,11 @@ export interface TranslationKeys {
     admin: string;
     normalUser: string;
     authMethod: string;
+    localAccount: string;
+    githubAccount: string;
+    githubBinding: string;
     githubLinked: string;
+    githubNotLinked: string;
     bindGithub: string;
     changePassword: string;
     currentPassword: string;
@@ -630,6 +634,9 @@ export interface TranslationKeys {
     pleaseLogin: string;
     unknownUser: string;
     defaultBio: string;
+    installedApps: string;
+    recentlyUsed: string;
+    viewAllTapps: string;
   };
   
   // 小组件网格

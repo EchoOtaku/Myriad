@@ -7,6 +7,7 @@ import React, { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import { formatTime, getSongVipStatus, highlightText } from '../../utils/musicPlayer';
 import { UseMusicPlayerReturn } from '../../hooks/useMusicPlayer';
 import { useI18n } from '../../contexts/I18nContext';
+import '../MusicPlayer.css';
 
 interface MusicPlayerProps {
   player: UseMusicPlayerReturn;

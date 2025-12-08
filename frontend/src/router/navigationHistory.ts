@@ -7,8 +7,7 @@
 const ROUTE_HIERARCHY: Record<string, number> = {
   '/': 0,           // 首页
   '/library': 1,    // 资料库
-  '/account': 2,    // 账户
-  '/config': 2,     // 配置（同级）
+  '/config': 2,     // 配置
   '/login': 3,      // 登录
   '/setup': 3,      // 设置（同级）
   '/details': 4,    // 详情

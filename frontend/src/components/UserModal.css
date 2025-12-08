@@ -1,0 +1,941 @@
+/* ==========================================
+   用户信息按钮样式
+   ========================================== */
+.user-info-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+  text-align: left;
+  /* 根据内容自适应宽度，不设置固定宽度 */
+  width: auto;
+  min-width: 0;
+  max-width: 66%; /* 为关闭按钮留空间 */
+}
+
+.user-info-button:hover {
+  background: rgba(0, 0, 0, 0.04);
+  transform: translateX(2px);
+}
+
+html.dark .user-info-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.user-info-button:active {
+  transform: scale(0.98);
+}
+
+/* ==========================================
+   音乐播放器小组件动画
+   ========================================== */
+
+@keyframes music-bar {
+  0%, 100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-music-bar {
+  animation: music-bar 0.8s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+/* ==========================================
+   用户弹窗样式
+   ========================================== */
+.user-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  width: 90%;
+  max-width: 400px;
+  max-height: 85vh;
+  background: rgba(255, 255, 255, 0.75);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 25px 80px rgba(0, 0, 0, 0.15),
+    0 10px 30px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  z-index: 10001;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* 使用 both 确保动画前后都应用关键帧状态 */
+  animation: userModalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.user-modal.closing {
+  animation: userModalSlideOut 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+html.dark .user-modal {
+  background: rgba(30, 30, 35, 0.65);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 25px 80px rgba(0, 0, 0, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@keyframes userModalSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -45%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes userModalSlideOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -55%) scale(0.92);
+  }
+}
+
+/* 浮动关闭按钮 */
+.user-modal-close-float {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .user-modal-close-float {
+  background: rgba(50, 50, 55, 0.9);
+  color: #9ca3af;
+}
+
+.user-modal-close-float:hover {
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent);
+  color: var(--color-primary, #94a3b8);
+  transform: rotate(90deg) scale(1.1);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+}
+
+.user-modal-close-float:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+/* 上部区域 - Hero */
+.user-modal-hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 1.5rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 装饰背景 */
+.user-modal-hero-bg {
+  position: absolute;
+  top: -50%;
+  left: -20%;
+  right: -20%;
+  height: 200%;
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--color-primary, #94a3b8) 5%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 30% 20%, color-mix(in srgb, var(--color-secondary, #94a3b8) 3%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 70% 20%, color-mix(in srgb, var(--color-accent, #cbd5e1) 3%, transparent) 0%, transparent 50%);
+  pointer-events: none;
+  animation: heroGlow 8s ease-in-out infinite alternate;
+}
+
+@keyframes heroGlow {
+  0% { opacity: 0.4; transform: translateY(0); }
+  100% { opacity: 0.6; transform: translateY(-10px); }
+}
+
+html.dark .user-modal-hero-bg {
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--color-primary, #94a3b8) 6%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 30% 20%, color-mix(in srgb, var(--color-secondary, #94a3b8) 4%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 70% 20%, color-mix(in srgb, var(--color-accent, #cbd5e1) 4%, transparent) 0%, transparent 50%);
+}
+
+/* 头像容器 */
+.user-modal-avatar-wrapper {
+  position: relative;
+  margin-bottom: 1rem;
+  animation: avatarFloat 6s ease-in-out infinite;
+}
+
+@keyframes avatarFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.user-modal-avatar-lg {
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid white;
+  box-shadow: 
+    0 8px 32px color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+html.dark .user-modal-avatar-lg {
+  border-color: rgba(50, 50, 55, 1);
+  box-shadow: 
+    0 8px 32px color-mix(in srgb, var(--color-primary, #94a3b8) 35%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.user-modal-avatar-lg:hover {
+  transform: scale(1.05);
+  box-shadow: 
+    0 12px 40px color-mix(in srgb, var(--color-primary, #94a3b8) 35%, transparent),
+    0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* 在线状态指示器 */
+.user-modal-online-dot {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 1rem;
+  height: 1rem;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.5);
+  animation: onlinePulse 2s ease-in-out infinite;
+}
+
+html.dark .user-modal-online-dot {
+  border-color: rgba(30, 30, 35, 1);
+}
+
+@keyframes onlinePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+/* 用户身份信息 */
+.user-modal-identity {
+  text-align: center;
+  margin-bottom: 0.75rem;
+  position: relative;
+  z-index: 1;
+}
+
+.user-modal-username {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+html.dark .user-modal-username {
+  color: #f3f4f6;
+}
+
+/* 徽章组 */
+.user-modal-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.user-modal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.user-modal-badge:hover {
+  transform: translateY(-1px);
+}
+
+.badge-admin {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+}
+
+html.dark .badge-admin {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%);
+  color: #fcd34d;
+}
+
+.badge-user {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 15%, transparent) 100%);
+  color: var(--color-primary, #64748b);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent);
+}
+
+html.dark .badge-user {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent) 100%);
+  color: var(--color-accent, #cbd5e1);
+}
+
+.badge-github {
+  background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(55, 65, 81, 0.3);
+}
+
+html.dark .badge-github {
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+}
+
+.badge-local {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+html.dark .badge-local {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+  color: #93c5fd;
+}
+
+.badge-linked {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #047857;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+}
+
+html.dark .badge-linked {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%);
+  color: #6ee7b7;
+}
+
+/* 简介 */
+.user-modal-bio {
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  max-width: 280px;
+  margin: 0 auto 1rem;
+  line-height: 1.5;
+  position: relative;
+  z-index: 1;
+}
+
+html.dark .user-modal-bio {
+  color: #9ca3af;
+}
+
+/* 操作按钮组 */
+.user-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+  position: relative;
+  z-index: 1;
+}
+
+.user-modal-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-decoration: none;
+}
+
+.action-github {
+  background: rgba(36, 41, 46, 0.15);
+  color: #24292e;
+  border: 1px solid rgba(36, 41, 46, 0.2);
+  box-shadow: 0 2px 8px rgba(36, 41, 46, 0.1);
+}
+
+html.dark .action-github {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.action-github:hover {
+  transform: translateY(-2px);
+  background: rgba(36, 41, 46, 0.25);
+  box-shadow: 0 6px 20px rgba(36, 41, 46, 0.15);
+}
+
+html.dark .action-github:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.action-password {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent) 100%);
+  color: var(--color-primary, #64748b);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent);
+}
+
+.action-password:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 30%, transparent) 100%);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent);
+}
+
+.action-logout {
+  background: rgba(0, 0, 0, 0.04);
+  color: #6b7280;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+html.dark .action-logout {
+  background: rgba(255, 255, 255, 0.06);
+  color: #9ca3af;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.action-logout:hover {
+  transform: translateY(-2px);
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+html.dark .action-logout:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.action-confirm {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 25%, transparent) 100%);
+  color: var(--color-primary, #64748b);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent);
+}
+
+.action-confirm:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 35%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 35%, transparent) 100%);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent);
+}
+
+.action-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.action-cancel {
+  background: rgba(0, 0, 0, 0.05);
+  color: #6b7280;
+}
+
+html.dark .action-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+}
+
+.action-cancel:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+html.dark .action-cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 修改密码表单 */
+.user-modal-password-form {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.user-modal-input {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  color: #1f2937;
+  transition: all 0.2s ease;
+}
+
+html.dark .user-modal-input {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+}
+
+.user-modal-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #94a3b8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+}
+
+.user-modal-input::placeholder {
+  color: #9ca3af;
+}
+
+/* 下部区域 - Tapp */
+.user-modal-tapps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.5rem 1.5rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html.dark .user-modal-tapps {
+  background: rgba(0, 0, 0, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.user-modal-tapps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.user-modal-tapps-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+html.dark .user-modal-tapps-title {
+  color: #e5e7eb;
+}
+
+.user-modal-tapps-count-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.user-modal-tapps-count-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+}
+
+html.dark .user-modal-tapps-count-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent);
+}
+
+.user-modal-tapps-count-btn:hover .user-modal-tapps-arrow {
+  transform: translateX(2px);
+}
+
+.user-modal-tapps-arrow {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--color-primary, #94a3b8);
+  opacity: 0.6;
+  transition: all 0.25s ease;
+}
+
+.user-modal-tapps-count-btn:hover .user-modal-tapps-arrow {
+  opacity: 1;
+}
+
+.user-modal-tapps-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 30%, transparent) 100%);
+  color: var(--color-primary, #64748b);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+}
+
+.user-modal-tapps-label {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.user-modal-tapps-loading {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
+  border-top-color: var(--color-primary, #94a3b8);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 最近使用的 Tapp */
+.user-modal-recent-tapps {
+  margin-bottom: 0.75rem;
+}
+
+.user-modal-recent-label {
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.user-modal-recent-list {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.user-modal-tapp-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0.875rem;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  min-width: 4.5rem;
+}
+
+html.dark .user-modal-tapp-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.user-modal-tapp-item:hover {
+  transform: translateY(-3px);
+  background: white;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .user-modal-tapp-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.user-modal-tapp-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 15%, transparent) 100%);
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  color: var(--color-primary, #64748b);
+}
+
+html.dark .user-modal-tapp-icon {
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent) 0%, 
+    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent) 100%);
+  color: var(--color-accent, #cbd5e1);
+}
+
+.user-modal-tapp-name {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #4b5563;
+  max-width: 4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dark .user-modal-tapp-name {
+  color: #d1d5db;
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .user-modal {
+    width: 95%;
+    max-height: 90vh;
+    border-radius: 1.5rem;
+  }
+
+  .user-modal-hero {
+    padding: 2rem 1.25rem 1.25rem;
+  }
+
+  .user-modal-avatar-lg {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+
+  .user-modal-username {
+    font-size: 1.25rem;
+  }
+
+  .user-modal-tapps {
+    padding: 1rem 1.25rem 1.25rem;
+  }
+
+  .user-modal-action-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* ==========================================
+   用户弹窗遮罩层
+   ========================================== */
+.user-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  animation: overlayFadeIn 0.3s ease backwards;
+}
+
+.user-modal-overlay.closing {
+  animation: overlayFadeOut 0.25s ease forwards;
+}
+
+html.dark .user-modal-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes overlayFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ==========================================
+   仅登录弹窗样式
+   ========================================== */
+.user-modal-login-only {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  width: 90%;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 25px 80px rgba(0, 0, 0, 0.15),
+    0 10px 30px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  z-index: 10001;
+  padding: 2rem;
+  animation: userModalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.user-modal-login-only.closing {
+  animation: userModalSlideOut 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+html.dark .user-modal-login-only {
+  background: rgba(30, 30, 35, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 25px 80px rgba(0, 0, 0, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* 登录弹窗关闭按钮 */
+.login-close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  border-radius: 50%;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html.dark .login-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #9ca3af;
+}
+
+.login-close-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 25%, transparent);
+  color: var(--color-primary, #94a3b8);
+  transform: rotate(90deg) scale(1.1);
+}
+
+.login-close-btn:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+/* 弹窗内部的容器透明化，避免双重背景 */
+.user-modal-login-only > div {
+  max-width: none;
+  width: 100%;
+}
+
+/* 覆盖 tailwind 的 glass rounded-2xl shadow-xl p-8 */
+.user-modal-login-only .glass,
+.user-modal-login-only .rounded-2xl,
+.user-modal-login-only .shadow-xl,
+.user-modal-login-only .p-8 {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+
+/* 恢复表单内部的间距 */
+.user-modal-login-only .space-y-4 > * + * {
+  margin-top: 1rem;
+}
+
+html.dark .user-modal-login-only .glass {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* 暗色模式下的表单样式优化 */
+html.dark .user-modal-login-only label {
+  color: #e5e7eb;
+}
+
+html.dark .user-modal-login-only input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #f3f4f6;
+}
+
+html.dark .user-modal-login-only input::placeholder {
+  color: #9ca3af;
+}
+
+html.dark .user-modal-login-only input:focus {
+  border-color: var(--color-primary, #94a3b8);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+}
+
+/* 暗色模式下分隔线 */
+html.dark .user-modal-login-only .border-t {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html.dark .user-modal-login-only .text-gray-500 {
+  color: #9ca3af;
+}
+
+html.dark .user-modal-login-only .bg-white {
+  background: rgba(30, 30, 35, 0.85);
+}
+
+/* 暗色模式下错误提示 */
+html.dark .user-modal-login-only .bg-red-50 {
+  background: rgba(220, 38, 38, 0.15);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+html.dark .user-modal-login-only .text-red-800 {
+  color: #fca5a5;
+}

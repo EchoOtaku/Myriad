@@ -243,6 +243,6 @@ export function initTransitionSystem(): void {
   animatePageEnter();
 
   // 预加载常用页面
-  const commonPages = ['/', '/config', '/account', '/login'];
+  const commonPages = ['/', '/config', '/login'];
   preloadPages(commonPages);
 }

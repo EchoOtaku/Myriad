@@ -478,7 +478,7 @@ export function formatTime(seconds: number): string {
 /**
  * 检查歌曲是否为VIP或试听版本
  */
-export function getSongVipStatus(song: Song): {
+export function getSongVipStatus(song: { isVip?: boolean; isTrial?: boolean }): {
   isVip: boolean;
   isTrial: boolean;
   displayText: string;

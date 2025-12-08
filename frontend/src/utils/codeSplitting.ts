@@ -60,9 +60,6 @@ export const routeComponents = {
   
   // Login - 登录页
   login: lazyWithPreload(() => import('../views/Login')),
-  
-  // Account - 账户页
-  account: lazyWithPreload(() => import('../views/Account')),
 };
 
 /**
