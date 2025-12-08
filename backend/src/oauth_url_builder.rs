@@ -14,21 +14,19 @@ impl OAuthUrlBuilder {
     /// 获取GitHub OAuth回调URL
     ///
     /// # 优先级
-    /// 1. `GITHUB_REDIRECT_URL` - 显式配置的回调URL（推荐用于生产环境）
-    /// 2. 动态检测 - 从请求头检测 (X-Forwarded-Proto + X-Forwarded-Host + Host)
+    /// 1. `GITHUB_REDIRECT_URL` - 显式配置的回调URL（完全自定义）
+    /// 2. `FRONTEND_URL` + "/api/auth/github/callback" - 前后端同域时自动生成
     /// 3. `BASE_URL` + "/api/auth/github/callback" - 基础URL配置
-    /// 4. 开发环境默认值 - http://localhost:3000/api/auth/github/callback
+    /// 4. 动态检测 - 从请求头检测 (X-Forwarded-Proto + Host)
+    /// 5. 开发环境默认值 - http://localhost:3000/api/auth/github/callback
     ///
     /// # 生产环境最佳实践
     /// ```bash
-    /// # 方式1：显式配置（最安全，推荐）
+    /// # 推荐：只配置 FRONTEND_URL，会自动生成正确的回调URL
+    /// FRONTEND_URL=https://yourdomain.com
+    ///
+    /// # 或者：完全自定义回调URL
     /// GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback
-    ///
-    /// # 方式2：使用基础URL（适合多环境）
-    /// BASE_URL=https://yourdomain.com
-    ///
-    /// # 方式3：依赖反向代理头（Nginx/Caddy等）
-    /// # 确保代理配置正确转发请求头
     /// ```
     pub fn get_github_redirect_url(headers: Option<&HeaderMap>) -> String {
         // 1. 优先使用显式配置的回调URL
@@ -39,11 +37,12 @@ impl OAuthUrlBuilder {
             }
         }
 
-        // 2. 尝试从请求头动态检测（支持反向代理）
-        if let Some(headers) = headers {
-            if let Some(url) = Self::detect_url_from_headers(headers) {
+        // 2. 使用 FRONTEND_URL 配置（前后端同域时，这是最常用的配置）
+        if let Ok(frontend_url) = env::var("FRONTEND_URL") {
+            if !frontend_url.is_empty() && frontend_url != "http://localhost:4321" {
+                let url = frontend_url.trim_end_matches('/');
                 let redirect_url = format!("{}/api/auth/github/callback", url);
-                tracing::debug!("Detected redirect URL from headers: {}", redirect_url);
+                tracing::debug!("Using FRONTEND_URL for redirect: {}", redirect_url);
                 return redirect_url;
             }
         }
@@ -54,6 +53,15 @@ impl OAuthUrlBuilder {
                 let url = base_url.trim_end_matches('/');
                 let redirect_url = format!("{}/api/auth/github/callback", url);
                 tracing::debug!("Using BASE_URL: {}", redirect_url);
+                return redirect_url;
+            }
+        }
+
+        // 4. 尝试从请求头动态检测（支持反向代理，作为最后手段）
+        if let Some(headers) = headers {
+            if let Some(url) = Self::detect_url_from_headers(headers) {
+                let redirect_url = format!("{}/api/auth/github/callback", url);
+                tracing::debug!("Detected redirect URL from headers: {}", redirect_url);
                 return redirect_url;
             }
         }
@@ -187,7 +195,9 @@ impl OAuthUrlBuilder {
                 redirect_url
             );
             tracing::warn!("   For production, please configure:");
-            tracing::warn!("   - GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback");
+            tracing::warn!(
+                "   - GITHUB_REDIRECT_URL=https://yourdomain.com/api/auth/github/callback"
+            );
             tracing::warn!("   - Or BASE_URL=https://yourdomain.com");
         }
 
@@ -207,11 +217,9 @@ impl OAuthUrlBuilder {
         // 生产环境检查：不应该使用 localhost
         if let Ok(env) = env::var("ENVIRONMENT") {
             if (env == "production" || env == "prod") && redirect_url.contains("localhost") {
-                return Err(
-                    "Production environment should not use localhost URLs. \
+                return Err("Production environment should not use localhost URLs. \
                     Please set GITHUB_REDIRECT_URL or BASE_URL to your domain."
-                        .to_string(),
-                );
+                    .to_string());
             }
         }
 
@@ -227,7 +235,10 @@ mod tests {
 
     #[test]
     fn test_explicit_redirect_url() {
-        env::set_var("GITHUB_REDIRECT_URL", "https://example.com/api/auth/github/callback");
+        env::set_var(
+            "GITHUB_REDIRECT_URL",
+            "https://example.com/api/auth/github/callback",
+        );
         let url = OAuthUrlBuilder::get_github_redirect_url(None);
         assert_eq!(url, "https://example.com/api/auth/github/callback");
         env::remove_var("GITHUB_REDIRECT_URL");
