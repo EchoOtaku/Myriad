@@ -631,9 +631,11 @@ export const enUS: TranslationKeys = {
     logout: 'Logout',
     pleaseLogin: 'Please login',
     unknownUser: 'Unknown User',
+    unknownPlatform: 'Unknown',
     defaultBio: 'No bio available',
     installedApps: 'installed',
     recentlyUsed: 'Recently used',
+    noRecentTapps: 'No recent apps',
     viewAllTapps: 'View all Tapps',
   },
   

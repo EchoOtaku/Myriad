@@ -39,8 +39,40 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [showUserModal, setShowUserModal] = useState(false);
-  const [isUserModalClosing, setIsUserModalClosing] = useState(false);
+  
+  // 弹窗状态机：'closed' -> 'mounting' -> 'visible' -> 'closing' -> 'closed'
+  const [modalState, setModalState] = useState<'closed' | 'mounting' | 'visible' | 'closing'>('closed');
+
+  // 处理弹窗状态机转换
+  useEffect(() => {
+    if (modalState === 'mounting') {
+      // mounting 阶段：DOM 已渲染但不可见，等待布局稳定后进入 visible
+      const timer = setTimeout(() => {
+        setModalState('visible');
+      }, 16); // 一帧时间
+      return () => clearTimeout(timer);
+    }
+    
+    if (modalState === 'closing') {
+      // closing 阶段：播放关闭动画后进入 closed
+      const timer = setTimeout(() => {
+        setModalState('closed');
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [modalState]);
+
+  // 滚动锁定
+  useEffect(() => {
+    if (modalState !== 'closed') {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [modalState]);
 
   // 同步 AuthContext 的用户信息
   useEffect(() => {
@@ -50,19 +82,6 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
       fetchUserInfo();
     }
   }, [authIsAuthenticated, authUser]);
-
-  // 用户弹窗滚动锁定
-  useEffect(() => {
-    if (showUserModal) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [showUserModal]);
 
   // 获取平台用户信息
   const fetchUserInfo = useCallback(async () => {
@@ -75,24 +94,35 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
             name: profileData.user_info.name || t.userModal.unknownUser,
             avatar: profileData.user_info.avatar || '',
             bio: profileData.user_info.bio || t.userModal.defaultBio,
-            platform: profileData.user_info.platform || 'Unknown'
+            platform: profileData.user_info.platform || t.userModal.unknownPlatform
           });
         }
       }
     } catch (error) {
       // 静默处理错误
     }
-  }, []);
+  }, [t]);
 
-  // 监听登录成功事件（使用 AuthContext 自动处理）
-  
+  // 打开弹窗
+  const openModal = useCallback(() => {
+    if (modalState === 'closed') {
+      setModalState('mounting');
+    }
+  }, [modalState]);
+
+  // 关闭弹窗
+  const closeModal = useCallback(() => {
+    if (modalState === 'visible' || modalState === 'mounting') {
+      setModalState('closing');
+    }
+  }, [modalState]);
+
+  // 监听登录成功事件
   useEffect(() => {
     const handleLoginSuccess = () => {
-      handleUserModalClose();
-      // 登录成功后清除缓存（AuthContext 会自动更新用户信息）
+      closeModal();
       invalidateAuthCache();
       invalidateUserInfoCache();
-      // 登录成功后立即获取 CSRF Token（强制刷新）
       getCSRFToken(true).catch(console.warn);
     };
 
@@ -100,34 +130,23 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     return () => {
       window.removeEventListener('auth-login-success', handleLoginSuccess);
     };
-  }, []);
+  }, [closeModal]);
 
   // 监听打开用户弹窗事件（从其他组件触发）
   useEffect(() => {
     const handleOpenUserModal = () => {
-      setIsUserModalClosing(false);
-      setShowUserModal(true);
+      openModal();
     };
 
     window.addEventListener('open-user-modal', handleOpenUserModal);
     return () => {
       window.removeEventListener('open-user-modal', handleOpenUserModal);
     };
-  }, []);
+  }, [openModal]);
 
   // 处理用户信息区域点击
   const handleUserInfoClick = () => {
-    setIsUserModalClosing(false);
-    setShowUserModal(true);
-  };
-
-  // 处理用户弹窗关闭
-  const handleUserModalClose = () => {
-    setIsUserModalClosing(true);
-    setTimeout(() => {
-      setShowUserModal(false);
-      setIsUserModalClosing(false);
-    }, 300);
+    openModal();
   };
 
   // 处理退出登录
@@ -215,22 +234,26 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
         )}
       </button>
 
-      {/* 用户信息/登录弹窗 - 使用 Portal 渲染到 body，避免 transform 影响 fixed 定位 */}
-      {showUserModal && createPortal(
+      {/* 用户信息/登录弹窗 - 使用 Portal 渲染到 body */}
+      {modalState !== 'closed' && createPortal(
         <>
-          <div className={`user-modal-overlay ${isUserModalClosing ? 'closing' : ''}`} onClick={handleUserModalClose} />
+          <div 
+            className={`user-modal-overlay ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`} 
+            onClick={closeModal} 
+          />
           {isAuthenticated && user && userInfo ? (
             <UserModal
               user={user}
               userInfo={userInfo}
-              isClosing={isUserModalClosing}
-              onClose={handleUserModalClose}
+              isClosing={modalState === 'closing'}
+              canAnimate={modalState === 'visible'}
+              onClose={closeModal}
               onLogout={handleLogout}
             />
           ) : (
-            <div className={`user-modal-login-only ${isUserModalClosing ? 'closing' : ''}`}>
+            <div className={`user-modal-login-only ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}>
               <button
-                onClick={handleUserModalClose}
+                onClick={closeModal}
                 className="login-close-btn"
                 aria-label={t.common.close}
               >

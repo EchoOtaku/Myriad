@@ -53,7 +53,6 @@ html.dark .user-info-button:hover {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) scale(1);
   width: 90%;
   max-width: 400px;
   max-height: 85vh;
@@ -70,12 +69,34 @@ html.dark .user-info-button:hover {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* 使用 both 确保动画前后都应用关键帧状态 */
-  animation: userModalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  /* 初始隐藏状态 */
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -50%) scale(0.92);
+  /* 初始状态不设置 transition，避免首次渲染时触发过渡 */
+  pointer-events: none;
 }
 
+/* 可见状态 - 只在这里启用 transition */
+.user-modal.animate-in {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+  transition: opacity 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              visibility 0s linear 0s;
+}
+
+/* 关闭状态 */
 .user-modal.closing {
-  animation: userModalSlideOut 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+  opacity: 0;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(0.92);
+  transition: opacity 0.25s ease-out,
+              transform 0.25s ease-out,
+              visibility 0s linear 0.25s;
+  pointer-events: none;
 }
 
 html.dark .user-modal {
@@ -85,28 +106,6 @@ html.dark .user-modal {
     0 25px 80px rgba(0, 0, 0, 0.35),
     0 10px 30px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-@keyframes userModalSlideIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -45%) scale(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-@keyframes userModalSlideOut {
-  from {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate(-50%, -55%) scale(0.92);
-  }
 }
 
 /* 浮动关闭按钮 */
@@ -532,12 +531,14 @@ html.dark .user-modal-input {
 
 /* 下部区域 - Tapp */
 .user-modal-tapps {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   padding: 1rem 1.5rem 1.5rem;
   background: rgba(0, 0, 0, 0.02);
   border-top: 1px solid rgba(0, 0, 0, 0.06);
+  /* 固定最小高度，防止 Tapp 加载导致高度变化 */
+  min-height: 120px;
 }
 
 html.dark .user-modal-tapps {
@@ -720,6 +721,43 @@ html.dark .user-modal-tapp-name {
   color: #d1d5db;
 }
 
+/* Tapp 骨架屏加载状态 */
+.user-modal-tapp-skeleton {
+  min-width: 4.5rem;
+  min-height: 4rem;
+  background: linear-gradient(90deg, 
+    rgba(0, 0, 0, 0.04) 25%, 
+    rgba(0, 0, 0, 0.08) 50%, 
+    rgba(0, 0, 0, 0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+html.dark .user-modal-tapp-skeleton {
+  background: linear-gradient(90deg, 
+    rgba(255, 255, 255, 0.04) 25%, 
+    rgba(255, 255, 255, 0.08) 50%, 
+    rgba(255, 255, 255, 0.04) 75%);
+  background-size: 200% 100%;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* 无最近使用时的空状态 */
+.user-modal-recent-empty {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  padding: 0.5rem;
+}
+
+html.dark .user-modal-recent-empty {
+  color: #6b7280;
+}
+
 /* 移动端适配 */
 @media (max-width: 640px) {
   .user-modal {
@@ -761,40 +799,41 @@ html.dark .user-modal-tapp-name {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
   z-index: 10000;
-  animation: overlayFadeIn 0.3s ease backwards;
+  /* 初始隐藏状态 */
+  opacity: 0;
+  visibility: hidden;
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
+  /* 初始状态不设置 transition */
 }
 
+/* 可见状态 - 只在这里启用 transition */
+.user-modal-overlay.animate-in {
+  opacity: 1;
+  visibility: visible;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: opacity 0.3s ease,
+              backdrop-filter 0.3s ease,
+              -webkit-backdrop-filter 0.3s ease,
+              visibility 0s linear 0s;
+}
+
+/* 关闭状态 */
 .user-modal-overlay.closing {
-  animation: overlayFadeOut 0.25s ease forwards;
+  opacity: 0;
+  visibility: visible;
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
+  transition: opacity 0.25s ease,
+              backdrop-filter 0.25s ease,
+              -webkit-backdrop-filter 0.25s ease,
+              visibility 0s linear 0.25s;
 }
 
 html.dark .user-modal-overlay {
   background: rgba(0, 0, 0, 0.5);
-}
-
-@keyframes overlayFadeIn {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0);
-    -webkit-backdrop-filter: blur(0);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-  }
-}
-
-@keyframes overlayFadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 /* ==========================================
@@ -804,7 +843,6 @@ html.dark .user-modal-overlay {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) scale(1);
   width: 90%;
   max-width: 400px;
   background: rgba(255, 255, 255, 0.95);
@@ -818,11 +856,34 @@ html.dark .user-modal-overlay {
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
   z-index: 10001;
   padding: 2rem;
-  animation: userModalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  /* 初始隐藏状态 */
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -50%) scale(0.92);
+  /* 初始状态不设置 transition */
+  pointer-events: none;
 }
 
+/* 可见状态 - 只在这里启用 transition */
+.user-modal-login-only.animate-in {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+  transition: opacity 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              visibility 0s linear 0s;
+}
+
+/* 关闭状态 */
 .user-modal-login-only.closing {
-  animation: userModalSlideOut 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+  opacity: 0;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(0.92);
+  transition: opacity 0.25s ease-out,
+              transform 0.25s ease-out,
+              visibility 0s linear 0.25s;
+  pointer-events: none;
 }
 
 html.dark .user-modal-login-only {

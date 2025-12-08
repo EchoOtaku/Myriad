@@ -632,9 +632,11 @@ export const jaJP: TranslationKeys = {
     logout: 'ログアウト',
     pleaseLogin: 'まずログインしてください',
     unknownUser: '不明なユーザー',
+    unknownPlatform: '不明',
     defaultBio: 'この人はとても怠惰で、自己紹介がありません',
     installedApps: 'インストール済み',
     recentlyUsed: '最近使用',
+    noRecentTapps: '最近使用したアプリはありません',
     viewAllTapps: 'すべてのTappを見る',
   },
   

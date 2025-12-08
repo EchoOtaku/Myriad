@@ -633,9 +633,11 @@ export interface TranslationKeys {
     logout: string;
     pleaseLogin: string;
     unknownUser: string;
+    unknownPlatform: string;
     defaultBio: string;
     installedApps: string;
     recentlyUsed: string;
+    noRecentTapps: string;
     viewAllTapps: string;
   };
   

@@ -4,6 +4,7 @@ import { getCSRFToken } from '../../utils/csrf';
 import { useI18n } from '../../contexts/I18nContext';
 import { listTapps, type TappListItem } from '../../tapp/services/TappApiService';
 import { useNavigate } from 'react-router-dom';
+import { SiAppstore } from '@lib/icons';
 import '../UserModal.css';
 
 interface User {
@@ -25,6 +26,7 @@ interface UserModalProps {
   user: User;
   userInfo: UserInfo;
   isClosing: boolean;
+  canAnimate: boolean;
   onClose: () => void;
   onLogout: () => void;
 }
@@ -37,6 +39,7 @@ export const UserModal: React.FC<UserModalProps> = ({
   user,
   userInfo,
   isClosing,
+  canAnimate,
   onClose,
   onLogout,
 }) => {
@@ -144,7 +147,7 @@ export const UserModal: React.FC<UserModalProps> = ({
   };
 
   return (
-    <div className={`user-modal ${isClosing ? 'closing' : ''}`}>
+    <div className={`user-modal ${canAnimate ? 'animate-in' : 'pre-animate'} ${isClosing ? 'closing' : ''}`}>
       {/* 浮动关闭按钮 */}
       <button
         onClick={onClose}
@@ -310,9 +313,7 @@ export const UserModal: React.FC<UserModalProps> = ({
       <div className="user-modal-tapps">
         <div className="user-modal-tapps-header">
           <div className="user-modal-tapps-title">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-            </svg>
+            <SiAppstore className="w-4 h-4" />
             <span>Tapp</span>
           </div>
           {/* 已安装数 + 查看全部合并 */}
@@ -331,12 +332,19 @@ export const UserModal: React.FC<UserModalProps> = ({
           </button>
         </div>
 
-        {/* 最近使用的 Tapp */}
-        {!tappsLoading && recentTapps.length > 0 && (
-          <div className="user-modal-recent-tapps">
-            <p className="user-modal-recent-label">{t.userModal.recentlyUsed || 'Recently used'}</p>
-            <div className="user-modal-recent-list">
-              {recentTapps.map((tapp) => (
+        {/* 最近使用的 Tapp - 始终渲染容器，避免高度跳变 */}
+        <div className="user-modal-recent-tapps">
+          <p className="user-modal-recent-label">{t.userModal.recentlyUsed || 'Recently used'}</p>
+          <div className="user-modal-recent-list">
+            {tappsLoading ? (
+              // 加载中显示骨架屏
+              <>
+                <div className="user-modal-tapp-item user-modal-tapp-skeleton" />
+                <div className="user-modal-tapp-item user-modal-tapp-skeleton" />
+                <div className="user-modal-tapp-item user-modal-tapp-skeleton" />
+              </>
+            ) : recentTapps.length > 0 ? (
+              recentTapps.map((tapp) => (
                 <button
                   key={tapp.id}
                   onClick={() => handleTappClick(tapp.id)}
@@ -353,10 +361,13 @@ export const UserModal: React.FC<UserModalProps> = ({
                   </div>
                   <span className="user-modal-tapp-name">{tapp.name}</span>
                 </button>
-              ))}
-            </div>
+              ))
+            ) : (
+              // 无最近使用时显示空状态
+              <span className="user-modal-recent-empty">{t.userModal.noRecentTapps || 'No recent apps'}</span>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

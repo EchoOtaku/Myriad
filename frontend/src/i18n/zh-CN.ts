@@ -632,9 +632,11 @@ export const zhCN: TranslationKeys = {
     logout: '退出登录',
     pleaseLogin: '请先登录',
     unknownUser: '未知用户',
+    unknownPlatform: '未知',
     defaultBio: '这家伙很懒，没有介绍呢',
     installedApps: '已安装',
     recentlyUsed: '最近使用',
+    noRecentTapps: '暂无最近使用',
     viewAllTapps: '查看全部 Tapp',
   },
   
