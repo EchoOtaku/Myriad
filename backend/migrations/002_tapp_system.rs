@@ -421,10 +421,317 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ==================== 6. TAPP_SCHEDULED_TASKS 表 ====================
+        // 存储 Tapp 注册的定时任务
+        manager
+            .create_table(
+                Table::create()
+                    .table(TappScheduledTasks::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    // 任务 ID（Tapp 内唯一）
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::TaskId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    // 所属 Tapp ID
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::TappId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    // 所属用户 ID
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::UserId)
+                            .integer()
+                            .not_null(),
+                    )
+                    // 任务名称（用于显示）
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::Name)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    // 调度类型: cron, interval, once, daily
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::ScheduleType)
+                            .string_len(20)
+                            .not_null(),
+                    )
+                    // 调度配置 (JSON)
+                    // { cron?: string, interval?: number, at?: number, time?: string }
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::ScheduleConfig)
+                            .json()
+                            .not_null(),
+                    )
+                    // 任务负载 (JSON) - 传递给回调的数据
+                    .col(ColumnDef::new(TappScheduledTasks::Payload).json())
+                    // 执行目标: backend, frontend, both
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::ExecutionTarget)
+                            .string_len(20)
+                            .not_null()
+                            .default("frontend"),
+                    )
+                    // 后端可执行的操作列表 (JSON)
+                    .col(ColumnDef::new(TappScheduledTasks::BackendActions).json())
+                    // 是否启用
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::Enabled)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    // 错过执行时的策略: skip, run-once, run-all
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::MissedPolicy)
+                            .string_len(20)
+                            .not_null()
+                            .default("skip"),
+                    )
+                    // 任务作用域: user, tapp, global
+                    // user: 只影响注册任务的用户
+                    // tapp: 影响所有安装该 Tapp 的用户
+                    // global: 系统级任务
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::Scope)
+                            .string_len(20)
+                            .not_null()
+                            .default("user"),
+                    )
+                    // 重试配置 (JSON)
+                    // { maxRetries?: number, retryDelay?: number }
+                    .col(ColumnDef::new(TappScheduledTasks::RetryConfig).json())
+                    // 下次执行时间
+                    .col(ColumnDef::new(TappScheduledTasks::NextRunAt).timestamp_with_time_zone())
+                    // 上次执行时间
+                    .col(ColumnDef::new(TappScheduledTasks::LastRunAt).timestamp_with_time_zone())
+                    // 上次执行结果 (JSON)
+                    .col(ColumnDef::new(TappScheduledTasks::LastRunResult).json())
+                    // 执行统计 (JSON)
+                    // { totalRuns, successRuns, failedRuns, missedRuns }
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::Stats)
+                            .json()
+                            .not_null()
+                            .default(
+                                r#"{"totalRuns":0,"successRuns":0,"failedRuns":0,"missedRuns":0}"#,
+                            ),
+                    )
+                    // 创建时间
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    // 更新时间
+                    .col(
+                        ColumnDef::new(TappScheduledTasks::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 唯一索引：同一用户同一 Tapp 的任务 ID 唯一
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_scheduled_tasks_unique")
+                    .table(TappScheduledTasks::Table)
+                    .col(TappScheduledTasks::UserId)
+                    .col(TappScheduledTasks::TappId)
+                    .col(TappScheduledTasks::TaskId)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按用户查询
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_scheduled_tasks_user")
+                    .table(TappScheduledTasks::Table)
+                    .col(TappScheduledTasks::UserId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按 Tapp 查询
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_scheduled_tasks_tapp")
+                    .table(TappScheduledTasks::Table)
+                    .col(TappScheduledTasks::TappId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按下次执行时间查询（用于调度器快速查找到期任务）
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_scheduled_tasks_next_run")
+                    .table(TappScheduledTasks::Table)
+                    .col(TappScheduledTasks::Enabled)
+                    .col(TappScheduledTasks::NextRunAt)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // ==================== 7. TAPP_TASK_EXECUTIONS 表 ====================
+        // 存储任务执行历史
+        manager
+            .create_table(
+                Table::create()
+                    .table(TappTaskExecutions::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    // 关联的任务表 ID
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::ScheduledTaskId)
+                            .integer()
+                            .not_null(),
+                    )
+                    // 用户 ID（冗余，用于快速查询）
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::UserId)
+                            .integer()
+                            .not_null(),
+                    )
+                    // Tapp ID（冗余，用于快速查询）
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::TappId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    // 任务 ID（冗余，用于快速查询）
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::TaskId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    // 计划执行时间
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::ScheduledAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    // 实际执行时间
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::ExecutedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    // 完成时间
+                    .col(ColumnDef::new(TappTaskExecutions::CompletedAt).timestamp_with_time_zone())
+                    // 执行目标: backend, frontend
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::ExecutionTarget)
+                            .string_len(20)
+                            .not_null(),
+                    )
+                    // 执行状态: pending, running, success, failed, timeout
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::Status)
+                            .string_len(20)
+                            .not_null()
+                            .default("pending"),
+                    )
+                    // 是否为补偿执行（错过任务后的补偿）
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::IsCompensation)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    // 执行结果 (JSON)
+                    .col(ColumnDef::new(TappTaskExecutions::Result).json())
+                    // 错误信息
+                    .col(ColumnDef::new(TappTaskExecutions::Error).text())
+                    // 执行时长（毫秒）
+                    .col(ColumnDef::new(TappTaskExecutions::DurationMs).integer())
+                    // 重试次数
+                    .col(
+                        ColumnDef::new(TappTaskExecutions::RetryCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按任务查询历史
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_task_executions_task")
+                    .table(TappTaskExecutions::Table)
+                    .col(TappTaskExecutions::ScheduledTaskId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按用户和 Tapp 查询
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_task_executions_user_tapp")
+                    .table(TappTaskExecutions::Table)
+                    .col(TappTaskExecutions::UserId)
+                    .col(TappTaskExecutions::TappId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按执行时间查询（用于清理历史记录）
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_task_executions_executed_at")
+                    .table(TappTaskExecutions::Table)
+                    .col(TappTaskExecutions::ExecutedAt)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(TappTaskExecutions::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(TappScheduledTasks::Table).to_owned())
+            .await?;
         manager
             .drop_table(Table::drop().table(TappStoreSources::Table).to_owned())
             .await?;
@@ -525,4 +832,49 @@ enum TappStoreSources {
     Icon,
     CreatedAt,
     UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum TappScheduledTasks {
+    Table,
+    Id,
+    TaskId,
+    TappId,
+    UserId,
+    Name,
+    ScheduleType,
+    ScheduleConfig,
+    Payload,
+    ExecutionTarget,
+    BackendActions,
+    Enabled,
+    MissedPolicy,
+    Scope,
+    RetryConfig,
+    NextRunAt,
+    LastRunAt,
+    LastRunResult,
+    Stats,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum TappTaskExecutions {
+    Table,
+    Id,
+    ScheduledTaskId,
+    UserId,
+    TappId,
+    TaskId,
+    ScheduledAt,
+    ExecutedAt,
+    CompletedAt,
+    ExecutionTarget,
+    Status,
+    IsCompensation,
+    Result,
+    Error,
+    DurationMs,
+    RetryCount,
 }

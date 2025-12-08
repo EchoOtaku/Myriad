@@ -13,3 +13,7 @@ pub mod tapp_storage;
 pub mod tapp_store_sources;
 pub mod tapp_widgets;
 pub mod tapps;
+
+// Tapp 定时任务系统
+pub mod tapp_scheduled_tasks;
+pub mod tapp_task_executions;

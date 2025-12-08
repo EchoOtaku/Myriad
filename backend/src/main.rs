@@ -137,6 +137,10 @@ async fn run_server() -> anyhow::Result<()> {
                     }
                 }
 
+                // Initialize Tapp scheduler engine
+                api::tapp_scheduler::init_scheduler(db.clone()).await;
+                tracing::info!("✅ Tapp scheduler engine initialized");
+
                 tracing::info!("🌐 Starting in FULL MODE - all features available");
                 *DB_CONNECTION.write().await = Some(db);
                 CONFIG_MODE.store(false, Ordering::Relaxed);
@@ -1165,12 +1169,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // ============ Tapp P0 扩展 API ============
-            // HTTP Proxy - 🔓 支持权限下放
-            .route(
-                "/api/tapp/fetch/proxy",
-                post(api::tapp::fetch_proxy)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
             // Data Processing - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/data/transform",
@@ -1304,6 +1302,60 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::tapp::get_rate_limit_status)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
+            // ============ Tapp 定时任务 API ============
+            // Scheduler - 🔒 REQUIRE AUTHENTICATION
+            .route(
+                "/api/tapp/scheduler/tasks",
+                get(api::tapp_scheduler::list_tasks)
+                    .post(api::tapp_scheduler::register_task)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/scheduler/:tapp_id/tasks",
+                get(api::tapp_scheduler::list_tapp_tasks)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/scheduler/:tapp_id/tasks/:task_id",
+                get(api::tapp_scheduler::get_task)
+                    .delete(api::tapp_scheduler::unregister_task)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/scheduler/:tapp_id/tasks/:task_id/enable",
+                post(api::tapp_scheduler::enable_task)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/scheduler/:tapp_id/tasks/:task_id/disable",
+                post(api::tapp_scheduler::disable_task)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/scheduler/:tapp_id/tasks/:task_id/trigger",
+                post(api::tapp_scheduler::trigger_task)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/scheduler/ws",
+                get(api::tapp_scheduler::scheduler_websocket)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // ============ Tapp API 声明系统 ============
+            // API Execute - 支持 public 和 protected 两级权限
+            .route(
+                "/api/tapp/:tapp_id/api/:api_name",
+                post(api::tapp::execute_tapp_api)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // API List - 列出 Tapp 可用的 API
+            .route(
+                "/api/tapp/:tapp_id/apis",
+                get(api::tapp::list_tapp_apis)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // Context Geo - 公开 API，获取客户端地理位置
+            .route("/api/tapp/context/geo", get(api::tapp::get_context_geo))
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))
             // Client geo location route
@@ -1582,4 +1634,7 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("Starting graceful shutdown...");
+
+    // 停止调度器引擎
+    api::tapp_scheduler::shutdown_scheduler().await;
 }

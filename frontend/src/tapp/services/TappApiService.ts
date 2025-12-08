@@ -798,8 +798,6 @@ export default {
   listReports,
   getReport,
   getPlatformReport,
-  // P0: HTTP Proxy
-  fetchProxy,
   // P0: Data Transform
   dataTransform,
   // P0: Context API
@@ -808,6 +806,10 @@ export default {
   getContextPlayer,
   getContextNavigation,
   getContextSystem,
+  getContextGeo,
+  // Tapp API 声明系统
+  executeTappApi,
+  listTappApis,
   // P1: AI Chat
   aiChat,
   // P1: Report CRUD
@@ -819,43 +821,6 @@ export default {
   // P1: Media Control
   mediaControl,
   mediaStatus,
-}
-
-// ============ P0: HTTP Proxy API ============
-
-/** HTTP Proxy 请求参数 */
-export interface FetchProxyRequest {
-  tappId: string
-  url: string
-  method?: string
-  headers?: Record<string, string>
-  body?: unknown
-  timeout?: number
-}
-
-/** HTTP Proxy 响应 */
-export interface FetchProxyResponse {
-  success: boolean
-  status: number
-  headers: Record<string, string>
-  body: unknown
-}
-
-/**
- * 通过后端代理发送 HTTP 请求
- */
-export async function fetchProxy(request: FetchProxyRequest): Promise<FetchProxyResponse> {
-  return apiRequest('/api/tapp/fetch/proxy', {
-    method: 'POST',
-    body: JSON.stringify({
-      tapp_id: request.tappId,
-      url: request.url,
-      method: request.method || 'GET',
-      headers: request.headers,
-      body: request.body,
-      timeout: request.timeout || 30,
-    }),
-  })
 }
 
 // ============ P0: Data Transform API ============
@@ -1035,6 +1000,87 @@ export async function getContextNavigation(): Promise<NavigationContext> {
  */
 export async function getContextSystem(): Promise<SystemContext> {
   return apiRequest('/api/tapp/context/system')
+}
+
+// ============ 地理位置 API ============
+
+/** 地理位置信息 */
+export interface GeoContext {
+  lat: number
+  lon: number
+  city: string
+  region: string
+  country: string
+}
+
+/**
+ * 获取客户端地理位置信息
+ * 这是一个公开 API，所有用户（包括游客）都可以调用
+ */
+export async function getContextGeo(): Promise<GeoContext> {
+  const result = await apiRequest<{ success: boolean; data: GeoContext }>('/api/tapp/context/geo')
+  if (result.success && result.data) {
+    return result.data
+  }
+  throw new Error('Failed to get geo info')
+}
+
+// ============ Tapp API 声明系统 ============
+
+/** Tapp API 执行请求 */
+export interface TappApiExecuteRequest {
+  tappId: string
+  apiName: string
+  params?: Record<string, unknown>
+}
+
+/** Tapp API 执行响应 */
+export interface TappApiExecuteResponse {
+  success: boolean
+  data?: unknown
+  error?: string
+  cached?: boolean
+}
+
+/** Tapp API 定义 */
+export interface TappApiInfo {
+  name: string
+  access: 'public' | 'protected'
+  type: 'http' | 'builtin'
+  description?: string
+  cacheTtl?: number
+}
+
+/**
+ * 执行 Tapp 声明的 API
+ * 
+ * @param tappId - Tapp ID
+ * @param apiName - API 名称（在 manifest.apis 中定义的 key）
+ * @param params - 可选参数
+ * @returns API 执行结果
+ */
+export async function executeTappApi(
+  tappId: string,
+  apiName: string,
+  params?: Record<string, unknown>
+): Promise<TappApiExecuteResponse> {
+  return apiRequest(`/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`, {
+    method: 'POST',
+    body: JSON.stringify({ params }),
+  })
+}
+
+/**
+ * 列出 Tapp 可用的 API
+ * 
+ * @param tappId - Tapp ID
+ * @returns API 列表
+ */
+export async function listTappApis(tappId: string): Promise<TappApiInfo[]> {
+  const result = await apiRequest<{ success: boolean; apis: TappApiInfo[] }>(
+    `/api/tapp/${encodeURIComponent(tappId)}/apis`
+  )
+  return result.apis || []
 }
 
 // ============ P1: AI Chat API ============

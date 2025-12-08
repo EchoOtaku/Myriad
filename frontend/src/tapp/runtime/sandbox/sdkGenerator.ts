@@ -266,8 +266,13 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       },
     },
 
-    fetch: { proxy: (r) => sendRequest('fetch', 'proxy', [r]) },
     data: { transform: (r) => sendRequest('data', 'transform', [r]) },
+    
+    // Tapp API 声明系统：调用 manifest 中声明的 API
+    // 支持两种访问级别：
+    // - public: 所有用户（包括游客）可调用
+    // - protected: 需要 network:fetch 权限
+    api: (name, params) => sendRequest('api', 'execute', [name, params]),
     
     context: {
       getApp: () => sendRequest('context', 'getApp', []),
@@ -275,6 +280,8 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       getPlayer: () => sendRequest('context', 'getPlayer', []),
       getNavigation: () => sendRequest('context', 'getNavigation', []),
       getSystem: () => sendRequest('context', 'getSystem', []),
+      // 获取客户端地理位置信息（公开 API，所有用户可调用）
+      getGeo: () => sendRequest('context', 'getGeo', []),
     },
 
     media: {

@@ -141,6 +141,9 @@ pub struct DynamicConfig {
     pub steam_id: Option<String>,
     pub netease_user_id: Option<String>,
 
+    // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
+    pub openweather_api_key: Option<String>,
+
     // UI 配置
     pub ui_wallpaper_url: Option<String>,
     pub ui_wallpaper_blur: i32,
@@ -275,6 +278,9 @@ impl Default for DynamicConfig {
             steam_api_key: None,
             steam_id: None,
             netease_user_id: None,
+
+            // Tapp 外部 API 密钥
+            openweather_api_key: None,
 
             ui_wallpaper_url: None,
             ui_wallpaper_blur: 3,

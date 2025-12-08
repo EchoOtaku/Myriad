@@ -64,9 +64,11 @@ const CSP_BASE_DIRECTIVES = [
   "form-action 'none'",
   "base-uri 'none'",
   "manifest-src 'none'",
-  // 禁止所有外部资源预取
-  "prefetch-src 'none'",
+  // 注意：prefetch-src 已在现代浏览器中废弃，不再需要
 ]
+
+/** Tailwind CDN 域名（用于 CSP） */
+const TAILWIND_CDN = 'https://cdn.tailwindcss.com'
 
 /**
  * 生成带 nonce 的 CSP 策略
@@ -79,10 +81,12 @@ const CSP_BASE_DIRECTIVES = [
  * @param nonce - 唯一的 nonce 值（由 generateNonce() 生成）
  * @returns 完整的 CSP 策略字符串
  */
-export function generateCSP(nonce?: string): string {
+export function generateCSP(nonce?: string, allowTailwindCDN = true): string {
+  // 🔒 script-src: 使用 nonce + 可选 Tailwind CDN
+  const cdnPart = allowTailwindCDN ? ` ${TAILWIND_CDN}` : ''
   const scriptSrc = nonce 
-    ? `script-src 'nonce-${nonce}'`  // 🔒 使用 nonce，更安全
-    : "script-src 'unsafe-inline'"   // 回退到 unsafe-inline
+    ? `script-src 'nonce-${nonce}'${cdnPart}`  // 🔒 使用 nonce，更安全
+    : `script-src 'unsafe-inline'${cdnPart}`   // 回退到 unsafe-inline
   
   return [scriptSrc, ...CSP_BASE_DIRECTIVES].join('; ')
 }
@@ -139,12 +143,19 @@ export function generateSecurityWrapper(sessionToken: string): string {
   window._TAPP_SESSION_TOKEN = _SESSION_TOKEN;
   
   // 安全属性定义辅助函数
+  // 某些浏览器不允许重定义 top/parent 等属性，这是正常的
   const safeDefineProperty = (obj, prop, descriptor) => {
     try {
+      // 先检查属性是否可配置
+      const existing = Object.getOwnPropertyDescriptor(obj, prop);
+      if (existing && !existing.configurable) {
+        // 属性不可配置，静默跳过（这在某些浏览器中是正常的）
+        return false;
+      }
       Object.defineProperty(obj, prop, { ...descriptor, configurable: false });
       return true;
     } catch (e) {
-      console.warn('[Security] Failed to define:', prop, e);
+      // 静默失败，某些浏览器限制了对这些属性的修改
       return false;
     }
   };
@@ -235,9 +246,9 @@ export function generateSecurityWrapper(sessionToken: string): string {
   safeDefineProperty(window, 'indexedDB', { value: null, writable: false });
   safeDefineProperty(window, 'caches', { value: null, writable: false });
   
-  // 禁用网络 API（强制使用 Tapp.fetch.proxy）
-  window.fetch = () => Promise.reject(new Error('fetch disabled - use Tapp.fetch.proxy()'));
-  window.XMLHttpRequest = class { constructor() { throw new Error('XMLHttpRequest disabled - use Tapp.fetch.proxy()'); } };
+  // 禁用网络 API（强制使用 Tapp.api() 声明式 API）
+  window.fetch = () => Promise.reject(new Error('fetch disabled - use Tapp.api() with manifest.apis declarations'));
+  window.XMLHttpRequest = class { constructor() { throw new Error('XMLHttpRequest disabled - use Tapp.api() with manifest.apis declarations'); } };
   window.WebSocket = class { constructor() { throw new Error('WebSocket is disabled in Tapp sandbox'); } };
   window.EventSource = class { constructor() { throw new Error('EventSource is disabled in Tapp sandbox'); } };
   window.Worker = class { constructor() { throw new Error('Worker is disabled in Tapp sandbox'); } };
@@ -393,7 +404,17 @@ export function generateSecurityWrapper(sessionToken: string): string {
     console.error('[Security] Security checks failed:', failedChecks.map(c => c.name));
   }
   
-  console.log('[Security] Sandbox security wrapper initialized');
+  // 静默处理已知的无害错误（如 blob URL 访问限制）
+  window.addEventListener('error', function(e) {
+    // blob URL 相关错误是沙箱的正常行为，不需要显示
+    if (e.message && e.message.includes('blob:')) {
+      e.preventDefault();
+      return true;
+    }
+  }, true);
+  
+  // 安全包装器初始化完成（仅在调试时显示）
+  // console.log('[Security] Sandbox security wrapper initialized');
 })();
 `
 }

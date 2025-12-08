@@ -33,7 +33,7 @@ import {
 import { getTappRuntime } from '../runtime'
 import { getTappIconStyle } from '../utils/tappColors'
 import * as TappApiService from '../services/TappApiService'
-import type { TappInstance, TappPermission, AIQuotaStatus, TappSettingItem } from '../types'
+import type { TappInstance, TappPermission, TappSettingItem } from '../types'
 import { useI18n } from '../../contexts/I18nContext'
 
 /** 妫€鏌ュ瓧绗︿覆鏄惁涓?URL锛堢敤浜庡尯鍒?emoji 鍜屽浘鐗?URL锛?*/
@@ -191,6 +191,12 @@ const PERMISSION_CONFIG: Record<TappPermission, {
     descriptionKey: 'permSubscribeEventDesc',
     level: 'basic',
   },
+  'scheduler:register': {
+    icon: FaCog,
+    labelKey: 'permSchedulerRegister',
+    descriptionKey: 'permSchedulerRegisterDesc',
+    level: 'elevated',
+  },
 }
 
 /**
@@ -208,7 +214,6 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
-  const [aiQuota, setAiQuota] = useState<AIQuotaStatus | null>(null)
   const [settingsValues, setSettingsValues] = useState<Record<string, unknown>>({})
   const [settingsSaving, setSettingsSaving] = useState<string | null>(null)
   const runtime = getTappRuntime()
@@ -267,24 +272,6 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
 
         // 鍔犺浇璁剧疆鍊?
         await loadSettings(instance.manifest)
-
-        // 鑾峰彇 AI 閰嶉锛堝鏋滄湁 AI 鏉冮檺锛?
-        if (instance.grantedPermissions.some(p => p.startsWith('ai:'))) {
-          setAiQuota(instance.quotaUsage?.ai ? {
-            daily: {
-              limit: instance.manifest.aiQuota === 'premium' ? 200 : 50,
-              used: instance.quotaUsage.ai.dailyCalls,
-              resetsAt: instance.quotaUsage.ai.lastReset,
-            },
-            tokens: {
-              limit: instance.manifest.aiQuota === 'premium' ? 100000 : 20000,
-              used: instance.quotaUsage.ai.dailyTokens,
-              resetsAt: instance.quotaUsage.ai.lastReset,
-            },
-            cooldown: { required: 0, remaining: 0 },
-            restricted: false,
-          } : null)
-        }
 
         setLoading(false)
       } catch (err) {
@@ -692,59 +679,6 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
             </div>
           </div>
         </div>
-
-        {/* AI 閰嶉锛堝鏋滄湁锛?*/}
-        {aiQuota && (
-          <div className="mb-4 md:mb-6">
-            <div className="glass rounded-xl p-4 md:p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/50 flex items-center justify-center">
-                  <FaRobot className="text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">{t.tapp.aiQuota}</h2>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {manifest.aiQuota === 'premium' ? t.tapp.premiumQuota : t.tapp.standardQuota}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* 璋冪敤娆℃暟 */}
-                <div className="p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{t.tapp.dailyCalls}</span>
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                      {aiQuota.daily.used} / {aiQuota.daily.limit}
-                    </span>
-                  </div>
-                  <div className="h-2 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-500 rounded-full transition-all"
-                      style={{ width: `${Math.min((aiQuota.daily.used / aiQuota.daily.limit) * 100, 100)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Token 浣跨敤 */}
-                <div className="p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{t.tapp.tokenUsage}</span>
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                      {(aiQuota.tokens.used / 1000).toFixed(1)}K / {(aiQuota.tokens.limit / 1000).toFixed(0)}K
-                    </span>
-                  </div>
-                  <div className="h-2 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-purple-500 rounded-full transition-all"
-                      style={{ width: `${Math.min((aiQuota.tokens.used / aiQuota.tokens.limit) * 100, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* 搴旂敤淇℃伅 */}
         <div className="mb-4 md:mb-6">

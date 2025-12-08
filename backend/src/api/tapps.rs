@@ -189,6 +189,94 @@ pub struct TappManifest {
     #[serde(default)]
     pub has_page: bool,
     pub settings: Option<Vec<TappSettingDef>>,
+    /// Tapp API 声明
+    /// 允许 Tapp 声明可调用的外部 API，后端自动注入上下文和密钥
+    #[serde(default)]
+    pub apis: Option<std::collections::HashMap<String, TappApiDef>>,
+}
+
+/// Tapp API 访问级别
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TappApiAccess {
+    /// 公开 API：所有用户（包括游客）可调用，无需权限
+    Public,
+    /// 受保护 API：需要 network:fetch 权限
+    Protected,
+}
+
+impl Default for TappApiAccess {
+    fn default() -> Self {
+        Self::Protected
+    }
+}
+
+/// Tapp API 定义
+///
+/// 支持两种类型：
+/// 1. HTTP API：调用外部 HTTP 服务
+/// 2. 内置 API：调用后端内置功能（如 geo、ai 等）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TappApiDef {
+    /// 访问级别: public（所有人）或 protected（需要权限）
+    #[serde(default)]
+    pub access: TappApiAccess,
+
+    /// API 类型: http | builtin
+    /// - http: 调用外部 HTTP API
+    /// - builtin: 调用后端内置功能
+    #[serde(rename = "type", default = "default_api_type")]
+    pub api_type: String,
+
+    /// HTTP API 的端点 URL（支持模板变量）
+    pub endpoint: Option<String>,
+
+    /// HTTP 方法 (GET, POST, etc.)，默认 GET
+    #[serde(default = "default_http_method")]
+    pub method: String,
+
+    /// 请求头（支持模板变量）
+    pub headers: Option<std::collections::HashMap<String, String>>,
+
+    /// 请求体模板（支持模板变量）
+    pub body: Option<serde_json::Value>,
+
+    /// 内置 API 名称（当 type = builtin 时使用）
+    /// 可选值: geo, ai:chat, ai:generate 等
+    pub builtin: Option<String>,
+
+    /// 上下文注入配置
+    /// 后端自动注入的变量，前端无需提供
+    /// 可用变量:
+    /// - {{geo.lat}}, {{geo.lon}}, {{geo.city}} - 地理位置
+    /// - {{user.id}}, {{user.username}} - 用户信息
+    /// - {{secrets.KEY_NAME}} - 后端配置的密钥
+    pub inject: Option<std::collections::HashMap<String, String>>,
+
+    /// 响应缓存时间（秒），0 表示不缓存
+    #[serde(default)]
+    pub cache_ttl: u32,
+
+    /// 区域伪装配置
+    /// 用于绕过地区限制，自动添加伪装请求头
+    /// 可选值:
+    /// - "china": 伪装为中国大陆 IP（适用于网易云、B站等）
+    /// - "japan": 伪装为日本 IP
+    /// - "us": 伪装为美国 IP
+    /// - 自定义区域代码
+    pub spoof: Option<String>,
+
+    /// API 描述
+    pub description: Option<String>,
+}
+
+fn default_api_type() -> String {
+    "http".to_string()
+}
+
+fn default_http_method() -> String {
+    "GET".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

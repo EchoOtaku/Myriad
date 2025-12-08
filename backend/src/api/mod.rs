@@ -18,6 +18,7 @@ pub mod setup;
 pub mod steam;
 pub mod system;
 pub mod tapp; // ✅ Tapp 第三方应用 API (旧)
+pub mod tapp_scheduler; // ✅ Tapp 定时任务调度 API
 pub mod tapps; // ✅ Tapp 应用管理 API (新)
 pub mod tasks; // ✅ 后台任务管理 API
 

@@ -134,6 +134,11 @@ const PERMISSION_INFO: Record<TappPermission, {
     description: '允许此应用订阅系统事件',
     level: 'basic',
   },
+  'scheduler:register': {
+    title: '注册定时任务',
+    description: '允许此应用注册后台定时任务',
+    level: 'elevated',
+  },
 }
 
 /** 

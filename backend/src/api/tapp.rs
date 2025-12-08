@@ -5,27 +5,28 @@
 /// 2. AI 调用代理（带配额管理）
 /// 3. Widget 注册同步
 /// 4. 报告数据访问
-/// 5. HTTP 代理（fetch/proxy）
-/// 6. 数据处理（data/transform）
-/// 7. 运行上下文（context/*）
-/// 8. AI 对话（ai/chat）
-/// 9. 报告 CRUD（reports/*）
-/// 10. 媒体控制（media/*）
-/// 11. 组件注册（components/*）
-/// 12. 快捷键注册（shortcuts/*）
-/// 13. 事件总线（events/*）
+/// 5. 数据处理（data/transform）
+/// 6. 运行上下文（context/*）
+/// 7. AI 对话（ai/chat）
+/// 8. 报告 CRUD（reports/*）
+/// 9. 媒体控制（media/*）
+/// 10. 组件注册（components/*）
+/// 11. 快捷键注册（shortcuts/*）
+/// 12. 事件总线（events/*）
+/// 13. Tapp API 声明系统（api/:name）
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Extension, Json,
 };
 use once_cell::sync::Lazy;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -148,8 +149,8 @@ struct AiConfig {
 /// AI 图片生成配置
 #[derive(Clone)]
 struct AiImageConfig {
-    provider: String,      // "pollinations" 或 "imaginepro"
-    model: String,         // e.g., "flux-anime"
+    provider: String, // "pollinations" 或 "imaginepro"
+    model: String,    // e.g., "flux-anime"
     width: u32,
     height: u32,
     imaginepro_api_key: Option<String>,
@@ -313,23 +314,19 @@ struct RateLimitConfig {
 fn get_rate_limit_config(operation: &str) -> RateLimitConfig {
     match operation {
         "ai.generate" | "ai.analyze" | "ai.chat" => RateLimitConfig {
-            limit: 20,        // 每分钟 20 次 AI 调用
-            window_secs: 60,
-        },
-        "fetch.proxy" => RateLimitConfig {
-            limit: 60,        // 每分钟 60 次 HTTP 代理
+            limit: 20, // 每分钟 20 次 AI 调用
             window_secs: 60,
         },
         "platform.write" => RateLimitConfig {
-            limit: 30,        // 每分钟 30 次写入
+            limit: 30, // 每分钟 30 次写入
             window_secs: 60,
         },
         "storage.set" | "storage.clear" => RateLimitConfig {
-            limit: 100,       // 每分钟 100 次存储操作
+            limit: 100, // 每分钟 100 次存储操作
             window_secs: 60,
         },
         _ => RateLimitConfig {
-            limit: 200,       // 默认每分钟 200 次
+            limit: 200, // 默认每分钟 200 次
             window_secs: 60,
         },
     }
@@ -343,8 +340,13 @@ async fn check_rate_limit(
 ) -> Result<(), (StatusCode, Json<Value>)> {
     let config = get_rate_limit_config(operation);
     let mut limiter = TAPP_RATE_LIMITER.write().await;
-    let (allowed, remaining, reset_in) =
-        limiter.check_and_record(user_id, tapp_id, operation, config.limit, config.window_secs);
+    let (allowed, remaining, reset_in) = limiter.check_and_record(
+        user_id,
+        tapp_id,
+        operation,
+        config.limit,
+        config.window_secs,
+    );
 
     if !allowed {
         tracing::warn!(
@@ -389,7 +391,10 @@ impl ApiMetrics {
     }
 
     fn record(&mut self, operation: &str, duration_ms: u64, is_error: bool) {
-        let entry = self.operations.entry(operation.to_string()).or_insert((0, 0, 0));
+        let entry = self
+            .operations
+            .entry(operation.to_string())
+            .or_insert((0, 0, 0));
         entry.0 += 1;
         entry.1 += duration_ms;
         if is_error {
@@ -408,17 +413,19 @@ impl ApiMetrics {
                     "count": count,
                     "avgMs": if *count > 0 { total_ms / count } else { 0 },
                     "errors": errors,
-                    "errorRate": if *count > 0 { 
+                    "errorRate": if *count > 0 {
                         format!("{:.2}%", (*errors as f64 / *count as f64) * 100.0)
-                    } else { 
-                        "0%".to_string() 
+                    } else {
+                        "0%".to_string()
                     }
                 })
             })
             .collect();
-        
+
         ops.sort_by(|a, b| {
-            b.get("count").and_then(|v| v.as_u64()).unwrap_or(0)
+            b.get("count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
                 .cmp(&a.get("count").and_then(|v| v.as_u64()).unwrap_or(0))
         });
 
@@ -442,13 +449,6 @@ static API_METRICS: Lazy<Arc<RwLock<ApiMetrics>>> =
 async fn record_metric(operation: &str, duration_ms: u64, is_error: bool) {
     let mut metrics = API_METRICS.write().await;
     metrics.record(operation, duration_ms, is_error);
-}
-
-/// 同步版本：在闭包中使用（spawn 一个任务来记录）
-fn record_metric_sync(operation: &'static str, duration_ms: u64, is_error: bool) {
-    tokio::spawn(async move {
-        record_metric(operation, duration_ms, is_error).await;
-    });
 }
 
 /// 获取 AI 配置（带缓存，统一配置获取逻辑）
@@ -593,9 +593,9 @@ async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCode, 
 }
 
 /// 验证用户是否有权访问指定的 Tapp
-/// 
+///
 /// 这是一个关键的安全函数，用于防止跨 Tapp 数据篡改攻击。
-/// 
+///
 /// 访问规则：
 /// - 管理员：可以访问所有 Tapp
 /// - 普通用户：可以访问自己安装的 Tapp + 管理员的公开 Tapp
@@ -607,10 +607,10 @@ async fn verify_tapp_ownership(
 ) -> Result<(), (StatusCode, Json<Value>)> {
     // 获取管理员 ID
     let admin_id = get_admin_user_id(db).await?;
-    
+
     // 游客（负数 ID）只能访问管理员的公开 Tapp
     let is_guest = user_id < 0;
-    
+
     if is_guest {
         // 查找管理员安装的该 Tapp
         let admin_tapp = tapps::Entity::find()
@@ -633,22 +633,23 @@ async fn verify_tapp_ownership(
             );
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ 
-                    "error": "Access denied", 
+                Json(json!({
+                    "error": "Access denied",
                     "message": "This Tapp is not available for guest access"
                 })),
             ));
         }
-        
+
         return Ok(());
     }
-    
+
     // 普通用户：检查自己拥有的 Tapp 或管理员的公开 Tapp
     let tapp = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(tapp_id))
         .filter(
-            tapps::Column::UserId.eq(user_id)
-                .or(tapps::Column::UserId.eq(admin_id))
+            tapps::Column::UserId
+                .eq(user_id)
+                .or(tapps::Column::UserId.eq(admin_id)),
         )
         .one(db)
         .await
@@ -668,8 +669,8 @@ async fn verify_tapp_ownership(
         );
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({ 
-                "error": "Access denied", 
+            Json(json!({
+                "error": "Access denied",
                 "message": "You do not have permission to access this Tapp"
             })),
         ));
@@ -689,7 +690,7 @@ fn parse_user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
 }
 
 /// 检查用户是否拥有特定 Tapp 权限
-/// 
+///
 /// 根据用户角色和系统配置检查权限：
 /// - 管理员：拥有所有权限
 /// - 普通用户：basic 权限 + 配置下放的 elevated 权限
@@ -709,7 +710,7 @@ async fn check_tapp_permission(
             UserRole::User
         }
     } else {
-        UserRole::Guest  // 解析失败也视为游客
+        UserRole::Guest // 解析失败也视为游客
     };
 
     // 获取动态配置并检查权限
@@ -1156,7 +1157,7 @@ pub async fn ai_generate(
     Json(req): Json<TappAiGenerateRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let start = std::time::Instant::now();
-    
+
     // 权限检查：需要 ai:generate 权限
     check_tapp_permission(&claims, TappPermission::AiGenerate).await?;
 
@@ -1182,7 +1183,7 @@ pub async fn ai_generate(
             Json(json!({ "error": "Prompt too long (max 2000 characters)" })),
         ));
     }
-    
+
     // 增强安全验证：检测恶意提示词
     if let Some(reason) = validate_prompt_security(&req.prompt) {
         tracing::warn!(
@@ -1194,9 +1195,9 @@ pub async fn ai_generate(
         record_metric("ai.generate", start.elapsed().as_millis() as u64, true).await;
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({ 
+            Json(json!({
                 "error": "Prompt contains disallowed content",
-                "reason": reason 
+                "reason": reason
             })),
         ));
     }
@@ -1231,7 +1232,7 @@ pub async fn ai_generate(
         Ok(result) => {
             let duration_ms = start.elapsed().as_millis() as u64;
             record_metric("ai.generate", duration_ms, false).await;
-            
+
             // 估算 token 使用量
             let prompt_tokens = (req.prompt.len() + system_prompt.len()) / 4;
             let completion_tokens = result.len() / 4;
@@ -1258,7 +1259,7 @@ pub async fn ai_generate(
         Err(e) => {
             let duration_ms = start.elapsed().as_millis() as u64;
             record_metric("ai.generate", duration_ms, true).await;
-            
+
             tracing::error!(
                 user_id = user_id,
                 tapp_id = %req.tapp_id,
@@ -1276,7 +1277,7 @@ pub async fn ai_generate(
 /// 验证提示词安全性（后端层）
 fn validate_prompt_security(prompt: &str) -> Option<String> {
     let prompt_lower = prompt.to_lowercase();
-    
+
     // 角色覆盖攻击检测
     let role_override_patterns = [
         "ignore previous",
@@ -1294,7 +1295,7 @@ fn validate_prompt_security(prompt: &str) -> Option<String> {
             return Some("Role override attempt detected".to_string());
         }
     }
-    
+
     // 越狱尝试检测
     let jailbreak_patterns = [
         "jailbreak",
@@ -1309,9 +1310,9 @@ fn validate_prompt_security(prompt: &str) -> Option<String> {
             return Some("Jailbreak attempt detected".to_string());
         }
     }
-    
+
     // 敏感信息探测
-    if prompt_lower.contains("api_key") 
+    if prompt_lower.contains("api_key")
         || prompt_lower.contains("api-key")
         || prompt_lower.contains("apikey")
         || prompt_lower.contains("private_key")
@@ -1320,7 +1321,7 @@ fn validate_prompt_security(prompt: &str) -> Option<String> {
     {
         return Some("Sensitive information probe detected".to_string());
     }
-    
+
     // 重复字符检测（防止 token 溢出）
     let mut prev_char = '\0';
     let mut repeat_count = 0;
@@ -1335,7 +1336,7 @@ fn validate_prompt_security(prompt: &str) -> Option<String> {
             repeat_count = 0;
         }
     }
-    
+
     None
 }
 
@@ -1485,327 +1486,6 @@ pub async fn list_reports(
         .collect();
 
     Ok(Json(json!({ "reports": report_list })))
-}
-
-// ============ HTTP Proxy API ============
-
-/// SSRF 防护：检查 IP 是否为内网地址
-/// 
-/// 检测以下类型的内网地址：
-/// - IPv4: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
-/// - IPv6: ::1, fe80::/10, fc00::/7
-/// - 特殊域名: localhost, *.local, *.internal
-fn is_private_or_reserved_host(host: &str) -> bool {
-    // 检查特殊域名
-    let host_lower = host.to_lowercase();
-    if host_lower == "localhost" 
-        || host_lower.ends_with(".local")
-        || host_lower.ends_with(".internal")
-        || host_lower.ends_with(".localhost")
-        || host_lower.ends_with(".localdomain")
-        || host_lower.ends_with(".home")
-        || host_lower.ends_with(".corp")
-        || host_lower.ends_with(".lan")
-        || host_lower == "0.0.0.0"
-        || host_lower == "[::]"
-        || host_lower == "[::1]"
-    {
-        return true;
-    }
-    
-    // 检查 AWS/云服务元数据端点
-    if host_lower == "169.254.169.254"
-        || host_lower == "metadata.google.internal"
-        || host_lower.ends_with(".amazonaws.com") && host_lower.contains("metadata")
-        || host_lower == "fd00:ec2::254"
-    {
-        return true;
-    }
-    
-    // 尝试解析为 IP 地址
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return match ip {
-            std::net::IpAddr::V4(ipv4) => {
-                ipv4.is_loopback()           // 127.0.0.0/8
-                    || ipv4.is_private()      // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-                    || ipv4.is_link_local()   // 169.254.0.0/16
-                    || ipv4.is_broadcast()    // 255.255.255.255
-                    || ipv4.is_documentation() // 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
-                    || ipv4.is_unspecified()  // 0.0.0.0
-                    // 检查其他保留地址
-                    || ipv4.octets()[0] == 0  // 0.0.0.0/8 (current network)
-                    || ipv4.octets()[0] >= 224 // 224.0.0.0/4 (multicast) 和 240.0.0.0/4 (reserved)
-                    // 共享地址空间 (运营商级 NAT)
-                    || (ipv4.octets()[0] == 100 && ipv4.octets()[1] >= 64 && ipv4.octets()[1] <= 127)
-            }
-            std::net::IpAddr::V6(ipv6) => {
-                ipv6.is_loopback()           // ::1
-                    || ipv6.is_unspecified()  // ::
-                    // is_global() 的反面检查 - 检测非全局可路由地址
-                    || {
-                        let segments = ipv6.segments();
-                        // fe80::/10 (link-local)
-                        (segments[0] & 0xffc0) == 0xfe80
-                        // fc00::/7 (unique local)
-                        || (segments[0] & 0xfe00) == 0xfc00
-                        // ff00::/8 (multicast)
-                        || (segments[0] & 0xff00) == 0xff00
-                        // ::ffff:0:0/96 (IPv4-mapped, 需要检查内嵌的 IPv4)
-                        || (segments[0] == 0 && segments[1] == 0 && segments[2] == 0 
-                            && segments[3] == 0 && segments[4] == 0 && segments[5] == 0xffff)
-                        // 2001:db8::/32 (文档用途)
-                        || (segments[0] == 0x2001 && segments[1] == 0xdb8)
-                    }
-            }
-        };
-    }
-    
-    false
-}
-
-/// 验证 URL 安全性（增强版 SSRF 防护）
-fn validate_url_security(url: &str) -> Result<reqwest::Url, String> {
-    // 解析 URL
-    let parsed_url = reqwest::Url::parse(url)
-        .map_err(|_| "Invalid URL format")?;
-    
-    // 只允许 HTTP 和 HTTPS
-    match parsed_url.scheme() {
-        "http" | "https" => {}
-        scheme => return Err(format!("Unsupported protocol: {}", scheme)),
-    }
-    
-    // 检查端口
-    if let Some(port) = parsed_url.port() {
-        // 阻止常见的内部服务端口
-        let blocked_ports = [
-            22,    // SSH
-            23,    // Telnet
-            25,    // SMTP
-            53,    // DNS
-            110,   // POP3
-            135,   // RPC
-            139,   // NetBIOS
-            143,   // IMAP
-            445,   // SMB
-            1433,  // MSSQL
-            1521,  // Oracle
-            3306,  // MySQL
-            3389,  // RDP
-            5432,  // PostgreSQL
-            5900,  // VNC
-            6379,  // Redis
-            8080,  // 常见代理
-            8443,  // HTTPS alt
-            9200,  // Elasticsearch
-            11211, // Memcached
-            27017, // MongoDB
-        ];
-        if blocked_ports.contains(&port) {
-            return Err(format!("Access to port {} is not allowed", port));
-        }
-    }
-    
-    // 检查主机名
-    if let Some(host) = parsed_url.host_str() {
-        if is_private_or_reserved_host(host) {
-            return Err("Access to internal networks is not allowed".to_string());
-        }
-    } else {
-        return Err("URL must have a valid host".to_string());
-    }
-    
-    // 检查用户名/密码（可能用于绕过）
-    if !parsed_url.username().is_empty() || parsed_url.password().is_some() {
-        return Err("URLs with credentials are not allowed".to_string());
-    }
-    
-    Ok(parsed_url)
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FetchProxyRequest {
-    pub tapp_id: String,
-    pub url: String,
-    #[serde(default = "default_method")]
-    pub method: String,
-    pub headers: Option<HashMap<String, String>>,
-    pub body: Option<Value>,
-    #[serde(default = "default_timeout")]
-    pub timeout: u64,
-}
-
-fn default_method() -> String {
-    "GET".to_string()
-}
-
-fn default_timeout() -> u64 {
-    30
-}
-
-/// HTTP 代理请求
-/// POST /api/tapp/fetch/proxy
-pub async fn fetch_proxy(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    Json(req): Json<FetchProxyRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let start = std::time::Instant::now();
-    
-    // 权限检查：需要 network:fetch 权限
-    check_tapp_permission(&claims, TappPermission::NetworkFetch).await?;
-
-    // 安全验证：确认用户拥有此 Tapp
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
-
-    // 速率限制检查
-    check_rate_limit(user_id, &req.tapp_id, "fetch.proxy").await?;
-
-    tracing::debug!(
-        user_id = user_id,
-        tapp_id = %req.tapp_id,
-        url = %req.url,
-        method = %req.method,
-        "[TAPP] fetch_proxy request"
-    );
-
-    // 增强版 SSRF 防护：使用统一的 URL 安全验证
-    let url = validate_url_security(&req.url).map_err(|e| {
-        tracing::warn!(
-            user_id = user_id,
-            tapp_id = %req.tapp_id,
-            url = %req.url,
-            reason = %e,
-            "[TAPP] SSRF attempt blocked"
-        );
-        record_metric_sync("fetch.proxy", start.elapsed().as_millis() as u64, true);
-        (
-            StatusCode::FORBIDDEN,
-            Json(json!({ "error": e })),
-        )
-    })?;
-
-    // 验证 HTTP 方法
-    let method = reqwest::Method::from_str(&req.method.to_uppercase()).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid HTTP method" })),
-        )
-    })?;
-    
-    // 限制允许的 HTTP 方法
-    let allowed_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
-    if !allowed_methods.contains(&method.as_str()) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": format!("HTTP method {} is not allowed", method) })),
-        ));
-    }
-
-    // 限制超时时间（最大 60 秒）
-    let timeout = req.timeout.min(60);
-
-    // 使用全局 HTTP Client（复用连接池）
-    let mut request = HTTP_CLIENT
-        .request(method, url)
-        .timeout(std::time::Duration::from_secs(timeout));
-
-    // 添加自定义 headers（过滤敏感 headers）
-    if let Some(headers) = req.headers {
-        let mut header_map = HeaderMap::new();
-        let blocked_headers = ["host", "cookie", "authorization", "x-forwarded-for", "x-real-ip"];
-        for (key, value) in headers {
-            let key_lower = key.to_lowercase();
-            if !blocked_headers.contains(&key_lower.as_str()) {
-                if let (Ok(name), Ok(val)) = (HeaderName::from_str(&key), HeaderValue::from_str(&value)) {
-                    header_map.insert(name, val);
-                }
-            }
-        }
-        request = request.headers(header_map);
-    }
-
-    // 添加 body（限制大小）
-    if let Some(body) = req.body {
-        let body_str = serde_json::to_string(&body).unwrap_or_default();
-        if body_str.len() > 1024 * 1024 {
-            // 限制 body 大小为 1MB
-            return Err((
-                StatusCode::PAYLOAD_TOO_LARGE,
-                Json(json!({ "error": "Request body too large (max 1MB)" })),
-            ));
-        }
-        request = request.json(&body);
-    }
-
-    // 发送请求
-    let response = request.send().await.map_err(|e| {
-        tracing::error!("[TAPP] Fetch proxy error: {}", e);
-        (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Request failed: {}", e) })),
-        )
-    })?;
-
-    let status = response.status().as_u16();
-    let headers: HashMap<String, String> = response
-        .headers()
-        .iter()
-        .filter_map(|(k, v)| v.to_str().ok().map(|val| (k.to_string(), val.to_string())))
-        .collect();
-
-    // 在读取响应体前检查 Content-Length，防止大响应耗尽内存
-    const MAX_RESPONSE_SIZE: u64 = 10 * 1024 * 1024; // 10MB
-    if let Some(content_length) = response.content_length() {
-        if content_length > MAX_RESPONSE_SIZE {
-            return Err((
-                StatusCode::BAD_GATEWAY,
-                Json(json!({ 
-                    "error": format!("Response too large: {} bytes (max {} bytes)", content_length, MAX_RESPONSE_SIZE) 
-                })),
-            ));
-        }
-    }
-
-    // 读取响应体（使用流式读取并限制大小）
-    let body_bytes = response.bytes().await.map_err(|e| {
-        (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Failed to read response: {}", e) })),
-        )
-    })?;
-    
-    // 双重检查：即使没有 Content-Length 头，也限制实际响应体大小
-    if body_bytes.len() as u64 > MAX_RESPONSE_SIZE {
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": "Response body too large (max 10MB)" })),
-        ));
-    }
-    
-    let body_text = String::from_utf8_lossy(&body_bytes).to_string();
-
-    // 尝试解析为 JSON
-    let body: Value = serde_json::from_str(&body_text).unwrap_or(json!(body_text));
-
-    let duration_ms = start.elapsed().as_millis() as u64;
-    record_metric("fetch.proxy", duration_ms, false).await;
-    
-    tracing::debug!(
-        user_id = user_id,
-        tapp_id = %req.tapp_id,
-        status = status,
-        duration_ms = duration_ms,
-        "[TAPP] fetch_proxy success"
-    );
-
-    Ok(Json(json!({
-        "success": true,
-        "status": status,
-        "headers": headers,
-        "body": body
-    })))
 }
 
 // ============ Data Processing API ============
@@ -2535,7 +2215,7 @@ pub struct TappAiImageGenerateRequest {
 
 /// AI 图片生成
 /// POST /api/tapp/ai/image
-/// 
+///
 /// 使用配置的图片生成服务（Pollinations 或 ImaginePro）生成图片
 pub async fn ai_image_generate(
     State(db): State<DatabaseConnection>,
@@ -2543,7 +2223,7 @@ pub async fn ai_image_generate(
     Json(req): Json<TappAiImageGenerateRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let start = std::time::Instant::now();
-    
+
     // 权限检查：需要 ai:image 权限
     check_tapp_permission(&claims, TappPermission::AiImage).await?;
 
@@ -2581,16 +2261,16 @@ pub async fn ai_image_generate(
         record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({ 
+            Json(json!({
                 "error": "Prompt contains disallowed content",
-                "reason": reason 
+                "reason": reason
             })),
         ));
     }
 
     // 获取 AI 图片配置
     let image_config = get_ai_image_config().await?;
-    
+
     // 使用请求参数覆盖配置
     let width = req.width.unwrap_or(image_config.width);
     let height = req.height.unwrap_or(image_config.height);
@@ -2609,7 +2289,7 @@ pub async fn ai_image_generate(
                 "https://image.pollinations.ai/prompt/{}?width={}&height={}&model={}&nologo=true&private=true&enhance={}",
                 encoded_prompt, width, height, model, enhance
             );
-            
+
             if let Some(seed) = req.seed {
                 url.push_str(&format!("&seed={}", seed));
             }
@@ -2654,7 +2334,7 @@ pub async fn ai_image_generate(
 
             // 调用 ImaginePro API
             let client = &*HTTP_CLIENT;
-            
+
             // 计算宽高比
             let aspect_ratio = if width == height {
                 "1:1".to_string()
@@ -2725,7 +2405,9 @@ pub async fn ai_image_generate(
             record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
             Err((
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": format!("Unknown image provider: {}", image_config.provider) })),
+                Json(
+                    json!({ "error": format!("Unknown image provider: {}", image_config.provider) }),
+                ),
             ))
         }
     }
@@ -2733,37 +2415,45 @@ pub async fn ai_image_generate(
 
 /// 计算最大公约数（用于宽高比计算）
 fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 /// 验证图片提示词安全性
 fn validate_image_prompt_security(prompt: &str) -> Option<String> {
     let prompt_lower = prompt.to_lowercase();
-    
+
     // NSFW 内容检测
     let nsfw_patterns = [
-        "nude", "naked", "nsfw", "porn", "xxx", "hentai",
-        "explicit", "sexual", "erotic", "fetish",
+        "nude", "naked", "nsfw", "porn", "xxx", "hentai", "explicit", "sexual", "erotic", "fetish",
     ];
-    
+
     for pattern in &nsfw_patterns {
         if prompt_lower.contains(pattern) {
             return Some(format!("NSFW content detected: {}", pattern));
         }
     }
-    
+
     // 暴力内容检测
     let violence_patterns = [
-        "gore", "blood", "murder", "torture", "mutilation",
-        "dismember", "decapitat",
+        "gore",
+        "blood",
+        "murder",
+        "torture",
+        "mutilation",
+        "dismember",
+        "decapitat",
     ];
-    
+
     for pattern in &violence_patterns {
         if prompt_lower.contains(pattern) {
             return Some(format!("Violent content detected: {}", pattern));
         }
     }
-    
+
     None
 }
 
@@ -4053,14 +3743,14 @@ pub async fn get_rate_limit_status(
     })?;
 
     let limiter = TAPP_RATE_LIMITER.read().await;
-    
-    let operations = ["ai.generate", "fetch.proxy", "platform.write", "storage.set"];
+
+    let operations = ["ai.generate", "platform.write", "storage.set"];
     let mut limits = Vec::new();
 
     for op in operations {
         let key = format!("{}:{}:{}", user_id, tapp_id, op);
         let config = get_rate_limit_config(op);
-        
+
         if let Some(entry) = limiter.limits.get(&key) {
             let window = std::time::Duration::from_secs(config.window_secs);
             let elapsed = entry.window_start.elapsed();
@@ -4098,4 +3788,274 @@ pub async fn get_rate_limit_status(
         "tappId": tapp_id,
         "limits": limits
     })))
+}
+
+// ============ Tapp API 声明系统 ============
+
+use crate::api::tapps::{TappApiAccess, TappApiDef};
+use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
+
+/// 调用 Tapp 声明的 API 请求体
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TappApiCallRequest {
+    /// 前端传入的参数
+    pub params: Option<Value>,
+}
+
+/// 执行 Tapp 声明的 API
+/// POST /api/tapp/:tapp_id/api/:api_name
+///
+/// 支持两种访问级别：
+/// - public: 所有用户（包括游客）可调用
+/// - protected: 需要 network:fetch 权限
+///
+/// AI 相关的内置 API 强制需要对应权限（ai:chat, ai:generate）
+pub async fn execute_tapp_api(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    headers: axum::http::HeaderMap,
+    Path((tapp_id, api_name)): Path<(String, String)>,
+    Json(body): Json<TappApiCallRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    tracing::debug!(
+        "[TAPP API] Execute {} for tapp {} by user {}",
+        api_name,
+        tapp_id,
+        claims.username
+    );
+
+    let user_id: i32 = claims.sub.parse().map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
+    })?;
+
+    // 1. 查找 Tapp 并获取 manifest
+    let tapp = tapps::Entity::find()
+        .filter(tapps::Column::TappId.eq(&tapp_id))
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!("[TAPP API] Database error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Tapp not found" })),
+            )
+        })?;
+
+    // 2. 解析 manifest 中的 APIs
+    let apis: HashMap<String, TappApiDef> = tapp
+        .manifest
+        .get("apis")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    let api_def = apis.get(&api_name).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("API '{}' not defined in manifest", api_name) })),
+        )
+    })?;
+
+    // 3. 获取用户已授权的权限
+    let granted_permissions: Vec<String> = tapp
+        .granted_permissions
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // 4. 获取客户端 IP
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        });
+
+    // 5. 确定用户角色
+    let role = if claims.is_admin {
+        crate::services::permission_service::UserRole::Admin
+    } else if user_id < 0 {
+        crate::services::permission_service::UserRole::Guest
+    } else {
+        crate::services::permission_service::UserRole::User
+    };
+
+    // 6. 构建执行上下文
+    let context = ApiExecutionContext {
+        user_id,
+        username: claims.username.clone(),
+        is_admin: claims.is_admin,
+        role,
+        client_ip,
+        granted_permissions,
+    };
+
+    // 7. 执行 API
+    let result = TappApiService::execute(&tapp_id, &api_name, api_def, body.params, &context).await;
+
+    if result.success {
+        Ok(Json(json!({
+            "success": true,
+            "data": result.data,
+            "cached": result.cached
+        })))
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": result.error
+            })),
+        ))
+    }
+}
+
+/// 列出 Tapp 可用的 API
+/// GET /api/tapp/:tapp_id/apis
+pub async fn list_tapp_apis(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(tapp_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    tracing::debug!(
+        "[TAPP API] List APIs for tapp {} by user {}",
+        tapp_id,
+        claims.username
+    );
+
+    // 查找 Tapp
+    let tapp = tapps::Entity::find()
+        .filter(tapps::Column::TappId.eq(&tapp_id))
+        .one(&db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Database error: {}", e) })),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Tapp not found" })),
+            )
+        })?;
+
+    // 解析 APIs
+    let apis: HashMap<String, TappApiDef> = tapp
+        .manifest
+        .get("apis")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    // 转换为响应格式
+    let api_list: Vec<Value> = apis
+        .iter()
+        .map(|(name, def)| {
+            json!({
+                "name": name,
+                "access": match def.access {
+                    TappApiAccess::Public => "public",
+                    TappApiAccess::Protected => "protected",
+                },
+                "type": def.api_type,
+                "description": def.description,
+                "cacheTtl": def.cache_ttl,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "success": true,
+        "apis": api_list
+    })))
+}
+
+/// 获取地理位置信息（公开 API）
+/// GET /api/tapp/context/geo
+///
+/// 这是一个公开 API，所有用户（包括游客）都可以调用
+/// 用于获取客户端的地理位置信息
+pub async fn get_context_geo(
+    headers: axum::http::HeaderMap,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use crate::services::tapp_api_service::TappApiService;
+
+    // 获取客户端 IP
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| addr.ip().to_string());
+
+    tracing::debug!("[TAPP] get_context_geo for IP: {}", client_ip);
+
+    // 复用 TappApiService 的 geo 逻辑
+    let context = ApiExecutionContext {
+        user_id: -1,
+        username: "guest".to_string(),
+        is_admin: false,
+        role: crate::services::permission_service::UserRole::Guest,
+        client_ip: Some(client_ip),
+        granted_permissions: vec![],
+    };
+
+    // 创建一个内置 geo API 定义
+    let geo_api = TappApiDef {
+        access: TappApiAccess::Public,
+        api_type: "builtin".to_string(),
+        endpoint: None,
+        method: "GET".to_string(),
+        headers: None,
+        body: None,
+        builtin: Some("geo".to_string()),
+        inject: None,
+        cache_ttl: 300, // 缓存5分钟
+        spoof: None,    // 内置 API 不需要伪装
+        description: Some("Get client geolocation".to_string()),
+    };
+
+    let result = TappApiService::execute("system", "geo", &geo_api, None, &context).await;
+
+    if result.success {
+        Ok(Json(json!({
+            "success": true,
+            "data": result.data,
+            "cached": result.cached
+        })))
+    } else {
+        Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "error": result.error
+            })),
+        ))
+    }
 }

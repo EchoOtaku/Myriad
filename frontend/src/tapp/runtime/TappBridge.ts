@@ -49,6 +49,7 @@ const PERMISSION_LEVELS: Record<TappPermission, PermissionLevel> = {
   'shortcut:register': 'elevated',
   'event:publish': 'elevated',
   'event:subscribe': 'basic',
+  'scheduler:register': 'elevated',
 }
 
 /**
@@ -96,6 +97,7 @@ const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = new Map([
   ['context.getPlayer', 'public'],
   ['context.getNavigation', 'public'],
   ['context.getSystem', 'public'],
+  ['context.getGeo', 'public'],  // 地理位置：公开 API
   ['user.getRole', 'public'],
   ['user.isAdmin', 'public'],
   ['user.isGuest', 'public'],
@@ -111,6 +113,10 @@ const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = new Map([
   ['animation.getConfig', 'public'],
   ['animation.getStaggerDelay', 'public'],
   ['dynamicContent.get', 'public'],
+  
+  // Tapp API 声明系统 - 权限由后端检查
+  ['api.execute', 'public'],  // 后端根据 manifest 中的 access 字段决定权限
+  ['api.list', 'public'],     // 列出可用 API
   
   // 小组件权限
   ['widget.register', 'widget:register'],
@@ -162,9 +168,6 @@ const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = new Map([
   ['ui.toggleFullscreen', 'ui:fullscreen'],
   ['ui.isFullscreen', 'ui:fullscreen'],
   
-  // 网络权限
-  ['fetch.proxy', 'network:fetch'],
-  
   // 媒体权限
   ['media.control', 'media:control'],
   ['media.getStatus', 'media:read'],
@@ -193,6 +196,16 @@ const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = new Map([
   ['dynamicContent.set', 'ui:notification'],
   ['dynamicContent.update', 'ui:notification'],
   ['dynamicContent.remove', 'ui:notification'],
+  
+  // 定时任务权限
+  ['scheduler.register', 'scheduler:register'],
+  ['scheduler.unregister', 'scheduler:register'],
+  ['scheduler.list', 'scheduler:register'],
+  ['scheduler.get', 'scheduler:register'],
+  ['scheduler.enable', 'scheduler:register'],
+  ['scheduler.disable', 'scheduler:register'],
+  ['scheduler.trigger', 'scheduler:register'],
+  ['scheduler.onTask', 'scheduler:register'],
 ])
 
 /**
@@ -234,7 +247,6 @@ export class TappBridge {
     'platform.addItems',
     'storage.set',
     'storage.clear',
-    'fetch.proxy',
     'report.create',
     'report.update',
     'report.delete',

@@ -4,6 +4,20 @@
 
 export { TappBridge, createTappBridge } from './TappBridge'
 export { TappPermissionController, createPermissionController } from './TappPermission'
+export { TappScheduler, getTappScheduler } from './TappScheduler'
+export type {
+  ScheduleType,
+  ExecutionTarget,
+  MissedPolicy,
+  TaskExecutionStatus,
+  ScheduleConfig,
+  RetryConfig,
+  BackendAction,
+  TaskRegistrationOptions,
+  RegisteredTask,
+  TaskExecutionEvent,
+  TaskCallback,
+} from './TappScheduler'
 
 // 沙箱组件
 export { TappPageSandbox } from './TappPageSandbox'

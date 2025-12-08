@@ -25,6 +25,7 @@ import {
   generateFullSDK,
   generateThemeCSS,
   PAGE_STATIC_CSS,
+  TAILWIND_CDN_SCRIPT,
   IFRAME_SANDBOX_ATTRS,
   type TappNotificationOptions,
   type SafeInsets,
@@ -129,6 +130,7 @@ function generatePageHTML(
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name}</title>
+  ${TAILWIND_CDN_SCRIPT}
   <style>
     ${PAGE_STATIC_CSS}
     ${themeCSS}

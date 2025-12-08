@@ -12,75 +12,6 @@ import { getDynamicContentProvider, type DynamicContentItem } from '../../../../
 import * as TappApiService from '../../../services/TappApiService'
 
 /**
- * 验证 URL 是否安全（防止 SSRF 攻击）
- * 
- * 禁止的目标：
- * - 本地地址 (localhost, 127.0.0.1, ::1)
- * - 私有网络 (10.x.x.x, 192.168.x.x, 172.16-31.x.x)
- * - 链接本地地址 (169.254.x.x)
- * - 元数据服务 (169.254.169.254 - AWS/GCP 等)
- * - 非 HTTP/HTTPS 协议
- */
-function validateFetchUrl(url: string): { valid: boolean; reason?: string } {
-  try {
-    const parsed = new URL(url)
-    
-    // 只允许 http 和 https 协议
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { valid: false, reason: 'Only HTTP/HTTPS protocols are allowed' }
-    }
-    
-    const hostname = parsed.hostname.toLowerCase()
-    
-    // 禁止本地地址
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]') {
-      return { valid: false, reason: 'Localhost access is not allowed' }
-    }
-    
-    // 禁止 .local 域名
-    if (hostname.endsWith('.local') || hostname.endsWith('.localhost')) {
-      return { valid: false, reason: 'Local domain access is not allowed' }
-    }
-    
-    // 检查 IP 地址
-    const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-    if (ipv4Match) {
-      const [, a, b, c] = ipv4Match.map(Number)
-      
-      // 私有网络
-      if (a === 10) {
-        return { valid: false, reason: 'Private network access (10.x.x.x) is not allowed' }
-      }
-      if (a === 172 && b >= 16 && b <= 31) {
-        return { valid: false, reason: 'Private network access (172.16-31.x.x) is not allowed' }
-      }
-      if (a === 192 && b === 168) {
-        return { valid: false, reason: 'Private network access (192.168.x.x) is not allowed' }
-      }
-      
-      // 链接本地
-      if (a === 169 && b === 254) {
-        return { valid: false, reason: 'Link-local address access is not allowed' }
-      }
-      
-      // 回环地址
-      if (a === 127) {
-        return { valid: false, reason: 'Loopback address access is not allowed' }
-      }
-      
-      // 0.0.0.0
-      if (a === 0) {
-        return { valid: false, reason: 'Invalid IP address' }
-      }
-    }
-    
-    return { valid: true }
-  } catch {
-    return { valid: false, reason: 'Invalid URL format' }
-  }
-}
-
-/**
  * 注册 Media 处理器
  */
 export function registerMediaHandlers(
@@ -481,35 +412,6 @@ export function registerContextHandlers(
     catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Failed' } }
   })
 
-  bridge.registerHandler('fetch.proxy', async (message) => {
-    const [request] = (message.payload as { args: unknown[] }).args || []
-    const req = request as { url?: string; method?: string; headers?: Record<string, string>; body?: unknown; timeout?: number }
-    if (!req?.url) return { success: false, error: 'URL required' }
-    
-    // 🔒 安全校验：验证 URL 防止 SSRF 攻击
-    const urlValidation = validateFetchUrl(req.url)
-    if (!urlValidation.valid) {
-      return { success: false, error: `Invalid URL: ${urlValidation.reason}` }
-    }
-    
-    // 🔒 安全校验：限制请求超时（最大 30 秒）
-    const timeout = Math.min(req.timeout || 10000, 30000)
-    
-    try {
-      const response = await TappApiService.fetchProxy({ 
-        tappId: tappInstance.id, 
-        url: req.url, 
-        method: req.method, 
-        headers: req.headers, 
-        body: req.body, 
-        timeout 
-      })
-      return { success: true, data: response }
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
-    }
-  })
-
   bridge.registerHandler('data.transform', async (message) => {
     const [request] = (message.payload as { args: unknown[] }).args || []
     const req = request as { input?: unknown; pipeline?: unknown; output?: unknown }
@@ -517,6 +419,47 @@ export function registerContextHandlers(
     try {
       const response = await TappApiService.dataTransform({ tappId: tappInstance.id, input: req.input as TappApiService.DataInput, pipeline: req.pipeline as TappApiService.ProcessStep[], output: req.output as TappApiService.DataOutput | undefined })
       return { success: true, data: response }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  // ============ Tapp API 声明系统 ============
+  
+  // 执行 Tapp manifest 中声明的 API
+  bridge.registerHandler('api.execute', async (message) => {
+    const [apiName, params] = (message.payload as { args: unknown[] }).args || []
+    if (!apiName || typeof apiName !== 'string') {
+      return { success: false, error: 'API name required' }
+    }
+    
+    try {
+      const response = await TappApiService.executeTappApi(
+        tappInstance.id,
+        apiName,
+        params as Record<string, unknown> | undefined
+      )
+      return { success: response.success, data: response.data, error: response.error }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  // 列出 Tapp 可用的 API
+  bridge.registerHandler('api.list', async () => {
+    try {
+      const apis = await TappApiService.listTappApis(tappInstance.id)
+      return { success: true, data: apis }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  // 获取客户端地理位置
+  bridge.registerHandler('context.getGeo', async () => {
+    try {
+      const geo = await TappApiService.getContextGeo()
+      return { success: true, data: geo }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed' }
     }

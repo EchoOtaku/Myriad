@@ -61,12 +61,6 @@ export interface TappManifest {
   /** 可选权限（运行时请求） */
   optionalPermissions?: TappPermission[]
 
-  /** 
-   * @deprecated AI 配额现在由系统权限下放统一管理，不再由应用声明
-   * 如果应用使用了 ai:* 权限，系统会自动应用基于用户角色的限额
-   */
-  aiQuota?: 'default' | 'premium'
-
   /** 内容安全策略 */
   contentSecurityPolicy?: {
     'connect-src'?: string
@@ -185,6 +179,8 @@ export type TappPermission =
   // P2: 事件权限
   | 'event:publish'
   | 'event:subscribe'
+  // P3: 定时任务权限
+  | 'scheduler:register'
 
 // ============ 用户角色 ============
 

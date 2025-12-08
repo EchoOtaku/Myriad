@@ -28,6 +28,7 @@ import {
   generateWidgetSDK,
   generateThemeCSS,
   WIDGET_STATIC_CSS,
+  TAILWIND_CDN_SCRIPT,
   IFRAME_SANDBOX_ATTRS,
   type WidgetRenderProps,
 } from './sandbox'
@@ -116,6 +117,7 @@ function generateWidgetHTML(
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name} Widget</title>
+  ${TAILWIND_CDN_SCRIPT}
   <style>
     ${WIDGET_STATIC_CSS}
     ${themeCSS}

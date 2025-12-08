@@ -14,6 +14,21 @@ export {
   TappSandbox,
   TappRuntime,
   getTappRuntime,
+  TappScheduler,
+  getTappScheduler,
+} from './runtime'
+export type {
+  ScheduleType,
+  ExecutionTarget,
+  MissedPolicy,
+  TaskExecutionStatus,
+  ScheduleConfig,
+  RetryConfig,
+  BackendAction,
+  TaskRegistrationOptions,
+  RegisteredTask,
+  TaskExecutionEvent,
+  TaskCallback,
 } from './runtime'
 
 // 页面导出
