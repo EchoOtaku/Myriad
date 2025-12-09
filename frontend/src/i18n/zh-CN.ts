@@ -613,6 +613,7 @@ export const zhCN: TranslationKeys = {
     githubBinding: 'GitHub 绑定',
     githubLinked: '✓ 已绑定',
     githubNotLinked: '未绑定',
+    hybridAccount: '本地 + GitHub',
     bindGithub: '绑定 GitHub 账户',
     changePassword: '修改密码',
     currentPassword: '当前密码',

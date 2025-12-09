@@ -613,6 +613,7 @@ export const jaJP: TranslationKeys = {
     githubBinding: 'GitHub連携',
     githubLinked: '✓ 連携済み',
     githubNotLinked: '未連携',
+    hybridAccount: 'ローカル + GitHub',
     bindGithub: 'GitHubアカウントを連携',
     changePassword: 'パスワード変更',
     currentPassword: '現在のパスワード',

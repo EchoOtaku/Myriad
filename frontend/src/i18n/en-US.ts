@@ -612,6 +612,7 @@ export const enUS: TranslationKeys = {
     githubBinding: 'GitHub Binding',
     githubLinked: '✓ Linked',
     githubNotLinked: 'Not Linked',
+    hybridAccount: 'Local + GitHub',
     bindGithub: 'Link GitHub Account',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',

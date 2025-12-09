@@ -186,31 +186,34 @@ export const UserModal: React.FC<UserModalProps> = ({
             <span className={`user-modal-badge ${user.is_admin ? 'badge-admin' : 'badge-user'}`}>
               {user.is_admin ? '👑 Admin' : '👤 User'}
             </span>
-            {/* 账户类型徽章 */}
-            <span className={`user-modal-badge ${user.auth_provider === 'github' ? 'badge-github' : 'badge-local'}`}>
-              {user.auth_provider === 'github' ? (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
-                  </svg>
-                  GitHub
-                </>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  Local
-                </>
-              )}
-            </span>
-            {/* GitHub 绑定状态 */}
-            {user.auth_provider === 'local' && user.linked_github_id && (
-              <span className="user-modal-badge badge-linked">
+            {/* 账户类型徽章 - 根据数据库记录正确判断 */}
+            {/* 混合账户：auth_provider='local' + linked_github_id 存在 = 本地管理员绑定了 GitHub */}
+            {user.auth_provider === 'local' && user.linked_github_id ? (
+              // 混合账户（本地+GitHub绑定）- 显示特殊的混合标识
+              <span className="user-modal-badge badge-hybrid">
                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
+                </svg>
+                <svg className="w-3 h-3 -ml-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                 </svg>
-                {t.userModal.githubLinked}
+                {t.userModal.hybridAccount || 'Local + GitHub'}
+              </span>
+            ) : user.auth_provider === 'github' ? (
+              // 纯 GitHub 用户
+              <span className="user-modal-badge badge-github">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd"/>
+                </svg>
+                GitHub
+              </span>
+            ) : (
+              // 纯本地用户（未绑定 GitHub）
+              <span className="user-modal-badge badge-local">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Local
               </span>
             )}
           </div>
@@ -224,6 +227,7 @@ export const UserModal: React.FC<UserModalProps> = ({
         {/* 操作按钮组 */}
         <div className="user-modal-actions">
           {/* 绑定 GitHub */}
+          {/* 绑定 GitHub - 仅本地账户（未绑定 GitHub）显示 */}
           {user.auth_provider === 'local' && !user.linked_github_id && (
             <a
               href={`${API_URL}/api/auth/github/link`}
@@ -236,8 +240,8 @@ export const UserModal: React.FC<UserModalProps> = ({
             </a>
           )}
 
-          {/* 修改密码 */}
-          {user.auth_provider === 'local' && !user.linked_github_id && !showChangePassword && (
+          {/* 修改密码 - 本地账户和混合账户显示（都有本地密码） */}
+          {user.auth_provider === 'local' && !showChangePassword && (
             <button
               onClick={() => setShowChangePassword(true)}
               className="user-modal-action-btn action-password"
@@ -249,7 +253,7 @@ export const UserModal: React.FC<UserModalProps> = ({
             </button>
           )}
 
-          {/* 退出登录 */}
+          {/* 退出登录 - 所有用户显示 */}
           <button onClick={onLogout} className="user-modal-action-btn action-logout">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

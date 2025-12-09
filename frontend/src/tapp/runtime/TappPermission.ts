@@ -234,16 +234,15 @@ export class TappPermissionController {
   }
 
   /**
-   * 检查是否拥有权限（综合检查授权和角色限制）
+   * 检查是否拥有权限
+   * 
+   * 后端已经根据权限下放配置过滤了 grantedPermissions，
+   * 所以前端只需要检查权限是否在列表中即可，无需再次验证角色权限级别。
    */
   hasPermission(permission: TappPermission): boolean {
-    // 先检查是否在授权列表中
-    if (!this.tappInstance.grantedPermissions.includes(permission)) {
-      return false
-    }
-    
-    // 再检查用户角色是否允许使用此权限级别
-    return this.isPermissionAllowedForRole(permission)
+    // 只检查是否在授权列表中
+    // 后端已根据用户角色和权限下放配置过滤，这里不再做二次检查
+    return this.tappInstance.grantedPermissions.includes(permission)
   }
 
   /**
@@ -261,21 +260,23 @@ export class TappPermissionController {
   }
 
   /**
-   * 获取用户角色实际可用的权限列表（过滤掉超出角色限制的权限）
+   * 获取用户角色实际可用的权限列表
+   * 
+   * 由于后端已根据权限下放配置过滤了 grantedPermissions，
+   * 这里直接返回所有已授权权限。
    */
   getEffectivePermissions(): TappPermission[] {
-    return this.tappInstance.grantedPermissions.filter(p => 
-      this.isPermissionAllowedForRole(p)
-    )
+    return [...this.tappInstance.grantedPermissions]
   }
 
   /**
    * 获取因角色限制而不可用的权限列表
+   * 
+   * 由于后端已经做了权限过滤，这里返回空数组。
+   * 保留此方法是为了向后兼容。
    */
   getRestrictedPermissions(): TappPermission[] {
-    return this.tappInstance.grantedPermissions.filter(p => 
-      !this.isPermissionAllowedForRole(p)
-    )
+    return []
   }
 
   /**

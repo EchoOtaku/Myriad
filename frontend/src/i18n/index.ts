@@ -614,6 +614,7 @@ export interface TranslationKeys {
     githubBinding: string;
     githubLinked: string;
     githubNotLinked: string;
+    hybridAccount: string;
     bindGithub: string;
     changePassword: string;
     currentPassword: string;
