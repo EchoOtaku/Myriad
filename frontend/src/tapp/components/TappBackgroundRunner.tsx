@@ -21,6 +21,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { getTappRuntime } from '../runtime'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import type { TappInstance } from '../types'
 import type { TappCodeStructure } from '../examples/tapps/types'
 
@@ -54,17 +55,19 @@ export const TappBackgroundRunner: React.FC = () => {
       await Promise.all(
         tappsToRun.map(async tapp => {
           try {
-            // 首先尝试同步获取（本地缓存）
-            let code = runtime.getTappCode(tapp.id)
+            // 🎯 使用新的资源加载器获取 Page 专用资源
+            const resources = await loadPageResources(tapp)
             
-            // 如果本地没有，尝试从后端获取
-            if (!code) {
-              code = await runtime.fetchTappCode(tapp.id)
+            // 转换为 TappCodeStructure 格式
+            const code: TappCodeStructure = {
+              core: resources.core,
+              page: resources.page,
+              pageHtml: resources.html,
+              styles: resources.styles,
+              pageCSS: resources.css,
             }
             
-            if (code) {
-              codes.set(tapp.id, code)
-            }
+            codes.set(tapp.id, code)
           } catch (error) {
             console.error(`[TappBackgroundRunner] Failed to load code for Tapp ${tapp.id}:`, error)
           }

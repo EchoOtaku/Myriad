@@ -554,7 +554,22 @@ export class TappRuntime {
           core: resources.code,
           styles: resources.styles,
           pageHtml: resources.pageTemplate,
+          widgetCSS: resources.widgetCSS,
+          pageCSS: resources.pageCSS,
         }
+        
+        // 🔍 调试：构建的代码结构
+        console.log('[TappRuntime.fetchTappCode] 构建代码结构:', {
+          tappId,
+          widgetSize,
+          hasCore: !!codeStructure.core,
+          hasStyles: !!codeStructure.styles,
+          stylesLength: codeStructure.styles?.length || 0,
+          hasWidgetCSS: !!codeStructure.widgetCSS,
+          widgetCSSLength: codeStructure.widgetCSS?.length || 0,
+          hasPageCSS: !!codeStructure.pageCSS,
+          pageCSSLength: codeStructure.pageCSS?.length || 0,
+        })
         
         // 根据 widgetSize 选择对应的 HTML 模板
         if (resources.widgetTemplates && widgetSize) {
@@ -606,10 +621,16 @@ export class TappRuntime {
 
   /**
    * 清除代码缓存
+   * 如果提供 tappId，会删除该 Tapp 所有尺寸的缓存
    */
   clearCodeCache(tappId?: string): void {
     if (tappId) {
-      this.codeCache.delete(tappId)
+      // 删除所有以该 tappId 开头的缓存（包括带尺寸后缀的）
+      for (const key of this.codeCache.keys()) {
+        if (key === tappId || key.startsWith(`${tappId}:`)) {
+          this.codeCache.delete(key)
+        }
+      }
     } else {
       this.codeCache.clear()
     }

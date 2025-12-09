@@ -29,6 +29,10 @@ export interface TappCodeStructure {
   widgetHtml?: string
   /** Page HTML 模板 - 直接注入到容器，与 JS 配合使用 */
   pageHtml?: string
+  /** Widget 专用编译后的 Tailwind CSS */
+  widgetCSS?: string
+  /** Page 专用编译后的 Tailwind CSS */
+  pageCSS?: string
 }
 
 /** 示例 Tapp 数据 */

@@ -5,6 +5,7 @@
 
 import { API_URL } from '../../config'
 import { getCSRFToken } from '../../utils/csrf'
+import { generateOnDemandTailwindCSS } from '../runtime/sandbox/styles'
 import type {
   TappInstance,
   TappManifest,
@@ -150,6 +151,10 @@ interface InstallTappRequest {
   styles?: string
   pageTemplate?: string
   widgetTemplates?: Record<string, string>
+  /** Widget 专用 CSS */
+  widgetCss?: string
+  /** Page 专用 CSS */
+  pageCss?: string
   // store 模式
   storeSource?: string
   tappId?: string
@@ -159,6 +164,10 @@ interface InstallTappRequest {
 
 /**
  * 安装 Tapp（统一接口，发送 JSON）
+ * 
+ * @param manifest - Tapp 清单
+ * @param code - Tapp 代码结构
+ * @param permissions - 授权的权限
  */
 export async function installTapp(
   manifest: TappManifest,
@@ -210,9 +219,41 @@ export async function installTapp(
 /**
  * 从代码和清单安装 Tapp（用于示例 Tapp）
  * 支持完整的代码结构，包括 CSS 和 HTML 模板
+ * 
+ * 🎯 自动生成分离式预编译 Tailwind CSS（widget.css 和 page.css）
  */
 export async function installFromCode(manifest: TappManifest, code: TappCodeStructure): Promise<TappListItem> {
-  return installTapp(manifest, code, manifest.permissions)
+  // 🎯 生成 Widget 专用 CSS
+  const widgetSources = [
+    code.widgetHtml || '',
+    code.styles || '',
+    code.core || '',
+    code.widget || '',
+  ].join('\n')
+  const widgetCss = generateOnDemandTailwindCSS(widgetSources)
+  
+  // 🎯 生成 Page 专用 CSS
+  const pageSources = [
+    code.pageHtml || '',
+    code.styles || '',
+    code.core || '',
+    code.page || '',
+  ].join('\n')
+  const pageCss = generateOnDemandTailwindCSS(pageSources)
+  
+  // 🎯 安装 Tapp
+  const result = await installTapp(manifest, code, manifest.permissions)
+  
+  // 安装成功后更新分离式 CSS
+  if (result && result.id) {
+    try {
+      await updateSeparatedCSS(result.id, { widgetCss, pageCss })
+    } catch (cssError) {
+      console.warn('Failed to update separated CSS:', cssError)
+    }
+  }
+  
+  return result
 }
 
 /**
@@ -312,20 +353,35 @@ export async function getTappCode(tappId: string): Promise<string> {
 export interface TappResources {
   /** 主代码（index.js） */
   code: string
-  /** 自定义 CSS 样式 */
+  /** 自定义 CSS 样式（统一模式，或共享样式） */
   styles?: string
+  /** Widget 专用自定义 CSS（分离模式） */
+  widgetStyles?: string
+  /** Page 专用自定义 CSS（分离模式） */
+  pageStyles?: string
+  /** Widget 专用编译后的 Tailwind CSS */
+  widgetCSS?: string
+  /** Page 专用编译后的 Tailwind CSS */
+  pageCSS?: string
   /** Widget HTML 模板（按尺寸） */
   widgetTemplates?: Record<string, string>
   /** Page HTML 模板 */
   pageTemplate?: string
+  /** CSS 架构模式 */
+  cssMode?: 'unified' | 'separated'
 }
 
 /** 后端原始响应格式（snake_case） */
 interface TappResourcesRaw {
   code: string
   styles?: string
+  widget_styles?: string
+  page_styles?: string
+  widget_css?: string
+  page_css?: string
   widget_templates?: Record<string, string>
   page_template?: string
+  css_mode?: 'unified' | 'separated'
 }
 
 /**
@@ -348,12 +404,39 @@ export async function getTappResources(tappId: string): Promise<TappResources> {
   
   // 转换 snake_case 到 camelCase
   const raw: TappResourcesRaw = await response.json()
+  
   return {
     code: raw.code,
     styles: raw.styles,
+    widgetStyles: raw.widget_styles,
+    pageStyles: raw.page_styles,
+    widgetCSS: raw.widget_css,
+    pageCSS: raw.page_css,
     widgetTemplates: raw.widget_templates,
     pageTemplate: raw.page_template,
+    cssMode: raw.css_mode,
   }
+}
+
+/**
+ * 分离式 CSS 更新请求
+ */
+export interface SeparatedCSSRequest {
+  /** Widget 专用 CSS */
+  widgetCss?: string
+  /** Page 专用 CSS */
+  pageCss?: string
+}
+
+/**
+ * 更新 Tapp 的分离式 CSS
+ * 分别更新 widget.css 和 page.css
+ */
+export async function updateSeparatedCSS(tappId: string, css: SeparatedCSSRequest): Promise<void> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/separated-css`, {
+    method: 'POST',
+    body: JSON.stringify(css),
+  })
 }
 
 /**

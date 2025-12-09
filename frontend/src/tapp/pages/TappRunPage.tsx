@@ -22,6 +22,7 @@ import {
 import { getTappRuntime } from '../runtime'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { loadPageResources, getResourceLoader } from '../runtime/sandbox/resourceLoader'
 import type { TappNotificationOptions } from '../runtime/sandbox/types'
 import type { TappInstance } from '../types'
 import type { TappCodeStructure } from '../examples/tapps/types'
@@ -85,20 +86,25 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
           return
         }
 
-        // 鑾峰彇浠ｇ爜锛屼紭鍏堜粠缂撳瓨锛屽惁鍒欎粠 API
-        let tappCode = runtime.getTappCode(tappId)
-        if (!tappCode) {
-          try {
-            tappCode = await runtime.fetchTappCode(tappId)
-          } catch (e) {
-            console.error('[TappRunPage] Failed to fetch code:', e)
-            setError(t.tapp.appCodeLoadFailed)
-            setLoading(false)
-            return
-          }
+        // 🎯 使用新的资源加载器获取 Page 专用资源
+        const resources = await loadPageResources(instance)
+        
+        // 转换为 TappCodeStructure 格式以兼容 TappPageSandbox
+        const tappCode: TappCodeStructure = {
+          core: resources.core,
+          page: resources.page,
+          pageHtml: resources.html,
+          styles: resources.styles,
+          pageCSS: resources.css,
         }
+        
+        console.log('[TappRunPage] Resources loaded via ResourceLoader:', {
+          tappId,
+          hasHtml: !!resources.html,
+          cssLength: resources.css.length,
+        })
 
-        // 濡傛灉鏈繍琛岋紝鍚姩瀹?
+        // 如果未运行，启动它
         if (!runtime.isRunning(tappId)) {
           await runtime.startTapp(tappId)
         }

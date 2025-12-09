@@ -385,6 +385,8 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/:tapp_id/storage/:key", get(get_storage))
         .route("/:tapp_id/storage/:key", post(set_storage))
         .route("/:tapp_id/storage/:key", delete(delete_storage))
+        // 更新分离式 CSS（用于商店安装后前端生成）
+        .route("/:tapp_id/separated-css", post(update_separated_css))
         // 商店源管理（需要认证，API 内部检查管理员权限）
         .route("/store/sources", post(add_store_source))
         .route("/store/sources/:source_id", post(update_store_source))
@@ -700,6 +702,10 @@ struct InstallTappRequest {
     page_template: Option<String>,
     /// 小组件 HTML 模板（可选，按尺寸）
     widget_templates: Option<std::collections::HashMap<String, String>>,
+    /// Widget 专用 Tailwind CSS（可选）
+    widget_css: Option<String>,
+    /// Page 专用 Tailwind CSS（可选）
+    page_css: Option<String>,
 
     // ===== store 模式需要的字段 =====
     /// 商店源 URL 或 ID（store 模式必需）
@@ -766,7 +772,9 @@ async fn install_tapp(
                 )
             })?;
 
-            fetch_from_store(&db, &store_source, &tapp_id).await?
+            let (manifest, code, styles, page_template, widget_templates) =
+                fetch_from_store(&db, &store_source, &tapp_id).await?;
+            (manifest, code, styles, page_template, widget_templates)
         }
         _ => {
             return Err((
@@ -816,6 +824,16 @@ async fn install_tapp(
     if let Some(styles) = &styles {
         let styles_path = tapp_dir.join("styles.css");
         let _ = fs::write(&styles_path, styles).await;
+    }
+
+    // 🎯 保存分离式 CSS
+    if let Some(widget_css) = &req.widget_css {
+        let widget_css_path = tapp_dir.join("widget.css");
+        let _ = fs::write(&widget_css_path, widget_css).await;
+    }
+    if let Some(page_css) = &req.page_css {
+        let page_css_path = tapp_dir.join("page.css");
+        let _ = fs::write(&page_css_path, page_css).await;
     }
 
     if let Some(page) = &page_template {
@@ -1325,15 +1343,30 @@ async fn get_tapp_code(
 struct TappResourcesResponse {
     /// 主代码（index.js/main.js）
     code: String,
-    /// 自定义 CSS 样式
+    /// 自定义 CSS 样式（统一模式，或共享样式）
     #[serde(skip_serializing_if = "Option::is_none")]
     styles: Option<String>,
+    /// Widget 专用自定义 CSS（分离模式）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    widget_styles: Option<String>,
+    /// Page 专用自定义 CSS（分离模式）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page_styles: Option<String>,
+    /// Widget 专用编译后的 Tailwind CSS
+    #[serde(skip_serializing_if = "Option::is_none")]
+    widget_css: Option<String>,
+    /// Page 专用编译后的 Tailwind CSS
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page_css: Option<String>,
     /// Widget HTML 模板（按尺寸）
     #[serde(skip_serializing_if = "Option::is_none")]
     widget_templates: Option<std::collections::HashMap<String, String>>,
     /// Page HTML 模板
     #[serde(skip_serializing_if = "Option::is_none")]
     page_template: Option<String>,
+    /// CSS 架构模式：unified（统一）或 separated（分离）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    css_mode: Option<String>,
 }
 
 /// 获取 Tapp 完整资源（代码 + CSS + HTML 模板）
@@ -1388,14 +1421,51 @@ async fn get_tapp_resources(
     // 解析 manifest 获取资源文件路径
     let manifest: serde_json::Value = tapp.manifest.clone();
 
-    // 读取自定义 CSS
+    // 确定 CSS 架构模式
+    let css_mode = manifest
+        .get("cssMode")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let is_separated = css_mode.as_deref() == Some("separated");
+
+    // 读取自定义 CSS（统一模式或共享样式）
     let styles = if let Some(styles_file) = manifest.get("styles").and_then(|v| v.as_str()) {
         let styles_path = tapp_dir.join(styles_file);
         fs::read_to_string(&styles_path).await.ok()
-    } else {
-        // 尝试默认位置
+    } else if !is_separated {
+        // 尝试默认位置（仅在非分离模式下）
         let default_path = tapp_dir.join("styles.css");
         fs::read_to_string(&default_path).await.ok()
+    } else {
+        None
+    };
+
+    // 读取 Widget 专用 CSS（分离模式）
+    let widget_styles = if is_separated {
+        if let Some(widget_styles_file) = manifest.get("widgetStyles").and_then(|v| v.as_str()) {
+            let widget_styles_path = tapp_dir.join(widget_styles_file);
+            fs::read_to_string(&widget_styles_path).await.ok()
+        } else {
+            // 尝试默认位置
+            let default_path = tapp_dir.join("widget.css");
+            fs::read_to_string(&default_path).await.ok()
+        }
+    } else {
+        None
+    };
+
+    // 读取 Page 专用 CSS（分离模式）
+    let page_styles = if is_separated {
+        if let Some(page_styles_file) = manifest.get("pageStyles").and_then(|v| v.as_str()) {
+            let page_styles_path = tapp_dir.join(page_styles_file);
+            fs::read_to_string(&page_styles_path).await.ok()
+        } else {
+            // 尝试默认位置
+            let default_path = tapp_dir.join("page.css");
+            fs::read_to_string(&default_path).await.ok()
+        }
+    } else {
+        None
     };
 
     // 读取 Page HTML 模板
@@ -1438,15 +1508,41 @@ async fn get_tapp_resources(
         }
     }
 
+    // 读取分离的预编译 Tailwind CSS（widget.css 和 page.css，用于 Tailwind）
+    // 注意：在分离模式下，widget_styles/page_styles 已经包含了自定义样式
+    // 这里的 widget_css/page_css 是额外的预编译 Tailwind CSS
+    let widget_css = if !is_separated {
+        // 统一模式：尝试读取预编译的 widget.css
+        let widget_css_path = tapp_dir.join("widget.css");
+        fs::read_to_string(&widget_css_path).await.ok()
+    } else {
+        // 分离模式：widget_styles 已经包含完整样式，不需要额外的 Tailwind CSS
+        None
+    };
+
+    let page_css = if !is_separated {
+        // 统一模式：尝试读取预编译的 page.css
+        let page_css_path = tapp_dir.join("page.css");
+        fs::read_to_string(&page_css_path).await.ok()
+    } else {
+        // 分离模式：page_styles 已经包含完整样式，不需要额外的 Tailwind CSS
+        None
+    };
+
     Ok(Json(TappResourcesResponse {
         code,
         styles,
+        widget_styles,
+        page_styles,
+        widget_css,
+        page_css,
         widget_templates: if widget_templates.is_empty() {
             None
         } else {
             Some(widget_templates)
         },
         page_template,
+        css_mode,
     }))
 }
 
@@ -2431,6 +2527,64 @@ async fn delete_store_source(
         .exec(&db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// 更新分离式 CSS 的请求体
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateSeparatedCssRequest {
+    /// Widget 专用编译后的 Tailwind CSS
+    #[serde(default)]
+    widget_css: Option<String>,
+    /// Page 专用编译后的 Tailwind CSS
+    #[serde(default)]
+    page_css: Option<String>,
+}
+
+/// 更新 Tapp 的分离式 CSS
+///
+/// 分别更新 widget.css 和 page.css
+/// 用于商店安装后，前端生成分离的 Tailwind CSS 并更新到后端
+async fn update_separated_css(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(tapp_id): Path<String>,
+    Json(req): Json<UpdateSeparatedCssRequest>,
+) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // 验证 Tapp 存在且用户有权限
+    let tapp = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(user_id))
+        .filter(tapps::Column::TappId.eq(&tapp_id))
+        .one(&db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // 获取 Tapp 目录
+    let code_path = PathBuf::from(&tapp.code_path);
+    let tapp_dir = code_path
+        .parent()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // 保存 Widget CSS
+    if let Some(widget_css) = &req.widget_css {
+        let widget_css_path = tapp_dir.join("widget.css");
+        fs::write(&widget_css_path, widget_css)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    // 保存 Page CSS
+    if let Some(page_css) = &req.page_css {
+        let page_css_path = tapp_dir.join("page.css");
+        fs::write(&page_css_path, page_css)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
 
     Ok(Json(ApiResponse::success(())))
 }

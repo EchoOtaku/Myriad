@@ -133,19 +133,9 @@ The Content-Security-Policy directive 'prefetch-src' is not implemented...
 
 ## 样式问题
 
-### ❌ Tailwind 类不生效
+### ✔️ Tailwind 类完整支持
 
-**症状**：使用了 Tailwind 类但样式没有应用。
-
-**原因**：沙箱只注入部分常用 Tailwind 类，你使用的类可能不在预设列表中。
-
-**解决方案**：
-
-1. 优先使用常见的 Tailwind 类（见下方列表）
-2. 对于特殊样式，使用内联 style 或 `styles.css`
-3. 如果你在开发 Myriad 本身，可以在 `styles.ts` 的 `TAILWIND_SUBSET` 中添加缺失的类
-
-**常用预设类**（部分）：
+Tapp 沙箱通过 Tailwind CDN 加载，支持所有 Tailwind 类名，包括：
 
 - 布局：`flex`, `grid`, `items-center`, `justify-between`, `gap-*`
 - 尺寸：`w-full`, `h-full`, `min-h-*`, `max-w-*`
@@ -154,6 +144,7 @@ The Content-Security-Policy directive 'prefetch-src' is not implemented...
 - 颜色：`bg-*`, `text-*`, `border-*`
 - 效果：`rounded-*`, `shadow-*`, `opacity-*`
 - 暗色：`dark:bg-*`, `dark:text-*`
+- 任意值：`w-[200px]`, `bg-[#1da1f2]` 等
 
 ---
 

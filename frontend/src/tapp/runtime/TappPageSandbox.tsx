@@ -25,7 +25,6 @@ import {
   generateFullSDK,
   generateThemeCSS,
   PAGE_STATIC_CSS,
-  TAILWIND_CDN_SCRIPT,
   IFRAME_SANDBOX_ATTRS,
   type TappNotificationOptions,
   type SafeInsets,
@@ -116,6 +115,9 @@ function generatePageHTML(
   // JS 代码 - 混合模式下也会加载
   const pageCode = getCodeForMode(code, 'page')
   
+  // 🎯 使用安装时预编译的 CSS
+  const tailwindCSS = code.pageCSS || ''
+  
   // 是否需要调用 Tapp.pages.render()
   // 仅在没有 HTML 模板时才需要（纯 JS 模式）
   const needsJsRender = !hasHtmlTemplate
@@ -130,12 +132,11 @@ function generatePageHTML(
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name}</title>
-  ${TAILWIND_CDN_SCRIPT}
   <style>
     ${PAGE_STATIC_CSS}
+    ${tailwindCSS}
     ${themeCSS}
     ${customCSS}
-    body { color: var(--tapp-text); background: var(--tapp-bg); }
     /* 初始安全区域 padding - 确保全屏模式下内容不被遮挡 */
     #tapp-content { padding: ${initialPadding}; box-sizing: border-box; }
   </style>

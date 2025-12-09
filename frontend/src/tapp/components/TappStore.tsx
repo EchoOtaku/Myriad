@@ -821,12 +821,47 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
         }
         
         // 通过后端 API 从远程商店安装（后端直接下载所有资源）
-        const { installFromStore } = await import('../services/TappApiService')
+        const { installFromStore, getTappResources, updateSeparatedCSS } = await import('../services/TappApiService')
         await installFromStore({
           source: source.id ? String(source.id) : source.url,
           tappId: app.id,
           permissions: app.permissions,
         })
+        
+        // 🎯 安装完成后，获取资源并生成分离式预编译 CSS（widget.css 和 page.css）
+        try {
+          const resources = await getTappResources(app.id)
+          // 如果没有分离式 CSS，前端生成并更新
+          if (!resources.widgetCSS && !resources.pageCSS) {
+            const { generateOnDemandTailwindCSS } = await import('../runtime/sandbox/styles')
+            
+            // 🎯 生成 Widget 专用 CSS（只包含 Widget 相关源码）
+            const widgetSources = [
+              resources.code || '',
+              resources.styles || '',
+              ...Object.values(resources.widgetTemplates || {}),
+            ].join('\n')
+            const widgetCss = generateOnDemandTailwindCSS(widgetSources)
+            
+            // 🎯 生成 Page 专用 CSS（只包含 Page 相关源码）
+            const pageSources = [
+              resources.code || '',
+              resources.styles || '',
+              resources.pageTemplate || '',
+            ].join('\n')
+            const pageCss = generateOnDemandTailwindCSS(pageSources)
+            
+            // 保存分离的 CSS
+            if (widgetCss || pageCss) {
+              await updateSeparatedCSS(app.id, { widgetCss, pageCss })
+              // 🎯 清除该 Tapp 的代码缓存，确保下次获取时能获得新的 CSS
+              runtime.clearCodeCache(app.id)
+            }
+          }
+        } catch (cssError) {
+          // CSS 生成失败不影响安装，只记录日志
+          console.warn('Failed to generate separated CSS:', cssError)
+        }
         
         // 刷新 runtime 缓存
         await runtime.syncFromBackend(true)

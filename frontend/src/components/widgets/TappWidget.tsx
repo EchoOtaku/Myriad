@@ -19,6 +19,7 @@ import { memo, useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { WidgetComponentProps } from '../WidgetGrid'
 import { getTappRuntime, TappWidgetSandbox } from '../../tapp/runtime'
+import { loadWidgetResources, getResourceLoader, type WidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import type { RegisteredWidget, TappInstance } from '../../tapp/types'
 import type { TappCodeStructure } from '../../tapp/examples/tapps/types'
 import { useI18n } from '../../contexts/I18nContext'
@@ -145,21 +146,26 @@ const TappWidgetPreview = memo(({
           return
         }
         
-        // 获取代码
+        // 🎯 使用新的资源加载器获取 Widget 专用资源
         const widgetSize = config?.size || widget.config.defaultSize || '4x2'
-        let tappCode = runtime.getTappCode(widget.tappId)
-        if (!tappCode) {
-          tappCode = await runtime.fetchTappCode(widget.tappId, widgetSize)
-        }
-        
-        if (!tappCode) {
+        try {
+          const resources = await loadWidgetResources(tapp, widgetSize)
+          
+          // 转换为 TappCodeStructure 格式以兼容 TappWidgetSandbox
+          const tappCode: TappCodeStructure = {
+            core: resources.core,
+            widget: resources.widget,
+            widgetHtml: resources.html,
+            styles: resources.styles,
+            widgetCSS: resources.css,
+          }
+          
+          setPreviewData({ tappInstance: tapp, code: tappCode, widget })
+        } catch {
           setFallback(true)
           return
         }
-        
-        setPreviewData({ tappInstance: tapp, code: tappCode, widget })
-      } catch (err) {
-        console.error('[TappWidgetPreview] Failed to load:', err)
+      } catch {
         setFallback(true)
       }
     }
@@ -386,21 +392,26 @@ export const TappWidgetComponent = memo(({
           
           // 只有运行中才获取代码
           if (running) {
-            // 获取 Tapp 代码（传入 widgetSize 以获取对应的 HTML 模板）
+            // 🎯 使用新的资源加载器获取 Widget 专用资源
             const widgetSize = config?.size || found.config.defaultSize || '4x2'
-            let tappCode = runtime.getTappCode(found.tappId)
-            if (!tappCode) {
-              // 尝试异步加载（传入尺寸以获取正确的 HTML 模板）
-              tappCode = await runtime.fetchTappCode(found.tappId, widgetSize)
-            }
-            
-            if (!tappCode) {
+            try {
+              const resources = await loadWidgetResources(tapp, widgetSize)
+              
+              // 转换为 TappCodeStructure 格式以兼容 TappWidgetSandbox
+              const tappCode: TappCodeStructure = {
+                core: resources.core,
+                widget: resources.widget,
+                widgetHtml: resources.html,
+                styles: resources.styles,
+                widgetCSS: resources.css,
+              }
+              
+              setCode(tappCode)
+            } catch {
               setError('Tapp code not found')
               setLoading(false)
               return
             }
-            
-            setCode(tappCode)
           }
 
           setError(null)
@@ -408,7 +419,6 @@ export const TappWidgetComponent = memo(({
           initializedRef.current = true
         }
       } catch (err) {
-        console.error('[TappWidget] Load error:', err)
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load widget')
           setLoading(false)
@@ -456,28 +466,38 @@ export const TappWidgetComponent = memo(({
 
   // 重新加载时获取代码
   useEffect(() => {
-    if (!loading || !isRunning || !widget) return
+    if (!loading || !isRunning || !widget || !tappInstance) return
 
     const loadCode = async () => {
       try {
+        // 🎯 使用新的资源加载器获取 Widget 专用资源
         const widgetSize = config?.size || widget.config.defaultSize || '4x2'
-        let tappCode = runtime.getTappCode(widget.tappId)
-        if (!tappCode) {
-          // 传入尺寸以获取正确的 HTML 模板
-          tappCode = await runtime.fetchTappCode(widget.tappId, widgetSize)
+        
+        // 清除资源加载器缓存以确保获取最新资源
+        getResourceLoader().clearCache(widget.tappId)
+        
+        const resources = await loadWidgetResources(tappInstance, widgetSize)
+        
+        // 转换为 TappCodeStructure 格式
+        const tappCode: TappCodeStructure = {
+          core: resources.core,
+          widget: resources.widget,
+          widgetHtml: resources.html,
+          styles: resources.styles,
+          widgetCSS: resources.css,
         }
-        setCode(tappCode || null)
+        
+        setCode(tappCode)
         setLoading(false)
         initializedRef.current = true
       } catch (err) {
-        console.error('[TappWidget] Failed to load code:', err)
         setError(err instanceof Error ? err.message : 'Failed to load code')
         setLoading(false)
       }
     }
 
     loadCode()
-  }, [loading, isRunning, widget, runtime])
+  }, [loading, isRunning, widget, tappInstance, config?.size])
 
   // 使用 useMemo 稳定 widgetProps，避免 TappWidgetSandbox 不必要的重渲染
   // scale 和 fontScale 由 TappWidgetSandbox 内部自动计算并注入到 iframe
@@ -506,8 +526,8 @@ export const TappWidgetComponent = memo(({
     if (!widget) return
     try {
       await runtime.startTapp(widget.tappId)
-    } catch (err) {
-      console.error('[TappWidget] Failed to start Tapp:', err)
+    } catch {
+      // Tapp 启动失败，静默处理
     }
   }, [widget, runtime])
 
@@ -645,11 +665,7 @@ export const TappWidgetComponent = memo(({
         widgetId={widget.config.id || widget.id.split('.').pop() || ''}
         widgetProps={widgetProps}
         onError={(err: Error) => {
-          console.error('[TappWidget] Sandbox error:', err)
           setError(err.message)
-        }}
-        onReady={() => {
-          console.log('[TappWidget] Widget ready:', widget.id)
         }}
         className="w-full h-full"
       />

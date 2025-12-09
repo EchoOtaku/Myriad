@@ -84,8 +84,21 @@ export interface TappManifest {
   /** 是否有页面模块（声明式，标识应用可在页面模式下运行） */
   hasPage?: boolean
 
-  /** 自定义 CSS 样式文件路径 */
+  /** 
+   * CSS 架构模式
+   * - 'unified': 统一 CSS 文件（默认，使用 styles 字段）
+   * - 'separated': 分离 CSS 文件（使用 widgetStyles + pageStyles）
+   */
+  cssMode?: 'unified' | 'separated'
+
+  /** 自定义 CSS 样式文件路径（统一模式，或作为共享样式） */
   styles?: string
+
+  /** Widget 专用 CSS 文件路径（分离模式） */
+  widgetStyles?: string
+
+  /** Page 专用 CSS 文件路径（分离模式） */
+  pageStyles?: string
 
   /** 页面 HTML 模板文件路径 */
   pageTemplate?: string

@@ -28,7 +28,6 @@ import {
   generateWidgetSDK,
   generateThemeCSS,
   WIDGET_STATIC_CSS,
-  TAILWIND_CDN_SCRIPT,
   IFRAME_SANDBOX_ATTRS,
   type WidgetRenderProps,
 } from './sandbox'
@@ -73,6 +72,10 @@ export interface TappWidgetSandboxProps {
  * 🔒 安全特性：
  * - 使用 CSP nonce 替代 unsafe-inline，只有带正确 nonce 的脚本才能执行
  * 
+ * 🎯 CSS 策略：
+ * - 优先使用安装时预编译的 CSS（零运行时开销）
+ * - 如果预编译 CSS 不可用，降级到动态生成
+ * 
  * @param tappInstance - Tapp 实例
  * @param code - Tapp 代码结构
  * @param widgetId - Widget ID
@@ -106,6 +109,9 @@ function generateWidgetHTML(
   // JS 代码 - 混合模式下也会加载
   const widgetCode = getCodeForMode(code, 'widget')
   
+  // 🎯 使用安装时预编译的 CSS
+  const tailwindCSS = code.widgetCSS || ''
+  
   // 是否需要调用 Tapp.widgets.render()
   // 仅在没有 HTML 模板时才需要（纯 JS 模式）
   const needsJsRender = !hasHtmlTemplate
@@ -117,12 +123,11 @@ function generateWidgetHTML(
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name} Widget</title>
-  ${TAILWIND_CDN_SCRIPT}
   <style>
     ${WIDGET_STATIC_CSS}
+    ${tailwindCSS}
     ${themeCSS}
     ${customCSS}
-    body { color: var(--tapp-text); }
   </style>
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
@@ -325,12 +330,13 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
   }, [isReady])
   
   // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
-  // 使用 widgetHtml 长度 + styles 长度作为简单指纹，避免大字符串比较
+  // 使用 widgetHtml 长度 + styles 长度 + widgetCSS 长度作为简单指纹，避免大字符串比较
   const codeFingerprint = useMemo(() => {
     const wh = code.widgetHtml || ''
     const st = code.styles || ''
     const js = getCodeForMode(code, 'widget') || ''
-    return `${wh.length}:${st.length}:${js.length}`
+    const css = code.widgetCSS || ''
+    return `${wh.length}:${st.length}:${js.length}:${css.length}`
   }, [code])
   
   // 初始化（不依赖 theme/primaryColor 变化）
@@ -360,6 +366,7 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
     
     // 生成 HTML（传递 session token）
     const html = generateWidgetHTML(currentTappInstance, currentCode, widgetId, propsForHtml, sessionToken)
+    
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     iframe.src = url
