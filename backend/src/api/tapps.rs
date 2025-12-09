@@ -483,7 +483,7 @@ async fn list_tapps(
 
 /// 从远程商店下载 Tapp 文件
 ///
-/// 返回 (manifest, code, styles, page_template, widget_templates)
+/// 返回 (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates)
 async fn fetch_from_store(
     db: &DatabaseConnection,
     store_source: &str,
@@ -492,6 +492,8 @@ async fn fetch_from_store(
     (
         TappManifest,
         String,
+        Option<String>,
+        Option<String>,
         Option<String>,
         Option<String>,
         Option<std::collections::HashMap<String, String>>,
@@ -621,17 +623,43 @@ async fn fetch_from_store(
 
     // 下载可选资源
     let mut styles_content: Option<String> = None;
+    let mut widget_styles_content: Option<String> = None;
+    let mut page_styles_content: Option<String> = None;
     let mut page_template_content: Option<String> = None;
     let mut widget_templates: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
-    // 下载 CSS 样式
+    // 下载 CSS 样式（统一模式）
     if let Some(styles_path) = download.get("styles").and_then(|v| v.as_str()) {
         let styles_url = format!("{}/{}", base_url, styles_path);
         if let Ok(resp) = client.get(&styles_url).send().await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     styles_content = Some(content);
+                }
+            }
+        }
+    }
+
+    // 下载 Widget 专用 CSS（分离模式）
+    if let Some(widget_styles_path) = download.get("widget_styles").and_then(|v| v.as_str()) {
+        let widget_styles_url = format!("{}/{}", base_url, widget_styles_path);
+        if let Ok(resp) = client.get(&widget_styles_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(content) = resp.text().await {
+                    widget_styles_content = Some(content);
+                }
+            }
+        }
+    }
+
+    // 下载 Page 专用 CSS（分离模式）
+    if let Some(page_styles_path) = download.get("page_styles").and_then(|v| v.as_str()) {
+        let page_styles_url = format!("{}/{}", base_url, page_styles_path);
+        if let Ok(resp) = client.get(&page_styles_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(content) = resp.text().await {
+                    page_styles_content = Some(content);
                 }
             }
         }
@@ -675,6 +703,8 @@ async fn fetch_from_store(
         manifest,
         code,
         styles_content,
+        widget_styles_content,
+        page_styles_content,
         page_template_content,
         widget_templates_opt,
     ))
@@ -734,55 +764,73 @@ async fn install_tapp(
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
 
     // 根据来源获取 manifest 和代码
-    let (manifest, code, styles, page_template, widget_templates) = match req.source.as_str() {
-        "direct" => {
-            // 直接安装：从请求中获取
-            let manifest = req.manifest.ok_or_else(|| {
+    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates) =
+        match req.source.as_str() {
+            "direct" => {
+                // 直接安装：从请求中获取
+                let manifest = req.manifest.ok_or_else(|| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        api_error("manifest is required for direct install"),
+                    )
+                })?;
+                let code = req.code.ok_or_else(|| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        api_error("code is required for direct install"),
+                    )
+                })?;
                 (
-                    StatusCode::BAD_REQUEST,
-                    api_error("manifest is required for direct install"),
+                    manifest,
+                    code,
+                    req.styles,
+                    None::<String>, // widget_styles - 直接安装暂不支持
+                    None::<String>, // page_styles - 直接安装暂不支持
+                    req.page_template,
+                    req.widget_templates,
                 )
-            })?;
-            let code = req.code.ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    api_error("code is required for direct install"),
-                )
-            })?;
-            (
-                manifest,
-                code,
-                req.styles,
-                req.page_template,
-                req.widget_templates,
-            )
-        }
-        "store" => {
-            // 从商店安装：下载文件
-            let store_source = req.store_source.ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    api_error("storeSource is required for store install"),
-                )
-            })?;
-            let tapp_id = req.tapp_id.ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    api_error("tappId is required for store install"),
-                )
-            })?;
+            }
+            "store" => {
+                // 从商店安装：下载文件
+                let store_source = req.store_source.ok_or_else(|| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        api_error("storeSource is required for store install"),
+                    )
+                })?;
+                let tapp_id = req.tapp_id.ok_or_else(|| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        api_error("tappId is required for store install"),
+                    )
+                })?;
 
-            let (manifest, code, styles, page_template, widget_templates) =
-                fetch_from_store(&db, &store_source, &tapp_id).await?;
-            (manifest, code, styles, page_template, widget_templates)
-        }
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                api_error("Invalid source, must be 'direct' or 'store'"),
-            ));
-        }
-    };
+                let (
+                    manifest,
+                    code,
+                    styles,
+                    widget_styles,
+                    page_styles,
+                    page_template,
+                    widget_templates,
+                ) = fetch_from_store(&db, &store_source, &tapp_id).await?;
+                (
+                    manifest,
+                    code,
+                    styles,
+                    widget_styles,
+                    page_styles,
+                    page_template,
+                    widget_templates,
+                )
+            }
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    api_error("Invalid source, must be 'direct' or 'store'"),
+                ));
+            }
+        };
 
     // 检查是否已安装
     let existing = tapps::Entity::find()
@@ -826,7 +874,17 @@ async fn install_tapp(
         let _ = fs::write(&styles_path, styles).await;
     }
 
-    // 🎯 保存分离式 CSS
+    // 🎯 保存分离式 CSS（从商店下载的）
+    if let Some(ws) = &widget_styles {
+        let widget_styles_path = tapp_dir.join("widget.css");
+        let _ = fs::write(&widget_styles_path, ws).await;
+    }
+    if let Some(ps) = &page_styles {
+        let page_styles_path = tapp_dir.join("page.css");
+        let _ = fs::write(&page_styles_path, ps).await;
+    }
+
+    // 🎯 保存分离式 CSS（从请求直接传的）
     if let Some(widget_css) = &req.widget_css {
         let widget_css_path = tapp_dir.join("widget.css");
         let _ = fs::write(&widget_css_path, widget_css).await;

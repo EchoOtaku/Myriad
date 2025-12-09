@@ -4,6 +4,15 @@
 
 > 📌 本文档内容参考系统小组件：QuickStatsWidget、WeatherWidget、WelcomeWidget、QuoteWidget、MusicPlayerWidget 等。
 
+> **✨ 样式推荐**：虽然小组件完全支持 Tailwind CSS，但我们**强烈建议使用语义化的原生 CSS**：
+>
+> - 更好的可维护性，避免冗长的 Tailwind 类名列表
+> - 更小的体积，无需 Tailwind 运行时编译
+> - 更容易实现复杂的 hover/focus/动画效果
+> - 支持 CSS 架构分离模式（Widget 专用样式文件）
+>
+> 详见 [样式规范 - 推荐原生 CSS](STYLING.md#-推荐语义化原生-css)。
+
 ---
 
 ## Widget SDK 限制
@@ -75,6 +84,142 @@ Tapp.widgets["my-widget"] = {
 | `4x2` | 宽幅展示、图表、音乐播放器 | 横向分区或上下分区  |
 | `4x4` | 大型展示、详细数据         | 自由布局            |
 | `2x4` | 垂直列表、时间线           | 纵向堆叠            |
+
+---
+
+## 原生 CSS 示例（推荐）
+
+相比内联 Tailwind 类，使用语义化原生 CSS 更易维护：
+
+```css
+/* widget.css */
+.stats-widget {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+.dark .stats-widget {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.stats-widget-glow {
+  position: absolute;
+  right: -2rem;
+  top: -2rem;
+  width: 8rem;
+  height: 8rem;
+  border-radius: 50%;
+  filter: blur(64px);
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+.stats-widget-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.stats-widget-value {
+  font-size: 30px;
+  font-weight: 900;
+  color: #1f1f1f;
+  line-height: 1;
+}
+
+.dark .stats-widget-value {
+  color: #f5f5f5;
+}
+```
+
+```javascript
+// 简洁的 JS
+container.innerHTML = `
+  <div class="stats-widget">
+    <div class="stats-widget-glow" style="background: ${themeColor}"></div>
+    <div class="stats-widget-content">
+      <span class="stats-widget-value" style="font-size: ${30 * fontScale}px;">
+        ${value}
+      </span>
+    </div>
+  </div>
+`;
+```
+
+---
+
+## 原生 CSS 示例（推荐）
+
+相比内联 Tailwind 类，使用语义化原生 CSS 更易维护：
+
+```css
+/* widget.css */
+.stats-widget {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+.dark .stats-widget {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.stats-widget-glow {
+  position: absolute;
+  right: -2rem;
+  top: -2rem;
+  width: 8rem;
+  height: 8rem;
+  border-radius: 50%;
+  filter: blur(64px);
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+.stats-widget-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.stats-widget-value {
+  font-size: 30px;
+  font-weight: 900;
+  color: #1f1f1f;
+  line-height: 1;
+}
+
+.dark .stats-widget-value {
+  color: #f5f5f5;
+}
+```
+
+```javascript
+// 简洁的 JS
+container.innerHTML = `
+  <div class="stats-widget">
+    <div class="stats-widget-glow" style="background: ${themeColor}"></div>
+    <div class="stats-widget-content">
+      <span class="stats-widget-value" style="font-size: ${30 * fontScale}px;">
+        ${value}
+      </span>
+    </div>
+  </div>
+`;
+```
 
 ---
 
@@ -209,7 +354,7 @@ text-xs uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400
 `<span class="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
        style="font-size: ${30 * fontScale}px;">
   ${value}
-</span>`// 带单位标签
+</span>` // 带单位标签
 `<div class="flex items-baseline gap-1">
   <span class="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
         style="font-size: ${30 * fontScale}px;">1234</span>
@@ -234,7 +379,7 @@ text-xs uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400
 `<div class="font-bold text-gray-800 dark:text-gray-100 truncate"
       style="font-size: ${14 * fontScale}px;">
   ${name}
-</div>`// 次要信息（如艺术家）
+</div>` // 次要信息（如艺术家）
 `<div class="text-gray-600 dark:text-gray-400 truncate"
       style="font-size: ${12 * fontScale}px;">
   ${artist}
@@ -419,7 +564,7 @@ container.innerHTML = `
 // 加载状态（与系统一致）
 `<div class="h-full w-full flex items-center justify-center">
   <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-</div>`// 空状态（居中图标+文字）
+</div>` // 空状态（居中图标+文字）
 `<div class="relative h-full w-full rounded-xl overflow-hidden glass">
   ${renderGlow("#ef4444", "right", "md")}
   <div class="absolute inset-0 flex flex-col items-center justify-center p-3">
@@ -427,7 +572,7 @@ container.innerHTML = `
     <span class="text-gray-500 dark:text-gray-400"
           style="font-size: ${12 * fontScale}px;">暂无播放</span>
   </div>
-</div>`// 不可用状态
+</div>` // 不可用状态
 `<div class="h-full w-full flex items-center justify-center text-gray-400">
   <span>数据不可用</span>
 </div>`;
@@ -459,12 +604,12 @@ container.innerHTML = `
   32 * scale
 }px;">
   ${playIcon}
-</button>`// 次要按钮
+</button>` // 次要按钮
 `<button class="px-3 py-1.5 text-xs font-medium 
                 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 
                 text-gray-700 dark:text-gray-200 rounded-lg transition-colors">
   详情
-</button>`// 强调按钮（渐变背景）
+</button>` // 强调按钮（渐变背景）
 `<button class="px-3 py-1.5 text-xs font-medium text-white rounded-lg shadow-sm hover:shadow-md"
          style="background: linear-gradient(135deg, ${themeColor}, color-mix(in srgb, ${themeColor} 80%, black));">
   启动

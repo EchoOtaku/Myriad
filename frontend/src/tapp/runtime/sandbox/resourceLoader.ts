@@ -266,7 +266,9 @@ export class TappResourceLoader {
       }
 
       // 🎯 生成 Widget 专用 CSS
-      const css = await this.ensureWidgetCSS(
+      // 分离模式：widgetStyles（原生 CSS）+ Tailwind CSS 合并
+      // 统一模式：从源码提取 Tailwind CSS
+      const tailwindCSS = await this.ensureWidgetCSS(
         tappInstance.id,
         size,
         coreCode,
@@ -275,6 +277,10 @@ export class TappResourceLoader {
         effectiveStyles,
         raw.widgetCSS      // 使用后端预分离的 Widget CSS
       )
+      // 合并：原生 CSS 在前，Tailwind 在后（Tailwind 可覆盖）
+      const css = cssMode === 'separated' && effectiveStyles
+        ? `${effectiveStyles}\n${tailwindCSS}`
+        : tailwindCSS
 
       const resources: WidgetResources = {
         core: coreCode,
@@ -345,7 +351,9 @@ export class TappResourceLoader {
       }
 
       // 🎯 生成 Page 专用 CSS
-      const css = await this.ensurePageCSS(
+      // 分离模式：pageStyles（原生 CSS）+ Tailwind CSS 合并
+      // 统一模式：从源码提取 Tailwind CSS
+      const tailwindCSS = await this.ensurePageCSS(
         tappInstance.id,
         coreCode,
         pageCode,
@@ -353,6 +361,10 @@ export class TappResourceLoader {
         effectiveStyles,
         raw.pageCSS        // 使用后端预分离的 Page CSS
       )
+      // 合并：原生 CSS 在前，Tailwind 在后（Tailwind 可覆盖）
+      const css = cssMode === 'separated' && effectiveStyles
+        ? `${effectiveStyles}\n${tailwindCSS}`
+        : tailwindCSS
 
       const resources: PageResources = {
         core: coreCode,
