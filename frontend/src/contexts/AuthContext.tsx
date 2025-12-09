@@ -48,12 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         const userData = await response.json();
-        // 🔍 调试：输出 API 返回的原始用户数据
-        console.log('[AuthContext] API /api/auth/me response:', {
-          ...userData,
-          linked_github_id: userData.linked_github_id,
-          linked_github_id_type: typeof userData.linked_github_id,
-        });
         setUser(userData);
         setIsAuthenticated(true);
         setIsAdmin(userData.is_admin || false);
