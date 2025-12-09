@@ -894,10 +894,17 @@ pub async fn get_current_user(
         .try_get("", "avatar_url")
         .unwrap_or_else(|_| "https://github.com/ghost.png".to_string());
     let github_id: Option<i64> = user_row.try_get("", "github_id").ok();
-    let linked_github_id: Option<String> = user_row.try_get("", "linked_github_id").ok();
+    // linked_github_id 在数据库中是 BIGINT 类型，需要读取为 i64
+    let linked_github_id: Option<i64> = user_row.try_get("", "linked_github_id").ok();
     let bio: Option<String> = user_row.try_get("", "bio").ok();
 
-    tracing::info!("User info retrieved: {} (ID: {})", username, id);
+    tracing::info!(
+        "User info retrieved: {} (ID: {}, auth_provider: {}, linked_github_id: {:?})",
+        username,
+        id,
+        auth_provider,
+        linked_github_id
+    );
 
     Ok(Json(json!({
         "id": id,
@@ -907,7 +914,7 @@ pub async fn get_current_user(
         "is_admin": is_admin,
         "avatar_url": avatar_url,
         "github_id": github_id,
-        "linked_github_id": linked_github_id,
+        "linked_github_id": linked_github_id.map(|id| id.to_string()),
         "bio": bio,
     })))
 }

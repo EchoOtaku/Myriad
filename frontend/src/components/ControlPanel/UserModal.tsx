@@ -66,6 +66,18 @@ export const UserModal: React.FC<UserModalProps> = ({
     loadTapps();
   }, []);
 
+  // 🔍 调试：输出用户数据，检查 linked_github_id 是否正确传递
+  useEffect(() => {
+    console.log('[UserModal] User data received:', {
+      username: user.username,
+      auth_provider: user.auth_provider,
+      is_admin: user.is_admin,
+      linked_github_id: user.linked_github_id,
+      linked_github_id_type: typeof user.linked_github_id,
+      linked_github_id_truthy: !!user.linked_github_id,
+    });
+  }, [user]);
+
   // 获取最近使用的 Tapp（按 last_run_at 排序，取前3个）
   const recentTapps = [...tapps]
     .filter(t => t.last_run_at)
