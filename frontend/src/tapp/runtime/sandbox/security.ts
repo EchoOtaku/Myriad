@@ -46,17 +46,17 @@ export function generateSessionToken(): string {
  * 安全说明：
  * - 严格限制所有外部资源加载
  * - 🔒 img-src 移除 https: 防止通过图片泄露数据
- * - 🔒 font-src 只允许 data: URI
+ * - 🔒 font-src 允许 data: URI 和 Google Fonts
  */
 const CSP_BASE_DIRECTIVES = [
   "default-src 'none'",
-  // style-src 仍需要 unsafe-inline（CSS 注入风险低）
-  "style-src 'unsafe-inline'",
+  // style-src 允许 unsafe-inline 和 Google Fonts CSS
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
   // 🔒 安全加强：只允许 data:、blob: 和可信图片源
   // 网易云音乐图片域名：p1.music.126.net, p2.music.126.net 等
   "img-src data: blob: https://*.music.126.net https://*.netease.com",
-  // 🔒 安全加强：禁止外部字体，只允许 data: URI
-  "font-src data:",
+  // font-src 允许 data: URI 和 Google Fonts 字体文件
+  "font-src data: https://fonts.gstatic.com",
   "connect-src 'none'",
   "frame-src 'none'",
   "object-src 'none'",
