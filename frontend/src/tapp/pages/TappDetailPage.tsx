@@ -3,10 +3,11 @@
  * 鏄剧ず Tapp 璇︾粏淇℃伅鍜岄厤缃€夐」
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motionShim as motion } from '@lib/motionShim'
+import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 import AnimatedView from '../../components/AnimatedView'
+import Toast from '../../components/Toast'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { 
@@ -33,6 +34,7 @@ import {
 import { getTappRuntime } from '../runtime'
 import { getTappIconStyle } from '../utils/tappColors'
 import * as TappApiService from '../services/TappApiService'
+import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import type { TappInstance, TappPermission, TappSettingItem } from '../types'
 import { useI18n } from '../../contexts/I18nContext'
 
@@ -216,6 +218,16 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
   const [isRunning, setIsRunning] = useState(false)
   const [settingsValues, setSettingsValues] = useState<Record<string, unknown>>({})
   const [settingsSaving, setSettingsSaving] = useState<string | null>(null)
+  // 本地输入值缓存（用于防止中文输入被打断）
+  const [localInputValues, setLocalInputValues] = useState<Record<string, string>>({})
+  // 待保存的设置（用于延迟保存和页面退出时保存）
+  const pendingChangesRef = useRef<Record<string, unknown>>({})
+  // 防抖定时器引用
+  const debounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // Toast 消息
+  const [toastMessage, setToastMessage] = useState<string>('')
+  // 卸载确认对话框状态
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false)
   const runtime = getTappRuntime()
 
   // 鍔犺浇璁剧疆鍊?- 骞惰鍔犺浇浼樺寲
@@ -244,17 +256,103 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
   }, [tappId])
 
   // 淇濆瓨璁剧疆鍊?
-  const saveSetting = useCallback(async (key: string, value: unknown) => {
+  const saveSetting = useCallback(async (key: string, value: unknown, showHint = true) => {
     setSettingsSaving(key)
     try {
       await TappApiService.setStorage(tappId, `_settings.${key}`, value)
       setSettingsValues(prev => ({ ...prev, [key]: value }))
+      // 从待保存列表中移除
+      delete pendingChangesRef.current[key]
+      // 显示保存成功 Toast
+      if (showHint) {
+        setToastMessage(`✓ ${t.tapp.settingSaved}`)
+      }
     } catch (err) {
       console.error('Failed to save setting:', err)
+      setToastMessage(`✗ ${t.tapp.settingSaveFailed || '保存失败'}`)
     } finally {
       setSettingsSaving(null)
     }
-  }, [tappId])
+  }, [tappId, t])
+
+  // 处理输入框变化（仅更新本地状态，不立即保存）
+  const handleInputChange = useCallback((key: string, value: string) => {
+    setLocalInputValues(prev => ({ ...prev, [key]: value }))
+    // 标记为待保存
+    pendingChangesRef.current[key] = value
+    
+    // 清除之前的防抖定时器
+    if (debounceTimersRef.current[key]) {
+      clearTimeout(debounceTimersRef.current[key])
+    }
+    
+    // 设置新的防抖定时器（2秒无操作后保存）
+    debounceTimersRef.current[key] = setTimeout(() => {
+      if (pendingChangesRef.current[key] !== undefined) {
+        saveSetting(key, pendingChangesRef.current[key])
+      }
+    }, 2000)
+  }, [saveSetting])
+
+  // 处理数字输入框变化
+  const handleNumberChange = useCallback((key: string, value: number) => {
+    setLocalInputValues(prev => ({ ...prev, [key]: String(value) }))
+    pendingChangesRef.current[key] = value
+    
+    if (debounceTimersRef.current[key]) {
+      clearTimeout(debounceTimersRef.current[key])
+    }
+    
+    debounceTimersRef.current[key] = setTimeout(() => {
+      if (pendingChangesRef.current[key] !== undefined) {
+        saveSetting(key, pendingChangesRef.current[key])
+      }
+    }, 2000)
+  }, [saveSetting])
+
+  // 输入框失焦时保存
+  const handleInputBlur = useCallback((key: string, type: 'input' | 'number') => {
+    // 清除防抖定时器
+    if (debounceTimersRef.current[key]) {
+      clearTimeout(debounceTimersRef.current[key])
+      delete debounceTimersRef.current[key]
+    }
+    
+    // 如果有待保存的更改，立即保存
+    if (pendingChangesRef.current[key] !== undefined) {
+      const value = type === 'number' 
+        ? Number(pendingChangesRef.current[key]) 
+        : pendingChangesRef.current[key]
+      saveSetting(key, value)
+    }
+  }, [saveSetting])
+
+  // 保存所有待保存的更改
+  const saveAllPendingChanges = useCallback(async () => {
+    const keys = Object.keys(pendingChangesRef.current)
+    for (const key of keys) {
+      await saveSetting(key, pendingChangesRef.current[key], false)
+    }
+  }, [saveSetting])
+
+  // 页面退出时保存所有待保存的更改
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // 同步保存（尽力而为）
+      const keys = Object.keys(pendingChangesRef.current)
+      for (const key of keys) {
+        TappApiService.setStorage(tappId, `_settings.${key}`, pendingChangesRef.current[key])
+      }
+    }
+    
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      // 组件卸载时清除所有定时器并保存
+      Object.values(debounceTimersRef.current).forEach(clearTimeout)
+      saveAllPendingChanges()
+    }
+  }, [tappId, saveAllPendingChanges])
 
   // 鍔犺浇 Tapp
   useEffect(() => {
@@ -315,15 +413,21 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
     }
   }, [runtime, tappId, isRunning, navigate])
 
-  // 鍗歌浇
-  const handleUninstall = useCallback(async () => {
-    if (confirm(t.tapp.confirmUninstall)) {
-      try {
-        await runtime.uninstallTapp(tappId)
-        goBack()
-      } catch (err) {
-        console.error('Failed to uninstall Tapp:', err)
-      }
+  // 鍗歌浇 - 显示确认对话框
+  const handleUninstall = useCallback(() => {
+    setShowUninstallDialog(true)
+  }, [])
+
+  // 确认卸载
+  const handleConfirmUninstall = useCallback(async (keepData: boolean) => {
+    try {
+      await runtime.uninstallTapp(tappId, { keepData })
+      setShowUninstallDialog(false)
+      goBack()
+    } catch (err) {
+      console.error('Failed to uninstall Tapp:', err)
+      setToastMessage(t.tapp.uninstallFailed || 'Uninstall failed')
+      throw err // 让组件处理 loading 状态
     }
   }, [runtime, tappId, goBack, t])
   // 导出
@@ -572,8 +676,9 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
                         {setting.type === 'input' && (
                           <input
                             type="text"
-                            value={String(settingsValues[setting.key] ?? '')}
-                            onChange={(e) => saveSetting(setting.key, e.target.value)}
+                            value={localInputValues[setting.key] ?? String(settingsValues[setting.key] ?? '')}
+                            onChange={(e) => handleInputChange(setting.key, e.target.value)}
+                            onBlur={() => handleInputBlur(setting.key, 'input')}
                             placeholder={setting.placeholder}
                             disabled={settingsSaving === setting.key}
                             className="w-40 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
@@ -584,8 +689,9 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
                         {setting.type === 'number' && (
                           <input
                             type="number"
-                            value={Number(settingsValues[setting.key] ?? setting.min ?? 0)}
-                            onChange={(e) => saveSetting(setting.key, Number(e.target.value))}
+                            value={localInputValues[setting.key] ?? Number(settingsValues[setting.key] ?? setting.min ?? 0)}
+                            onChange={(e) => handleNumberChange(setting.key, Number(e.target.value))}
+                            onBlur={() => handleInputBlur(setting.key, 'number')}
                             min={setting.min}
                             max={setting.max}
                             step={setting.step}
@@ -739,6 +845,17 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
           </div>
         </div>
       </div>
+
+      {/* Toast 提示 */}
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage('')} />}
+
+      {/* 卸载确认对话框 */}
+      <UninstallConfirmDialog
+        isOpen={showUninstallDialog}
+        appName={tapp?.manifest.name || tappId}
+        onCancel={() => setShowUninstallDialog(false)}
+        onConfirm={handleConfirmUninstall}
+      />
     </AnimatedView>
   )
 }

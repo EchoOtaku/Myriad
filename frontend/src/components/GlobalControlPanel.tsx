@@ -19,7 +19,7 @@ import { usePerformanceProfile } from '../hooks/usePerformanceProfile';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useAuth } from '../contexts/AuthContext';
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext';
-import { observeResize } from '../hooks/animation';
+import { observeResize, batchRead, batchWrite } from '../hooks/animation';
 import { useI18n } from '../contexts/I18nContext';
 import { useThemeMode } from '../utils/themeSubscriber';
 import { 
@@ -842,84 +842,117 @@ const GlobalControlPanel: React.FC = () => {
 
   // 用于跟踪上一次歌词文本，实现切换时的淡入淡出
   const prevLyricTextRef = useRef<string>('');
+  // 用于强制触发滚动动画重置的key
+  const scrollResetKeyRef = useRef<number>(0);
 
-  // 检测文本是否超出2行，需要垂直滚动
+  // 歌词切换时的淡入淡出效果（独立处理，不影响滚动检测）
   useEffect(() => {
-    if (textRef.current && currentContent) {
-      const element = textRef.current;
-      const isMusic = currentContent.type === 'music';
-      const textChanged = isMusic && prevLyricTextRef.current !== '' && prevLyricTextRef.current !== currentContent.text;
-      
+    if (!textRef.current || !currentContent) return;
+
+    const element = textRef.current;
+    const isMusic = currentContent.type === 'music';
+    const textChanged = isMusic && prevLyricTextRef.current !== '' && prevLyricTextRef.current !== currentContent.text;
+
+    if (textChanged) {
       // 歌词切换时添加淡入淡出效果
-      if (textChanged) {
-        // 先淡出
-        element.classList.add('lyric-transition');
-        
-        // 100ms 后移除淡出类（让新内容淡入）
-        setTimeout(() => {
-          element.classList.remove('lyric-transition');
-        }, 100);
-      }
-      
-      // 更新上一次歌词文本
-      if (isMusic) {
-        prevLyricTextRef.current = currentContent.text;
-      } else {
-        prevLyricTextRef.current = '';
-      }
-      
-      // 计算2行的高度（line-height 1.3 * font-size 0.8125rem * 2 ≈ 2.1rem ≈ 34px）
-      const twoLineHeight = 34;
-      const actualHeight = element.scrollHeight;
-      // 只有当文本高度超过2行（约34px）时才启用滚动
-      const overflowAmount = actualHeight - twoLineHeight;
-      const shouldScroll = overflowAmount > 5; // 超过5px才算溢出
-      
-      if (shouldScroll) {
-        // 设置 CSS 变量来控制垂直滚动距离（负值向上滚动）
-        element.style.setProperty('--scroll-distance', `-${overflowAmount}px`);
-        
-        // 根据内容类型计算滚动时间和延迟
-        let duration: number;
-        let delay: string;
-        if (currentContent.type === 'music' && currentContent.lyricDuration) {
-          // 歌词：使用歌词时间轴，留出 0.3 秒的延迟
-          // 滚动时间 = 歌词持续时间 - 0.5秒（延迟+缓冲），最短1.5秒
-          duration = Math.max(1.5, currentContent.lyricDuration - 0.5);
-          delay = '0.3s'; // 歌词用更短的延迟
-        } else if (currentContent.type === 'music') {
-          // 没有时间轴的歌词，默认 4 秒
-          duration = 4;
-          delay = '0.5s';
-        } else {
-          // 普通内容：每20px需要1秒，最短10秒，最长20秒
-          duration = Math.max(10, Math.min(20, Math.ceil(overflowAmount / 20) + 10));
-          delay = '1.5s';
-        }
-        element.style.setProperty('--scroll-duration', `${duration}s`);
-        element.style.setProperty('--scroll-delay', delay);
-        
-        // 需要先重置动画再启用，确保动画从头开始
-        // 先禁用滚动，强制重置位置
-        setNeedsScroll(false);
-        // 强制重排，确保位置重置
-        void element.offsetHeight;
-        // 下一帧启用滚动动画
-        requestAnimationFrame(() => {
+      element.classList.add('lyric-transition');
+      const timer = setTimeout(() => {
+        element.classList.remove('lyric-transition');
+      }, 100);
+
+      // 强制触发滚动重置
+      scrollResetKeyRef.current++;
+
+      return () => clearTimeout(timer);
+    }
+
+    // 更新上一次歌词文本
+    if (isMusic) {
+      prevLyricTextRef.current = currentContent.text;
+    } else {
+      prevLyricTextRef.current = '';
+    }
+  }, [currentContent?.text, currentContent?.type]);
+
+  // 检测文本是否超出2行，需要垂直滚动 - 使用统一动画调度器优化性能
+  useEffect(() => {
+    if (!textRef.current || !currentContent) {
+      setNeedsScroll(false);
+      return;
+    }
+
+    const element = textRef.current;
+
+    // 滚动检测和动画配置函数
+    const updateScrollAnimation = () => {
+      let scrollHeight = 0;
+      let overflowAmount = 0;
+      let shouldScroll = false;
+
+      // 批量读取阶段 - 使用统一调度器避免布局抖动
+      batchRead(() => {
+        const twoLineHeight = 34;
+        scrollHeight = element.scrollHeight;
+        overflowAmount = scrollHeight - twoLineHeight;
+        shouldScroll = overflowAmount > 5;
+      });
+
+      // 批量写入阶段
+      batchWrite(() => {
+        if (shouldScroll) {
+          // 设置 CSS 变量来控制垂直滚动距离
+          element.style.setProperty('--scroll-distance', `-${overflowAmount}px`);
+
+          // 根据内容类型计算滚动时间和延迟
+          let duration: number;
+          let delay: string;
+
+          // 🎵 歌词特殊处理：使用精确的时间轴同步
+          if (currentContent.type === 'music' && currentContent.lyricDuration) {
+            // 歌词：使用歌词持续时间（到下一句的时间差）
+            // 减去0.5秒作为缓冲，留出0.3秒作为延迟，确保流畅过渡
+            duration = Math.max(1.5, currentContent.lyricDuration - 0.5);
+            delay = '0.3s'; // 歌词用更短的延迟，快速响应
+          } else if (currentContent.type === 'music') {
+            // 没有时间轴的歌词（最后一句或无时间戳），默认 4 秒
+            duration = 4;
+            delay = '0.5s';
+          } else {
+            // 普通内容：根据溢出量动态计算，每20px需要1秒，最短10秒，最长20秒
+            duration = Math.max(10, Math.min(20, Math.ceil(overflowAmount / 20) + 10));
+            delay = '1.5s';
+          }
+
+          element.style.setProperty('--scroll-duration', `${duration}s`);
+          element.style.setProperty('--scroll-delay', delay);
+
+          // 重置滚动动画（确保从头开始）
+          setNeedsScroll(false);
           requestAnimationFrame(() => {
             setNeedsScroll(true);
           });
-        });
-      } else {
-        element.style.removeProperty('--scroll-distance');
-        element.style.removeProperty('--scroll-duration');
-        element.style.removeProperty('--scroll-delay');
-        setNeedsScroll(false);
-      }
-    } else {
-      setNeedsScroll(false);
-    }
-  }, [currentContent?.text, currentContent?.type, currentContent?.lyricDuration, currentContentIndex]);
+        } else {
+          element.style.removeProperty('--scroll-distance');
+          element.style.removeProperty('--scroll-duration');
+          element.style.removeProperty('--scroll-delay');
+          setNeedsScroll(false);
+        }
+      });
+    };
+
+    // 使用统一调度器的ResizeObserver，共享Observer实例，性能更优
+    const unobserve = observeResize(element, (_entry) => {
+      updateScrollAnimation();
+    }, { immediate: true }); // 立即执行首次测量
+
+    // 监听内容变化，强制重新计算滚动
+    // 这确保歌词切换时滚动动画会重置
+    updateScrollAnimation();
+
+    return () => {
+      unobserve();
+    };
+  }, [currentContent?.text, currentContent?.type, currentContent?.lyricDuration, currentContentIndex, scrollResetKeyRef.current]);
 
   /**
    * 判断是否应该显示副文本

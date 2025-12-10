@@ -11,7 +11,7 @@
 //! 普通用户临时安装的 Tapp 权限限制为 basic 级别
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     middleware::from_fn_with_state,
     response::IntoResponse,
@@ -1064,48 +1064,6 @@ async fn install_tapp_file(
         )
     })?;
 
-    // 读取主代码
-    let code = {
-        // 先尝试 index.js
-        let has_index_js = archive.by_name("index.js").is_ok();
-        let code_file_name = if has_index_js { "index.js" } else { "main.js" };
-
-        let mut code_file = archive.by_name(code_file_name).map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                api_error("No code file (index.js or main.js) found"),
-            )
-        })?;
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut code_file, &mut content).map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                api_error("Failed to read code file"),
-            )
-        })?;
-        content
-    };
-
-    // 读取可选资源
-    let styles = read_optional_file(&mut archive, "styles.css");
-    let page_template = read_optional_file(&mut archive, "page.html");
-
-    // 读取 widget 模板
-    let mut widget_templates: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let file_names: Vec<String> = (0..archive.len())
-        .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
-        .collect();
-
-    for name in file_names {
-        if name.starts_with("widget-") && name.ends_with(".html") {
-            let size = name.trim_start_matches("widget-").trim_end_matches(".html");
-            if let Some(content) = read_optional_file(&mut archive, &name) {
-                widget_templates.insert(size.to_string(), content);
-            }
-        }
-    }
-
     // 检查是否已安装
     let existing = tapps::Entity::find()
         .filter(tapps::Column::UserId.eq(user_id))
@@ -1133,42 +1091,60 @@ async fn install_tapp_file(
         )
     })?;
 
-    // 保存主代码文件
-    let code_path = tapp_dir.join("main.js");
-    fs::write(&code_path, &code).await.map_err(|_| {
+    // 🎯 直接解压所有文件到目标文件夹（完全避免兼容性问题）
+    let tapp_dir_clone = tapp_dir.clone();
+    let file_data_clone = file_data.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
+        use std::io::Read;
+
+        let cursor = std::io::Cursor::new(&file_data_clone);
+        let mut archive = zip::ZipArchive::new(cursor)?;
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)?;
+            let file_name = file.name().to_string();
+
+            // 跳过目录条目和路径遍历攻击
+            if file_name.ends_with('/') || file_name.contains("..") {
+                continue;
+            }
+
+            // 只提取文件名，忽略路径（防止目录遍历）
+            let safe_name = std::path::Path::new(&file_name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&file_name);
+
+            let out_path = tapp_dir_clone.join(safe_name);
+
+            let mut content = Vec::new();
+            file.read_to_end(&mut content)?;
+            std::fs::write(&out_path, &content)?;
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            api_error("Failed to save code"),
+            api_error("Failed to extract files"),
+        )
+    })?
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error("Failed to save files"),
         )
     })?;
 
-    // 保存可选资源
-    if let Some(ref styles_content) = styles {
-        let styles_path = tapp_dir.join("styles.css");
-        let _ = fs::write(&styles_path, styles_content).await;
-    }
-
-    if let Some(ref page_content) = page_template {
-        let page_path = tapp_dir.join("page.html");
-        let _ = fs::write(&page_path, page_content).await;
-    }
-
-    for (size, content) in &widget_templates {
-        let widget_path = tapp_dir.join(format!("widget-{}.html", size));
-        let _ = fs::write(&widget_path, content).await;
-    }
-
-    // 保存 manifest.json
-    let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
-    let manifest_path = tapp_dir.join("manifest.json");
-    fs::write(&manifest_path, &manifest_json)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error("Failed to save manifest"),
-            )
-        })?;
+    // 确定代码文件路径（优先 index.js，回退 main.js）
+    let code_path = if tapp_dir.join("index.js").exists() {
+        tapp_dir.join("index.js")
+    } else {
+        tapp_dir.join("main.js")
+    };
 
     // 确定授权的权限
     let granted: Vec<String> = if permissions.is_empty() {
@@ -1183,6 +1159,7 @@ async fn install_tapp_file(
     };
 
     // 保存到数据库
+    let manifest_path = tapp_dir.join("manifest.json");
     let now = Utc::now().fixed_offset();
     let tapp = tapps::ActiveModel {
         id: NotSet,
@@ -1230,20 +1207,6 @@ async fn install_tapp_file(
         is_temporary,
         is_admin_tapp: claims.is_admin,
     })))
-}
-
-/// 从 ZIP 归档中读取可选文件
-fn read_optional_file(
-    archive: &mut zip::ZipArchive<std::io::Cursor<&Vec<u8>>>,
-    name: &str,
-) -> Option<String> {
-    if let Ok(mut file) = archive.by_name(name) {
-        let mut content = String::new();
-        if std::io::Read::read_to_string(&mut file, &mut content).is_ok() {
-            return Some(content);
-        }
-    }
-    None
 }
 
 /// 获取 Tapp 详情
@@ -1659,26 +1622,22 @@ async fn export_tapp(
         let options =
             SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
-        // 要打包的文件列表
-        let files_to_pack = [
-            "manifest.json",
-            "main.js",
-            "styles.css",
-            "page.html",
-            "widget-2x2.html",
-            "widget-2x4.html",
-            "widget-4x2.html",
-            "widget-4x4.html",
-        ];
+        // 🎯 遍历整个 Tapp 目录，打包所有文件（完全避免兼容性问题）
+        if tapp_dir_owned.is_dir() {
+            for entry in std::fs::read_dir(&tapp_dir_owned)? {
+                let entry = entry?;
+                let path = entry.path();
 
-        for filename in files_to_pack {
-            let file_path = tapp_dir_owned.join(filename);
-            if file_path.exists() {
-                let mut file = std::fs::File::open(&file_path)?;
-                let mut content = Vec::new();
-                file.read_to_end(&mut content)?;
-                zip.start_file(filename, options)?;
-                zip.write_all(&content)?;
+                // 只打包文件，跳过子目录
+                if path.is_file() {
+                    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                        let mut file = std::fs::File::open(&path)?;
+                        let mut content = Vec::new();
+                        file.read_to_end(&mut content)?;
+                        zip.start_file(filename, options)?;
+                        zip.write_all(&content)?;
+                    }
+                }
             }
         }
 
@@ -1831,18 +1790,31 @@ async fn stop_tapp(
     Err(StatusCode::NOT_FOUND)
 }
 
+/// 卸载 Tapp 查询参数
+#[derive(Debug, Deserialize)]
+struct UninstallTappQuery {
+    /// 是否保留应用数据（存储和设置），默认 false
+    #[serde(default)]
+    keep_data: bool,
+}
+
 /// 卸载 Tapp
 ///
 /// 权限模型：
 /// - 管理员可以卸载自己的 Tapp
 /// - 普通用户只能卸载自己临时安装的 Tapp，不能卸载管理员的 Tapp
+///
+/// 查询参数：
+/// - keep_data: bool - 是否保留应用数据，以便再次安装时恢复
 async fn uninstall_tapp(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
+    Query(query): Query<UninstallTappQuery>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let admin_id = get_admin_user_id(&db).await?;
+    let keep_data = query.keep_data;
 
     // 检查是否是管理员的 Tapp
     if let Some(tapp) = tapps::Entity::find()
@@ -1858,7 +1830,7 @@ async fn uninstall_tapp(
             return Err(StatusCode::FORBIDDEN);
         }
         // 管理员可以卸载自己的 Tapp
-        return do_uninstall_tapp(&db, &tapp).await;
+        return do_uninstall_tapp(&db, &tapp, keep_data).await;
     }
 
     // 尝试从用户自己的临时 Tapp 中查找
@@ -1870,13 +1842,17 @@ async fn uninstall_tapp(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    do_uninstall_tapp(&db, &tapp).await
+    do_uninstall_tapp(&db, &tapp, keep_data).await
 }
 
 /// 执行卸载 Tapp 的具体操作
+///
+/// 参数：
+/// - keep_data: 是否保留应用数据（存储和设置），以便再次安装时恢复
 async fn do_uninstall_tapp(
     db: &DatabaseConnection,
     tapp: &tapps::Model,
+    keep_data: bool,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id = tapp.user_id;
     let tapp_id = &tapp.tapp_id;
@@ -1888,7 +1864,7 @@ async fn do_uninstall_tapp(
         .to_path_buf();
     let _ = fs::remove_dir_all(&tapp_dir).await;
 
-    // 删除相关小组件
+    // 删除相关小组件（无论是否保留数据，小组件注册都需要删除）
     tapp_widgets::Entity::delete_many()
         .filter(tapp_widgets::Column::UserId.eq(user_id))
         .filter(tapp_widgets::Column::TappId.eq(tapp_id))
@@ -1896,13 +1872,17 @@ async fn do_uninstall_tapp(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // 删除存储数据
-    tapp_storage::Entity::delete_many()
-        .filter(tapp_storage::Column::UserId.eq(user_id))
-        .filter(tapp_storage::Column::TappId.eq(tapp_id))
-        .exec(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // 根据 keep_data 决定是否删除存储数据
+    if !keep_data {
+        // 删除存储数据
+        tapp_storage::Entity::delete_many()
+            .filter(tapp_storage::Column::UserId.eq(user_id))
+            .filter(tapp_storage::Column::TappId.eq(tapp_id))
+            .exec(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+    // 如果 keep_data 为 true，保留 tapp_storage 中的数据，再次安装时可以恢复
 
     // 删除 Tapp 记录
     tapps::Entity::delete_by_id(tapp.id)
@@ -1937,9 +1917,9 @@ async fn cleanup_temporary_tapps(
 
     let count = user_tapps.len() as i32;
 
-    // 删除每个 Tapp
+    // 删除每个 Tapp（临时 Tapp 不保留数据）
     for tapp in &user_tapps {
-        let _ = do_uninstall_tapp(&db, tapp).await;
+        let _ = do_uninstall_tapp(&db, tapp, false).await;
     }
 
     Ok(Json(ApiResponse::success(count)))

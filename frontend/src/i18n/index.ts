@@ -1129,6 +1129,8 @@ export interface TranslationKeys {
     homepage: string;
     visit: string;
     loading: string;
+    settingSaved: string;
+    settingSaveFailed: string;
     
     // AI 配额
     aiQuota: string;
@@ -1155,6 +1157,11 @@ export interface TranslationKeys {
     retry: string;
     uninstallFailed: string;
     unknownError: string;
+    // 卸载确认对话框
+    keepDataOnUninstall: string;
+    keepDataOnUninstallDesc: string;
+    uninstalling: string;
+    confirmUninstallBtn: string;
     
     // 商店源设置
     sourceManagement: string;

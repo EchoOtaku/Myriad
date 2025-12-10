@@ -14,6 +14,8 @@ interface User {
   auth_provider?: string;
   linked_github_id?: string;
   github_id?: number;
+  avatar_url?: string;
+  bio?: string;
 }
 
 interface AuthContextType {
@@ -76,8 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSessionHint();
   }, []);
 
-  // 懒加载：只在有组件需要时才检查
-  // 但如果 URL 中有 auth=success 或 link=success，立即检查（OAuth 回调）
+  // 页面加载时检查认证状态，包括：
+  // 1. OAuth 回调（auth=success 或 link=success）
+  // 2. 页面刷新时恢复登录状态（通过 Cookie 持久化）
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const authSuccess = urlParams.get('auth') === 'success';
@@ -91,6 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 清理 URL 参数，避免刷新时重复触发
       const newUrl = window.location.pathname;
       window.history.replaceState({}, '', newUrl);
+    } else {
+      // 页面加载时自动检查认证状态（恢复登录会话）
+      // 这确保了刷新页面后登录状态能够持久化
+      console.debug('[AuthContext] Page load, checking auth session...');
+      checkAuth();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

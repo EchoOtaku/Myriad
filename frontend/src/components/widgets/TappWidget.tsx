@@ -100,30 +100,42 @@ const TappWidgetPreview = memo(({
 }) => {
   const { locale } = useI18n()
   
-  // 使用 ref 确保只加载一次
+  // 使用 ref 确保只加载一次（但尺寸变化时需要重新加载）
   const loadedRef = useRef(false)
+  const prevSizeRef = useRef(config?.size)
   const [previewData, setPreviewData] = useState<{
     tappInstance: TappInstance
     code: TappCodeStructure
     widget: RegisteredWidget
   } | null>(null)
   const [fallback, setFallback] = useState(false)
-  
+
   // 获取预览信息（用于回退显示）
   const previewInfo = useMemo(() => getTappWidgetPreviewInfo(tappWidgetId), [tappWidgetId])
-  
-  // 只加载一次，不监听任何更新
+
+  // ⚡ 优化：监听尺寸变化，重新加载资源
+  useEffect(() => {
+    // 尺寸变化时重置加载状态，触发重新加载
+    if (prevSizeRef.current !== config?.size) {
+      prevSizeRef.current = config?.size
+      loadedRef.current = false
+      setPreviewData(null)
+      setFallback(false)
+    }
+  }, [config?.size])
+
+  // 加载预览数据（尺寸变化时会重新触发）
   useEffect(() => {
     if (loadedRef.current) return
     loadedRef.current = true
-    
+
     const loadPreviewData = async () => {
       try {
         const runtime = getTappRuntime()
-        
+
         // 等待 runtime 同步
         await runtime.waitForSync()
-        
+
         // 查找 widget
         const widgets = runtime.getRegisteredWidgets()
         const widget = widgets.find(w => w.id === tappWidgetId)
@@ -131,23 +143,28 @@ const TappWidgetPreview = memo(({
           setFallback(true)
           return
         }
-        
+
         // 获取 Tapp 实例
         const tapp = runtime.getTapp(widget.tappId)
         if (!tapp) {
           setFallback(true)
           return
         }
-        
+
         // 检查 Tapp 是否运行中
         const running = runtime.isRunning(widget.tappId)
         if (!running) {
           setFallback(true)
           return
         }
-        
+
         // 🎯 使用新的资源加载器获取 Widget 专用资源
+        // ⚡ 优化：使用当前尺寸加载对应的资源
         const widgetSize = config?.size || widget.config.defaultSize || '4x2'
+
+        // 清除缓存确保获取最新的尺寸资源
+        getResourceLoader().clearCache(widget.tappId)
+
         try {
           const resources = await loadWidgetResources(tapp, widgetSize)
           
@@ -334,7 +351,10 @@ export const TappWidgetComponent = memo(({
   const initializedRef = useRef(false)
   const tappWidgetIdRef = useRef(tappWidgetId)
   tappWidgetIdRef.current = tappWidgetId
-  
+
+  // ⚡ 记录上一次的尺寸，用于检测尺寸变化
+  const prevSizeRef = useRef(config?.size)
+
   // 🎯 集成动画调度器的页面可见性感知
   // 页面不可见时跳过非必要的状态更新，减少后台 CPU 开销
   const pageVisibleRef = useRef(isPageVisible())
@@ -343,6 +363,22 @@ export const TappWidgetComponent = memo(({
       pageVisibleRef.current = visible
     })
   }, [])
+
+  // ⚡ 监听尺寸变化，重新加载资源
+  useEffect(() => {
+    // 尺寸变化时重置初始化状态，清除缓存，触发重新加载
+    if (prevSizeRef.current !== config?.size && widget) {
+      prevSizeRef.current = config?.size
+      initializedRef.current = false
+
+      // 清除资源加载器缓存
+      getResourceLoader().clearCache(widget.tappId)
+
+      // 触发重新加载
+      setLoading(true)
+      setCode(null)
+    }
+  }, [config?.size, widget])
 
   // 加载 Widget 信息和代码
   useEffect(() => {

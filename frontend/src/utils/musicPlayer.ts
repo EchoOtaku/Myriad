@@ -831,13 +831,19 @@ class GlobalAudioManager {
 
   /**
    * 获取当前频谱数据
-   * 返回一个包含 4 个值的数组，分别代表低频、中低频、中高频、高频的强度 (0-1)
-   * 性能优化：复用数组避免 GC
+   * 返回一个包含 4 个值的数组，索引对应：[bar1, bar2, bar3, bar4]
+   * 优化策略：中间的bar2和bar3显示最高的频率点，形成视觉中心
+   * 性能优化：
+   *   - 复用所有数组，零GC压力
+   *   - 使用选择算法O(n)代替排序O(n log n)
+   *   - 避免创建临时对象
    */
-  private spectrumResult: number[] = [0.3, 0.5, 0.4, 0.3]; // 复用数组
+  private spectrumResult: number[] = [0, 0, 0, 0]; // 复用数组
   private lastSpectrumTime = 0;
   private readonly SPECTRUM_THROTTLE = 50; // 节流间隔 ms
-  
+  private tempBands: number[] = [0, 0, 0, 0, 0, 0, 0, 0]; // 临时存储8个频段数据
+  private bandIndices: number[] = [0, 1, 2, 3, 4, 5, 6, 7]; // 复用索引数组，避免创建对象
+
   getSpectrumData(): number[] {
     // 节流：避免过于频繁的计算
     const now = performance.now();
@@ -845,55 +851,125 @@ class GlobalAudioManager {
       return this.spectrumResult;
     }
     this.lastSpectrumTime = now;
-    
+
     if (!this.analyser || !this.frequencyData) {
-      // 无分析器时返回模拟数据
-      this.spectrumResult[0] = 0.3 + Math.random() * 0.4;
-      this.spectrumResult[1] = 0.4 + Math.random() * 0.5;
-      this.spectrumResult[2] = 0.3 + Math.random() * 0.4;
-      this.spectrumResult[3] = 0.2 + Math.random() * 0.3;
+      // 移除随机频响后退方案：无分析器时返回静默
+      this.spectrumResult.fill(0);
       return this.spectrumResult;
     }
-    
+
     try {
       // 获取频率数据
       this.analyser.getByteFrequencyData(this.frequencyData);
-      
-      // 将频率数据分成 4 个频段
+
+      // 将32个频段分成8个区域，每个区域4个bin，获得更精细的频率分布
       const binCount = this.frequencyData.length; // 32 个频段
-      const bandSize = binCount >> 2; // 除以4，使用位运算更快
-      
+      const bandSize = binCount >> 3; // 除以8 = 4个bin per band
+
       let hasData = false;
-      for (let i = 0; i < 4; i++) {
+
+      // 计算8个频段的平均值
+      for (let i = 0; i < 8; i++) {
         let sum = 0;
         const start = i * bandSize;
         const end = start + bandSize;
-        
+
         for (let j = start; j < end; j++) {
           sum += this.frequencyData[j];
         }
-        
-        // 归一化到 0-1 范围，应用 1.5x 增益
-        const value = Math.min(1, (sum / bandSize / 255) * 1.5);
-        this.spectrumResult[i] = value;
-        if (value > 0) hasData = true;
+
+        // 归一化到 0-1 范围，应用 1.8x 增益（提高灵敏度）
+        const value = Math.min(1, (sum / bandSize / 255) * 1.8);
+        this.tempBands[i] = value;
+        if (value > 0.01) hasData = true; // 降低阈值，检测更细微的声音
       }
-      
-      // 如果数据全为 0（可能是 CORS 限制），返回模拟数据
+
       if (!hasData) {
-        this.spectrumResult[0] = 0.3 + Math.random() * 0.4;
-        this.spectrumResult[1] = 0.4 + Math.random() * 0.5;
-        this.spectrumResult[2] = 0.3 + Math.random() * 0.4;
-        this.spectrumResult[3] = 0.2 + Math.random() * 0.3;
+        // 移除随机频响后退方案：无数据时返回静默
+        this.spectrumResult.fill(0);
+        return this.spectrumResult;
       }
-      
+
+      // ⚡ 性能优化：使用选择算法找前4大的值，O(n)时间复杂度
+      // 避免完整排序和创建临时对象
+
+      // 使用部分选择排序：只需要找到前4大的值
+      // 索引数组按值降序排列前4个元素
+      const bands = this.tempBands;
+      const indices = this.bandIndices;
+
+      // 找到最大值的索引（第1大）
+      let maxIdx = 0;
+      for (let i = 1; i < 8; i++) {
+        if (bands[indices[i]] > bands[indices[maxIdx]]) {
+          maxIdx = i;
+        }
+      }
+      // 交换到位置0
+      if (maxIdx !== 0) {
+        const temp = indices[0];
+        indices[0] = indices[maxIdx];
+        indices[maxIdx] = temp;
+      }
+
+      // 找到第二大值的索引
+      maxIdx = 1;
+      for (let i = 2; i < 8; i++) {
+        if (bands[indices[i]] > bands[indices[maxIdx]]) {
+          maxIdx = i;
+        }
+      }
+      // 交换到位置1
+      if (maxIdx !== 1) {
+        const temp = indices[1];
+        indices[1] = indices[maxIdx];
+        indices[maxIdx] = temp;
+      }
+
+      // 找到第三大值的索引
+      maxIdx = 2;
+      for (let i = 3; i < 8; i++) {
+        if (bands[indices[i]] > bands[indices[maxIdx]]) {
+          maxIdx = i;
+        }
+      }
+      // 交换到位置2
+      if (maxIdx !== 2) {
+        const temp = indices[2];
+        indices[2] = indices[maxIdx];
+        indices[maxIdx] = temp;
+      }
+
+      // 找到第四大值的索引
+      maxIdx = 3;
+      for (let i = 4; i < 8; i++) {
+        if (bands[indices[i]] > bands[indices[maxIdx]]) {
+          maxIdx = i;
+        }
+      }
+      // 交换到位置3
+      if (maxIdx !== 3) {
+        const temp = indices[3];
+        indices[3] = indices[maxIdx];
+        indices[maxIdx] = temp;
+      }
+
+      // 分配策略：
+      // - bar2 (中间左): 最高频段
+      // - bar3 (中间右): 次高频段
+      // - bar1 (左边): 第三高频段
+      // - bar4 (右边): 第四高频段
+      // 形成 "低-高-高-低" 的对称视觉效果
+
+      this.spectrumResult[1] = bands[indices[0]]; // bar2: 最高
+      this.spectrumResult[2] = bands[indices[1]]; // bar3: 次高
+      this.spectrumResult[0] = bands[indices[2]]; // bar1: 第三
+      this.spectrumResult[3] = bands[indices[3]]; // bar4: 第四
+
       return this.spectrumResult;
     } catch {
-      // 异常时返回模拟数据
-      this.spectrumResult[0] = 0.3 + Math.random() * 0.4;
-      this.spectrumResult[1] = 0.4 + Math.random() * 0.5;
-      this.spectrumResult[2] = 0.3 + Math.random() * 0.4;
-      this.spectrumResult[3] = 0.2 + Math.random() * 0.3;
+      // 移除随机频响后退方案：异常时返回静默
+      this.spectrumResult.fill(0);
       return this.spectrumResult;
     }
   }

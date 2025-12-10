@@ -16,6 +16,8 @@ interface User {
   auth_provider: string;
   display_name?: string;
   linked_github_id?: string;
+  avatar_url?: string;
+  bio?: string;
 }
 
 interface UserInfo {
@@ -74,6 +76,51 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     };
   }, [modalState]);
 
+  // 获取用户信息
+  // 对于管理员：获取站长资料（/api/profile/user-info）
+  // 对于普通用户：使用 authUser 中的 GitHub 信息
+  const fetchUserInfo = useCallback(async () => {
+    // 先检查 authUser 是否有信息
+    if (!authUser) return;
+
+    // 如果是管理员，尝试获取站长资料（Bilibili/GitHub/Steam 绑定的资料）
+    if (authUser.is_admin) {
+      try {
+        const profileResponse = await fetch(`${API_URL}/api/profile/user-info`);
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          if (profileData.success && profileData.user_info) {
+            setUserInfo({
+              name: profileData.user_info.name || t.userModal.unknownUser,
+              avatar: profileData.user_info.avatar || '',
+              bio: profileData.user_info.bio || t.userModal.defaultBio,
+              platform: profileData.user_info.platform || t.userModal.unknownPlatform
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        // 站长资料获取失败，回退到 authUser 信息
+        console.debug('[UserSection] Failed to fetch admin profile, using authUser info');
+      }
+    }
+
+    // 普通 GitHub 用户或管理员资料获取失败时，使用 authUser 中的信息
+    const displayName = authUser.display_name || authUser.username;
+    const avatar = authUser.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
+    const bio = authUser.bio || t.userModal.defaultBio;
+    const platform = authUser.auth_provider === 'github' ? 'GitHub' : 
+                     authUser.auth_provider === 'local' ? 'Local' : 
+                     authUser.auth_provider || t.userModal.unknownPlatform;
+
+    setUserInfo({
+      name: displayName,
+      avatar: avatar,
+      bio: bio,
+      platform: platform
+    });
+  }, [authUser, t]);
+
   // 同步 AuthContext 的用户信息
   useEffect(() => {
     setIsAuthenticated(authIsAuthenticated);
@@ -81,27 +128,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     if (authUser) {
       fetchUserInfo();
     }
-  }, [authIsAuthenticated, authUser]);
-
-  // 获取平台用户信息
-  const fetchUserInfo = useCallback(async () => {
-    try {
-      const profileResponse = await fetch(`${API_URL}/api/profile/user-info`);
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        if (profileData.success && profileData.user_info) {
-          setUserInfo({
-            name: profileData.user_info.name || t.userModal.unknownUser,
-            avatar: profileData.user_info.avatar || '',
-            bio: profileData.user_info.bio || t.userModal.defaultBio,
-            platform: profileData.user_info.platform || t.userModal.unknownPlatform
-          });
-        }
-      }
-    } catch (error) {
-      // 静默处理错误
-    }
-  }, [t]);
+  }, [authIsAuthenticated, authUser, fetchUserInfo]);
 
   // 打开弹窗
   const openModal = useCallback(() => {

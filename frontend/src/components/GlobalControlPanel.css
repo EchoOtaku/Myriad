@@ -1,17 +1,17 @@
 /* ==========================================
-   全局控制面板样式 - Apple 风格智能�?
-   单一容器 + JS 控制状�?
+   全局控制面板样式 - Apple 风格智能�?
+   单一容器 + JS 控制状�?
    ========================================== */
 
 /* ==========================================
-   1. 容器与定�?
+   1. 容器与定�?
    ========================================== */
 
 .global-control-bar {
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 9999; /* 确保高于滚动条和大多数页面元�?*/
+  z-index: 9999; /* 确保高于滚动条和大多数页面元�?*/
   pointer-events: none;
 }
 
@@ -20,7 +20,7 @@
 }
 
 /* ==========================================
-   2. 智能岛容�?
+   2. 智能岛容�?
    ========================================== */
 
 .control-bar-trigger {
@@ -35,7 +35,7 @@
   cursor: pointer;
   transform-origin: top right;
   overflow: hidden;
-  /* 默认收缩状�?*/
+  /* 默认收缩状�?*/
   flex-direction: row;
   justify-content: flex-start;
   width: 160px;
@@ -61,7 +61,7 @@ html.dark .control-bar-trigger {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-/* 悬停 - 仅收缩状�?*/
+/* 悬停 - 仅收缩状�?*/
 .control-bar-trigger:not(.expanded):hover {
   background: rgba(255, 255, 255, 0.95);
   transform: scale(1.03);
@@ -80,12 +80,12 @@ html.dark .control-bar-trigger:not(.expanded):hover {
   transition: transform 0.1s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* 展开状�?*/
+/* 展开状�?*/
 .control-bar-trigger.expanded {
   flex-direction: column;
   align-items: stretch;
   width: 400px;
-  /* 高度通过 JS 动态设�?*/
+  /* 高度通过 JS 动态设�?*/
   padding: 1.125rem 1.375rem;
   border-radius: 1.5rem;
   box-shadow: 0 16px 56px rgba(0, 0, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.12);
@@ -100,7 +100,7 @@ html.dark .control-bar-trigger.expanded {
    3. 动态内容层
    ========================================== */
 
-/* 动态内�?- 收缩时显�?*/
+/* 动态内容 - 收缩时显示 */
 .dynamic-content-wrapper {
   display: flex;
   align-items: center;
@@ -109,25 +109,28 @@ html.dark .control-bar-trigger.expanded {
   top: 50%;
   left: 0.875rem;
   right: 0.875rem;
-  transform: translateY(-50%);
+  transform: translateY(-50%) translateZ(0);
   cursor: pointer;
   white-space: nowrap;
   opacity: 1;
-  /* 柔和的淡入效�?- 使用 ease-out 曲线，从快到�?*/
+  /* 柔和的淡入效果 - 使用 ease-out 曲线，从快到慢 */
   transition:
     opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
     transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
+  /* 性能优化 - GPU加速 */
+  will-change: opacity, transform;
+  backface-visibility: hidden;
 }
 
 .dynamic-content-wrapper.hidden {
   opacity: 0;
   pointer-events: none;
-  /* 柔和的淡出效�?- 使用 ease-in 曲线，从慢到�?*/
+  /* 柔和的淡出效�?- 使用 ease-in 曲线，从慢到�?*/
   transition: opacity 0.3s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* 无内容时的居中样�?*/
+/* 无内容时的居中样�?*/
 .dynamic-content-wrapper.empty-state {
   justify-content: center;
 }
@@ -153,8 +156,8 @@ html.dark .control-bar-trigger.expanded {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  max-width: calc(100% - 3rem); /* 预留图标和箭头空�?*/
-  /* 固定高度�?行，用于裁剪溢出内容 */
+  max-width: calc(100% - 3rem); /* 预留图标和箭头空�?*/
+  /* 固定高度�?行，用于裁剪溢出内容 */
   max-height: 2.2rem;
 }
 
@@ -167,9 +170,15 @@ html.dark .control-bar-trigger.expanded {
   word-break: break-word;
   max-width: 100%;
   line-height: 1.3;
-  /* 歌词切换时的淡入淡出效果 - 更柔�?*/
+  /* 歌词切换时的淡入淡出效果 - 更柔和 */
   transition: color 0.3s ease, opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   opacity: 1;
+  /* 性能优化 - 隔离布局计算 */
+  contain: layout style paint;
+  /* GPU加速 */
+  transform: translateZ(0);
+  /* 提升为合成层，减少重绘 */
+  will-change: transform;
 }
 
 /* 歌词切换时的淡出效果 - 通过 JS 添加此类 */
@@ -182,21 +191,24 @@ html.dark .control-bar-trigger.expanded {
 .dynamic-text-main.scrolling {
   /* 缓慢单向滚动 - 滚动到底部后固定，不循环 */
   animation: text-scroll-vertical var(--scroll-duration, 12s) linear forwards;
-  animation-delay: var(--scroll-delay, 1.5s); /* 默认延迟1.5�?*/
+  animation-delay: var(--scroll-delay, 1.5s); /* 默认延迟1.5秒 */
+  /* 强化GPU加速，确保滚动流畅 */
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
 @keyframes text-scroll-vertical {
   /* 起点停留 */
   0%, 8% {
-    transform: translateY(0);
+    transform: translateY(0) translateZ(0);
   }
   /* 缓慢滚动到底部并固定 */
   100% {
-    transform: translateY(var(--scroll-distance, -1rem));
+    transform: translateY(var(--scroll-distance, -1rem)) translateZ(0);
   }
 }
 
-/* 悬停时暂停滚�?*/
+/* 悬停时暂停滚�?*/
 .control-bar-trigger:hover .dynamic-text-main.scrolling {
   animation-play-state: paused;
 }
@@ -271,7 +283,7 @@ html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-sub {
   transform: translateY(3px) scale(1.05);
 }
 
-/* 控制面板内容 - 展开时显�?*/
+/* 控制面板内容 - 展开时显�?*/
 .expanded-panel-content {
   display: flex;
   flex-direction: column;
@@ -549,7 +561,7 @@ html.dark .quote-author-main {
 }
 
 /* ==========================================
-   6. 卡片导航�?
+   6. 卡片导航�?
    ========================================== */
 
 .card-nav-dots {
@@ -590,7 +602,7 @@ html.dark .nav-dot:hover {
 }
 
 /* ==========================================
-   7. 控制项网�?
+   7. 控制项网�?
    ========================================== */
 
 .control-items-grid {
@@ -600,7 +612,7 @@ html.dark .nav-dot:hover {
 }
 
 /* ==========================================
-   8. 控制�?
+   8. 控制�?
    ========================================== */
 
 .control-item {
@@ -681,9 +693,9 @@ html.dark .control-item:hover {
   justify-content: center;
 }
 
-/* 动态图标动�?- 常驻且温�?*/
+/* 动态图标动�?- 常驻且温�?*/
 /* GPU优化：使用translateZ(0)内置于keyframes，避免持久will-change */
-/* 图标装饰动画 - 优化：hover 时才激活，减少持续运行的动画数�?*/
+/* 图标装饰动画 - 优化：hover 时才激活，减少持续运行的动画数�?*/
 .icon-theme {
   transform-origin: bottom center;
   transform: translateZ(0);
@@ -697,7 +709,7 @@ html.dark .control-item:hover {
   transform: translateZ(0);
 }
 
-/* 只在 hover 时启用动�?*/
+/* 只在 hover 时启用动�?*/
 .control-item:hover .icon-theme {
   animation: icon-sway 4s ease-in-out infinite;
 }
@@ -710,7 +722,7 @@ html.dark .control-item:hover {
   animation: icon-spin 10s linear infinite;
 }
 
-/* 减少动效偏好时禁用装饰动�?*/
+/* 减少动效偏好时禁用装饰动�?*/
 @media (prefers-reduced-motion: reduce) {
   .control-item:hover .icon-theme,
   .control-item:hover .icon-wallpaper,
@@ -1004,7 +1016,7 @@ html.dark .account-action-danger:hover {
 }
 
 /* ==========================================
-   11. 遮罩�?
+   11. 遮罩�?
    ========================================== */
 
 .control-panel-overlay {

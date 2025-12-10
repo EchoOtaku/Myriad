@@ -10,7 +10,7 @@ import { WidgetConfig } from '../WidgetGrid';
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext';
 import { useWidgetSize } from '../../hooks/useWidgetSize';
 import { useAnimationLevel, AnimationConfig } from '../../hooks/useAnimationLevel';
-import { useLoopAnimation } from '../../hooks/animation';
+import { useLoopAnimation, isPageVisible, onVisibility } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 
 // ==================== 静态动画常量（避免每次渲染创建新对象）====================
@@ -172,8 +172,54 @@ const PlayingIndicator = memo(({
   const bar4Ref = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const connectedRef = useRef(false);
-  
-  // 频谱动画循环 - 直接操作 DOM
+
+  // ⚡ 接入统一调度器：页面可见性感知
+  const pageVisibleRef = useRef(isPageVisible());
+
+  // 监听页面可见性变化
+  useEffect(() => {
+    return onVisibility((visible) => {
+      pageVisibleRef.current = visible;
+
+      // 页面隐藏时暂停动画，页面显示时恢复
+      if (!visible && animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      } else if (visible && isPlaying && !animationRef.current) {
+        // 恢复动画循环
+        const startAnimation = () => {
+          let lastUpdateTime = 0;
+          const UPDATE_INTERVAL = 60;
+
+          const updateSpectrum = (timestamp: number) => {
+            // 检查页面是否仍然可见
+            if (!pageVisibleRef.current || !isPlaying) {
+              animationRef.current = null;
+              return;
+            }
+
+            if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
+              const data = audioManager.getSpectrumData();
+
+              // 平方曲线 (^2.0) 进一步提高门槛：强力压缩中低值
+              if (bar1Ref.current) bar1Ref.current.style.height = `${30 + Math.pow(data[0], 2.0) * 70}%`;
+              if (bar2Ref.current) bar2Ref.current.style.height = `${30 + Math.pow(data[1], 2.0) * 70}%`;
+              if (bar3Ref.current) bar3Ref.current.style.height = `${30 + Math.pow(data[2], 2.0) * 70}%`;
+              if (bar4Ref.current) bar4Ref.current.style.height = `${30 + Math.pow(data[3], 2.0) * 70}%`;
+
+              lastUpdateTime = timestamp;
+            }
+            animationRef.current = requestAnimationFrame(updateSpectrum);
+          };
+
+          animationRef.current = requestAnimationFrame(updateSpectrum);
+        };
+        startAnimation();
+      }
+    });
+  }, [isPlaying]);
+
+  // 频谱动画循环 - 接入统一调度器优化
   useEffect(() => {
     if (!isPlaying) {
       // 停止时重置高度
@@ -188,7 +234,7 @@ const PlayingIndicator = memo(({
       if (bar4Ref.current) bar4Ref.current.style.height = '35%';
       return;
     }
-    
+
     // 尝试连接音频到分析器（只连接一次）
     if (!connectedRef.current) {
       const audio = audioManager.getCurrentAudio();
@@ -197,28 +243,39 @@ const PlayingIndicator = memo(({
         connectedRef.current = true;
       }
     }
-    
+
+    // ⚡ 优化：只在页面可见时启动动画循环
+    if (!pageVisibleRef.current) {
+      return;
+    }
+
     // 高性能动画循环
     let lastUpdateTime = 0;
     const UPDATE_INTERVAL = 60; // ~16fps，足够流畅且省电
-    
+
     const updateSpectrum = (timestamp: number) => {
+      // ⚡ 优化：页面不可见时自动停止
+      if (!pageVisibleRef.current) {
+        animationRef.current = null;
+        return;
+      }
+
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
         const data = audioManager.getSpectrumData();
-        
-        // 直接操作 DOM，避免 React 重渲染
-        if (bar1Ref.current) bar1Ref.current.style.height = `${30 + data[0] * 70}%`;
-        if (bar2Ref.current) bar2Ref.current.style.height = `${30 + data[1] * 70}%`;
-        if (bar3Ref.current) bar3Ref.current.style.height = `${30 + data[2] * 70}%`;
-        if (bar4Ref.current) bar4Ref.current.style.height = `${30 + data[3] * 70}%`;
-        
+
+        // 平方曲线压缩：只有真正强劲的音频才能达到高位
+        if (bar1Ref.current) bar1Ref.current.style.height = `${30 + Math.pow(data[0], 2.0) * 70}%`;
+        if (bar2Ref.current) bar2Ref.current.style.height = `${30 + Math.pow(data[1], 2.0) * 70}%`;
+        if (bar3Ref.current) bar3Ref.current.style.height = `${30 + Math.pow(data[2], 2.0) * 70}%`;
+        if (bar4Ref.current) bar4Ref.current.style.height = `${30 + Math.pow(data[3], 2.0) * 70}%`;
+
         lastUpdateTime = timestamp;
       }
       animationRef.current = requestAnimationFrame(updateSpectrum);
     };
-    
+
     animationRef.current = requestAnimationFrame(updateSpectrum);
-    
+
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);

@@ -1128,6 +1128,8 @@ export const zhCN: TranslationKeys = {
     homepage: '主页',
     visit: '访问',
     loading: '正在加载...',
+    settingSaved: '设置已保存',
+    settingSaveFailed: '保存失败',
     
     // AI 配额
     aiQuota: 'AI 配额',
@@ -1154,6 +1156,11 @@ export const zhCN: TranslationKeys = {
     retry: '重试',
     uninstallFailed: '卸载失败',
     unknownError: '未知错误',
+    // 卸载确认对话框
+    keepDataOnUninstall: '保留应用数据',
+    keepDataOnUninstallDesc: '保留存储的数据和设置，以便再次安装时恢复',
+    uninstalling: '卸载中...',
+    confirmUninstallBtn: '确认卸载',
     
     // 商店源设置
     sourceManagement: '商店源管理',

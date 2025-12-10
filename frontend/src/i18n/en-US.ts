@@ -1125,6 +1125,8 @@ export const enUS: TranslationKeys = {
     homepage: 'Homepage',
     visit: 'Visit',
     loading: 'Loading...',
+    settingSaved: 'Settings saved',
+    settingSaveFailed: 'Save failed',
     
     // AI quota
     aiQuota: 'AI Quota',
@@ -1151,6 +1153,11 @@ export const enUS: TranslationKeys = {
     retry: 'Retry',
     uninstallFailed: 'Uninstall failed',
     unknownError: 'Unknown error',
+    // Uninstall confirmation dialog
+    keepDataOnUninstall: 'Keep app data',
+    keepDataOnUninstallDesc: 'Preserve stored data and settings for recovery when reinstalling',
+    uninstalling: 'Uninstalling...',
+    confirmUninstallBtn: 'Confirm Uninstall',
     
     // Store source settings
     sourceManagement: 'Source Management',

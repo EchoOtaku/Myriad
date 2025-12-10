@@ -42,6 +42,7 @@ import {
 import { useI18n } from '../../contexts/I18nContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { UninstallConfirmDialog } from './UninstallConfirmDialog'
 
 interface TappStoreProps {
   isOpen: boolean
@@ -627,6 +628,10 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
   const [installing, setInstalling] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 卸载确认对话框状态
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false)
+  const [uninstallTargetId, setUninstallTargetId] = useState<string | null>(null)
+  const [uninstallTargetName, setUninstallTargetName] = useState('')
   
   // 动画配置
   const animConfig = useAnimationLevel()
@@ -781,23 +786,40 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
     return true
   })
 
-  // 卸载应用
-  const handleUninstall = useCallback(async (appId: string) => {
-    if (confirm(t.tapp.confirmUninstall)) {
-      try {
-        await runtime.uninstallTapp(appId)
-        setInstalledTapps(prev => {
-          const next = new Map(prev)
-          next.delete(appId)
-          return next
-        })
-        onInstalled() // 刷新外部列表
-      } catch (error) {
-        console.error('Failed to uninstall Tapp:', error)
-        alert(t.tapp.uninstallFailed + ': ' + (error instanceof Error ? error.message : t.tapp.unknownError))
-      }
+  // 卸载应用 - 显示确认对话框
+  const handleUninstall = useCallback((appId: string) => {
+    // 找到对应的应用名称
+    const app = filteredApps.find(a => a.id === appId)
+    setUninstallTargetId(appId)
+    setUninstallTargetName(app?.name || appId)
+    setShowUninstallDialog(true)
+  }, [filteredApps])
+
+  // 确认卸载
+  const handleConfirmUninstall = useCallback(async (keepData: boolean) => {
+    if (!uninstallTargetId) return
+    try {
+      await runtime.uninstallTapp(uninstallTargetId, { keepData })
+      setInstalledTapps(prev => {
+        const next = new Map(prev)
+        next.delete(uninstallTargetId)
+        return next
+      })
+      onInstalled() // 刷新外部列表
+      setShowUninstallDialog(false)
+      setUninstallTargetId(null)
+    } catch (error) {
+      console.error('Failed to uninstall Tapp:', error)
+      alert(t.tapp.uninstallFailed + ': ' + (error instanceof Error ? error.message : t.tapp.unknownError))
+      throw error // 让组件处理 loading 状态
     }
-  }, [runtime, onInstalled, t])
+  }, [runtime, onInstalled, uninstallTargetId, t])
+
+  // 取消卸载
+  const cancelUninstall = useCallback(() => {
+    setShowUninstallDialog(false)
+    setUninstallTargetId(null)
+  }, [])
 
   // 安装应用
   const handleInstall = useCallback(async (app: UnifiedAppItem) => {
@@ -1144,7 +1166,15 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
           </p>
         </div>
 
-        {/* 商店源设置弹�?*/}
+        {/* 卸载确认对话框 */}
+        <UninstallConfirmDialog
+          isOpen={showUninstallDialog}
+          appName={uninstallTargetName}
+          onCancel={cancelUninstall}
+          onConfirm={handleConfirmUninstall}
+        />
+
+        {/* 商店源设置弹窗 */}
         <AnimatePresence>
           {showSourcesSettings && (
             <SourcesSettingsModal

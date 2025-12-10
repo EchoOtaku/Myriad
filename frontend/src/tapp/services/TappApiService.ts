@@ -458,10 +458,27 @@ export async function stopTapp(tappId: string): Promise<void> {
 }
 
 /**
- * 卸载 Tapp
+ * 卸载选项
  */
-export async function uninstallTapp(tappId: string): Promise<void> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}`, {
+export interface UninstallOptions {
+  /** 是否保留应用数据（存储和设置），以便再次安装时恢复 */
+  keepData?: boolean
+}
+
+/**
+ * 卸载 Tapp
+ * @param tappId Tapp ID
+ * @param options 卸载选项
+ */
+export async function uninstallTapp(tappId: string, options?: UninstallOptions): Promise<void> {
+  const params = new URLSearchParams()
+  if (options?.keepData) {
+    params.set('keep_data', 'true')
+  }
+  const queryString = params.toString()
+  const url = `/api/tapps/${encodeURIComponent(tappId)}${queryString ? `?${queryString}` : ''}`
+  
+  return apiRequest(url, {
     method: 'DELETE',
   })
 }

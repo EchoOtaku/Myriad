@@ -7,9 +7,39 @@ import { visualizer } from 'rollup-plugin-visualizer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * 自定义 Vite 插件：SPA 路由回退
+ * 将动态路由（如 /tapp/run/:id）在服务端重定向到 catch-all 页面
+ * 但保留原始 URL，让 React Router 在客户端正确解析参数
+ */
+function spaFallbackPlugin() {
+  return {
+    name: 'spa-fallback',
+    enforce: 'pre', // 确保在其他中间件之前执行
+    configureServer(server) {
+      // 直接添加中间件，不返回函数
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || '';
+        
+        // 动态 Tapp 路由回退：/tapp/run/* 和 /tapp/detail/*
+        // 服务端将这些路径重写为占位路径，但浏览器 URL 保持不变
+        if (url.match(/^\/tapp\/run\/[^_/][^/]*/)) {
+          req.url = '/tapp/run/_';
+        } else if (url.match(/^\/tapp\/detail\/[^_/][^/]*/)) {
+          req.url = '/tapp/detail/_';
+        }
+        
+        next();
+      });
+    }
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   integrations: [react(), tailwind()],
+  // 使用 hybrid 模式：默认静态预渲染，但允许特定页面动态渲染
+  // 这样可以支持 /tapp/run/:id 等动态路由
   output: 'static',
   server: {
     port: 4321,
@@ -22,6 +52,7 @@ export default defineConfig({
   trailingSlash: 'never',
   vite: {
     plugins: [
+      spaFallbackPlugin(), // 自定义 SPA 路由回退
       visualizer({
         filename: 'dist/stats.html',
         template: 'treemap',
@@ -110,6 +141,6 @@ export default defineConfig({
           changeOrigin: true,
         }
       }
-    }
+    },
   }
 });

@@ -410,8 +410,10 @@ export class TappRuntime {
 
   /**
    * 卸载 Tapp
+   * @param tappId Tapp ID
+   * @param options 卸载选项，包含 keepData 可选参数
    */
-  async uninstallTapp(tappId: string): Promise<void> {
+  async uninstallTapp(tappId: string, options?: { keepData?: boolean }): Promise<void> {
     const instance = this.installedTapps.get(tappId)
     if (!instance) {
       throw new Error(`Tapp ${tappId} is not installed`)
@@ -423,7 +425,7 @@ export class TappRuntime {
     }
 
     // 调用 API 卸载
-    await TappApiService.uninstallTapp(tappId)
+    await TappApiService.uninstallTapp(tappId, options)
 
     // 删除注册的小组件
     for (const [widgetId, widget] of this.registeredWidgets) {

@@ -1128,6 +1128,8 @@ export const jaJP: TranslationKeys = {
     homepage: 'ホームページ',
     visit: 'アクセス',
     loading: '読み込み中...',
+    settingSaved: '設定を保存しました',
+    settingSaveFailed: '保存に失敗しました',
     
     // AI クォータ
     aiQuota: 'AI クォータ',
@@ -1154,6 +1156,11 @@ export const jaJP: TranslationKeys = {
     retry: '再試行',
     uninstallFailed: 'アンインストールに失敗しました',
     unknownError: '不明なエラー',
+    // アンインストール確認ダイアログ
+    keepDataOnUninstall: 'アプリデータを保持',
+    keepDataOnUninstallDesc: '再インストール時に復元できるよう、保存されたデータと設定を保持します',
+    uninstalling: 'アンインストール中...',
+    confirmUninstallBtn: 'アンインストールを確認',
     
     // ストアソース設定
     sourceManagement: 'ソース管理',

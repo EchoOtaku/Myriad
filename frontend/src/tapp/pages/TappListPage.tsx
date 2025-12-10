@@ -28,6 +28,7 @@ import { getTappIconStyle as getTappIconStyleFromManifest, type IconStyle } from
 import * as TappApiService from '../services/TappApiService'
 import type { TappInstance, TappManifest } from '../types'
 import { TappStore } from '../components/TappStore'
+import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAuth } from '../../contexts/AuthContext'
 import Toast from '../../components/Toast'
@@ -563,6 +564,10 @@ export const TappListPage = () => {
   const [showInstallModal, setShowInstallModal] = useState(false)
   const [showStore, setShowStore] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
+  // 卸载确认对话框状态
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false)
+  const [uninstallTargetId, setUninstallTargetId] = useState<string | null>(null)
+  const [uninstallTargetName, setUninstallTargetName] = useState('')
   const runtime = getTappRuntime()
   
   // 馃幀 鍒濆鍖?Tapp 椤甸潰璋冨害鍣紙缁熶竴鍔ㄧ敾鍗忚皟锛?
@@ -639,13 +644,31 @@ export const TappListPage = () => {
   }
 
   const handleUninstall = async (tappId: string) => {
-    if (confirm(t.tapp.confirmUninstall)) {
-      try {
-        await runtime.uninstallTapp(tappId)
-      } catch (error) {
-        console.error('Failed to uninstall Tapp:', error)
-      }
+    // 找到对应的 Tapp 获取名称
+    const tapp = tapps.find(t => t.id === tappId)
+    setUninstallTargetId(tappId)
+    setUninstallTargetName(tapp?.manifest.name || tappId)
+    setShowUninstallDialog(true)
+  }
+
+  // 确认卸载
+  const handleConfirmUninstall = async (keepData: boolean) => {
+    if (!uninstallTargetId) return
+    try {
+      await runtime.uninstallTapp(uninstallTargetId, { keepData })
+      setShowUninstallDialog(false)
+      setUninstallTargetId(null)
+    } catch (error) {
+      console.error('Failed to uninstall Tapp:', error)
+      setToastMessage(t.tapp.uninstallFailed || 'Uninstall failed')
+      throw error // 让组件处理 loading 状态
     }
+  }
+
+  // 取消卸载
+  const cancelUninstall = () => {
+    setShowUninstallDialog(false)
+    setUninstallTargetId(null)
   }
 
   const handleOpen = (tappId: string) => {
@@ -844,6 +867,14 @@ export const TappListPage = () => {
           />
         )}
       </AnimatePresence>
+
+      {/* 卸载确认对话框 */}
+      <UninstallConfirmDialog
+        isOpen={showUninstallDialog}
+        appName={uninstallTargetName}
+        onCancel={cancelUninstall}
+        onConfirm={handleConfirmUninstall}
+      />
 
       {/* Toast 提示 */}
       {toastMessage && (

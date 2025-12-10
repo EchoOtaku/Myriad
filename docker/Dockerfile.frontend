@@ -44,6 +44,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:4321 || exit 1
 
 # Serve the built application
-# 注意: 不使用 -s (SPA模式),因为Astro生成的是多页面静态站点(MPA)
-# 每个路由(/setup, /config等)都有独立的index.html文件
-CMD ["serve", "dist", "-l", "4321", "--no-clipboard"]
+# 使用 -s (SPA模式) 将所有未匹配的路由回退到 index.html
+# 这样 React Router 可以在客户端处理动态路由（如 /tapp/run/:id）
+CMD ["serve", "dist", "-s", "-l", "4321", "--no-clipboard"]
