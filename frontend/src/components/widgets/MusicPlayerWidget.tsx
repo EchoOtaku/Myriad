@@ -13,6 +13,457 @@ import { useAnimationLevel, AnimationConfig } from '../../hooks/useAnimationLeve
 import { useLoopAnimation, isPageVisible, onVisibility } from '../../hooks/animation';
 import { useI18n } from '../../contexts/I18nContext';
 
+// ==================== 漂浮歌词组件 ====================
+
+interface FloatingChar {
+  char: string;
+  index: number;
+  absoluteTime: number;
+  seed: number;
+}
+
+// 漂浮歌词显示组件 - 逐字淡入，分批显示
+const FloatingLyrics = memo(({
+  lyrics,
+  currentLyricIndex,
+  isPlaying,
+  themeColor,
+  fontScale,
+}: {
+  lyrics: LyricLine[];
+  currentLyricIndex: number;
+  isPlaying: boolean;
+  themeColor: string;
+  fontScale: number;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const charsRef = useRef<(HTMLSpanElement | null)[]>([]);
+  const animationRef = useRef<number | null>(null);
+  const pageVisibleRef = useRef(isPageVisible());
+  const phaseRef = useRef(0);
+  
+  // 每批显示的最大字符数
+  const MAX_CHARS_PER_BATCH = 10;
+  
+  // 当前播放时间 - 使用 ref 减少重渲染
+  const currentTimeRef = useRef(0);
+  // 用于触发批次更新的时间戳（降低更新频率）
+  const [batchTrigger, setBatchTrigger] = useState(0);
+  // 当前批次是否正在淡出
+  const [isFadingOut, setIsFadingOut] = useState(false);
+  // 频谱驱动的节奏进度调制
+  const rhythmProgressRef = useRef(0);
+  const lastBeatTimeRef = useRef(0);
+  const energyHistoryRef = useRef<number[]>([]);
+  
+  // 构建所有字符的时间映射 - 英文单词作为整体
+  const allCharsWithTime = useMemo(() => {
+    const chars: FloatingChar[] = [];
+    
+    if (lyrics.length === 0) return chars;
+    
+    // 将文本分割为词元（中文逐字，英文逐词，数字逐组）
+    const tokenize = (text: string): string[] => {
+      const tokens: string[] = [];
+      let i = 0;
+      while (i < text.length) {
+        const char = text[i];
+        // 英文字母：收集整个单词
+        if (/[a-zA-Z]/.test(char)) {
+          let word = '';
+          while (i < text.length && /[a-zA-Z']/.test(text[i])) {
+            word += text[i];
+            i++;
+          }
+          tokens.push(word);
+        }
+        // 数字：收集整个数字组
+        else if (/[0-9]/.test(char)) {
+          let num = '';
+          while (i < text.length && /[0-9.,]/.test(text[i])) {
+            num += text[i];
+            i++;
+          }
+          tokens.push(num);
+        }
+        // 其他字符（中文、标点、空格等）：逐个处理
+        else {
+          tokens.push(char);
+          i++;
+        }
+      }
+      return tokens;
+    };
+    
+    let globalIndex = 0;
+    // 每行歌词显示的最大时长（秒），防止间奏期间字符持续太久
+    const MAX_LINE_DURATION = 8;
+    
+    lyrics.forEach((line, lineIdx) => {
+      const nextLine = lyrics[lineIdx + 1];
+      const lineStartTime = line.time;
+      const lineEndTime = nextLine ? nextLine.time : lineStartTime + 5;
+      // 限制行持续时间，避免间奏期间字符显示时间过长
+      const lineDuration = Math.min(lineEndTime - lineStartTime, MAX_LINE_DURATION);
+      const text = line.text;
+      
+      const tokens = tokenize(text);
+      const tokenCount = tokens.length;
+      
+      if (tokenCount === 0) return;
+      
+      tokens.forEach((token, tokenIdx) => {
+        const tokenTime = lineStartTime + (tokenIdx / tokenCount) * lineDuration;
+        const seed = globalIndex * 17 + token.charCodeAt(0);
+        
+        chars.push({
+          char: token,
+          index: globalIndex,
+          absoluteTime: tokenTime,
+          seed,
+        });
+        
+        globalIndex++;
+      });
+    });
+    
+    return chars;
+  }, [lyrics]);
+  
+  // 同步当前播放时间 - 使用 ref + 节流的批次触发
+  useEffect(() => {
+    if (!isPlaying) return;
+    
+    const audio = audioManager.getCurrentAudio();
+    if (!audio) return;
+    
+    let rafId: number | null = null;
+    let lastBatchUpdate = 0;
+    const BATCH_UPDATE_INTERVAL = 200; // 每200ms检查一次批次变化
+    
+    const updateTime = (timestamp: number) => {
+      currentTimeRef.current = audio.currentTime;
+      
+      // 节流批次更新
+      if (timestamp - lastBatchUpdate >= BATCH_UPDATE_INTERVAL) {
+        setBatchTrigger(audio.currentTime);
+        lastBatchUpdate = timestamp;
+      }
+      
+      rafId = requestAnimationFrame(updateTime);
+    };
+    
+    rafId = requestAnimationFrame(updateTime);
+    
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying]);
+  
+  // 计算当前应该显示的字符批次 - 使用节流的 batchTrigger
+  const { visibleChars, batchStartTime, batchEndTime } = useMemo(() => {
+    if (allCharsWithTime.length === 0) {
+      return { visibleChars: [], batchStartTime: 0, batchEndTime: 0 };
+    }
+    
+    const time = batchTrigger;
+    
+    // 找到当前时间对应的字符索引
+    let currentCharIndex = 0;
+    for (let i = 0; i < allCharsWithTime.length; i++) {
+      if (allCharsWithTime[i].absoluteTime <= time) {
+        currentCharIndex = i;
+      } else {
+        break;
+      }
+    }
+    
+    // 计算当前批次的起始索引（每批 MAX_CHARS_PER_BATCH 个字符）
+    const batchIndex = Math.floor(currentCharIndex / MAX_CHARS_PER_BATCH);
+    const batchStart = batchIndex * MAX_CHARS_PER_BATCH;
+    const batchEnd = Math.min(batchStart + MAX_CHARS_PER_BATCH, allCharsWithTime.length);
+    
+    const chars = allCharsWithTime.slice(batchStart, batchEnd);
+    const startTime = chars.length > 0 ? chars[0].absoluteTime : 0;
+    const endTime = chars.length > 0 ? chars[chars.length - 1].absoluteTime : 0;
+    
+    return { 
+      visibleChars: chars, 
+      batchStartTime: startTime,
+      batchEndTime: endTime
+    };
+  }, [allCharsWithTime, batchTrigger]);
+  
+  // 检测批次切换，触发淡出
+  const prevBatchRef = useRef<number>(-1);
+  useEffect(() => {
+    if (allCharsWithTime.length === 0) return;
+    
+    const currentCharIndex = allCharsWithTime.findIndex(c => c.absoluteTime > batchTrigger) - 1;
+    const batchIndex = Math.floor(Math.max(0, currentCharIndex) / MAX_CHARS_PER_BATCH);
+    
+    if (prevBatchRef.current !== -1 && prevBatchRef.current !== batchIndex) {
+      // 批次变化，触发淡出
+      setIsFadingOut(true);
+      setTimeout(() => setIsFadingOut(false), 300);
+    }
+    
+    prevBatchRef.current = batchIndex;
+  }, [batchTrigger, allCharsWithTime]);
+  
+  // 计算字符布局位置 - 从左到右排列，填满区域，随机间隔
+  const charPositions = useMemo(() => {
+    const positions: { x: number; y: number; fontSize: number; rotation: number }[] = [];
+    
+    if (visibleChars.length === 0) return positions;
+    
+    const seededRandom = (seed: number) => {
+      const x = Math.sin(seed * 9999) * 10000;
+      return x - Math.floor(x);
+    };
+    
+    // 计算累积的随机间隔
+    let cumulativeX = 4; // 起始位置
+    const totalChars = visibleChars.length;
+    const availableWidth = 92; // 可用宽度百分比 (4% ~ 96%)
+    
+    // 先计算所有权重 - 英文单词根据长度加权
+    const weights: number[] = [];
+    let totalWeight = 0;
+    visibleChars.forEach((char, idx) => {
+      const tokenLength = char.char.length;
+      const isEnglishWord = tokenLength > 1 && /^[a-zA-Z]/.test(char.char);
+      
+      // 基础随机权重：英文单词 0.9~1.3，其他 0.7~1.3
+      const baseMin = isEnglishWord ? 0.9 : 0.7;
+      const baseWeight = baseMin + seededRandom(char.seed + 100) * 0.4;
+      
+      // 根据词元长度计算额外权重
+      // 单个字符（中文、标点）= 1，英文单词按字符数计算
+      // 英文单词长度权重：每个额外字符增加 0.6 的权重
+      const lengthMultiplier = 1 + (tokenLength - 1) * 0.6;
+      
+      const weight = baseWeight * lengthMultiplier;
+      weights.push(weight);
+      totalWeight += weight;
+    });
+    
+    // 根据权重分配位置
+    visibleChars.forEach((char, idx) => {
+      // 当前字符的位置
+      const x = cumulativeX;
+      
+      // 垂直位置：在整个区域内随机分布，调整分布使上下更均匀
+      const yRandom = seededRandom(char.seed);
+      // 使用平方根来让分布更均匀（偏向上方补偿）
+      const y = 0 + Math.sqrt(yRandom) * 45; // 0% ~ 45%
+      
+      // 随机字体大小：0.85 ~ 1.25 倍
+      const fontSizeRatio = 0.85 + seededRandom(char.seed + 200) * 0.4;
+      
+      // 随机旋转角度：-8° ~ 8°
+      const rotation = (seededRandom(char.seed + 300) - 0.5) * 16;
+      
+      positions.push({ x, y, fontSize: fontSizeRatio, rotation });
+      
+      // 计算下一个字符的位置（基于权重的间隔）
+      const charWidth = (weights[idx] / totalWeight) * availableWidth;
+      cumulativeX += charWidth;
+    });
+    
+    return positions;
+  }, [visibleChars]);
+  
+  // 柔和的微浮动画 + 频谱节奏检测
+  useEffect(() => {
+    if (!isPlaying) {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      return;
+    }
+    
+    const unsubscribe = onVisibility((visible) => {
+      pageVisibleRef.current = visible;
+    });
+    
+    let lastUpdateTime = 0;
+    const UPDATE_INTERVAL = 50; // ~20fps 足够柔和
+    
+    // 节奏检测参数
+    const ENERGY_HISTORY_SIZE = 8;
+    const BEAT_THRESHOLD = 1.3; // 能量比平均值高30%认为是节拍
+    const BEAT_COOLDOWN = 150; // 节拍冷却时间ms
+    
+    const updateAnimation = (timestamp: number) => {
+      if (!pageVisibleRef.current || !isPlaying) {
+        animationRef.current = null;
+        return;
+      }
+      
+      if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
+        phaseRef.current += 0.015; // 非常慢的相位变化
+        const phase = phaseRef.current;
+        
+        // 获取频谱数据进行节奏检测
+        const spectrum = audioManager.getSpectrumData();
+        const currentEnergy = (spectrum[0] + spectrum[1] + spectrum[2] + spectrum[3]) / 4;
+        
+        // 维护能量历史
+        energyHistoryRef.current.push(currentEnergy);
+        if (energyHistoryRef.current.length > ENERGY_HISTORY_SIZE) {
+          energyHistoryRef.current.shift();
+        }
+        
+        // 计算平均能量
+        const avgEnergy = energyHistoryRef.current.reduce((a, b) => a + b, 0) / energyHistoryRef.current.length;
+        
+        // 节拍检测：当前能量显著高于平均值
+        const isBeat = currentEnergy > avgEnergy * BEAT_THRESHOLD && 
+                       currentEnergy > 0.15 && // 最低能量阈值
+                       (timestamp - lastBeatTimeRef.current) > BEAT_COOLDOWN;
+        
+        if (isBeat) {
+          lastBeatTimeRef.current = timestamp;
+          // 节拍时加速节奏进度
+          rhythmProgressRef.current += 0.08;
+        } else {
+          // 缓慢衰减回基础进度
+          rhythmProgressRef.current *= 0.95;
+        }
+        
+        // 节奏调制值 (0 ~ 0.3)
+        const rhythmModulation = Math.min(0.3, rhythmProgressRef.current);
+        
+        charsRef.current.forEach((el, idx) => {
+          if (!el || idx >= visibleChars.length) return;
+          
+          const charData = visibleChars[idx];
+          if (charData.char === ' ') {
+            el.style.opacity = '0';
+            return;
+          }
+          
+          // 基础时间差 - 使用 ref 避免依赖
+          const baseTimeDiff = charData.absoluteTime - currentTimeRef.current;
+          // 应用节奏调制：节拍时字符提前显示
+          const timeDiff = baseTimeDiff - rhythmModulation * 0.5;
+          
+          const seed = charData.seed;
+          
+          // 非常轻柔的浮动 - 像水中的气泡
+          const floatY = Math.sin(phase + seed * 0.1) * 1.5;
+          const floatX = Math.cos(phase * 0.7 + seed * 0.15) * 0.8;
+          
+          // 状态判断 - 考虑节奏调制
+          const isActive = timeDiff >= -0.2 && timeDiff <= 0.1;
+          const isPast = timeDiff < -0.2;
+          const isFuture = timeDiff > 0.1;
+          
+          let opacity = 1;
+          let scale = 1;
+          
+          if (isFuture) {
+            // 未到 - 透明，但节拍时可能微微显现
+            const peekOpacity = isBeat ? 0.15 : 0;
+            opacity = peekOpacity;
+            scale = 0.95;
+          } else if (isActive) {
+            // 正在唱 - 完全显示
+            opacity = 1;
+            // 节拍时稍微放大
+            scale = 1.02 + (isBeat ? 0.05 : 0);
+            el.style.color = themeColor;
+            const glowSize = isBeat ? 12 : 8;
+            el.style.textShadow = `0 0 ${glowSize}px ${themeColor}60, 0 1px 2px rgba(0,0,0,0.1)`;
+          } else if (isPast) {
+            // 已过 - 保持显示但稍淡
+            opacity = 0.7;
+            scale = 1;
+            el.style.color = '';
+            el.style.textShadow = 'none';
+          }
+          
+          // 批次淡出时全部透明
+          if (isFadingOut) {
+            opacity = 0;
+          }
+          
+          const rotation = el.dataset.rotation || '0';
+          el.style.transform = `translate(${floatX}px, ${floatY}px) scale(${scale}) rotate(${rotation}deg)`;
+          el.style.opacity = `${opacity}`;
+        });
+        
+        lastUpdateTime = timestamp;
+      }
+      
+      animationRef.current = requestAnimationFrame(updateAnimation);
+    };
+    
+    animationRef.current = requestAnimationFrame(updateAnimation);
+    
+    return () => {
+      unsubscribe();
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isPlaying, visibleChars, themeColor, isFadingOut]);
+  
+  // 重置 refs
+  useEffect(() => {
+    charsRef.current = [];
+  }, [visibleChars.length]);
+  
+  if (visibleChars.length === 0 && lyrics.length > 0) {
+    return (
+      <div className="text-sm text-gray-400 dark:text-gray-500 opacity-40">...</div>
+    );
+  }
+  
+  if (lyrics.length === 0) {
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">暂无歌词</div>
+    );
+  }
+  
+  return (
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full overflow-hidden"
+      style={{ minHeight: '60px' }}
+    >
+      {visibleChars.map((charConfig, idx) => {
+        const pos = charPositions[idx] || { x: 50, y: 50, fontSize: 1, rotation: 0 };
+        
+        return (
+          <span
+            key={`${charConfig.index}-${charConfig.seed}`}
+            ref={(el) => { charsRef.current[idx] = el; }}
+            data-rotation={pos.rotation}
+            className="absolute font-semibold text-gray-700 dark:text-gray-200 pointer-events-none select-none"
+            style={{
+              left: `${pos.x}%`,
+              top: `${pos.y}%`,
+              fontSize: `${22 * fontScale * pos.fontSize}px`,
+              opacity: 0,
+              transform: `translate(0, 0) scale(1) rotate(${pos.rotation}deg)`,
+              willChange: 'transform, opacity',
+              transition: 'opacity 0.3s ease-out, color 0.2s ease, text-shadow 0.2s ease, transform 0.4s ease-out',
+            }}
+          >
+            {charConfig.char}
+          </span>
+        );
+      })}
+    </div>
+  );
+});
+
+FloatingLyrics.displayName = 'FloatingLyrics';
+
 // ==================== 静态动画常量（避免每次渲染创建新对象）====================
 
 // 封面入场动画
@@ -154,7 +605,6 @@ const AlbumCover = memo(({
 AlbumCover.displayName = 'AlbumCover';
 
 // 播放状态指示器 - 高性能实时频谱版本
-// 使用 ref 直接操作 DOM，避免 React 重渲染
 const PlayingIndicator = memo(({ 
   themeColor, 
   scale = 1, 
@@ -162,80 +612,37 @@ const PlayingIndicator = memo(({
 }: { 
   themeColor: string; 
   scale?: number; 
-  anim?: AnimationConfig; // 保留参数兼容性，但不再使用
+  anim?: AnimationConfig;
   isPlaying?: boolean;
 }) => {
-  // DOM refs - 直接操作避免重渲染
   const bar1Ref = useRef<HTMLDivElement>(null);
   const bar2Ref = useRef<HTMLDivElement>(null);
   const bar3Ref = useRef<HTMLDivElement>(null);
   const bar4Ref = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const connectedRef = useRef(false);
-
-  // ⚡ 接入统一调度器：页面可见性感知
   const pageVisibleRef = useRef(isPageVisible());
 
-  // 监听页面可见性变化
+  // 频谱动画循环 - 统一处理
   useEffect(() => {
-    return onVisibility((visible) => {
+    // 监听页面可见性变化
+    const unsubscribe = onVisibility((visible) => {
       pageVisibleRef.current = visible;
-
-      // 页面隐藏时暂停动画，页面显示时恢复
-      if (!visible && animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      } else if (visible && isPlaying && !animationRef.current) {
-        // 恢复动画循环
-        const startAnimation = () => {
-          let lastUpdateTime = 0;
-          const UPDATE_INTERVAL = 60;
-
-          const updateSpectrum = (timestamp: number) => {
-            // 检查页面是否仍然可见
-            if (!pageVisibleRef.current || !isPlaying) {
-              animationRef.current = null;
-              return;
-            }
-
-            if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
-              const data = audioManager.getSpectrumData();
-
-              // 平方曲线 (^2.0) 进一步提高门槛：强力压缩中低值
-              if (bar1Ref.current) bar1Ref.current.style.height = `${30 + Math.pow(data[0], 2.0) * 70}%`;
-              if (bar2Ref.current) bar2Ref.current.style.height = `${30 + Math.pow(data[1], 2.0) * 70}%`;
-              if (bar3Ref.current) bar3Ref.current.style.height = `${30 + Math.pow(data[2], 2.0) * 70}%`;
-              if (bar4Ref.current) bar4Ref.current.style.height = `${30 + Math.pow(data[3], 2.0) * 70}%`;
-
-              lastUpdateTime = timestamp;
-            }
-            animationRef.current = requestAnimationFrame(updateSpectrum);
-          };
-
-          animationRef.current = requestAnimationFrame(updateSpectrum);
-        };
-        startAnimation();
-      }
     });
-  }, [isPlaying]);
 
-  // 频谱动画循环 - 接入统一调度器优化
-  useEffect(() => {
     if (!isPlaying) {
-      // 停止时重置高度
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
-      // 重置为默认高度
       if (bar1Ref.current) bar1Ref.current.style.height = '30%';
       if (bar2Ref.current) bar2Ref.current.style.height = '50%';
       if (bar3Ref.current) bar3Ref.current.style.height = '40%';
       if (bar4Ref.current) bar4Ref.current.style.height = '35%';
-      return;
+      return unsubscribe;
     }
 
-    // 尝试连接音频到分析器（只连接一次）
+    // 尝试连接音频到分析器
     if (!connectedRef.current) {
       const audio = audioManager.getCurrentAudio();
       if (audio) {
@@ -244,39 +651,32 @@ const PlayingIndicator = memo(({
       }
     }
 
-    // ⚡ 优化：只在页面可见时启动动画循环
-    if (!pageVisibleRef.current) {
-      return;
-    }
-
-    // 高性能动画循环
     let lastUpdateTime = 0;
-    const UPDATE_INTERVAL = 60; // ~16fps，足够流畅且省电
+    const UPDATE_INTERVAL = 60;
 
     const updateSpectrum = (timestamp: number) => {
-      // ⚡ 优化：页面不可见时自动停止
-      if (!pageVisibleRef.current) {
+      if (!pageVisibleRef.current || !isPlaying) {
         animationRef.current = null;
         return;
       }
 
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
         const data = audioManager.getSpectrumData();
-
-        // 平方曲线压缩：只有真正强劲的音频才能达到高位
         if (bar1Ref.current) bar1Ref.current.style.height = `${30 + Math.pow(data[0], 2.0) * 70}%`;
         if (bar2Ref.current) bar2Ref.current.style.height = `${30 + Math.pow(data[1], 2.0) * 70}%`;
         if (bar3Ref.current) bar3Ref.current.style.height = `${30 + Math.pow(data[2], 2.0) * 70}%`;
         if (bar4Ref.current) bar4Ref.current.style.height = `${30 + Math.pow(data[3], 2.0) * 70}%`;
-
         lastUpdateTime = timestamp;
       }
       animationRef.current = requestAnimationFrame(updateSpectrum);
     };
 
-    animationRef.current = requestAnimationFrame(updateSpectrum);
+    if (pageVisibleRef.current) {
+      animationRef.current = requestAnimationFrame(updateSpectrum);
+    }
 
     return () => {
+      unsubscribe();
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -515,7 +915,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
         />
 
         {/* 上半部分：歌词 (2/3) */}
-        <div className="flex-1 relative w-full overflow-hidden flex items-center justify-center px-8 text-center z-10">
+        <div className="flex-1 relative w-full overflow-hidden flex items-center justify-center px-4 z-10">
            {/* 背景：封面高斯模糊 + 呼吸动效 */}
            <div className="absolute inset-0 z-0 overflow-hidden">
               <motion.div 
@@ -562,37 +962,16 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
               )}
            </div>
 
-           {/* 歌词显示 - 低端设备使用简单过渡，标准设备使用 AnimatePresence */}
-           {anim.level === 'standard' ? (
-             <AnimatePresence mode="wait">
-                {lyrics.length > 0 ? (
-                  <motion.div 
-                    key={currentLyricIndex}
-                    className="relative z-10 font-bold text-gray-800 dark:text-white line-clamp-2 w-full transition-all duration-300 ease-out"
-                    style={{ fontSize: `${18 * fontScale}px` }}
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    {lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : '')}
-                  </motion.div>
-                ) : (
-                  <div className="relative z-10 text-sm text-gray-500 dark:text-gray-400">{t.musicPlayer.noLyrics}</div>
-                )}
-             </AnimatePresence>
-           ) : (
-             // 低端设备：使用简单的 CSS 过渡，避免频繁的组件挂载/卸载
-             <div 
-               className="relative z-10 font-bold text-gray-800 dark:text-white line-clamp-2 w-full transition-opacity duration-300 ease-out"
-               style={{ fontSize: `${18 * fontScale}px` }}
-             >
-               {lyrics.length > 0 
-                 ? (lyrics[currentLyricIndex]?.text || (currentLyricIndex === -1 ? '...' : ''))
-                 : <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">{t.musicPlayer.noLyrics}</span>
-               }
-             </div>
-           )}
+           {/* 漂浮歌词显示 - 逐字漂浮效果 */}
+           <div className="relative z-10 w-full h-full flex items-center justify-center">
+             <FloatingLyrics
+               lyrics={lyrics}
+               currentLyricIndex={currentLyricIndex}
+               isPlaying={isPlaying}
+               themeColor={themeColor}
+               fontScale={fontScale}
+             />
+           </div>
         </div>
 
         {/* 下半部分：信息 + 控制 (1/3) */}
