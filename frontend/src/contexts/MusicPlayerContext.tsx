@@ -184,6 +184,11 @@ function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
 
 // 初始化：监听事件并更新全局状态
 if (typeof window !== 'undefined') {
+  // 暴露 audioManager 到 window（供 Tapp SDK 获取频谱数据）
+  import('../utils/musicPlayer').then(({ audioManager }) => {
+    (window as any).audioManager = audioManager;
+  });
+  
   // 从 window 对象读取初始状态
   const initialState = (window as any).__musicPlayerState;
   if (initialState) {

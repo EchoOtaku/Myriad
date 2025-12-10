@@ -308,7 +308,9 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       unmute: () => sendRequest('media', 'control', [{ action: 'unmute' }]),
       getStatus: () => sendRequest('media', 'getStatus', []),
       getPlaylist: () => sendRequest('media', 'getPlaylist', []),
+      getSpectrum: () => sendRequest('media', 'getSpectrum', []),
       playTrack: (id, idx) => sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]),
+      jumpToIndex: (idx) => sendRequest('media', 'jumpToIndex', [{ index: idx }]),
       onStateChange: (cb) => addEventListener('mediaStateChange', cb),
     },
 

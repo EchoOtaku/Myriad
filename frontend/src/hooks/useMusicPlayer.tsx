@@ -484,6 +484,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState;
     if (globalState) {
       globalState.musicColor = musicColors?.primary || '#ef4444';
+      globalState.musicColors = musicColors; // 存储完整的颜色对象
       globalState.isPlaying = isPlaying;
       globalState.volume = volume;
       globalState.playMode = playMode;
@@ -497,6 +498,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         isEnabled: musicEnabled,
         isPlaying,
         musicColor: musicColors?.primary || '#ef4444',
+        musicColors, // 完整的颜色对象
         isTempPlay: tempPlayModeRef.current.enabled,
         currentSongIndex,
         playlistLength: playlist.length,
@@ -1381,6 +1383,29 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     window.addEventListener('play-song-at-index', handlePlaySongAtIndex);
     return () => {
       window.removeEventListener('play-song-at-index', handlePlaySongAtIndex);
+    };
+  }, []); // 只在挂载时设置一次
+  
+  // 监听跳转到指定索引事件 - 在当前播放列表中跳转，不触发临时播放
+  const selectSongRef = useRef(selectSong);
+  selectSongRef.current = selectSong;
+  
+  useEffect(() => {
+    const handleJumpToIndex = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { index, song } = customEvent.detail || {};
+      if (typeof index === 'number' && index >= 0 && index < playlistRef.current.length) {
+        const targetSong = song || playlistRef.current[index];
+        if (targetSong) {
+          // 使用 selectSong 在当前播放列表中选择歌曲，不触发临时播放
+          selectSongRef.current(targetSong, index, true);
+        }
+      }
+    };
+    
+    window.addEventListener('jump-to-index', handleJumpToIndex);
+    return () => {
+      window.removeEventListener('jump-to-index', handleJumpToIndex);
     };
   }, []); // 只在挂载时设置一次
   

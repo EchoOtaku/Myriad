@@ -85,6 +85,7 @@ export function registerMediaHandlers(
       const lyrics = (globalState.lyrics as Array<{ time: number; text: string }>) || []
       const currentLyricIndex = (globalState.currentLyricIndex as number) ?? -1
       const musicColor = (globalState.musicColor as string) || '#fc3c44'
+      const musicColors = (globalState.musicColors as { primary: string; secondary: string; accent: string; light: string; dark: string } | null)
       
       // 将内部 playMode 映射为 API 模式
       const modeMap: Record<string, string> = {
@@ -120,12 +121,16 @@ export function registerMediaHandlers(
           // 歌词信息
           lyrics,
           currentLyricIndex,
-          // 动态主题色
-          primaryColor: musicColor
+          // 动态主题色 - 完整颜色
+          primaryColor: musicColor,
+          secondaryColor: musicColors?.secondary || musicColor,
+          accentColor: musicColors?.accent || musicColor,
+          lightColor: musicColors?.light || musicColor,
+          darkColor: musicColors?.dark || musicColor
         }
       }
     }
-    return { success: true, data: { isPlaying: false, isPaused: false, currentTrack: null, progress: { current: 0, duration: 0, percentage: 0 }, playlist: null, mode: 'sequence', volume: 70, muted: false, lyrics: [], currentLyricIndex: -1, primaryColor: '#fc3c44' } }
+    return { success: true, data: { isPlaying: false, isPaused: false, currentTrack: null, progress: { current: 0, duration: 0, percentage: 0 }, playlist: null, mode: 'sequence', volume: 70, muted: false, lyrics: [], currentLyricIndex: -1, primaryColor: '#fc3c44', secondaryColor: '#fc3c44', accentColor: '#fc3c44', lightColor: '#fc3c44', darkColor: '#fc3c44' } }
   })
 
   bridge.registerHandler('media.getPlaylist', async () => {
@@ -146,6 +151,29 @@ export function registerMediaHandlers(
       return { success: true, data: { tracks, currentIndex: globalState.currentSongIndex || 0, total: tracks.length } }
     }
     return { success: true, data: { tracks: [], currentIndex: 0, total: 0 } }
+  })
+
+  bridge.registerHandler('media.getSpectrum', async () => {
+    // 从Myriad的audioManager获取频谱数据
+    const audioManager = (window as { audioManager?: { getSpectrumData: () => number[] } }).audioManager
+    if (audioManager && typeof audioManager.getSpectrumData === 'function') {
+      const spectrum = audioManager.getSpectrumData()
+      // 计算能量值（低频平均）
+      const energy = spectrum.length >= 4 
+        ? (spectrum[0] + spectrum[1] + spectrum[2] + spectrum[3]) / 4 
+        : 0
+      return { 
+        success: true, 
+        data: { 
+          spectrum,  // 完整频谱数据 (0-1 范围)
+          energy,    // 能量值 (0-1 范围)
+          bass: spectrum[0] || 0,     // 低频
+          mid: spectrum[2] || 0,      // 中频  
+          high: spectrum[5] || 0,     // 高频
+        } 
+      }
+    }
+    return { success: true, data: { spectrum: [], energy: 0, bass: 0, mid: 0, high: 0 } }
   })
 
   bridge.registerHandler('media.playTrack', async (message) => {
@@ -169,6 +197,23 @@ export function registerMediaHandlers(
       }
     }
     return { success: false, error: 'Track not found' }
+  })
+
+  // 在当前播放列表中跳转到指定索引（不触发临时播放）
+  bridge.registerHandler('media.jumpToIndex', async (message) => {
+    const [params] = (message.payload as { args: unknown[] }).args || []
+    const { index } = (params || {}) as { index?: number }
+    const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
+    if (globalState?.playlist && typeof index === 'number') {
+      const playlist = globalState.playlist as Array<Record<string, unknown>>
+      if (index >= 0 && index < playlist.length) {
+        const targetSong = playlist[index]
+        // 使用新事件 jump-to-index，不触发临时播放
+        window.dispatchEvent(new CustomEvent('jump-to-index', { detail: { index, song: targetSong } }))
+        return { success: true, data: { index, track: { id: targetSong.id, title: targetSong.name || targetSong.title, artist: targetSong.artist, duration: targetSong.duration, cover: targetSong.cover } } }
+      }
+    }
+    return { success: false, error: 'Invalid index or playlist not available' }
   })
 }
 
