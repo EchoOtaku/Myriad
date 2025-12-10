@@ -1156,6 +1156,12 @@ export const zhCN: TranslationKeys = {
     retry: '重试',
     uninstallFailed: '卸载失败',
     unknownError: '未知错误',
+    // 更新功能
+    update: '更新',
+    updateFailed: '更新失败',
+    updateSuccess: '更新成功',
+    verified: '官方验证',
+    hasUpdate: '有新版本',
     // 卸载确认对话框
     keepDataOnUninstall: '保留应用数据',
     keepDataOnUninstallDesc: '保留存储的数据和设置，以便再次安装时恢复',

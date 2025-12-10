@@ -376,6 +376,7 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/install-file", post(install_tapp_file))
         .route("/cleanup-temporary", post(cleanup_temporary_tapps))
         .route("/:tapp_id", delete(uninstall_tapp))
+        .route("/:tapp_id/update", post(update_tapp))
         .route("/:tapp_id/start", post(start_tapp))
         .route("/:tapp_id/stop", post(stop_tapp))
         .route("/:tapp_id/widgets", post(register_widget))
@@ -1891,6 +1892,205 @@ async fn do_uninstall_tapp(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(ApiResponse::success(())))
+}
+
+/// 更新 Tapp 的请求体
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateTappRequest {
+    /// 安装来源: "store"
+    source: String,
+    /// 商店源 URL 或 ID
+    store_source: Option<String>,
+    /// 授权的权限列表（可选，保留原有权限）
+    permissions: Option<Vec<String>>,
+}
+
+/// 更新 Tapp（从远程商店获取最新版本）
+///
+/// 保留用户数据，仅更新代码和资源
+///
+/// 权限模型：
+/// - 管理员可以更新自己的 Tapp
+/// - 普通用户可以更新自己临时安装的 Tapp
+async fn update_tapp(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(tapp_id): Path<String>,
+    Json(req): Json<UpdateTappRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiResponse<()>>)> {
+    let user_id: i32 = claims
+        .sub
+        .parse()
+        .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
+
+    // 验证来源类型
+    if req.source != "store" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            api_error("Currently only 'store' source is supported for updates"),
+        ));
+    }
+
+    let store_source = req.store_source.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            api_error("storeSource is required for store update"),
+        )
+    })?;
+
+    // 查找用户已安装的 Tapp
+    let existing_tapp = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(user_id))
+        .filter(tapps::Column::TappId.eq(&tapp_id))
+        .one(&db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Database error"),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, api_error("Tapp not installed")))?;
+
+    // 从商店获取最新版本
+    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates) =
+        fetch_from_store(&db, &store_source, &tapp_id).await?;
+
+    // 获取 Tapp 目录
+    let tapp_dir = PathBuf::from(&existing_tapp.file_path)
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
+    // 确保目录存在
+    fs::create_dir_all(&tapp_dir).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error("Failed to create directory"),
+        )
+    })?;
+
+    // 更新代码文件
+    let code_path = tapp_dir.join("main.js");
+    fs::write(&code_path, &code).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error("Failed to save code"),
+        )
+    })?;
+
+    // 更新可选资源
+    if let Some(styles) = &styles {
+        let styles_path = tapp_dir.join("styles.css");
+        let _ = fs::write(&styles_path, styles).await;
+    }
+
+    // 更新分离式 CSS
+    if let Some(ws) = &widget_styles {
+        let widget_styles_path = tapp_dir.join("widget.css");
+        let _ = fs::write(&widget_styles_path, ws).await;
+    }
+    if let Some(ps) = &page_styles {
+        let page_styles_path = tapp_dir.join("page.css");
+        let _ = fs::write(&page_styles_path, ps).await;
+    }
+
+    if let Some(page) = &page_template {
+        let page_path = tapp_dir.join("page.html");
+        let _ = fs::write(&page_path, page).await;
+    }
+
+    if let Some(templates) = &widget_templates {
+        for (size, content) in templates {
+            let widget_path = tapp_dir.join(format!("widget-{}.html", size));
+            let _ = fs::write(&widget_path, content).await;
+        }
+    }
+
+    // 更新 manifest.json
+    let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
+    let manifest_path = tapp_dir.join("manifest.json");
+    fs::write(&manifest_path, &manifest_json)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to save manifest"),
+            )
+        })?;
+
+    // 确定授权的权限（保留原有权限或使用新权限）
+    let granted: Vec<String> = if let Some(perms) = req.permissions {
+        if perms.is_empty() {
+            manifest.permissions.clone()
+        } else {
+            manifest
+                .permissions
+                .iter()
+                .filter(|p| perms.contains(p))
+                .cloned()
+                .collect()
+        }
+    } else {
+        // 保留原有已授权的权限，同时过滤掉新版本不再需要的权限
+        let original_perms: Vec<String> =
+            serde_json::from_value(existing_tapp.granted_permissions.clone()).unwrap_or_default();
+        manifest
+            .permissions
+            .iter()
+            .filter(|p| original_perms.contains(p))
+            .cloned()
+            .collect()
+    };
+
+    // 更新数据库记录
+    let now = Utc::now().fixed_offset();
+    let mut active: tapps::ActiveModel = existing_tapp.clone().into();
+    active.name = Set(manifest.name.clone());
+    active.version = Set(manifest.version.clone());
+    active.description = Set(manifest.description.clone());
+    active.author = Set(manifest
+        .author
+        .as_ref()
+        .map(|a| serde_json::to_value(a).unwrap()));
+    active.icon = Set(manifest.icon.clone());
+    active.theme_color = Set(manifest.theme_color.clone());
+    active.manifest = Set(serde_json::to_value(&manifest).unwrap());
+    active.granted_permissions = Set(serde_json::to_value(&granted).unwrap());
+    active.code_path = Set(code_path.to_string_lossy().to_string());
+    active.updated_at = Set(now);
+
+    let result = active.update(&db).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error(format!("Database error: {}", e)),
+        )
+    })?;
+
+    // 普通用户安装的 Tapp 都是临时的
+    let is_temporary = !claims.is_admin;
+
+    tracing::info!(
+        "[TAPP] Updated Tapp {} from {} to {} for user {}",
+        tapp_id,
+        existing_tapp.version,
+        result.version,
+        user_id
+    );
+
+    Ok(Json(ApiResponse::success(TappListItem {
+        id: result.tapp_id,
+        name: result.name,
+        version: result.version,
+        description: result.description,
+        icon: result.icon,
+        status: format!("{:?}", result.status).to_lowercase(),
+        installed_at: result.installed_at.to_rfc3339(),
+        last_run_at: result.last_run_at.map(|dt| dt.to_rfc3339()),
+        is_temporary,
+        is_admin_tapp: claims.is_admin,
+    })))
 }
 
 /// 清理用户的临时 Tapp（登出时调用）

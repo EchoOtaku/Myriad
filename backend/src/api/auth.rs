@@ -841,7 +841,7 @@ pub async fn get_current_user(
     use sea_orm::Value as SeaValue;
 
     let query =
-        "SELECT id, username, auth_provider, is_admin, avatar_url, github_id, linked_github_id 
+        "SELECT id, username, auth_provider, is_admin, avatar_url, github_id, linked_github_id, bio 
                  FROM users 
                  WHERE id = $1";
 

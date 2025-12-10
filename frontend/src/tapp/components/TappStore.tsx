@@ -30,6 +30,7 @@ import {
   FaMusic,
   FaChartBar,
   FaDatabase,
+  FaArrowUp,
   SiAppstore,
 } from '@lib/icons'
 import { getTappRuntime } from '../runtime'
@@ -59,6 +60,8 @@ interface UnifiedAppItem {
   name: string
   version: string
   description: string
+  /** 详细描述 */
+  longDescription?: string
   author: { name: string; email?: string; url?: string }
   icon?: string
   /** 主题色（优先于分类渐变色） */
@@ -66,6 +69,20 @@ interface UnifiedAppItem {
   category: string
   tags: string[]
   permissions: string[]
+  /** 许可证 */
+  license?: string
+  /** 主页 URL */
+  homepage?: string
+  /** 仓库 URL */
+  repository?: string
+  /** 文件大小（字节） */
+  size?: number
+  /** 是否推荐 */
+  featured?: boolean
+  /** 是否验证 */
+  verified?: boolean
+  /** 更新时间 */
+  updatedAt?: string
   source: AppSourceType
   /** 本地示例 Tapp 数据 */
   localTapp?: ExampleTapp
@@ -144,19 +161,41 @@ function getPermissionCounts(permissions: string[]): {
   return { basic, elevated, admin }
 }
 
-/** 统一的应用卡�?- 新设�?*/
+/** 比较版本号，返回 1 表示 v1 > v2，-1 表示 v1 < v2，0 表示相等 */
+function compareVersions(v1: string, v2: string): number {
+  const parts1 = v1.split('.').map(n => parseInt(n, 10) || 0)
+  const parts2 = v2.split('.').map(n => parseInt(n, 10) || 0)
+  const maxLen = Math.max(parts1.length, parts2.length)
+  
+  for (let i = 0; i < maxLen; i++) {
+    const p1 = parts1[i] || 0
+    const p2 = parts2[i] || 0
+    if (p1 > p2) return 1
+    if (p1 < p2) return -1
+  }
+  return 0
+}
+
+/** 统一的应用卡片 - 支持更新功能 */
 const UnifiedAppCard = forwardRef<HTMLDivElement, {
   app: UnifiedAppItem
   isInstalled: boolean
+  /** 已安装的版本号（用于比较是否需要更新） */
+  installedVersion?: string
   canUninstall: boolean
   onInstall: () => void
+  onUpdate?: () => void
   onUninstall?: () => void
   installing: boolean
+  updating?: boolean
   animConfig?: ReturnType<typeof useAnimationLevel>
   index?: number
-}>(({ app, isInstalled, canUninstall, onInstall, onUninstall, installing, animConfig, index = 0 }, ref) => {
+}>(({ app, isInstalled, installedVersion, canUninstall, onInstall, onUpdate, onUninstall, installing, updating, animConfig, index = 0 }, ref) => {
   const [isHovered, setIsHovered] = useState(false)
   const { t } = useI18n()
+  
+  // 检查是否有更新可用
+  const hasUpdate = isInstalled && installedVersion && compareVersions(app.version, installedVersion) > 0
   
   // 根据动画级别计算动画属�?
   const animProps = useMemo(() => {
@@ -225,28 +264,50 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
             <span className="text-2xl relative z-10">{app.icon || app.name.charAt(0).toUpperCase()}</span>
           </div>
 
-          {/* 名称 + 元信�?*/}
+          {/* 名称 + 元信息 */}
           <div className="flex-1 min-w-0 pt-1">
             <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate text-base leading-tight">
               {app.name}
             </h3>
-            {/* 作者信�?- 强化显示 */}
+            {/* 作者信息 - 强化显示 */}
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-xs text-gray-600 dark:text-gray-300 font-medium truncate">
                 {app.author.name}
               </span>
               <span className="text-gray-300 dark:text-gray-600">·</span>
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+              <span className={`text-xs ${hasUpdate ? 'text-amber-500 font-medium' : 'text-gray-400 dark:text-gray-500'}`}>
                 v{app.version}
+                {hasUpdate && installedVersion && (
+                  <span className="text-gray-400 dark:text-gray-500 font-normal"> (当前 v{installedVersion})</span>
+                )}
               </span>
               {app.source === 'remote' && (
                 <SiAppstore className="w-3 h-3 text-indigo-400" title={t.tapp.remoteStore} />
               )}
+              {app.verified && (
+                <FaCheckCircle className="w-3 h-3 text-blue-500" title={t.tapp.verified || '官方验证'} />
+              )}
             </div>
           </div>
 
-          {/* 安装/卸载按钮 */}
-          {isInstalled && canUninstall && onUninstall ? (
+          {/* 安装/更新/卸载按钮 */}
+          {hasUpdate && onUpdate ? (
+            // 有更新可用 - 显示更新按钮
+            <motion.button
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUpdate(); }}
+              disabled={updating}
+              className="p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+              title={t.tapp.update || '更新'}
+            >
+              {updating ? (
+                <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+              ) : (
+                <FaArrowUp className="w-4 h-4" />
+              )}
+            </motion.button>
+          ) : isInstalled && canUninstall && onUninstall ? (
             <motion.button
               onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUninstall(); }}
               className="group/btn p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-red-500/15 hover:text-red-500 dark:hover:text-red-400"
@@ -623,9 +684,10 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showSourcesSettings, setShowSourcesSettings] = useState(false)
-  // 存储已安装应用的权限信息：id -> { userRole, isTemporary }
-  const [installedTapps, setInstalledTapps] = useState<Map<string, { userRole: string; isTemporary?: boolean }>>(new Map())
+  // 存储已安装应用的信息：id -> { userRole, isTemporary, version }
+  const [installedTapps, setInstalledTapps] = useState<Map<string, { userRole: string; isTemporary?: boolean; version: string }>>(new Map())
   const [installing, setInstalling] = useState<string | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // 卸载确认对话框状态
@@ -648,9 +710,13 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
   // 加载已安装 Tapp 的辅助函数
   const loadInstalledTapps = useCallback(() => {
     const allTapps = runtime.getAllTapps()
-    const tappsMap = new Map<string, { userRole: string; isTemporary?: boolean }>()
+    const tappsMap = new Map<string, { userRole: string; isTemporary?: boolean; version: string }>()
     allTapps.forEach(tapp => {
-      tappsMap.set(tapp.id, { userRole: tapp.userRole, isTemporary: tapp.isTemporary })
+      tappsMap.set(tapp.id, { 
+        userRole: tapp.userRole, 
+        isTemporary: tapp.isTemporary, 
+        version: tapp.manifest.version 
+      })
     })
     setInstalledTapps(tappsMap)
   }, [runtime])
@@ -749,12 +815,20 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
     name: app.name,
     version: app.version,
     description: app.description,
+    longDescription: app.long_description,
     author: app.author,
     icon: app.icon,
     themeColor: app.theme_color,
     category: app.category,
     tags: app.tags || [],
     permissions: app.permissions,
+    license: app.license,
+    homepage: app.homepage,
+    repository: app.repository,
+    size: app.size,
+    featured: app.featured,
+    verified: app.verified,
+    updatedAt: app.updated_at,
     source: 'remote' as const,
     remoteApp: app,
   }))
@@ -890,13 +964,91 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
       }
       
       // 用户安装的都是临时应用
-      setInstalledTapps(prev => new Map([...prev, [app.id, { userRole: 'user', isTemporary: true }]]))
+      setInstalledTapps(prev => new Map([...prev, [app.id, { userRole: 'user', isTemporary: true, version: app.version }]]))
       onInstalled()
     } catch (error) {
       console.error('Failed to install Tapp:', error)
       alert(t.tapp.installFailed + ': ' + (error instanceof Error ? error.message : t.tapp.unknownError))
     } finally {
       setInstalling(null)
+    }
+  }, [runtime, onInstalled, sources, t, isAuthenticated])
+
+  // 更新应用
+  const handleUpdate = useCallback(async (app: UnifiedAppItem) => {
+    // 游客无法更新应用
+    if (!isAuthenticated) {
+      alert(t.tapp.loginRequiredToInstall)
+      return
+    }
+
+    // 只支持远程应用更新
+    if (app.source !== 'remote' || !app.remoteApp) {
+      alert('只支持从商店更新应用')
+      return
+    }
+    
+    setUpdating(app.id)
+    try {
+      // 找到该应用所在商店源的数据库 ID
+      const source = sources.find(s => s.url === app.remoteApp!.sourceUrl)
+      if (!source?.id && !source?.url) {
+        throw new Error('无法找到商店源')
+      }
+      
+      // 调用更新 API
+      const { updateTappFromStore, getTappResources, updateSeparatedCSS } = await import('../services/TappApiService')
+      await updateTappFromStore(app.id, {
+        source: source.id ? String(source.id) : source.url,
+      })
+      
+      // 更新完成后，重新生成分离式 CSS
+      try {
+        const resources = await getTappResources(app.id)
+        if (!resources.widgetCSS && !resources.pageCSS) {
+          const { generateOnDemandTailwindCSS } = await import('../runtime/sandbox/styles')
+          
+          const widgetSources = [
+            resources.code || '',
+            resources.styles || '',
+            ...Object.values(resources.widgetTemplates || {}),
+          ].join('\n')
+          const widgetCss = generateOnDemandTailwindCSS(widgetSources)
+          
+          const pageSources = [
+            resources.code || '',
+            resources.styles || '',
+            resources.pageTemplate || '',
+          ].join('\n')
+          const pageCss = generateOnDemandTailwindCSS(pageSources)
+          
+          if (widgetCss || pageCss) {
+            await updateSeparatedCSS(app.id, { widgetCss, pageCss })
+            runtime.clearCodeCache(app.id)
+          }
+        }
+      } catch (cssError) {
+        console.warn('Failed to generate separated CSS:', cssError)
+      }
+      
+      // 刷新 runtime 缓存
+      await runtime.syncFromBackend(true)
+      
+      // 更新本地状态
+      setInstalledTapps(prev => {
+        const newMap = new Map(prev)
+        const existing = prev.get(app.id)
+        if (existing) {
+          newMap.set(app.id, { ...existing, version: app.version })
+        }
+        return newMap
+      })
+      onInstalled()
+    } catch (error) {
+      console.error('Failed to update Tapp:', error)
+      alert((t.tapp.updateFailed || '更新失败') + ': ' + (error instanceof Error ? error.message : t.tapp.unknownError))
+    } finally {
+      setUpdating(null)
     }
   }, [runtime, onInstalled, sources, t, isAuthenticated])
 
@@ -1140,15 +1292,19 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
                   const canUninstall = tappInfo 
                     ? (tappInfo.userRole === 'admin' || (tappInfo.userRole === 'user' && tappInfo.isTemporary === true))
                     : false
+                  const canUpdate = app.source === 'remote' && app.remoteApp && tappInfo
                   return (
                     <UnifiedAppCard
                       key={app.id}
                       app={app}
                       isInstalled={installedIds.has(app.id)}
+                      installedVersion={tappInfo?.version}
                       canUninstall={canUninstall}
                       onInstall={() => handleInstall(app)}
+                      onUpdate={canUpdate ? () => handleUpdate(app) : undefined}
                       onUninstall={canUninstall ? () => handleUninstall(app.id) : undefined}
                       installing={installing === app.id}
+                      updating={updating === app.id}
                       animConfig={animConfig}
                       index={index}
                     />

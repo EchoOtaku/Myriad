@@ -85,6 +85,14 @@ export interface RemoteApp {
     code: string
     /** README URL（可选） */
     readme?: string
+    /** Widget 样式 CSS */
+    widget_styles?: string
+    /** Page 样式 CSS */
+    page_styles?: string
+    /** Page 模板 HTML */
+    page_template?: string
+    /** Widget 模板（按尺寸） */
+    widget_templates?: Record<string, string>
   }
   /** 许可证 */
   license?: string
@@ -100,12 +108,6 @@ export interface RemoteApp {
   featured?: boolean
   /** 是否官方验证 */
   verified?: boolean
-  /** 统计数据 */
-  stats?: {
-    downloads: number
-    rating: number
-    reviews: number
-  }
   /** 创建时间 */
   created_at?: string
   /** 更新时间 */

@@ -1157,6 +1157,12 @@ export interface TranslationKeys {
     retry: string;
     uninstallFailed: string;
     unknownError: string;
+    // 更新功能
+    update: string;
+    updateFailed: string;
+    updateSuccess: string;
+    verified: string;
+    hasUpdate: string;
     // 卸载确认对话框
     keepDataOnUninstall: string;
     keepDataOnUninstallDesc: string;

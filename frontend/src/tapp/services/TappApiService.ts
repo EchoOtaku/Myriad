@@ -484,6 +484,36 @@ export async function uninstallTapp(tappId: string, options?: UninstallOptions):
 }
 
 /**
+ * 更新 Tapp 的请求参数（从远程商店更新）
+ */
+export interface UpdateTappFromStoreRequest {
+  /** 商店源 URL 或 ID */
+  source: string
+  /** 授权的权限列表（可选，保留原有权限） */
+  permissions?: string[]
+}
+
+/**
+ * 更新 Tapp（从远程商店获取最新版本）
+ * 
+ * 保留用户数据，仅更新代码和资源
+ * 
+ * @param tappId - 要更新的 Tapp ID
+ * @param request - 更新请求参数
+ * @returns 更新后的 Tapp 信息
+ */
+export async function updateTappFromStore(tappId: string, request: UpdateTappFromStoreRequest): Promise<TappListItem> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/update`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source: 'store',
+      storeSource: request.source,
+      permissions: request.permissions,
+    }),
+  })
+}
+
+/**
  * 导出 Tapp 为 .tapp 文件
  * @param tappId Tapp ID
  * @returns 下载 URL 或触发浏览器下载
@@ -866,6 +896,7 @@ export default {
   installTappFile,
   installFromCode,
   installFromStore,
+  updateTappFromStore,
   getTapp,
   getTappCode,
   getTappResources,

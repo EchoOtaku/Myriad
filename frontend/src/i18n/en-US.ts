@@ -1153,6 +1153,12 @@ export const enUS: TranslationKeys = {
     retry: 'Retry',
     uninstallFailed: 'Uninstall failed',
     unknownError: 'Unknown error',
+    // Update feature
+    update: 'Update',
+    updateFailed: 'Update failed',
+    updateSuccess: 'Update successful',
+    verified: 'Verified',
+    hasUpdate: 'Update available',
     // Uninstall confirmation dialog
     keepDataOnUninstall: 'Keep app data',
     keepDataOnUninstallDesc: 'Preserve stored data and settings for recovery when reinstalling',
