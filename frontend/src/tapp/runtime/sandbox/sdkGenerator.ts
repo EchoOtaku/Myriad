@@ -144,6 +144,12 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
         root.style.setProperty('--tapp-border', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
         root.style.setProperty('--tapp-input-bg', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)');
         root.style.setProperty('--tapp-shadow', isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.08)');
+        // 🎯 强制触发重绘
+        void document.body.offsetHeight;
+        requestAnimationFrame(() => {
+          document.body.style.transform = 'translateZ(0)';
+          requestAnimationFrame(() => { document.body.style.transform = ''; });
+        });
       }
       else if (message.action === 'locale:change') eventListeners.get('localeChange')?.forEach((cb) => cb(message.payload));
       else if (message.action === 'primaryColor:change') {
@@ -151,6 +157,12 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
         // 更新 CSS 变量
         if (message.payload) {
           document.documentElement.style.setProperty('--tapp-primary', message.payload);
+          // 🎯 强制触发重绘
+          void document.body.offsetHeight;
+          requestAnimationFrame(() => {
+            document.body.style.transform = 'translateZ(0)';
+            requestAnimationFrame(() => { document.body.style.transform = ''; });
+          });
         }
       }
     }
@@ -526,6 +538,19 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
     
     // 处理事件
     if (msg.type === 'event') {
+      // 🎯 强制重绘辅助函数
+      var forceRepaint = function() {
+        // 触发同步重排
+        void document.body.offsetHeight;
+        // 使用 requestAnimationFrame 确保下一帧重绘
+        requestAnimationFrame(function() {
+          document.body.style.transform = 'translateZ(0)';
+          requestAnimationFrame(function() {
+            document.body.style.transform = '';
+          });
+        });
+      };
+      
       // 主题变化事件
       if (msg.action === 'theme:change') {
         var isDark = msg.payload === 'dark';
@@ -542,6 +567,8 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
         root.style.setProperty('--tapp-border', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
         root.style.setProperty('--tapp-input-bg', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)');
         root.style.setProperty('--tapp-shadow', isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.08)');
+        // 🎯 强制触发重绘
+        forceRepaint();
       }
       // 主色调变化事件
       else if (msg.action === 'primaryColor:change') {
@@ -549,6 +576,8 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
         // 更新 CSS 变量
         if (msg.payload) {
           document.documentElement.style.setProperty('--tapp-primary', msg.payload);
+          // 🎯 强制触发重绘
+          forceRepaint();
         }
       }
       // 语言变化事件

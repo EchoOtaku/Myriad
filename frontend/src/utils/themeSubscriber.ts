@@ -17,7 +17,9 @@ function notifySubscribers() {
   const newIsDark = document.documentElement.classList.contains('dark');
   if (newIsDark !== isDarkMode) {
     isDarkMode = newIsDark;
-    subscribers.forEach(callback => {
+    // 🎯 使用 Array.from 创建快照，确保所有订阅者都被通知
+    const subscriberArray = Array.from(subscribers);
+    subscriberArray.forEach(callback => {
       try {
         callback(isDarkMode);
       } catch (e) {

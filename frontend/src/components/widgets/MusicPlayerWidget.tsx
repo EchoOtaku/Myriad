@@ -96,16 +96,34 @@ const FloatingLyrics = memo(({
     };
     
     let globalIndex = 0;
-    // 每行歌词显示的最大时长（秒），防止间奏期间字符持续太久
-    const MAX_LINE_DURATION = 8;
+    
+    // 智能时长计算：根据歌词长度推算合理显示时间
+    // 每个字符约 0.35 秒，英文单词按实际字符数计算
+    const CHAR_DISPLAY_TIME = 0.35;
+    // 偏差阈值：实际时间超过推算时间的倍数时才限制
+    const DEVIATION_THRESHOLD = 2.0;
     
     lyrics.forEach((line, lineIdx) => {
       const nextLine = lyrics[lineIdx + 1];
       const lineStartTime = line.time;
       const lineEndTime = nextLine ? nextLine.time : lineStartTime + 5;
-      // 限制行持续时间，避免间奏期间字符显示时间过长
-      const lineDuration = Math.min(lineEndTime - lineStartTime, MAX_LINE_DURATION);
+      const actualDuration = lineEndTime - lineStartTime;
       const text = line.text;
+      
+      // 计算推荐时长：基于实际字符数（不是词元数）
+      const charCount = text.replace(/\s/g, '').length; // 不计空格
+      const recommendedDuration = charCount * CHAR_DISPLAY_TIME;
+      
+      // 计算最终时长
+      let lineDuration: number;
+      if (actualDuration > recommendedDuration * DEVIATION_THRESHOLD) {
+        // 实际时间远大于推荐时间（可能是间奏）
+        // 使用推荐时间的中上值（1.3 ~ 1.5 倍）作为上限
+        lineDuration = recommendedDuration * 1.4;
+      } else {
+        // 正常情况：使用实际时间
+        lineDuration = actualDuration;
+      }
       
       const tokens = tokenize(text);
       const tokenCount = tokens.length;
@@ -302,6 +320,12 @@ const FloatingLyrics = memo(({
         return;
       }
       
+      // 确定性随机函数
+      const seededRandom = (seed: number) => {
+        const x = Math.sin(seed * 9999) * 10000;
+        return x - Math.floor(x);
+      };
+      
       if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
         phaseRef.current += 0.015; // 非常慢的相位变化
         const phase = phaseRef.current;
@@ -352,9 +376,10 @@ const FloatingLyrics = memo(({
           
           const seed = charData.seed;
           
-          // 非常轻柔的浮动 - 像水中的气泡
-          const floatY = Math.sin(phase + seed * 0.1) * 1.5;
-          const floatX = Math.cos(phase * 0.7 + seed * 0.15) * 0.8;
+          // 柔和的浮动效果 - 像水中的气泡，不同字符有不同的浮动幅度
+          const floatAmplitude = 3 + seededRandom(seed + 500) * 2; // 3~5px 随机幅度
+          const floatY = Math.sin(phase + seed * 0.1) * floatAmplitude;
+          const floatX = Math.cos(phase * 0.7 + seed * 0.15) * (floatAmplitude * 0.6);
           
           // 状态判断 - 考虑节奏调制
           const isActive = timeDiff >= -0.2 && timeDiff <= 0.1;

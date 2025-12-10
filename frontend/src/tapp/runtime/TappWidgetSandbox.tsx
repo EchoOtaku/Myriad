@@ -19,6 +19,7 @@ import { useIframeResize, sendResizeMessage, calculateWidgetDimensions } from '.
 import { TappBridge } from './TappBridge'
 import { TappPermissionController } from './TappPermission'
 import { subscribeToTheme } from '../../utils/themeSubscriber'
+import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 
 // 核心模块
@@ -399,23 +400,31 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
   }, [tappInstance.id, widgetId, codeFingerprint, handleReady, stableWidgetProps])
   
   // 主题变化监听（通过事件通知 iframe，而不是重建）
+  // 🎯 优化：使用共享订阅器，确保所有 widget 都能响应变化
   useEffect(() => {
     if (!isReady) return
+    
     return subscribeToTheme((isDark) => {
-      bridgeRef.current?.emit('theme:change', isDark ? 'dark' : 'light')
+      // 直接使用 bridgeRef.current，确保获取最新的 bridge 实例
+      const bridge = bridgeRef.current
+      if (bridge) {
+        bridge.emit('theme:change', isDark ? 'dark' : 'light')
+      }
     })
   }, [isReady])
   
   // 主色调变化监听（通过事件通知 iframe，而不是重建）
+  // 🎯 优化：使用共享的 colorSubscriber，避免每个组件都创建 MutationObserver
   useEffect(() => {
     if (!isReady) return
-    const observer = new MutationObserver(() => {
-      const color = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-primary').trim()
-      if (color) bridgeRef.current?.emit('primaryColor:change', color)
+    
+    return subscribeToPrimaryColor((color) => {
+      // 直接使用 bridgeRef.current，确保获取最新的 bridge 实例
+      const bridge = bridgeRef.current
+      if (bridge && color) {
+        bridge.emit('primaryColor:change', color)
+      }
     })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] })
-    return () => observer.disconnect()
   }, [isReady])
   
   // 语言变化监听
