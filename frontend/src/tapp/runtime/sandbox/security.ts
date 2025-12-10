@@ -52,8 +52,9 @@ const CSP_BASE_DIRECTIVES = [
   "default-src 'none'",
   // style-src 仍需要 unsafe-inline（CSS 注入风险低）
   "style-src 'unsafe-inline'",
-  // 🔒 安全加强：只允许 data: 和 blob: 图片，禁止外部 HTTPS 图片
-  "img-src data: blob:",
+  // 🔒 安全加强：只允许 data:、blob: 和可信图片源
+  // 网易云音乐图片域名：p1.music.126.net, p2.music.126.net 等
+  "img-src data: blob: https://*.music.126.net https://*.netease.com",
   // 🔒 安全加强：禁止外部字体，只允许 data: URI
   "font-src data:",
   "connect-src 'none'",

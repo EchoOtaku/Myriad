@@ -460,7 +460,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   // 广播状态变化事件 - 使用 ref 避免重复广播
   const lastBroadcastRef = useRef<string>('');
   const broadcastStateChange = useCallback(() => {
-    // 创建状态快照用于比较
+    // 创建状态快照用于比较（currentTime 按秒取整，避免过于频繁的更新）
     const stateSnapshot = JSON.stringify({
       songId: currentSong?.id,
       isEnabled: musicEnabled,
@@ -469,6 +469,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       isTempPlay: tempPlayModeRef.current.enabled,
       index: currentSongIndex,
       length: playlist.length,
+      time: Math.floor(currentTime), // 按秒取整
+      volume: Math.round(volume * 100),
+      mode: playMode,
     });
     
     // 如果状态没有变化，跳过广播
@@ -476,6 +479,17 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       return;
     }
     lastBroadcastRef.current = stateSnapshot;
+    
+    // 🎯 同步更新全局状态（供 Tapp API 读取）
+    const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState;
+    if (globalState) {
+      globalState.musicColor = musicColors?.primary || '#ef4444';
+      globalState.isPlaying = isPlaying;
+      globalState.volume = volume;
+      globalState.playMode = playMode;
+      globalState.lyrics = lyrics;
+      globalState.currentLyricIndex = currentLyricIndex;
+    }
     
     window.dispatchEvent(new CustomEvent('music-player-state-change', {
       detail: {
@@ -487,9 +501,17 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         currentSongIndex,
         playlistLength: playlist.length,
         playlist,
+        // 🎯 添加实时播放信息（供 Tapp 使用）
+        currentTime,
+        audioDuration,
+        volume,
+        playMode,
+        // 🎯 添加歌词信息
+        lyrics,
+        currentLyricIndex,
       },
     }));
-  }, [currentSong, musicEnabled, isPlaying, musicColors, currentSongIndex, playlist]);
+  }, [currentSong, musicEnabled, isPlaying, musicColors, currentSongIndex, playlist, currentTime, audioDuration, volume, playMode, lyrics, currentLyricIndex]);
   
   // 选择歌曲
   const selectSong = useCallback(async (song: Song, index: number, autoPlay: boolean = false) => {
@@ -626,6 +648,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       currentSongIndex: index,
       currentSong: song,
       isEnabled: musicEnabled,
+      musicColor: musicColors?.primary || '#ef4444',
     });
     
     // 触发状态更新事件
@@ -963,6 +986,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       // 更新 Media Session 位置状态（移动端后台播放关键）
       if (audio.duration && isFinite(audio.duration)) {
         audioManager.updatePositionState(audio.duration, currentTime, audio.playbackRate);
+      }
+      
+      // 🎯 广播进度更新给 Tapp（使用较低频率以避免性能问题）
+      // 更新全局状态中的 currentTime 和 audioDuration
+      const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState;
+      if (globalState) {
+        globalState.currentTime = currentTime;
+        globalState.audioDuration = audio.duration || 0;
       }
       
       if (lyricsRef.current.length > 0) {
@@ -1385,15 +1416,26 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   
   // 发送音乐播放器状态变化事件 - 使用节流避免频繁触发
   const broadcastThrottleRef = useRef<number | null>(null);
+  // 🎯 使用 ref 跟踪上次广播的秒数，只在秒数变化时触发
+  const lastBroadcastSecondRef = useRef<number>(-1);
+  
   useEffect(() => {
-    // 使用节流，最多每 200ms 广播一次
+    // 对于 currentTime，只在秒数变化时触发（减少广播频率）
+    const currentSecond = Math.floor(currentTime);
+    const shouldBroadcastTime = isPlaying && currentSecond !== lastBroadcastSecondRef.current;
+    
+    if (shouldBroadcastTime) {
+      lastBroadcastSecondRef.current = currentSecond;
+    }
+    
+    // 使用节流，最多每 500ms 广播一次
     if (broadcastThrottleRef.current) {
       return;
     }
     broadcastThrottleRef.current = window.setTimeout(() => {
       broadcastThrottleRef.current = null;
       broadcastStateChange();
-    }, 200);
+    }, shouldBroadcastTime ? 500 : 200);
     
     return () => {
       if (broadcastThrottleRef.current) {
@@ -1401,7 +1443,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         broadcastThrottleRef.current = null;
       }
     };
-  }, [currentSong?.id, musicEnabled, isPlaying, musicColors?.primary, currentSongIndex, playlist.length]);
+  }, [currentSong?.id, musicEnabled, isPlaying, musicColors?.primary, currentSongIndex, playlist.length, currentTime, volume, playMode]);
   
   // 监听停止临时播放事件 - 使用 ref 避免频繁重建监听器
   const stopTempPlayRef = useRef(stopTempPlay);
@@ -1415,6 +1457,74 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     window.addEventListener('stop-temp-play', handleStopTempPlay);
     return () => {
       window.removeEventListener('stop-temp-play', handleStopTempPlay);
+    };
+  }, []); // 只在挂载时设置一次
+  
+  // 监听 Tapp 媒体控制事件 - 使用 ref 避免频繁重建监听器
+  const handleSeekRef = useRef(handleSeek);
+  const handleVolumeChangeRef = useRef(handleVolumeChange);
+  const setPlayModeRef = useRef(setPlayMode);
+  handleSeekRef.current = handleSeek;
+  handleVolumeChangeRef.current = handleVolumeChange;
+  setPlayModeRef.current = setPlayMode;
+  
+  useEffect(() => {
+    const handleTappNext = () => {
+      playNextRef.current();
+    };
+    const handleTappPrev = () => {
+      playPreviousRef.current();
+    };
+    const handleTappSeek = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.position === 'number') {
+        handleSeekRef.current(detail.position);
+      }
+    };
+    const handleTappVolume = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.volume === 'number') {
+        // Tapp 发送的是 0-100，需要转换为 0-1
+        const normalizedVolume = detail.volume <= 1 ? detail.volume : detail.volume / 100;
+        handleVolumeChangeRef.current(normalizedVolume);
+      }
+    };
+    const handleTappMute = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        handleVolumeChangeRef.current(detail.muted ? 0 : 0.7);
+      }
+    };
+    const handleTappMode = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.mode) {
+        // API 模式: 'sequence' | 'loop' | 'shuffle' | 'single'
+        // 内部模式: 'loop' | 'single' | 'shuffle'
+        const modeMap: Record<string, 'loop' | 'single' | 'shuffle'> = {
+          'sequence': 'loop',
+          'loop': 'loop',
+          'shuffle': 'shuffle',
+          'single': 'single'
+        };
+        const mappedMode = modeMap[detail.mode] || 'loop';
+        setPlayModeRef.current(mappedMode);
+      }
+    };
+    
+    window.addEventListener('music-player-next', handleTappNext);
+    window.addEventListener('music-player-prev', handleTappPrev);
+    window.addEventListener('music-player-seek', handleTappSeek);
+    window.addEventListener('music-player-volume', handleTappVolume);
+    window.addEventListener('music-player-mute', handleTappMute);
+    window.addEventListener('music-player-mode', handleTappMode);
+    
+    return () => {
+      window.removeEventListener('music-player-next', handleTappNext);
+      window.removeEventListener('music-player-prev', handleTappPrev);
+      window.removeEventListener('music-player-seek', handleTappSeek);
+      window.removeEventListener('music-player-volume', handleTappVolume);
+      window.removeEventListener('music-player-mute', handleTappMute);
+      window.removeEventListener('music-player-mode', handleTappMode);
     };
   }, []); // 只在挂载时设置一次
   

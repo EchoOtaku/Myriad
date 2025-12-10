@@ -322,6 +322,72 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     })
   }, [isReady])
 
+  // 媒体状态变化 - 转发给 Tapp 沙箱
+  useEffect(() => {
+    if (!isReady) return
+    
+    const handleMusicStateChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail) return
+      
+      const bridge = bridgeRef.current
+      if (!bridge) return
+      
+      // 检查 Tapp 是否有 media:read 权限
+      const tapp = tappInstanceRef.current
+      if (!tapp?.grantedPermissions?.includes('media:read')) return
+      
+      const currentSong = detail.currentSong as Record<string, unknown> | null
+      const currentTime = (detail.currentTime as number) || 0
+      const audioDuration = (detail.audioDuration as number) || (currentSong?.duration as number) || 0
+      const volume = (detail.volume as number) || 0.7
+      const playMode = (detail.playMode as string) || 'loop'
+      
+      // 将内部 playMode 映射为 API 模式
+      const modeMap: Record<string, string> = {
+        'loop': 'loop',
+        'single': 'single',
+        'shuffle': 'shuffle'
+      }
+      
+      // 构建状态对象
+      const mediaState = {
+        isPlaying: detail.isPlaying || false,
+        isPaused: !detail.isPlaying && currentSong !== null,
+        currentTrack: currentSong ? {
+          id: currentSong.id || '',
+          title: currentSong.name || currentSong.title || '',
+          name: currentSong.name || currentSong.title || '',
+          artist: currentSong.artist || '',
+          album: currentSong.album || '',
+          cover: currentSong.cover || '',
+          duration: currentSong.duration || 0,
+        } : null,
+        progress: {
+          current: currentTime,
+          duration: audioDuration,
+          percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0
+        },
+        position: currentTime,
+        volume: Math.round(volume * 100), // 0-100
+        mode: modeMap[playMode] || 'sequence',
+        muted: volume === 0,
+        // 歌词信息
+        lyrics: detail.lyrics || [],
+        currentLyricIndex: detail.currentLyricIndex ?? -1,
+        // 动态主题色
+        primaryColor: detail.musicColor || '#fc3c44',
+      }
+      
+      bridge.emit('mediaStateChange', mediaState)
+    }
+    
+    window.addEventListener('music-player-state-change', handleMusicStateChange)
+    return () => {
+      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+    }
+  }, [isReady])
+
   // 动画级别变化
   useEffect(() => {
     if (!isReady) return

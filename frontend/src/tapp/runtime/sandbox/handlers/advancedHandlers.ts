@@ -22,7 +22,52 @@ export function registerMediaHandlers(
     const [params] = (message.payload as { args: unknown[] }).args || []
     const { action, value } = (params || {}) as { action?: string; value?: unknown }
     try {
+      // 调用后端 API 记录日志和权限验证
       const result = await TappApiService.mediaControl({ tappId: tappInstance.id, action: (action || 'play') as 'play' | 'pause' | 'next' | 'prev' | 'seek' | 'volume' | 'mute' | 'unmute' | 'mode', value })
+      
+      // 触发实际的播放器控制事件
+      switch (action) {
+        case 'play':
+          // 只有在不是播放状态时才触发播放
+          {
+            const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
+            if (!globalState?.isPlaying) {
+              window.dispatchEvent(new CustomEvent('toggle-play-pause'))
+            }
+          }
+          break
+        case 'pause':
+          // 只有在播放状态时才触发暂停
+          {
+            const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
+            if (globalState?.isPlaying) {
+              window.dispatchEvent(new CustomEvent('toggle-play-pause'))
+            }
+          }
+          break
+        case 'next':
+          window.dispatchEvent(new CustomEvent('music-player-next'))
+          break
+        case 'prev':
+          window.dispatchEvent(new CustomEvent('music-player-prev'))
+          break
+        case 'seek':
+          window.dispatchEvent(new CustomEvent('music-player-seek', { detail: { position: value } }))
+          break
+        case 'volume':
+          window.dispatchEvent(new CustomEvent('music-player-volume', { detail: { volume: value } }))
+          break
+        case 'mute':
+          window.dispatchEvent(new CustomEvent('music-player-mute', { detail: { muted: true } }))
+          break
+        case 'unmute':
+          window.dispatchEvent(new CustomEvent('music-player-mute', { detail: { muted: false } }))
+          break
+        case 'mode':
+          window.dispatchEvent(new CustomEvent('music-player-mode', { detail: { mode: value } }))
+          break
+      }
+      
       return { success: true, data: result }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed' }
@@ -33,6 +78,22 @@ export function registerMediaHandlers(
     const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
     if (globalState) {
       const currentSong = globalState.currentSong as Record<string, unknown> | null
+      const currentTime = (globalState.currentTime as number) || 0
+      const audioDuration = (globalState.audioDuration as number) || (currentSong?.duration as number) || 0
+      const volume = (globalState.volume as number) || 0.7
+      const playMode = (globalState.playMode as string) || 'loop'
+      const lyrics = (globalState.lyrics as Array<{ time: number; text: string }>) || []
+      const currentLyricIndex = (globalState.currentLyricIndex as number) ?? -1
+      const musicColor = (globalState.musicColor as string) || '#fc3c44'
+      
+      // 将内部 playMode 映射为 API 模式
+      const modeMap: Record<string, string> = {
+        'loop': 'loop',
+        'single': 'single',
+        'shuffle': 'shuffle'
+      }
+      const apiMode = modeMap[playMode] || 'sequence'
+      
       return {
         success: true,
         data: {
@@ -47,15 +108,24 @@ export function registerMediaHandlers(
             duration: currentSong.duration || 0,
             source: currentSong.source || 'unknown'
           } : null,
-          progress: { current: 0, duration: (currentSong?.duration as number) || 0, percentage: 0 },
+          progress: { 
+            current: currentTime, 
+            duration: audioDuration, 
+            percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0 
+          },
           playlist: globalState.playlist ? { id: 'current', name: 'Current Playlist', tracks: (globalState.playlistLength as number) || (globalState.playlist as unknown[]).length || 0 } : null,
-          mode: 'sequence',
-          volume: 80,
-          muted: false
+          mode: apiMode,
+          volume: Math.round(volume * 100), // 转换为 0-100
+          muted: volume === 0,
+          // 歌词信息
+          lyrics,
+          currentLyricIndex,
+          // 动态主题色
+          primaryColor: musicColor
         }
       }
     }
-    return { success: true, data: { isPlaying: false, isPaused: false, currentTrack: null, progress: { current: 0, duration: 0, percentage: 0 }, playlist: null, mode: 'sequence', volume: 80, muted: false } }
+    return { success: true, data: { isPlaying: false, isPaused: false, currentTrack: null, progress: { current: 0, duration: 0, percentage: 0 }, playlist: null, mode: 'sequence', volume: 70, muted: false, lyrics: [], currentLyricIndex: -1, primaryColor: '#fc3c44' } }
   })
 
   bridge.registerHandler('media.getPlaylist', async () => {
