@@ -33,6 +33,35 @@ import type { TappInstance } from '../types'
 import type { TappCodeStructure } from '../examples/tapps/types'
 import { useI18n } from '../../contexts/I18nContext'
 
+/**
+ * 🎯 WebKit 浏览器检测
+ * 
+ * Safari/WebKit 在 iframe 与 CSS transform scale 结合使用时存在渲染问题：
+ * - STP 231: Fixed `<iframe>` elements so their content correctly respects the page's `usedZoom()`
+ * - STP 232: Fixed CSS zoom to scale `<iframe>` element contents
+ * 
+ * 为确保兼容性，对所有 WebKit 浏览器禁用 iframe 容器的 scale 动画
+ */
+function isWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false
+  
+  const ua = navigator.userAgent
+  
+  // Safari (包括 iOS/iPadOS Safari)
+  // 注意：Chrome/Edge 等也包含 Safari 字符串，需要排除
+  if (ua.includes('Safari') && !ua.includes('Chrome') && !ua.includes('Firefox') && !ua.includes('Edg')) {
+    return true
+  }
+  
+  // iOS/iPadOS 上的所有浏览器都使用 WebKit
+  // 包括 Chrome for iOS、Firefox for iOS 等
+  if (/iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document)) {
+    return true
+  }
+  
+  return false
+}
+
 interface TappRunPageProps {
   tappId: string
 }
@@ -47,6 +76,9 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
   // 动画配置
   const animConfig = useAnimationLevel()
   const noAnimation = animConfig.level === 'none'
+  
+  // 🎯 WebKit 兼容性：所有 WebKit 浏览器禁用 iframe 容器的 scale 动画
+  const isWebKitBrowser = useMemo(() => isWebKit(), [])
   
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [code, setCode] = useState<TappCodeStructure | null>(null)
@@ -252,11 +284,12 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       <motion.div 
         className="absolute inset-0 flex flex-col overflow-hidden pointer-events-none"
-        initial={noAnimation ? false : { opacity: 0, y: 35, scale: 0.95 }}
+        // 🎯 WebKit 兼容性：禁用 scale 动画以避免 iframe 渲染问题
+        initial={noAnimation ? false : { opacity: 0, y: 35, scale: isWebKitBrowser ? 1 : 0.95 }}
         animate={{ 
           opacity: isFullscreen ? 0 : 1,
           y: isFullscreen ? -30 : 0,
-          scale: isFullscreen ? 0.92 : 1,
+          scale: isWebKitBrowser ? 1 : (isFullscreen ? 0.92 : 1),
         }}
         transition={{
           type: 'spring',
@@ -516,7 +549,8 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
               ? 'fixed inset-0 z-50 rounded-none' 
               : 'absolute z-40 left-4 right-4 bottom-6 rounded-b-xl'
           }`}
-          initial={noAnimation ? false : { opacity: 0, y: 35, scale: 0.95 }}
+          // 🎯 WebKit 兼容性：禁用 scale 动画以避免 iframe 渲染问题 (STP 231/232)
+          initial={noAnimation ? false : { opacity: 0, y: 35, scale: isWebKitBrowser ? 1 : 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{
             type: 'spring',
@@ -530,6 +564,13 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
             maxWidth: isFullscreen ? undefined : '72rem',
             marginLeft: isFullscreen ? undefined : 'auto',
             marginRight: isFullscreen ? undefined : 'auto',
+            // 🎯 WebKit 渲染优化：强制 GPU 加速创建独立图层
+            ...(isWebKitBrowser ? {
+              transform: 'translateZ(0)',
+              WebkitTransform: 'translateZ(0)',
+              backfaceVisibility: 'hidden' as const,
+              WebkitBackfaceVisibility: 'hidden' as const,
+            } : {}),
           }}
         >
           <div 
