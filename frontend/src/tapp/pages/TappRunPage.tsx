@@ -225,7 +225,8 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
   // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同
   // 页面级动画由 App.tsx 的 FixedPageWrapper 提供（纯 opacity，不用 transform）
   return (
-    <div className="fixed inset-0 overflow-hidden">
+    // 🎯 WebKit 兼容性：移除 overflow-hidden，它可能影响 iframe 渲染
+    <div className={`fixed inset-0 ${isWebKitBrowser ? '' : 'overflow-hidden'}`}>
       {/* 全屏模式工具栏 */}
       {isWebKitBrowser ? (
         // 🎯 WebKit: 纯静态工具栏，无动画，无 transform
@@ -351,12 +352,14 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       {/* WebKit 兼容性：完全不使用 Framer Motion，避免 iframe + transform 渲染 bug */}
       {isWebKitBrowser ? (
-        // 🎯 WebKit: 纯静态 div，无动画，无 transform
+        // 🎯 WebKit: 纯静态 div，无动画，无 transform，无 overflow-hidden
+        // WebKit 直接全屏，这个普通模式容器会被隐藏（opacity: 0）
         <div 
-          className="absolute inset-0 flex flex-col overflow-hidden pointer-events-none"
+          className="absolute inset-0 flex flex-col pointer-events-none"
           style={{ 
             opacity: isFullscreen ? 0 : 1,
             pointerEvents: isFullscreen ? 'none' : undefined,
+            display: isFullscreen ? 'none' : undefined,  // WebKit 全屏时完全隐藏
           }}
         >
           {/* 顶部间距 */}
@@ -750,11 +753,11 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
       {/* 🎯 沙箱容器 - 只渲染一次，通过 CSS 切换全屏/普通模式 */}
       {tapp && code && (
         isWebKitBrowser ? (
-          // 🎯 WebKit: 纯静态 div，无动画，无 transform，避免 iframe 渲染 bug
+          // 🎯 WebKit: 纯静态 div，无动画，无 transform，无 overflow-hidden
           <div
-            className={`pointer-events-auto overflow-hidden ${
+            className={`pointer-events-auto ${
               isFullscreen 
-                ? 'fixed inset-0 z-50 rounded-none' 
+                ? 'fixed inset-0 z-50' 
                 : 'absolute z-40 left-4 right-4 bottom-6 rounded-b-xl'
             }`}
             style={{
@@ -766,10 +769,6 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
           >
             <div 
               className="w-full h-full bg-gray-100 dark:bg-neutral-900"
-              style={{
-                borderTopLeftRadius: 0,
-                borderTopRightRadius: 0,
-              }}
             >
               <TappPageSandbox
                 tappInstance={tapp}

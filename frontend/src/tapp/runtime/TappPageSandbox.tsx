@@ -17,6 +17,24 @@ import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 
+/**
+ * 🎯 WebKit 浏览器检测
+ * Safari/WebKit 在 iframe 渲染时存在特殊问题，需要特殊处理
+ */
+function isWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  // Safari (排除 Chrome/Firefox/Edge)
+  if (ua.includes('Safari') && !ua.includes('Chrome') && !ua.includes('Firefox') && !ua.includes('Edg')) {
+    return true
+  }
+  // iOS/iPadOS 上所有浏览器都使用 WebKit
+  if (/iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document)) {
+    return true
+  }
+  return false
+}
+
 // 核心模块
 import {
   generateCSP,
@@ -475,6 +493,54 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tappInstance.id, codeFingerprint, handleReady])
 
+  // 🎯 WebKit 检测
+  const [isWebKitBrowser, setIsWebKitBrowser] = useState(false)
+  useEffect(() => {
+    setIsWebKitBrowser(isWebKit())
+  }, [])
+
+  // 🎯 WebKit 专用渲染：最简化的样式，避免任何可能影响 iframe 渲染的 CSS
+  if (isWebKitBrowser) {
+    return (
+      <div 
+        ref={containerRef} 
+        className={`tapp-page-sandbox ${className || ''}`}
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          // 🎯 WebKit: 移除所有可能影响渲染的 CSS
+          // 不使用 overflow: hidden, isolation, contain 等
+          ...style,
+        }}
+      >
+        <iframe
+          ref={iframeRef}
+          className="tapp-page-iframe"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            display: 'block',
+            // 🎯 WebKit: 确保 iframe 可见
+            visibility: 'visible',
+            opacity: 1,
+          }}
+          sandbox={IFRAME_SANDBOX_ATTRS}
+          referrerPolicy="no-referrer"
+          title={tappInstance.manifest.name}
+          allowFullScreen
+          // @ts-expect-error Safari webkit prefix
+          webkitallowfullscreen="true"
+        />
+      </div>
+    )
+  }
+
+  // 非 WebKit 浏览器：使用完整样式
   return (
     <div 
       ref={containerRef} 
@@ -484,9 +550,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        // 🎯 WebKit 兼容性：移除 contain: strict，它会阻止 Safari/iOS 上 iframe 内的触摸事件
-        // contain: strict 创建了严格的隔离边界，导致触摸事件无法穿透到 iframe
-        // 使用 isolation: isolate 就足够了，它创建新的堆叠上下文但不影响事件传递
         isolation: 'isolate',
         ...style,
       }}
@@ -506,7 +569,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         sandbox={IFRAME_SANDBOX_ATTRS}
         referrerPolicy="no-referrer"
         title={tappInstance.manifest.name}
-        // Safari/WebKit 全屏兼容性
         allowFullScreen
         // @ts-expect-error Safari webkit prefix
         webkitallowfullscreen="true"
