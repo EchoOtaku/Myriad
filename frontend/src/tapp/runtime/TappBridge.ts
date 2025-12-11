@@ -175,6 +175,7 @@ const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = new Map([
   ['media.playTrack', 'media:control'],
   ['media.jumpToIndex', 'media:control'],
   ['media.getSpectrum', 'media:read'],
+  ['media.loadNeteasePlaylist', 'media:control'],
   
   // 组件权限
   ['component.registerTheme', 'component:theme'],

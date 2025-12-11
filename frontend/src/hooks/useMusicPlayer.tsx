@@ -1489,9 +1489,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const handleSeekRef = useRef(handleSeek);
   const handleVolumeChangeRef = useRef(handleVolumeChange);
   const setPlayModeRef = useRef(setPlayMode);
+  const loadPlaylistRef = useRef(loadPlaylist);
   handleSeekRef.current = handleSeek;
   handleVolumeChangeRef.current = handleVolumeChange;
   setPlayModeRef.current = setPlayMode;
+  loadPlaylistRef.current = loadPlaylist;
   
   useEffect(() => {
     const handleTappNext = () => {
@@ -1552,6 +1554,22 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       window.removeEventListener('music-player-mode', handleTappMode);
     };
   }, []); // 只在挂载时设置一次
+  
+  // 监听 Tapp 加载歌单事件
+  useEffect(() => {
+    const handleLoadPlaylist = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.playlistId) {
+        const source = (detail.source as MusicSource) || 'netease';
+        loadPlaylistRef.current(source, detail.playlistId);
+      }
+    };
+    
+    window.addEventListener('music-player-load-playlist', handleLoadPlaylist);
+    return () => {
+      window.removeEventListener('music-player-load-playlist', handleLoadPlaylist);
+    };
+  }, []);
   
   // 组件卸载时清理
   useEffect(() => {

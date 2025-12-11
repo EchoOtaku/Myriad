@@ -311,6 +311,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       getSpectrum: () => sendRequest('media', 'getSpectrum', []),
       playTrack: (id, idx) => sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]),
       jumpToIndex: (idx) => sendRequest('media', 'jumpToIndex', [{ index: idx }]),
+      loadNeteasePlaylist: (playlistId) => sendRequest('media', 'loadNeteasePlaylist', [{ playlistId }]),
       onStateChange: (cb) => addEventListener('mediaStateChange', cb),
     },
 

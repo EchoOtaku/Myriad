@@ -234,6 +234,35 @@ export function registerMediaHandlers(
     }
     return { success: false, error: 'Invalid index or playlist not available' }
   })
+
+  // 加载网易云歌单
+  bridge.registerHandler('media.loadNeteasePlaylist', async (message) => {
+    const [params] = (message.payload as { args: unknown[] }).args || []
+    const { playlistId } = (params || {}) as { playlistId?: string }
+    
+    if (!playlistId) {
+      return { success: false, error: 'Playlist ID required' }
+    }
+    
+    // 检查权限
+    if (!tappInstance.grantedPermissions?.includes('media:control')) {
+      return { success: false, error: 'Permission denied: media:control required' }
+    }
+    
+    try {
+      // 触发加载歌单事件
+      window.dispatchEvent(new CustomEvent('music-player-load-playlist', { 
+        detail: { 
+          playlistId, 
+          source: 'netease' 
+        } 
+      }))
+      
+      return { success: true, data: { playlistId, source: 'netease', loading: true } }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to load playlist' }
+    }
+  })
 }
 
 /**

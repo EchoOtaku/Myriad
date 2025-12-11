@@ -271,7 +271,7 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
         
         {/* 控制栏 + 沙箱 整体容器 */}
         <div className="flex-1 flex flex-col px-4 sm:px-6 min-h-0 pb-6">
-          <div className="max-w-6xl mx-auto w-full flex flex-col flex-1 min-h-0 max-h-[calc(100vh-8rem)]">
+          <div className="max-w-6xl mx-auto w-full flex flex-col flex-1 min-h-0 max-h-[calc(100vh_-_8rem)]">
             {/* 头部卡片 - 紧凑单行 */}
             <div 
               className="glass rounded-t-xl px-3 py-2 flex items-center justify-between gap-2 shadow-sm min-h-[44px] flex-shrink-0 pointer-events-auto"
@@ -514,7 +514,7 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
           } ${
             isFullscreen 
               ? 'fixed inset-0 z-50 rounded-none' 
-              : 'absolute z-40 top-[calc(5rem+44px)] left-4 right-4 bottom-6 rounded-b-xl'
+              : 'absolute z-40 left-4 right-4 bottom-6 rounded-b-xl'
           }`}
           initial={noAnimation ? false : { opacity: 0, y: 35, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -525,6 +525,8 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
           }}
           onAnimationComplete={() => setHasEntered(true)}
           style={{
+            // 🎯 iPadOS/WebKit 兼容性：使用 style 而非 Tailwind 的 calc()
+            top: isFullscreen ? 0 : 'calc(5rem + 44px)',
             maxWidth: isFullscreen ? undefined : '72rem',
             marginLeft: isFullscreen ? undefined : 'auto',
             marginRight: isFullscreen ? undefined : 'auto',
