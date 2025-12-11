@@ -487,6 +487,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         sandbox={IFRAME_SANDBOX_ATTRS}
         referrerPolicy="no-referrer"
         title={tappInstance.manifest.name}
+        // Safari/WebKit 全屏兼容性
+        allowFullScreen
+        // @ts-expect-error Safari webkit prefix
+        webkitallowfullscreen="true"
       />
     </div>
   )

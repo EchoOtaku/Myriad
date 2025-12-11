@@ -93,7 +93,17 @@ export function registerUIHandlers(
 
   bridge.registerHandler('ui.requestFullscreen', async () => {
     try {
-      await document.documentElement.requestFullscreen()
+      // Safari/WebKit 兼容性：使用 webkitRequestFullscreen
+      const docEl = document.documentElement as HTMLElement & {
+        webkitRequestFullscreen?: () => Promise<void>
+      }
+      if (docEl.requestFullscreen) {
+        await docEl.requestFullscreen()
+      } else if (docEl.webkitRequestFullscreen) {
+        await docEl.webkitRequestFullscreen()
+      } else {
+        return { success: false, error: 'Fullscreen not supported' }
+      }
       return { success: true, data: null }
     } catch {
       return { success: false, error: 'Fullscreen request denied' }
@@ -102,7 +112,15 @@ export function registerUIHandlers(
 
   bridge.registerHandler('ui.exitFullscreen', async () => {
     try {
-      await document.exitFullscreen()
+      // Safari/WebKit 兼容性
+      const doc = document as Document & {
+        webkitExitFullscreen?: () => Promise<void>
+      }
+      if (doc.exitFullscreen) {
+        await doc.exitFullscreen()
+      } else if (doc.webkitExitFullscreen) {
+        await doc.webkitExitFullscreen()
+      }
       return { success: true, data: null }
     } catch {
       return { success: false, error: 'Exit fullscreen failed' }
@@ -111,11 +129,30 @@ export function registerUIHandlers(
 
   bridge.registerHandler('ui.toggleFullscreen', async () => {
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen()
+      // Safari/WebKit 兼容性
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element
+        webkitExitFullscreen?: () => Promise<void>
+      }
+      const docEl = document.documentElement as HTMLElement & {
+        webkitRequestFullscreen?: () => Promise<void>
+      }
+      
+      const fullscreenElement = doc.fullscreenElement || doc.webkitFullscreenElement
+      
+      if (fullscreenElement) {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen()
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen()
+        }
         return { success: true, data: { isFullscreen: false } }
       } else {
-        await document.documentElement.requestFullscreen()
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen()
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen()
+        }
         return { success: true, data: { isFullscreen: true } }
       }
     } catch {
@@ -124,7 +161,11 @@ export function registerUIHandlers(
   })
 
   bridge.registerHandler('ui.isFullscreen', async () => {
-    return { success: true, data: !!document.fullscreenElement }
+    // Safari/WebKit 兼容性
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element
+    }
+    return { success: true, data: !!(doc.fullscreenElement || doc.webkitFullscreenElement) }
   })
 }
 

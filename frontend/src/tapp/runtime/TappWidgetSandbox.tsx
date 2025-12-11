@@ -477,6 +477,10 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
         sandbox={IFRAME_SANDBOX_ATTRS}
         referrerPolicy="no-referrer"
         title={`${tappInstance.manifest.name} Widget`}
+        // Safari/WebKit 全屏兼容性
+        allowFullScreen
+        // @ts-expect-error Safari webkit prefix
+        webkitallowfullscreen="true"
       />
     </div>
   )

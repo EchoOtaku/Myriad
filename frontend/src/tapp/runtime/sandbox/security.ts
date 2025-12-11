@@ -425,13 +425,17 @@ export function generateSecurityWrapper(sessionToken: string): string {
  * 
  * 安全说明：
  * - allow-scripts: 允许脚本执行（必需）
+ * - allow-pointer-lock: 允许指针锁定（用于游戏等交互）
  * - 不使用 allow-same-origin 以获得更强的隔离
  * - 使用 blob: URL 时，sandbox 内容的 origin 为 'null'
  * 
  * 注意：移除 allow-same-origin 可能导致某些功能受限，
  * 但显著提高安全性（防止沙箱逃逸）
+ * 
+ * iOS/iPadOS 兼容性：
+ * - allow-pointer-lock: 确保触摸交互正常工作
  */
-export const IFRAME_SANDBOX_ATTRS = 'allow-scripts'
+export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock'
 
 /**
  * 验证存储 key 格式（防止路径遍历攻击）
