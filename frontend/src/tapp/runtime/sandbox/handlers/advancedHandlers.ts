@@ -18,12 +18,20 @@ export function registerMediaHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance
 ): void {
+  // 高频操作（seek、volume）不需要后端日志记录，直接本地处理
+  const HIGH_FREQUENCY_ACTIONS = new Set(['seek', 'volume', 'mute', 'unmute'])
+  
   bridge.registerHandler('media.control', async (message) => {
     const [params] = (message.payload as { args: unknown[] }).args || []
     const { action, value } = (params || {}) as { action?: string; value?: unknown }
     try {
-      // 调用后端 API 记录日志和权限验证
-      const result = await TappApiService.mediaControl({ tappId: tappInstance.id, action: (action || 'play') as 'play' | 'pause' | 'next' | 'prev' | 'seek' | 'volume' | 'mute' | 'unmute' | 'mode', value })
+      // 高频操作跳过后端 API，直接触发本地事件
+      const isHighFrequency = HIGH_FREQUENCY_ACTIONS.has(action || '')
+      
+      if (!isHighFrequency) {
+        // 非高频操作调用后端 API 记录日志
+        await TappApiService.mediaControl({ tappId: tappInstance.id, action: (action || 'play') as 'play' | 'pause' | 'next' | 'prev' | 'seek' | 'volume' | 'mute' | 'unmute' | 'mode', value })
+      }
       
       // 触发实际的播放器控制事件
       switch (action) {
@@ -68,7 +76,7 @@ export function registerMediaHandlers(
           break
       }
       
-      return { success: true, data: result }
+      return { success: true, data: { action, value } }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed' }
     }
@@ -125,12 +133,12 @@ export function registerMediaHandlers(
           primaryColor: musicColor,
           secondaryColor: musicColors?.secondary || musicColor,
           accentColor: musicColors?.accent || musicColor,
-          lightColor: musicColors?.light || musicColor,
-          darkColor: musicColors?.dark || musicColor
+          lightColor: musicColors?.light || '#ffffff',
+          darkColor: musicColors?.dark || '#000000'
         }
       }
     }
-    return { success: true, data: { isPlaying: false, isPaused: false, currentTrack: null, progress: { current: 0, duration: 0, percentage: 0 }, playlist: null, mode: 'sequence', volume: 70, muted: false, lyrics: [], currentLyricIndex: -1, primaryColor: '#fc3c44', secondaryColor: '#fc3c44', accentColor: '#fc3c44', lightColor: '#fc3c44', darkColor: '#fc3c44' } }
+    return { success: true, data: { isPlaying: false, isPaused: false, currentTrack: null, progress: { current: 0, duration: 0, percentage: 0 }, playlist: null, mode: 'sequence', volume: 70, muted: false, lyrics: [], currentLyricIndex: -1, primaryColor: '#fc3c44', secondaryColor: '#fc3c44', accentColor: '#fc3c44', lightColor: '#ffffff', darkColor: '#000000' } }
   })
 
   bridge.registerHandler('media.getPlaylist', async () => {
@@ -153,25 +161,36 @@ export function registerMediaHandlers(
     return { success: true, data: { tracks: [], currentIndex: 0, total: 0 } }
   })
 
+  // 频谱数据缓存 - 避免高频调用时重复计算
+  let spectrumCache: { data: unknown; timestamp: number } | null = null
+  const SPECTRUM_CACHE_TTL = 16 // ~60fps, 缓存16ms
+  
   bridge.registerHandler('media.getSpectrum', async () => {
+    const now = Date.now()
+    
+    // 检查缓存是否有效
+    if (spectrumCache && (now - spectrumCache.timestamp) < SPECTRUM_CACHE_TTL) {
+      return { success: true, data: spectrumCache.data }
+    }
+    
     // 从Myriad的audioManager获取频谱数据
     const audioManager = (window as { audioManager?: { getSpectrumData: () => number[] } }).audioManager
     if (audioManager && typeof audioManager.getSpectrumData === 'function') {
       const spectrum = audioManager.getSpectrumData()
       // 计算能量值（低频平均）
       const energy = spectrum.length >= 4 
-        ? (spectrum[0] + spectrum[1] + spectrum[2] + spectrum[3]) / 4 
+        ? (spectrum[0] + spectrum[1] + spectrum[2] + spectrum[3]) * 0.25 // 乘法比除法快
         : 0
-      return { 
-        success: true, 
-        data: { 
-          spectrum,  // 完整频谱数据 (0-1 范围)
-          energy,    // 能量值 (0-1 范围)
-          bass: spectrum[0] || 0,     // 低频
-          mid: spectrum[2] || 0,      // 中频  
-          high: spectrum[5] || 0,     // 高频
-        } 
+      const result = { 
+        spectrum,  // 完整频谱数据 (0-1 范围)
+        energy,    // 能量值 (0-1 范围)
+        bass: spectrum[0] || 0,     // 低频
+        mid: spectrum[2] || 0,      // 中频  
+        high: spectrum[5] || 0,     // 高频
       }
+      // 更新缓存
+      spectrumCache = { data: result, timestamp: now }
+      return { success: true, data: result }
     }
     return { success: true, data: { spectrum: [], energy: 0, bass: 0, mid: 0, high: 0 } }
   })

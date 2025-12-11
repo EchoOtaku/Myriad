@@ -375,8 +375,12 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         // 歌词信息
         lyrics: detail.lyrics || [],
         currentLyricIndex: detail.currentLyricIndex ?? -1,
-        // 动态主题色
+        // 动态主题色（完整颜色对象）
         primaryColor: detail.musicColor || '#fc3c44',
+        secondaryColor: detail.musicColors?.secondary || detail.musicColor || '#fc3c44',
+        accentColor: detail.musicColors?.accent || detail.musicColor || '#fc3c44',
+        lightColor: detail.musicColors?.light || '#ffffff',
+        darkColor: detail.musicColors?.dark || '#000000',
       }
       
       bridge.emit('mediaStateChange', mediaState)
