@@ -14,6 +14,7 @@
  */
 
 import './Toast.css';
+import { TappIcon, isIconSvg } from '../tapp/components/TappIcon';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 
 /** Toast 消息类型 */
@@ -213,8 +214,10 @@ export interface TappToastProps {
   duration?: number;
   /** Tapp 名称（用于显示来源） */
   tappName?: string;
-  /** Tapp 图标 */
+  /** Tapp 图标（emoji 或 URL） */
   tappIcon?: string;
+  /** Tapp 图标（SVG 代码） */
+  tappIconSvg?: string;
 }
 
 /**
@@ -229,6 +232,7 @@ export function TappToast({
   duration = 3000,
   tappName,
   tappIcon,
+  tappIconSvg,
 }: TappToastProps) {
   const [isHiding, setIsHiding] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -260,9 +264,19 @@ export function TappToast({
     >
       <div className={`toast-message toast-message-tapp ${config.colorClass}`}>
         {/* Tapp 来源标识 */}
-        {(tappName || tappIcon) && (
+        {(tappName || tappIcon || tappIconSvg) && (
           <div className="toast-tapp-source">
-            {tappIcon && <span className="toast-tapp-icon">{tappIcon}</span>}
+            {(tappIcon || tappIconSvg) && (
+              <span className="toast-tapp-icon">
+                <TappIcon
+                  icon={tappIcon}
+                  iconSvg={tappIconSvg}
+                  name={tappName || 'Tapp'}
+                  sizeClass="w-4 h-4"
+                  textSizeClass="text-xs"
+                />
+              </span>
+            )}
             {tappName && <span className="toast-tapp-name">{tappName}</span>}
             <span className="toast-tapp-separator">·</span>
           </div>

@@ -44,6 +44,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { UninstallConfirmDialog } from './UninstallConfirmDialog'
+import { TappIcon } from './TappIcon'
 
 interface TappStoreProps {
   isOpen: boolean
@@ -64,6 +65,8 @@ interface UnifiedAppItem {
   longDescription?: string
   author: { name: string; email?: string; url?: string }
   icon?: string
+  /** 内联 SVG 图标代码（优先于 icon） */
+  iconSvg?: string
   /** 主题色（优先于分类渐变色） */
   themeColor?: string
   category: string
@@ -261,7 +264,14 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
             style={iconStyle.style}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
-            <span className="text-2xl relative z-10">{app.icon || app.name.charAt(0).toUpperCase()}</span>
+            <TappIcon
+              icon={app.icon}
+              iconSvg={app.iconSvg}
+              name={app.name}
+              sizeClass="w-8 h-8"
+              textSizeClass="text-2xl"
+              className="relative z-10"
+            />
           </div>
 
           {/* 名称 + 元信息 */}
@@ -801,6 +811,7 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
       ? { name: tapp.manifest.author }
       : tapp.manifest.author || { name: 'Unknown' },
     icon: tapp.manifest.icon,
+    iconSvg: tapp.manifest.iconSvg,
     themeColor: tapp.manifest.themeColor,
     category: tapp.category,
     tags: tapp.tags,
@@ -818,6 +829,7 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
     longDescription: app.long_description,
     author: app.author,
     icon: app.icon,
+    iconSvg: app.icon_svg,
     themeColor: app.theme_color,
     category: app.category,
     tags: app.tags || [],

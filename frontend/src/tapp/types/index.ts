@@ -46,10 +46,13 @@ export interface TappManifest {
     url?: string
   }
 
-  /** 图标 URL 或 react-icons 名称 */
+  /** 图标（emoji 或 URL） */
   icon?: string
 
-  /** 主题色 */
+  /** 内联 SVG 图标代码（优先于 icon 字段） */
+  iconSvg?: string
+
+  /** 主题色（十六进制，如 #6366f1） */
   themeColor?: string
 
   /** 入口文件 */

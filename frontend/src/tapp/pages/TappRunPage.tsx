@@ -23,16 +23,13 @@ import { getTappRuntime } from '../runtime'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { loadPageResources, getResourceLoader } from '../runtime/sandbox/resourceLoader'
+import { TappIcon } from '../components/TappIcon'
 import type { TappNotificationOptions } from '../runtime/sandbox/types'
 import type { TappInstance } from '../types'
 import type { TappCodeStructure } from '../examples/tapps/types'
 import { useI18n } from '../../contexts/I18nContext'
 
-/** 妫€鏌ュ瓧绗︿覆鏄惁涓?URL锛堢敤浜庡尯鍒?emoji 鍜屽浘鐗?URL锛?*/
-function isIconUrl(icon: string | undefined): boolean {
-  if (!icon) return false
-  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:') || icon.startsWith('/')
-}
+// 使用 TappIcon 组件统一处理图标渲染
 
 interface TappRunPageProps {
   tappId: string
@@ -54,7 +51,7 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [notification, setNotification] = useState<{ title?: string; message: string; type: ToastType; tappName?: string; tappIcon?: string } | null>(null)
+  const [notification, setNotification] = useState<{ title?: string; message: string; type: ToastType; tappName?: string; tappIcon?: string; tappIconSvg?: string } | null>(null)
   const runtime = getTappRuntime()
 
   // 处理 Tapp 通知
@@ -68,6 +65,7 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
       type: toastType,
       tappName: tapp?.manifest.name,
       tappIcon: tapp?.manifest.icon,
+      tappIconSvg: tapp?.manifest.iconSvg,
     })
   }, [tapp])
 
@@ -211,15 +209,13 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
                 className={`w-7 h-7 rounded-lg ${getTappIconStyle(tapp.manifest).className} flex items-center justify-center text-white text-xs font-bold`}
                 style={getTappIconStyle(tapp.manifest).style}
               >
-                {tapp.manifest.icon ? (
-                  isIconUrl(tapp.manifest.icon) ? (
-                    <img src={tapp.manifest.icon} alt="" className="w-4 h-4 object-contain" />
-                  ) : (
-                    <span className="text-sm">{tapp.manifest.icon}</span>
-                  )
-                ) : (
-                  tapp.manifest.name.charAt(0).toUpperCase()
-                )}
+                <TappIcon
+                  icon={tapp.manifest.icon}
+                  iconSvg={tapp.manifest.iconSvg}
+                  name={tapp.manifest.name}
+                  sizeClass="w-4 h-4"
+                  textSizeClass="text-sm"
+                />
               </div>
               <div className="hidden sm:block">
                 <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
@@ -303,15 +299,13 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
                     className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${getTappIconStyle(tapp.manifest).className} flex items-center justify-center text-white text-lg sm:text-xl font-bold shadow-md`}
                     style={getTappIconStyle(tapp.manifest).style}
                   >
-                    {tapp.manifest.icon ? (
-                      isIconUrl(tapp.manifest.icon) ? (
-                        <img src={tapp.manifest.icon} alt="" className="w-6 h-6 sm:w-8 sm:h-8 object-contain" />
-                      ) : (
-                        <span className="text-xl sm:text-2xl">{tapp.manifest.icon}</span>
-                      )
-                    ) : (
-                      tapp.manifest.name.charAt(0).toUpperCase()
-                    )}
+                    <TappIcon
+                      icon={tapp.manifest.icon}
+                      iconSvg={tapp.manifest.iconSvg}
+                      name={tapp.manifest.name}
+                      sizeClass="w-6 h-6 sm:w-8 sm:h-8"
+                      textSizeClass="text-xl sm:text-2xl"
+                    />
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">
@@ -389,6 +383,7 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
               type={notification.type}
               tappName={notification.tappName}
               tappIcon={notification.tappIcon}
+              tappIconSvg={notification.tappIconSvg}
               onClose={() => setNotification(null)}
             />
           )}

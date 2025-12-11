@@ -65,9 +65,11 @@ export interface RemoteApp {
     email?: string
     url?: string
   }
-  /** 图标 */
+  /** 图标（emoji 或 URL） */
   icon?: string
-  /** 主题色 */
+  /** 内联 SVG 图标代码（优先于 icon） */
+  icon_svg?: string
+  /** 主题色（十六进制，如 #6366f1） */
   theme_color?: string
   /** 分类 */
   category: string

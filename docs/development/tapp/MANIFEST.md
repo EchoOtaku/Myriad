@@ -15,7 +15,8 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `permissions`           | string[] | ❌   | 所需权限列表                       |
 | `optionalPermissions`   | string[] | ❌   | 可选权限（运行时请求）             |
 | `icon`                  | string   | ❌   | 图标（emoji 或 URL）               |
-| `themeColor`            | string   | ❌   | 主题色（十六进制）                 |
+| `iconSvg`               | string   | ❌   | 内联 SVG 图标代码（优先于 icon）   |
+| `themeColor`            | string   | ❌   | 主题色（十六进制，如 #6366f1）     |
 | `widgets`               | object[] | ❌   | 小组件定义                         |
 | `hasPage`               | boolean  | ❌   | 是否有页面模块（可在页面模式运行） |
 | `settings`              | object[] | ❌   | 用户可配置的设置项                 |

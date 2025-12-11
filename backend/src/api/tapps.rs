@@ -181,6 +181,8 @@ pub struct TappManifest {
     #[serde(default)]
     pub optional_permissions: Vec<String>,
     pub icon: Option<String>,
+    /// 内联 SVG 图标代码（优先于 icon）
+    pub icon_svg: Option<String>,
     pub theme_color: Option<String>,
     pub min_system_version: Option<String>,
     pub homepage: Option<String>,
@@ -321,12 +323,15 @@ pub struct TappSettingOption {
 
 /// Tapp 列表项
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TappListItem {
     pub id: String,
     pub name: String,
     pub version: String,
     pub description: Option<String>,
     pub icon: Option<String>,
+    /// 内联 SVG 图标代码（优先于 icon）
+    pub icon_svg: Option<String>,
     pub status: String,
     pub installed_at: String,
     pub last_run_at: Option<String>,
@@ -439,12 +444,19 @@ async fn list_tapps(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     for t in admin_tapps {
+        // 从 manifest 中提取 iconSvg
+        let icon_svg = t
+            .manifest
+            .get("iconSvg")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         items.push(TappListItem {
             id: t.tapp_id,
             name: t.name,
             version: t.version,
             description: t.description,
             icon: t.icon,
+            icon_svg,
             status: format!("{:?}", t.status).to_lowercase(),
             installed_at: t.installed_at.to_rfc3339(),
             last_run_at: t.last_run_at.map(|dt| dt.to_rfc3339()),
@@ -463,12 +475,19 @@ async fn list_tapps(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             for t in user_tapps {
+                // 从 manifest 中提取 iconSvg
+                let icon_svg = t
+                    .manifest
+                    .get("iconSvg")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 items.push(TappListItem {
                     id: t.tapp_id,
                     name: t.name,
                     version: t.version,
                     description: t.description,
                     icon: t.icon,
+                    icon_svg,
                     status: format!("{:?}", t.status).to_lowercase(),
                     installed_at: t.installed_at.to_rfc3339(),
                     last_run_at: t.last_run_at.map(|dt| dt.to_rfc3339()),
@@ -968,12 +987,20 @@ async fn install_tapp(
     // 普通用户安装的 Tapp 都是临时的
     let is_temporary = !claims.is_admin;
 
+    // 从 manifest 中提取 iconSvg
+    let icon_svg = result
+        .manifest
+        .get("iconSvg")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
     Ok(Json(ApiResponse::success(TappListItem {
         id: result.tapp_id,
         name: result.name,
         version: result.version,
         description: result.description,
         icon: result.icon,
+        icon_svg,
         status: "installed".to_string(),
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: None,
@@ -1196,12 +1223,20 @@ async fn install_tapp_file(
     // 普通用户安装的 Tapp 都是临时的
     let is_temporary = !claims.is_admin;
 
+    // 从 manifest 中提取 iconSvg
+    let icon_svg = result
+        .manifest
+        .get("iconSvg")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
     Ok(Json(ApiResponse::success(TappListItem {
         id: result.tapp_id,
         name: result.name,
         version: result.version,
         description: result.description,
         icon: result.icon,
+        icon_svg,
         status: "installed".to_string(),
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: None,
@@ -2079,12 +2114,20 @@ async fn update_tapp(
         user_id
     );
 
+    // 从 manifest 中提取 iconSvg
+    let icon_svg = result
+        .manifest
+        .get("iconSvg")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
     Ok(Json(ApiResponse::success(TappListItem {
         id: result.tapp_id,
         name: result.name,
         version: result.version,
         description: result.description,
         icon: result.icon,
+        icon_svg,
         status: format!("{:?}", result.status).to_lowercase(),
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: result.last_run_at.map(|dt| dt.to_rfc3339()),

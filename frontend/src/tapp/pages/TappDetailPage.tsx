@@ -35,14 +35,11 @@ import { getTappRuntime } from '../runtime'
 import { getTappIconStyle } from '../utils/tappColors'
 import * as TappApiService from '../services/TappApiService'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
+import { TappIcon } from '../components/TappIcon'
 import type { TappInstance, TappPermission, TappSettingItem } from '../types'
 import { useI18n } from '../../contexts/I18nContext'
 
-/** 妫€鏌ュ瓧绗︿覆鏄惁涓?URL锛堢敤浜庡尯鍒?emoji 鍜屽浘鐗?URL锛?*/
-function isIconUrl(icon: string | undefined): boolean {
-  if (!icon) return false
-  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:') || icon.startsWith('/')
-}
+// 使用 TappIcon 组件统一处理图标渲染
 
 interface TappDetailPageProps {
   tappId: string
@@ -503,15 +500,13 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
                 className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl ${getTappIconStyle(manifest).className} flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shadow-lg flex-shrink-0`}
                 style={getTappIconStyle(manifest).style}
               >
-                {manifest.icon ? (
-                  isIconUrl(manifest.icon) ? (
-                    <img src={manifest.icon} alt="" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" />
-                  ) : (
-                    <span>{manifest.icon}</span>
-                  )
-                ) : (
-                  manifest.name.charAt(0).toUpperCase()
-                )}
+                <TappIcon
+                  icon={manifest.icon}
+                  iconSvg={manifest.iconSvg}
+                  name={manifest.name}
+                  sizeClass="w-10 h-10 sm:w-12 sm:h-12"
+                  textSizeClass="text-2xl sm:text-3xl"
+                />
               </div>
               
               <div className="flex-1 min-w-0">

@@ -29,16 +29,13 @@ import * as TappApiService from '../services/TappApiService'
 import type { TappInstance, TappManifest } from '../types'
 import { TappStore } from '../components/TappStore'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
+import { TappIcon } from '../components/TappIcon'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAuth } from '../../contexts/AuthContext'
 import Toast from '../../components/Toast'
 import { hasSessionHint } from '../../utils/sessionDetection'
 
-/** 妫€鏌ュ瓧绗︿覆鏄惁涓?URL锛堢敤浜庡尯鍒?emoji 鍜屽浘鐗?URL锛?*/
-function isIconUrl(icon: string | undefined): boolean {
-  if (!icon) return false
-  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:') || icon.startsWith('/')
-}
+// 使用 TappIcon 组件统一处理图标渲染
 
 /** 包装函数，接受 TappInstance 并返回图标背景样式 */
 function getTappIconStyle(tapp: TappInstance): IconStyle {
@@ -238,15 +235,14 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(({
             style={iconStyle.style}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
-            {manifest.icon ? (
-              isIconUrl(manifest.icon) ? (
-                <img src={manifest.icon} alt="" className="w-8 h-8 object-contain relative z-10" />
-              ) : (
-                <span className="text-2xl relative z-10">{manifest.icon}</span>
-              )
-            ) : (
-              <span className="text-xl font-bold relative z-10">{manifest.name.charAt(0).toUpperCase()}</span>
-            )}
+            <TappIcon
+              icon={manifest.icon}
+              iconSvg={manifest.iconSvg}
+              name={manifest.name}
+              sizeClass="w-8 h-8"
+              textSizeClass="text-2xl"
+              className="relative z-10"
+            />
             {/* 杩愯涓殑鑴夊啿鏁堟灉 */}
             {isRunning && (
               <div className="absolute inset-0 bg-white/20 animate-pulse" />

@@ -3,6 +3,7 @@ import { API_URL } from '../../config';
 import { getCSRFToken } from '../../utils/csrf';
 import { useI18n } from '../../contexts/I18nContext';
 import { listTapps, type TappListItem } from '../../tapp/services/TappApiService';
+import { TappIcon, isIconSvg } from '../../tapp/components/TappIcon';
 import { useNavigate } from 'react-router-dom';
 import { SiAppstore } from '@lib/icons';
 import '../UserModal.css';
@@ -352,13 +353,13 @@ export const UserModal: React.FC<UserModalProps> = ({
                   className="user-modal-tapp-item"
                 >
                   <div className="user-modal-tapp-icon">
-                    {tapp.icon ? (
-                      <span>{tapp.icon}</span>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
-                    )}
+                    <TappIcon
+                      icon={tapp.icon}
+                      iconSvg={tapp.iconSvg}
+                      name={tapp.name}
+                      sizeClass="w-4 h-4"
+                      textSizeClass="text-base"
+                    />
                   </div>
                   <span className="user-modal-tapp-name">{tapp.name}</span>
                 </button>

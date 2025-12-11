@@ -28,6 +28,8 @@ export interface TappListItem {
   version: string
   description?: string
   icon?: string
+  /** 内联 SVG 图标代码（优先于 icon） */
+  iconSvg?: string
   status: string
   installed_at: string
   last_run_at?: string

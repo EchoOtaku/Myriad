@@ -27,6 +27,7 @@ import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 import { GlowBackground } from './shared/GlowBackground'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getTappIconStyle } from '../../tapp/utils/tappColors'
+import { TappIcon } from '../../tapp/components/TappIcon'
 
 export interface TappWidgetProps extends WidgetComponentProps {
   /** Tapp Widget 完整 ID (tapp.{tappId}.{widgetId}) */
@@ -39,7 +40,8 @@ export interface TappWidgetProps extends WidgetComponentProps {
  */
 function getTappWidgetPreviewInfo(tappWidgetId: string): {
   name: string
-  icon: string
+  icon?: string
+  iconSvg?: string
   themeColor?: string
   description?: string
   tappName?: string
@@ -55,7 +57,8 @@ function getTappWidgetPreviewInfo(tappWidgetId: string): {
       const widgetName = parts.pop() || 'Widget'
       return {
         name: widgetName,
-        icon: '📦',
+        icon: undefined,
+        iconSvg: undefined,
       }
     }
     
@@ -64,7 +67,8 @@ function getTappWidgetPreviewInfo(tappWidgetId: string): {
     
     return {
       name: widget.config.name || 'Widget',
-      icon: widget.config.icon || tapp?.manifest.icon || '📦',
+      icon: widget.config.icon || tapp?.manifest.icon,
+      iconSvg: tapp?.manifest.iconSvg,
       themeColor: tapp?.manifest.themeColor,
       description: widget.config.description,
       tappName: tapp?.manifest.name,
@@ -75,7 +79,8 @@ function getTappWidgetPreviewInfo(tappWidgetId: string): {
     const widgetName = parts.pop() || 'Widget'
     return {
       name: widgetName,
-      icon: '📦',
+      icon: undefined,
+      iconSvg: undefined,
     }
   }
 }
@@ -274,9 +279,14 @@ const TappWidgetPreview = memo(({
           style={iconBgStyle}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
-          <span className={`relative z-10 ${isCompact ? 'text-lg' : isLarge ? 'text-2xl' : 'text-xl'}`}>
-            {previewInfo?.icon || '📦'}
-          </span>
+          <TappIcon
+            icon={previewInfo?.icon}
+            iconSvg={previewInfo?.iconSvg}
+            name={previewInfo?.name || 'Widget'}
+            sizeClass={isCompact ? 'w-5 h-5' : isLarge ? 'w-8 h-8' : 'w-6 h-6'}
+            textSizeClass={isCompact ? 'text-lg' : isLarge ? 'text-2xl' : 'text-xl'}
+            className="relative z-10"
+          />
         </div>
         
         {/* 文本信息 - 紧凑模式不显示 */}
@@ -650,7 +660,14 @@ export const TappWidgetComponent = memo(({
             style={iconBgStyle}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
-            <span className="text-2xl relative z-10">{widget.config.icon || tappInstance.manifest.icon || '📦'}</span>
+            <TappIcon
+              icon={widget.config.icon || tappInstance.manifest.icon}
+              iconSvg={tappInstance.manifest.iconSvg}
+              name={widget.config.name || tappInstance.manifest.name}
+              sizeClass="w-7 h-7"
+              textSizeClass="text-2xl"
+              className="relative z-10"
+            />
           </div>
           
           {/* 名称 */}
