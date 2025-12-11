@@ -125,20 +125,33 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
  * 带动画的页面包装器
  * 确保 AnimatePresence 直接包裹 motion 组件
  */
-function AnimatedPage({ children }: { children: React.ReactNode }) {
+function AnimatedPage({ children, useFixedWrapper = false }: { children: React.ReactNode; useFixedWrapper?: boolean }) {
   const location = useLocation();
   
+  // 🎯 根据页面类型选择不同的动画配置
+  const variants = useFixedWrapper ? fixedPageVariants : pageVariants;
+  const wrapperStyle = useFixedWrapper 
+    ? { position: 'absolute' as const, inset: 0 }
+    : { width: '100%', minHeight: '100%' };
+  
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <PageWrapper key={location.pathname}>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        variants={variants}
+        initial="initial"
+        animate="enter"
+        exit="exit"
+        style={wrapperStyle}
+      >
         {children}
-      </PageWrapper>
+      </motion.div>
     </AnimatePresence>
   );
 }
 
 /**
- * 页面包装器 - 提供退出动画
+ * 页面动画配置 - 普通页面（带 transform）
  */
 const pageVariants = {
   initial: {
@@ -166,25 +179,38 @@ const pageVariants = {
   },
 };
 
-function PageWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <motion.div
-      variants={pageVariants}
-      initial="initial"
-      animate="enter"
-      exit="exit"
-      style={{ width: '100%', minHeight: '100%' }}
-    >
-      {children}
-    </motion.div>
-  );
-}
+/**
+ * 🎯 Fixed 布局页面动画配置 - 只用 opacity，不用 transform
+ * transform 会破坏 fixed 定位（fixed 元素会相对于有 transform 的祖先定位）
+ */
+const fixedPageVariants = {
+  initial: {
+    opacity: 0,
+  },
+  enter: {
+    opacity: 1,
+    transition: {
+      duration: 0.3,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: 0.2,
+      ease: [0.4, 0, 0.6, 1],
+    },
+  },
+};
 
 /**
  * 路由内容组件
  */
 function AppRoutes() {
   const location = useLocation();
+  
+  // 🎯 判断是否是 fixed 布局页面（如 TappRunPage）
+  const isFixedLayoutPage = location.pathname.startsWith('/tapp/run/');
 
   // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
   // 这会在路由切换时清理旧页面的订阅并初始化新页面
@@ -202,7 +228,7 @@ function AppRoutes() {
   }, [location.pathname]);
 
   return (
-    <AnimatedPage>
+    <AnimatedPage useFixedWrapper={isFixedLayoutPage}>
       <Routes location={location}>
         <Route path="/" element={<SuspensePage><Home /></SuspensePage>} />
         <Route path="/library" element={<SuspensePage><Library /></SuspensePage>} />

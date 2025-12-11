@@ -113,6 +113,13 @@ function generatePageHTML(
   const hasHtmlTemplate = !!code.pageHtml
   const pageHtmlContent = code.pageHtml || ''
   
+  // 🎯 检测 pageHtml 是否已经包含分层结构
+  // 如果包含 #tapp-background 或 #tapp-content，说明 Tapp 自己定义了分层
+  const hasLayeredStructure = pageHtmlContent.includes('id="tapp-background"') || 
+                               pageHtmlContent.includes("id='tapp-background'") ||
+                               pageHtmlContent.includes('id="tapp-content"') ||
+                               pageHtmlContent.includes("id='tapp-content'")
+  
   // JS 代码 - 混合模式下也会加载
   const pageCode = getCodeForMode(code, 'page')
   
@@ -125,6 +132,16 @@ function generatePageHTML(
 
   // 初始安全区域 padding（确保首次渲染就有正确的间距）
   const initialPadding = `${safeInsets?.top ?? 0}px ${safeInsets?.right ?? 0}px ${safeInsets?.bottom ?? 0}px ${safeInsets?.left ?? 0}px`
+
+  // 🎯 根据是否有分层结构决定 body 内容
+  // - 有分层：直接使用 pageHtmlContent（已包含 #tapp-background 和 #tapp-content）
+  // - 无分层：用默认结构包装
+  const bodyContent = hasLayeredStructure
+    ? `<div id="tapp-root">${pageHtmlContent}</div>`
+    : `<div id="tapp-root">
+    <div id="tapp-background"></div>
+    <div id="tapp-content">${pageHtmlContent}</div>
+  </div>`
 
   return `<!DOCTYPE html>
 <html class="tapp-mode-page">
@@ -143,10 +160,7 @@ function generatePageHTML(
   </style>
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
-  <div id="tapp-root">
-    <div id="tapp-background"></div>
-    <div id="tapp-content">${pageHtmlContent}</div>
-  </div>
+  ${bodyContent}
   
   <script nonce="${nonce}">
     window._TAPP_MODE = 'page';
@@ -250,8 +264,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   // 🎯 性能优化：使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
   const tappInstanceRef = useRef(tappInstance)
   const codeRef = useRef(code)
+  const safeInsetsRef = useRef(safeInsets)
   tappInstanceRef.current = tappInstance
   codeRef.current = code
+  safeInsetsRef.current = safeInsets
   
   // 🎯 集成动画调度器的页面可见性感知 + 通知 iframe 冻结/恢复
   const pageVisibleRef = useRef(isPageVisible())
@@ -440,7 +456,8 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     const sessionToken = bridge.getSessionToken()
     
     // 生成 HTML（传递 session token 用于安全验证）
-    const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsets)
+    // 🎯 使用 ref 获取 safeInsets，避免依赖变化重建 iframe
+    const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     iframeRef.current.src = url
@@ -454,9 +471,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   // 🎯 稳定依赖：只有这些真正改变时才重建 iframe
   // - tappInstance.id: Tapp 实例 ID
   // - codeFingerprint: 代码指纹（内容变化才会变）
-  // - safeInsets: 安全区域（通常不变）
+  // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tappInstance.id, codeFingerprint, handleReady, safeInsets])
+  }, [tappInstance.id, codeFingerprint, handleReady])
 
   return (
     <div 
@@ -467,7 +484,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        contain: 'strict',
+        // 🎯 WebKit 兼容性：移除 contain: strict，它会阻止 Safari/iOS 上 iframe 内的触摸事件
+        // contain: strict 创建了严格的隔离边界，导致触摸事件无法穿透到 iframe
+        // 使用 isolation: isolate 就足够了，它创建新的堆叠上下文但不影响事件传递
         isolation: 'isolate',
         ...style,
       }}

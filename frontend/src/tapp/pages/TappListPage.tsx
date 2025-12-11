@@ -557,6 +557,8 @@ export const TappListPage = () => {
   const { isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
   const [tapps, setTapps] = useState<TappInstance[]>([])
   const [runningTapps, setRunningTapps] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [showEmpty, setShowEmpty] = useState(false) // 延迟显示空状态
   const [showInstallModal, setShowInstallModal] = useState(false)
   const [showStore, setShowStore] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
@@ -578,6 +580,7 @@ export const TappListPage = () => {
     
     const allTapps = runtime.getAllTapps()
     setTapps(allTapps)
+    setLoading(false)
 
     const running = new Set<string>()
     allTapps.forEach(tapp => {
@@ -587,6 +590,18 @@ export const TappListPage = () => {
     })
     setRunningTapps(running)
   }, [runtime])
+
+  // 延迟显示空状态 - 避免加载快时闪烁
+  useEffect(() => {
+    if (!loading && tapps.length === 0) {
+      const timer = setTimeout(() => {
+        setShowEmpty(true)
+      }, 150) // 150ms 延迟，确认确实没有应用
+      return () => clearTimeout(timer)
+    } else {
+      setShowEmpty(false)
+    }
+  }, [loading, tapps.length])
 
   useEffect(() => {
     let mounted = true
@@ -759,7 +774,7 @@ export const TappListPage = () => {
           </div>
 
           {/* 鍐呭鍖哄煙 */}
-          {tapps.length === 0 ? (
+          {tapps.length === 0 && showEmpty ? (
             /* 绌虹姸鎬?- 涓庡崱鐗囪璁￠鏍间竴鑷?*/
             <div className="relative rounded-2xl overflow-hidden">
               {/* 鑳屾櫙 */}

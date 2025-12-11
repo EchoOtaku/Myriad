@@ -7,89 +7,94 @@
 import type { ExampleTapp, TappCodeStructure } from './types'
 
 // ========== 页面 HTML 模板 ==========
-const PAGE_HTML = `<div class="hw-page">
+const PAGE_HTML = `<!-- 背景层 -->
+<div id="tapp-background">
+  <div class="hw-bg-base"></div>
   <!-- 背景装饰光晕 -->
-  <div class="hw-bg-decor">
-    <div class="hw-glow hw-glow-1"></div>
-    <div class="hw-glow hw-glow-2"></div>
-  </div>
-  
-  <!-- 主内容区 -->
-  <main class="hw-main">
-    <!-- 标题卡片 -->
-    <header class="hw-header glass">
-      <div class="hw-emoji">👋</div>
-      <div class="hw-title-row">
-        <h1 id="hw-title" class="hw-title">Hello World</h1>
-        <span class="hw-version">v1.0</span>
+  <div class="hw-glow hw-glow-1"></div>
+  <div class="hw-glow hw-glow-2"></div>
+</div>
+
+<!-- 内容层 -->
+<div id="tapp-content">
+  <div class="hw-page">
+    <!-- 主内容区 -->
+    <main class="hw-main">
+      <!-- 标题卡片 -->
+      <header class="hw-header glass">
+        <div class="hw-emoji">👋</div>
+        <div class="hw-title-row">
+          <h1 id="hw-title" class="hw-title">Hello World</h1>
+          <span class="hw-version">v1.0</span>
+        </div>
+        <p id="hw-subtitle" class="hw-subtitle">欢迎使用 Tapp 系统！探索下方卡片了解核心功能。</p>
+      </header>
+      
+      <!-- 功能卡片网格 -->
+      <div class="hw-grid">
+        <!-- 生命周期 -->
+        <article class="hw-card glass" style="--card-color: #8B5CF6; --delay: 0s;">
+          <div class="hw-card-icon">🔄</div>
+          <h3 id="hw-feat-lifecycle-title" class="hw-card-title">生命周期</h3>
+          <p id="hw-feat-lifecycle-desc" class="hw-card-desc">onReady/onDestroy 完整生命周期管理</p>
+        </article>
+        
+        <!-- 存储 API -->
+        <article class="hw-card glass" style="--card-color: #F59E0B; --delay: 0.05s;">
+          <div class="hw-card-icon">📦</div>
+          <h3 id="hw-feat-storage-title" class="hw-card-title">存储 API</h3>
+          <p id="hw-feat-storage-desc" class="hw-card-desc">持久化数据存储，跨会话保持</p>
+        </article>
+        
+        <!-- 主题适配 -->
+        <article class="hw-card glass" style="--card-color: #EC4899; --delay: 0.1s;">
+          <div class="hw-card-icon">🎨</div>
+          <h3 id="hw-feat-theme-title" class="hw-card-title">主题适配</h3>
+          <p id="hw-feat-theme-desc" class="hw-card-desc">自动适应系统明暗主题</p>
+        </article>
+        
+        <!-- 页面组件 -->
+        <article class="hw-card glass" style="--card-color: #3B82F6; --delay: 0.15s;">
+          <div class="hw-card-icon">📄</div>
+          <h3 id="hw-feat-page-title" class="hw-card-title">页面组件</h3>
+          <p id="hw-feat-page-desc" class="hw-card-desc">注册自定义页面，支持全屏模式</p>
+        </article>
+        
+        <!-- DOM 安全 -->
+        <article class="hw-card glass" style="--card-color: #EF4444; --delay: 0.2s;">
+          <div class="hw-card-icon">🛡️</div>
+          <h3 id="hw-feat-security-title" class="hw-card-title">DOM 安全</h3>
+          <p id="hw-feat-security-desc" class="hw-card-desc">内置 XSS 防护的安全渲染</p>
+        </article>
+        
+        <!-- 自适应尺寸 -->
+        <article class="hw-card glass" style="--card-color: #14B8A6; --delay: 0.25s;">
+          <div class="hw-card-icon">📐</div>
+          <h3 id="hw-feat-responsive-title" class="hw-card-title">自适应尺寸</h3>
+          <p id="hw-feat-responsive-desc" class="hw-card-desc">CSS 变量驱动的响应式设计</p>
+        </article>
+        
+        <!-- 国际化 -->
+        <article class="hw-card glass" style="--card-color: #6366F1; --delay: 0.3s;">
+          <div class="hw-card-icon">🌐</div>
+          <h3 id="hw-feat-i18n-title" class="hw-card-title">国际化</h3>
+          <p id="hw-feat-i18n-desc" class="hw-card-desc">多语言支持，实时切换</p>
+        </article>
+        
+        <!-- CSS 架构 -->
+        <article class="hw-card glass hw-card-primary" style="--card-color: var(--hw-primary); --delay: 0.35s;">
+          <div class="hw-card-icon">🎯</div>
+          <h3 id="hw-feat-cssArch-title" class="hw-card-title">CSS 架构</h3>
+          <p id="hw-feat-cssArch-desc" class="hw-card-desc">分离/统一模式，按需加载样式</p>
+        </article>
       </div>
-      <p id="hw-subtitle" class="hw-subtitle">欢迎使用 Tapp 系统！探索下方卡片了解核心功能。</p>
-    </header>
-    
-    <!-- 功能卡片网格 -->
-    <div class="hw-grid">
-      <!-- 生命周期 -->
-      <article class="hw-card glass" style="--card-color: #8B5CF6; --delay: 0s;">
-        <div class="hw-card-icon">🔄</div>
-        <h3 id="hw-feat-lifecycle-title" class="hw-card-title">生命周期</h3>
-        <p id="hw-feat-lifecycle-desc" class="hw-card-desc">onReady/onDestroy 完整生命周期管理</p>
-      </article>
       
-      <!-- 存储 API -->
-      <article class="hw-card glass" style="--card-color: #F59E0B; --delay: 0.05s;">
-        <div class="hw-card-icon">📦</div>
-        <h3 id="hw-feat-storage-title" class="hw-card-title">存储 API</h3>
-        <p id="hw-feat-storage-desc" class="hw-card-desc">持久化数据存储，跨会话保持</p>
-      </article>
-      
-      <!-- 主题适配 -->
-      <article class="hw-card glass" style="--card-color: #EC4899; --delay: 0.1s;">
-        <div class="hw-card-icon">🎨</div>
-        <h3 id="hw-feat-theme-title" class="hw-card-title">主题适配</h3>
-        <p id="hw-feat-theme-desc" class="hw-card-desc">自动适应系统明暗主题</p>
-      </article>
-      
-      <!-- 页面组件 -->
-      <article class="hw-card glass" style="--card-color: #3B82F6; --delay: 0.15s;">
-        <div class="hw-card-icon">📄</div>
-        <h3 id="hw-feat-page-title" class="hw-card-title">页面组件</h3>
-        <p id="hw-feat-page-desc" class="hw-card-desc">注册自定义页面，支持全屏模式</p>
-      </article>
-      
-      <!-- DOM 安全 -->
-      <article class="hw-card glass" style="--card-color: #EF4444; --delay: 0.2s;">
-        <div class="hw-card-icon">🛡️</div>
-        <h3 id="hw-feat-security-title" class="hw-card-title">DOM 安全</h3>
-        <p id="hw-feat-security-desc" class="hw-card-desc">内置 XSS 防护的安全渲染</p>
-      </article>
-      
-      <!-- 自适应尺寸 -->
-      <article class="hw-card glass" style="--card-color: #14B8A6; --delay: 0.25s;">
-        <div class="hw-card-icon">📐</div>
-        <h3 id="hw-feat-responsive-title" class="hw-card-title">自适应尺寸</h3>
-        <p id="hw-feat-responsive-desc" class="hw-card-desc">CSS 变量驱动的响应式设计</p>
-      </article>
-      
-      <!-- 国际化 -->
-      <article class="hw-card glass" style="--card-color: #6366F1; --delay: 0.3s;">
-        <div class="hw-card-icon">🌐</div>
-        <h3 id="hw-feat-i18n-title" class="hw-card-title">国际化</h3>
-        <p id="hw-feat-i18n-desc" class="hw-card-desc">多语言支持，实时切换</p>
-      </article>
-      
-      <!-- CSS 架构 -->
-      <article class="hw-card glass hw-card-primary" style="--card-color: var(--hw-primary); --delay: 0.35s;">
-        <div class="hw-card-icon">🎯</div>
-        <h3 id="hw-feat-cssArch-title" class="hw-card-title">CSS 架构</h3>
-        <p id="hw-feat-cssArch-desc" class="hw-card-desc">分离/统一模式，按需加载样式</p>
-      </article>
-    </div>
-    
-    <!-- 页脚 -->
-    <footer class="hw-footer">
-      <p id="hw-footer">由 Myriad Tapp 系统驱动</p>
-    </footer>
-  </main>
+      <!-- 页脚 -->
+      <footer class="hw-footer">
+        <p id="hw-footer">由 Myriad Tapp 系统驱动</p>
+      </footer>
+    </main>
+  </div>
 </div>
 `
 
@@ -127,20 +132,19 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   min-height: 100%;
   font-family: system-ui, -apple-system, sans-serif;
   color: var(--tapp-text, #1f1f1f);
-  background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
-  overflow-y: auto;
-  overflow-x: hidden;
 }
-.dark .hw-page {
+
+/* ========== 背景层（#tapp-background） ========== */
+#tapp-background {
+  background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
+}
+.dark #tapp-background {
   background: linear-gradient(135deg, #0a0a0a 0%, #141414 100%);
 }
 
-/* ========== 背景装饰 ========== */
-.hw-bg-decor {
-  position: fixed;
+.hw-bg-base {
+  position: absolute;
   inset: 0;
-  pointer-events: none;
-  overflow: hidden;
 }
 
 .hw-glow {
@@ -344,12 +348,6 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
     transform: translateY(0);
   }
 }
-
-/* ========== 滚动条美化 ========== */
-.hw-page::-webkit-scrollbar { width: 6px; }
-.hw-page::-webkit-scrollbar-track { background: transparent; }
-.hw-page::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 3px; }
-.dark .hw-page::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); }
 
 /* ========== 响应式 ========== */
 @media (max-width: 480px) {

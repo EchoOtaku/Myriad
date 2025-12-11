@@ -1,6 +1,8 @@
 /**
  * Tapp 图标渲染组件
  * 统一处理 emoji、URL、内联 SVG 三种图标类型
+ * 
+ * iOS/Safari 兼容性：使用 img+data URI 方式渲染 SVG
  */
 
 import React, { useMemo } from 'react'
@@ -19,6 +21,8 @@ export interface TappIconProps {
   textSizeClass?: string
   /** 额外的 className */
   className?: string
+  /** SVG 颜色（替换 currentColor，默认 white） */
+  svgColor?: string
 }
 
 /**
@@ -38,30 +42,26 @@ export function isIconSvg(icon: string | undefined): boolean {
 }
 
 /**
- * 规范化 SVG 以确保 WebKit/Safari 兼容性
- * - 添加 xmlns 属性（如果缺失）
- * - 添加 width/height 100% 确保填充容器
- * - 确保 fill="currentColor" 样式继承
+ * 将 SVG 转换为 data URI（iOS/Safari 兼容方式）
+ * 这种方式比 dangerouslySetInnerHTML 更可靠
  */
-function normalizeSvg(svg: string): string {
+function svgToDataUri(svg: string, color: string = 'white'): string {
   let normalized = svg.trim()
   
-  // 添加 xmlns（如果缺失）
+  // 添加 xmlns（如果缺失）- 必须用于 data URI
   if (!normalized.includes('xmlns=')) {
     normalized = normalized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
   }
   
-  // 确保 SVG 有 width 和 height 以填充容器
-  if (!normalized.includes('width=')) {
-    normalized = normalized.replace('<svg', '<svg width="100%" height="100%"')
-  }
+  // 替换 currentColor 为指定颜色（data URI 中无法继承 CSS 颜色）
+  normalized = normalized.replace(/currentColor/g, color)
   
-  // 添加 style 确保颜色继承（WebKit 兼容）
-  if (!normalized.includes('style=')) {
-    normalized = normalized.replace('<svg', '<svg style="display:block;color:inherit"')
-  }
+  // 编码为 data URI
+  const encoded = encodeURIComponent(normalized)
+    .replace(/'/g, '%27')
+    .replace(/"/g, '%22')
   
-  return normalized
+  return `data:image/svg+xml,${encoded}`
 }
 
 /**
@@ -75,25 +75,30 @@ export function TappIcon({
   sizeClass = 'w-6 h-6',
   textSizeClass = 'text-xl',
   className = '',
+  svgColor = 'white',
 }: TappIconProps): React.ReactElement {
-  // 规范化 SVG（使用 useMemo 避免重复计算）
-  const normalizedSvg = useMemo(() => {
+  // 将 SVG 转换为 data URI（使用 useMemo 避免重复计算）
+  const svgDataUri = useMemo(() => {
     if (iconSvg && isIconSvg(iconSvg)) {
-      return normalizeSvg(iconSvg)
+      return svgToDataUri(iconSvg, svgColor)
     }
     if (icon && isIconSvg(icon)) {
-      return normalizeSvg(icon)
+      return svgToDataUri(icon, svgColor)
     }
     return null
-  }, [iconSvg, icon])
+  }, [iconSvg, icon, svgColor])
 
-  // 1. 优先使用内联 SVG
-  if (normalizedSvg) {
+  // 1. 优先使用内联 SVG（通过 img + data URI 渲染）
+  if (svgDataUri) {
     return (
-      <span
-        className={`inline-flex items-center justify-center ${sizeClass} ${className}`}
-        style={{ color: 'inherit' }}
-        dangerouslySetInnerHTML={{ __html: normalizedSvg }}
+      <img
+        src={svgDataUri}
+        alt=""
+        className={`${sizeClass} ${className}`}
+        style={{ 
+          display: 'block',
+          objectFit: 'contain',
+        }}
       />
     )
   }
