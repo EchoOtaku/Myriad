@@ -78,12 +78,14 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
   const noAnimation = animConfig.level === 'none'
   
   // 🎯 WebKit 兼容性：所有 WebKit 浏览器禁用 iframe 容器的 scale 动画
-  const isWebKitBrowser = useMemo(() => isWebKit(), [])
+  // 使用 useState 初始化确保 SSR/hydration 一致性
+  const [isWebKitBrowser, setIsWebKitBrowser] = useState(false)
   
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [code, setCode] = useState<TappCodeStructure | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 🎯 WebKit 兼容性：WebKit 浏览器直接全屏，避免非全屏模式下的 iframe 渲染问题
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasEntered, setHasEntered] = useState(false) // 追踪入场动画是否完成
   const [notification, setNotification] = useState<{ 
@@ -94,6 +96,15 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
     tappIcon?: string
     tappIconSvg?: string 
   } | null>(null)
+  
+  // 🎯 WebKit 检测：在客户端挂载后检测，避免 SSR hydration 不匹配
+  useEffect(() => {
+    const webkit = isWebKit()
+    setIsWebKitBrowser(webkit)
+    if (webkit) {
+      setIsFullscreen(true)  // WebKit 直接进入全屏模式
+    }
+  }, [])
   
   const runtime = getTappRuntime()
 
@@ -216,24 +227,18 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
   return (
     <div className="fixed inset-0 overflow-hidden">
       {/* 全屏模式工具栏 */}
-      <AnimatePresence>
-        {isFullscreen && isReady && tapp && (
-          <motion.div
-            key="fullscreen-toolbar"
-            initial={{ opacity: 0, x: -16, scale: 0.92 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -16, scale: 0.92 }}
-            transition={transitions.elementEnter}
+      {isWebKitBrowser ? (
+        // 🎯 WebKit: 纯静态工具栏，无动画，无 transform
+        isFullscreen && isReady && tapp && (
+          <div
             className="absolute top-4 left-4 z-[60] opacity-0 hover:opacity-100 transition-opacity duration-300"
           >
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
               <div className="flex items-center gap-2">
                 {iconStyle && (
-                  <motion.div 
+                  <div 
                     className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
                     style={iconStyle.style}
-                    whileHover={noAnimation ? undefined : { scale: 1.1 }}
-                    whileTap={noAnimation ? undefined : { scale: 0.95 }}
                   >
                     <TappIcon
                       icon={tapp.manifest.icon}
@@ -242,7 +247,7 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
                       sizeClass="w-4 h-4"
                       textSizeClass="text-sm"
                     />
-                  </motion.div>
+                  </div>
                 )}
                 <div className="hidden sm:block">
                   <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
@@ -255,31 +260,93 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
               </div>
               <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
               <div className="flex items-center gap-1">
-                <motion.button
+                <button
                   onClick={toggleFullscreen}
                   className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
                   title={t.tapp.exitFullscreen}
-                  whileHover={noAnimation ? undefined : { scale: 1.1 }}
-                  whileTap={noAnimation ? undefined : { scale: 0.9 }}
                 >
                   <FaCompress className="w-3.5 h-3.5" />
-                </motion.button>
+                </button>
                 {canStartStop && (
-                  <motion.button
+                  <button
                     onClick={handleStop}
                     className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     title={t.tapp.stopApp}
-                    whileHover={noAnimation ? undefined : { scale: 1.1 }}
-                    whileTap={noAnimation ? undefined : { scale: 0.9 }}
                   >
                     <FaPause className="w-3.5 h-3.5" />
-                  </motion.button>
+                  </button>
                 )}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        )
+      ) : (
+        // 🎯 非 WebKit: 使用 Framer Motion 动画
+        <AnimatePresence>
+          {isFullscreen && isReady && tapp && (
+            <motion.div
+              key="fullscreen-toolbar"
+              initial={{ opacity: 0, x: -16, scale: 0.92 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -16, scale: 0.92 }}
+              transition={transitions.elementEnter}
+              className="absolute top-4 left-4 z-[60] opacity-0 hover:opacity-100 transition-opacity duration-300"
+            >
+              <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
+                <div className="flex items-center gap-2">
+                  {iconStyle && (
+                    <motion.div 
+                      className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
+                      style={iconStyle.style}
+                      whileHover={noAnimation ? undefined : { scale: 1.1 }}
+                      whileTap={noAnimation ? undefined : { scale: 0.95 }}
+                    >
+                      <TappIcon
+                        icon={tapp.manifest.icon}
+                        iconSvg={tapp.manifest.iconSvg}
+                        name={tapp.manifest.name}
+                        sizeClass="w-4 h-4"
+                        textSizeClass="text-sm"
+                      />
+                    </motion.div>
+                  )}
+                  <div className="hidden sm:block">
+                    <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
+                      {tapp.manifest.name}
+                    </h1>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      v{tapp.manifest.version}
+                    </p>
+                  </div>
+                </div>
+                <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
+                <div className="flex items-center gap-1">
+                  <motion.button
+                    onClick={toggleFullscreen}
+                    className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    title={t.tapp.exitFullscreen}
+                    whileHover={noAnimation ? undefined : { scale: 1.1 }}
+                    whileTap={noAnimation ? undefined : { scale: 0.9 }}
+                  >
+                    <FaCompress className="w-3.5 h-3.5" />
+                  </motion.button>
+                  {canStartStop && (
+                    <motion.button
+                      onClick={handleStop}
+                      className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      title={t.tapp.stopApp}
+                      whileHover={noAnimation ? undefined : { scale: 1.1 }}
+                      whileTap={noAnimation ? undefined : { scale: 0.9 }}
+                    >
+                      <FaPause className="w-3.5 h-3.5" />
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       {/* WebKit 兼容性：完全不使用 Framer Motion，避免 iframe + transform 渲染 bug */}
