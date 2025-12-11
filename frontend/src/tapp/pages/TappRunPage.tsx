@@ -284,13 +284,16 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       <motion.div 
         className="absolute inset-0 flex flex-col overflow-hidden pointer-events-none"
-        // 🎯 WebKit 兼容性：禁用 scale 动画以避免 iframe 渲染问题
-        initial={noAnimation ? false : { opacity: 0, y: 35, scale: isWebKitBrowser ? 1 : 0.95 }}
-        animate={{ 
-          opacity: isFullscreen ? 0 : 1,
-          y: isFullscreen ? -30 : 0,
-          scale: isWebKitBrowser ? 1 : (isFullscreen ? 0.92 : 1),
-        }}
+        // 🎯 WebKit 兼容性：完全移除 scale 属性以避免 iframe 渲染问题
+        // 即使 scale: 1 也会生成 transform: scale(1)，这在旧版 WebKit 中会触发 iframe 渲染 bug
+        initial={noAnimation ? false : (isWebKitBrowser 
+          ? { opacity: 0, y: 35 }  // WebKit: 无 scale
+          : { opacity: 0, y: 35, scale: 0.95 }
+        )}
+        animate={isWebKitBrowser 
+          ? { opacity: isFullscreen ? 0 : 1, y: isFullscreen ? -30 : 0 }  // WebKit: 无 scale
+          : { opacity: isFullscreen ? 0 : 1, y: isFullscreen ? -30 : 0, scale: isFullscreen ? 0.92 : 1 }
+        }
         transition={{
           type: 'spring',
           stiffness: 350,
@@ -549,9 +552,16 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
               ? 'fixed inset-0 z-50 rounded-none' 
               : 'absolute z-40 left-4 right-4 bottom-6 rounded-b-xl'
           }`}
-          // 🎯 WebKit 兼容性：禁用 scale 动画以避免 iframe 渲染问题 (STP 231/232)
-          initial={noAnimation ? false : { opacity: 0, y: 35, scale: isWebKitBrowser ? 1 : 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
+          // 🎯 WebKit 兼容性：完全移除 scale 属性以避免 iframe 渲染问题 (STP 231/232)
+          // 即使 scale: 1 也会生成 transform: scale(1)，在旧版 WebKit 中触发 iframe 不渲染
+          initial={noAnimation ? false : (isWebKitBrowser
+            ? { opacity: 0, y: 35 }  // WebKit: 无 scale
+            : { opacity: 0, y: 35, scale: 0.95 }
+          )}
+          animate={isWebKitBrowser
+            ? { opacity: 1, y: 0 }  // WebKit: 无 scale
+            : { opacity: 1, y: 0, scale: 1 }
+          }
           transition={{
             type: 'spring',
             stiffness: 280,
@@ -564,11 +574,10 @@ export const TappRunPage = ({ tappId }: TappRunPageProps) => {
             maxWidth: isFullscreen ? undefined : '72rem',
             marginLeft: isFullscreen ? undefined : 'auto',
             marginRight: isFullscreen ? undefined : 'auto',
-            // 🎯 WebKit 渲染优化：强制 GPU 加速创建独立图层
+            // 🎯 WebKit 渲染优化：使用 will-change 提示而非 transform
+            // 避免使用 transform 属性，因为它可能触发 iframe 渲染 bug
             ...(isWebKitBrowser ? {
-              transform: 'translateZ(0)',
-              WebkitTransform: 'translateZ(0)',
-              backfaceVisibility: 'hidden' as const,
+              willChange: 'opacity',
               WebkitBackfaceVisibility: 'hidden' as const,
             } : {}),
           }}
