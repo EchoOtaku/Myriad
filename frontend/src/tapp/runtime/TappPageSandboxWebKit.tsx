@@ -359,10 +359,18 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
   // 初始化 iframe
   useEffect(() => {
-    if (!iframeRef.current) return
+    console.log('[TappPageSandboxWebKit] Init effect triggered')
+    console.log('[TappPageSandboxWebKit] iframeRef.current:', iframeRef.current)
+    
+    if (!iframeRef.current) {
+      console.error('[TappPageSandboxWebKit] iframeRef is null!')
+      return
+    }
     
     const currentTappInstance = tappInstanceRef.current
     const currentCode = codeRef.current
+    
+    console.log('[TappPageSandboxWebKit] Loading tapp:', currentTappInstance.id)
 
     const bridge = createTappBridge()
     bridgeRef.current = bridge
@@ -394,11 +402,17 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     // 生成 HTML 并加载到 iframe
     // 🎯 WebKit: 使用 blob URL（旧版本就是这样工作的）
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
+    console.log('[TappPageSandboxWebKit] Generated HTML length:', html.length)
+    
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
+    console.log('[TappPageSandboxWebKit] Blob URL:', url)
+    
     iframeRef.current.src = url
+    console.log('[TappPageSandboxWebKit] Set iframe src')
 
     return () => {
+      console.log('[TappPageSandboxWebKit] Cleanup')
       setIsReady(false)
       URL.revokeObjectURL(url)
       bridge.destroy()
@@ -411,6 +425,16 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
   // 🎯 WebKit 专用渲染：尽可能接近旧版本（ae9d05a）的实现
   // 旧版本在普通模式下是可以工作的！
+  // 添加调试日志
+  useEffect(() => {
+    console.log('[TappPageSandboxWebKit] Mounted, containerRef:', containerRef.current)
+    console.log('[TappPageSandboxWebKit] iframeRef:', iframeRef.current)
+  }, [])
+  
+  useEffect(() => {
+    console.log('[TappPageSandboxWebKit] isReady:', isReady)
+  }, [isReady])
+
   return (
     <div 
       ref={containerRef} 
@@ -424,12 +448,21 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
         overflow: 'hidden',
         contain: 'strict',
         isolation: 'isolate',
+        // 🔧 调试：添加边框确认容器边界
+        border: '3px solid lime',
+        boxSizing: 'border-box',
         ...style,
       }}
     >
+      {/* 🔧 调试：sandbox 容器内的可见标记 */}
+      <div style={{ position: 'absolute', top: 20, left: 0, right: 0, textAlign: 'center', padding: '4px', background: 'blue', color: 'white', fontSize: '11px', zIndex: 9998 }}>
+        TappPageSandboxWebKit | dimensions: {dimensions.width}x{dimensions.height} | ready: {String(isReady)}
+      </div>
       <iframe
         ref={iframeRef}
         className="tapp-page-iframe"
+        onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired')}
+        onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
         style={{
           position: 'absolute',
           top: 0,
@@ -442,7 +475,23 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
         sandbox="allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
         title={tappInstance.manifest.name}
+        onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired!')}
+        onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          border: '2px dashed orange',
+          display: 'block',
+          background: '#2a2a4a',
+        }}
       />
+      {/* 🔧 调试：iframe 后的标记 */}
+      <div style={{ position: 'absolute', bottom: 40, left: 0, right: 0, textAlign: 'center', padding: '4px', background: 'purple', color: 'white', fontSize: '11px', zIndex: 9997 }}>
+        iframe should be above this (orange dashed border)
+      </div>
     </div>
   )
 }

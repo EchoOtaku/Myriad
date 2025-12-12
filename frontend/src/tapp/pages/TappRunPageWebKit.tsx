@@ -152,10 +152,17 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
     setIsReady(true)
   }, [])
 
+  // 🔧 调试信息
+  console.log('[TappRunPageWebKit] Render - loading:', loading, 'hasError:', hasError, 'tapp:', !!tapp, 'code:', !!code, 'isReady:', isReady)
+
   return (
     // 🎯 WebKit 专用：模仿旧版本 (ae9d05a) 非全屏模式的 flex 布局结构
     // 旧版本非全屏模式是可用的！
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: '#1a1a2e' }}>
+      {/* 🔧 全局调试条 */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '8px', background: 'rgba(0,0,0,0.8)', color: '#0f0', fontSize: '10px', zIndex: 99999, fontFamily: 'monospace' }}>
+        WebKit Mode | loading: {String(loading)} | error: {String(hasError)} | tapp: {String(!!tapp)} | code: {String(!!code)} | ready: {String(isReady)}
+      </div>
       {/* 🎯 加载/错误状态 - 全屏显示 */}
       {(loading || hasError) && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-100 dark:bg-neutral-900">
@@ -264,11 +271,16 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
           className="flex-1 min-h-0 relative overflow-hidden"
           style={{
             // 🎯 关键样式 - 旧版本非全屏模式的容器样式
+            background: '#0f0f1a',
             contain: 'strict',
             isolation: 'isolate',
             willChange: 'contents',
           }}
         >
+          {/* 🔧 调试：显示容器是否正确渲染 */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '4px', background: 'red', color: 'white', fontSize: '12px', zIndex: 9999 }}>
+            DEBUG: Container rendered
+          </div>
           <TappPageSandboxWebKit
             tappInstance={tapp}
             code={code}
