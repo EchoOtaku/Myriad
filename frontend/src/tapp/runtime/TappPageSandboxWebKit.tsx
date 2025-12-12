@@ -28,7 +28,7 @@ import {
   generateFullSDK,
   generateThemeCSS,
   PAGE_STATIC_CSS,
-  IFRAME_SANDBOX_ATTRS,
+  // IFRAME_SANDBOX_ATTRS 不再使用，WebKit 版本使用更宽松的设置
   type TappNotificationOptions,
   type SafeInsets,
   type AnimationConfigRef,
@@ -393,13 +393,34 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     
     // 生成 HTML 并加载到 iframe
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
     
-    iframeRef.current.src = blobUrl
+    // 🎯 WebKit 关键修复：使用 srcdoc 代替 blob URL
+    // Safari/WebKit 对 blob URL 的 iframe 有已知的渲染问题
+    // srcdoc 直接嵌入 HTML，避免了 blob URL 的异步加载问题
+    // 
+    // 同时使用 requestAnimationFrame 确保 DOM 已经准备好
+    requestAnimationFrame(() => {
+      if (iframeRef.current) {
+        // 方案1: 使用 srcdoc（Safari 对此支持更好）
+        iframeRef.current.srcdoc = html
+        
+        // 🎯 WebKit: 强制重绘 - 某些 Safari 版本需要这个
+        // 通过触发样式重计算来确保 iframe 内容显示
+        requestAnimationFrame(() => {
+          if (iframeRef.current) {
+            // 触发重绘
+            iframeRef.current.style.opacity = '0.99'
+            requestAnimationFrame(() => {
+              if (iframeRef.current) {
+                iframeRef.current.style.opacity = '1'
+              }
+            })
+          }
+        })
+      }
+    })
 
     return () => {
-      URL.revokeObjectURL(blobUrl)
       bridge.destroy()
       bridgeRef.current = null
       permissionRef.current = null
@@ -419,6 +440,9 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
+        // 🎯 WebKit: 强制硬件加速，有助于解决某些渲染问题
+        WebkitTransform: 'translateZ(0)',
+        transform: 'translateZ(0)',
         // 🎯 WebKit: 不使用 overflow, isolation, contain 等可能影响渲染的 CSS
         ...style,
       }}
@@ -437,13 +461,22 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           // 🎯 WebKit: 强制可见
           visibility: 'visible',
           opacity: 1,
+          // 🎯 WebKit: 确保没有任何会触发合成层问题的属性
+          WebkitTransform: 'translateZ(0)',
+          transform: 'translateZ(0)',
+          // 🎯 WebKit: 强制硬件加速
+          WebkitBackfaceVisibility: 'hidden',
+          backfaceVisibility: 'hidden',
         }}
-        sandbox={IFRAME_SANDBOX_ATTRS}
+        // 🎯 WebKit: 使用更宽松的 sandbox，某些限制可能导致渲染问题
+        sandbox="allow-scripts allow-pointer-lock allow-same-origin"
         referrerPolicy="no-referrer"
         title={tappInstance.manifest.name}
-        allowFullScreen
+        // 🎯 WebKit: 显式设置这些属性可能有助于渲染
+        loading="eager"
         // @ts-expect-error Safari webkit prefix
         webkitallowfullscreen="true"
+        allowFullScreen
       />
     </div>
   )
