@@ -1,25 +1,26 @@
 /**
- * 🎯 WebKit 专用 Tapp Page 沙箱组件
+ * Tapp Page 沙箱组件 - WebKit 专用版本
  * 
- * 极简设计：
- * - 无额外判断
- * - 全屏渲染
- * - 最简化 CSS
- * - 单一渲染路径
+ * 🎯 设计原则：
+ * - 使用最简化的 CSS，避免任何可能影响 iframe 渲染的属性
+ * - 无 overflow:hidden, isolation, contain, transform 等
+ * - 功能与标准版本完全一致
  */
 
-import React, { useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react'
 import type { TappInstance } from '../types'
 import type { TappCodeStructure } from '../examples/tapps/types'
 import { getCodeForMode } from '../examples/tapps/types'
 import { TappBridge, createTappBridge } from './TappBridge'
 import { TappPermissionController, createPermissionController } from './TappPermission'
-import { sendResizeMessage } from '../utils/iframeResize'
+import { useIframeResize, sendResizeMessage } from '../utils/iframeResize'
 import { useI18n } from '../../contexts/I18nContext'
 import { subscribeToTheme, getIsDarkMode } from '../../utils/themeSubscriber'
 import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 
+// 核心模块
 import {
   generateCSP,
   generateNonce,
@@ -28,10 +29,12 @@ import {
   generateThemeCSS,
   PAGE_STATIC_CSS,
   IFRAME_SANDBOX_ATTRS,
+  type TappNotificationOptions,
   type SafeInsets,
   type AnimationConfigRef,
 } from './sandbox'
 
+// 处理器
 import {
   registerLifecycleHandlers,
   registerUIHandlers,
@@ -50,18 +53,34 @@ import {
 } from './sandbox/handlers'
 
 export interface TappPageSandboxWebKitProps {
+  /** Tapp 实例 */
   tappInstance: TappInstance
+  /** Tapp 代码 */
   code: TappCodeStructure
+  /** 准备就绪回调 */
+  onReady?: () => void
+  /** 错误回调 */
+  onError?: (error: Error) => void
+  /** 销毁回调 */
+  onDestroy?: () => void
+  /** 通知回调 */
+  onNotification?: (options: TappNotificationOptions) => void
+  /** 自定义类名 */
+  className?: string
+  /** 自定义样式 */
+  style?: React.CSSProperties
+  /** 安全区域内边距 */
   safeInsets?: SafeInsets
 }
 
 /**
- * 生成 Page 沙箱 HTML
+ * 生成 Page 沙箱 HTML - WebKit 专用版本
  */
 function generatePageHTML(
   tappInstance: TappInstance,
   code: TappCodeStructure,
-  sessionToken: string
+  sessionToken: string,
+  safeInsets?: SafeInsets
 ): string {
   const { manifest } = tappInstance
   const isDark = getIsDarkMode()
@@ -71,174 +90,360 @@ function generatePageHTML(
   const nonce = generateNonce()
   const csp = generateCSP(nonce)
   const securityWrapper = generateSecurityWrapper(sessionToken)
-  const sdk = generateFullSDK(tappInstance, sessionToken)
+  const sdkCode = generateFullSDK(tappInstance, sessionToken)
   const themeCSS = generateThemeCSS(isDark, primaryColor)
   
-  const jsCode = getCodeForMode(code, 'page') || ''
-  const hasPageHtml = !!code.pageHtml
+  const customCSS = code.styles || ''
+  const hasHtmlTemplate = !!code.pageHtml
+  const pageHtmlContent = code.pageHtml || ''
   
-  const cssCode = `
-    ${PAGE_STATIC_CSS}
-    ${themeCSS}
-    ${code.pageCSS || ''}
-    ${code.styles || ''}
-  `.trim()
+  const hasLayeredStructure = pageHtmlContent.includes('id="tapp-background"') || 
+                               pageHtmlContent.includes("id='tapp-background'") ||
+                               pageHtmlContent.includes('id="tapp-content"') ||
+                               pageHtmlContent.includes("id='tapp-content'")
+  
+  const pageCode = getCodeForMode(code, 'page')
+  const tailwindCSS = code.pageCSS || ''
+  const needsJsRender = !hasHtmlTemplate
+  const initialPadding = `${safeInsets?.top ?? 0}px ${safeInsets?.right ?? 0}px ${safeInsets?.bottom ?? 0}px ${safeInsets?.left ?? 0}`
 
-  const renderScript = `
-    window.addEventListener('DOMContentLoaded', function() {
-      if (typeof Tapp !== 'undefined' && Tapp.pages && Tapp.pages['${manifest.id}']) {
-        var pageDef = Tapp.pages['${manifest.id}'];
-        if (!${hasPageHtml} && typeof pageDef.render === 'function') {
-          var container = document.getElementById('tapp-content');
-          container.innerHTML = '';
-          pageDef.render(container, {});
-        }
-      }
-      Tapp.ready();
-    });
-  `
+  const bodyContent = hasLayeredStructure
+    ? `<div id="tapp-root">${pageHtmlContent}</div>`
+    : `<div id="tapp-root">
+    <div id="tapp-background"></div>
+    <div id="tapp-content">${pageHtmlContent}</div>
+  </div>`
 
   return `<!DOCTYPE html>
-<html lang="zh-CN" class="${isDark ? 'dark' : ''}">
+<html class="tapp-mode-page">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name}</title>
-  <style nonce="${nonce}">${cssCode}</style>
+  <style>
+    ${PAGE_STATIC_CSS}
+    ${tailwindCSS}
+    ${themeCSS}
+    ${customCSS}
+    #tapp-content { padding: ${initialPadding}; box-sizing: border-box; }
+  </style>
 </head>
-<body>
-  <div id="tapp-content">${code.pageHtml || ''}</div>
+<body class="${isDark ? 'dark' : 'light'}">
+  ${bodyContent}
+  
+  <script nonce="${nonce}">
+    window._TAPP_MODE = 'page';
+    window._TAPP_HAS_HTML = ${hasHtmlTemplate};
+    window._TAPP_INITIAL_SAFE_INSETS = {
+      top: ${safeInsets?.top ?? 0},
+      right: ${safeInsets?.right ?? 0},
+      bottom: ${safeInsets?.bottom ?? 0},
+      left: ${safeInsets?.left ?? 0}
+    };
+    window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1 };
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (msg?.type === 'event' && msg.action === 'container:resize') {
+        window._TAPP_DIMENSIONS = msg.payload;
+        var root = document.documentElement;
+        root.style.setProperty('--tapp-scale', msg.payload.scale || 1);
+        root.style.setProperty('--tapp-font-scale', msg.payload.fontScale || 1);
+        var content = document.getElementById('tapp-content');
+        if (content) {
+          content.style.padding = 
+            (msg.payload.safeInsetTop || 0) + 'px ' +
+            (msg.payload.safeInsetRight || 0) + 'px ' +
+            (msg.payload.safeInsetBottom || 0) + 'px ' +
+            (msg.payload.safeInsetLeft || 0) + 'px';
+        }
+      }
+    });
+  </script>
+  
   <script nonce="${nonce}">${securityWrapper}</script>
-  <script nonce="${nonce}">${sdk}</script>
-  <script nonce="${nonce}">${jsCode}</script>
-  <script nonce="${nonce}">${renderScript}</script>
+  <script nonce="${nonce}">${sdkCode}</script>
+  ${pageCode ? `<script nonce="${nonce}">${pageCode}</script>` : ''}
+  
+  ${needsJsRender ? `
+  <script nonce="${nonce}">
+    (function() {
+      setTimeout(function() {
+        if (typeof Tapp !== 'undefined' && Tapp.pages && typeof Tapp.pages['${tappInstance.id}'] === 'object') {
+          var pageDef = Tapp.pages['${tappInstance.id}'];
+          if (typeof pageDef.render === 'function') {
+            try {
+              var container = document.getElementById('tapp-content');
+              container.innerHTML = '';
+              pageDef.render(container, {});
+            } catch(e) { console.error('[Tapp] Page render error:', e); }
+          }
+        }
+      }, 50);
+    })();
+  </script>
+  ` : '<!-- 混合/HTML 模式：HTML 已渲染，JS 用于交互 -->'}
 </body>
 </html>`
 }
 
 /**
- * WebKit 专用沙箱组件
+ * Tapp Page 沙箱组件 - WebKit 专用版本
  */
 export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   tappInstance,
   code,
+  onReady,
+  onError,
+  onDestroy,
+  onNotification,
+  className,
+  style,
   safeInsets,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
   const permissionRef = useRef<TappPermissionController | null>(null)
+  const [isReady, setIsReady] = useState(false)
   
+  const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
   const animationConfig = useAnimationLevel()
   
-  const localeRef = useRef(locale)
-  const animationConfigRef = useRef<AnimationConfigRef>(animationConfig)
+  const tappInstanceRef = useRef(tappInstance)
+  const codeRef = useRef(code)
+  const safeInsetsRef = useRef(safeInsets)
+  tappInstanceRef.current = tappInstance
+  codeRef.current = code
+  safeInsetsRef.current = safeInsets
   
-  useEffect(() => { localeRef.current = locale }, [locale])
-  useEffect(() => { animationConfigRef.current = animationConfig }, [animationConfig])
-
+  const pageVisibleRef = useRef(isPageVisible())
+  useEffect(() => {
+    return onVisibility((visible) => {
+      pageVisibleRef.current = visible
+      if (isReady && bridgeRef.current) {
+        bridgeRef.current.emit(visible ? 'lifecycle:resume' : 'lifecycle:pause', null)
+      }
+    })
+  }, [isReady])
+  
   const codeFingerprint = useMemo(() => {
     const ph = code.pageHtml || ''
     const st = code.styles || ''
     const js = getCodeForMode(code, 'page') || ''
     return `${ph.length}:${st.length}:${js.length}`
   }, [code])
+  
+  const localeRef = useRef(locale)
+  useEffect(() => { localeRef.current = locale }, [locale])
+  
+  const animationConfigRef = useRef<AnimationConfigRef>(animationConfig)
+  useEffect(() => { animationConfigRef.current = animationConfig }, [animationConfig])
 
   // 尺寸更新
   useEffect(() => {
-    const container = containerRef.current
-    const iframe = iframeRef.current
-    if (!container || !iframe) return
-    
-    const updateSize = () => {
-      const dims = {
-        width: container.clientWidth,
-        height: container.clientHeight,
-        scale: 1,
-        fontScale: 1,
-        isCompact: false,
-        isMini: false,
-        safeInsetTop: safeInsets?.top ?? 0,
-        safeInsetRight: safeInsets?.right ?? 0,
-        safeInsetBottom: safeInsets?.bottom ?? 0,
-        safeInsetLeft: safeInsets?.left ?? 0,
-      }
-      sendResizeMessage(iframe, dims)
+    if (!iframeRef.current || dimensions.width === 0) return
+    const dims = {
+      ...dimensions,
+      safeInsetTop: safeInsets?.top ?? 0,
+      safeInsetRight: safeInsets?.right ?? 0,
+      safeInsetBottom: safeInsets?.bottom ?? 0,
+      safeInsetLeft: safeInsets?.left ?? 0,
     }
-    
-    updateSize()
-    const observer = new ResizeObserver(updateSize)
-    observer.observe(container)
-    return () => observer.disconnect()
-  }, [safeInsets])
+    sendResizeMessage(iframeRef.current, dims)
+  }, [dimensions, safeInsets])
+
+  // 语言变化
+  useEffect(() => {
+    if (!bridgeRef.current || !isReady) return
+    bridgeRef.current.emit('locale:change', locale)
+  }, [locale, isReady])
 
   // 主题变化
   useEffect(() => {
+    if (!isReady) return
     return subscribeToTheme((isDark) => {
-      bridgeRef.current?.emit('theme:change', isDark ? 'dark' : 'light')
+      const bridge = bridgeRef.current
+      if (bridge) {
+        bridge.emit('theme:change', isDark ? 'dark' : 'light')
+      }
     })
-  }, [])
+  }, [isReady])
 
   // 主色调变化
   useEffect(() => {
+    if (!isReady) return
     return subscribeToPrimaryColor((color) => {
-      if (color) bridgeRef.current?.emit('primaryColor:change', color)
+      const bridge = bridgeRef.current
+      if (bridge && color) {
+        bridge.emit('primaryColor:change', color)
+      }
     })
-  }, [])
+  }, [isReady])
 
-  // 初始化
+  // 媒体状态变化
   useEffect(() => {
-    const iframe = iframeRef.current
-    if (!iframe) return
+    if (!isReady) return
+    
+    const handleMusicStateChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail) return
+      
+      const bridge = bridgeRef.current
+      if (!bridge) return
+      
+      const tapp = tappInstanceRef.current
+      if (!tapp?.grantedPermissions?.includes('media:read')) return
+      
+      const currentSong = detail.currentSong as Record<string, unknown> | null
+      const currentTime = (detail.currentTime as number) || 0
+      const audioDuration = (detail.audioDuration as number) || (currentSong?.duration as number) || 0
+      const volume = (detail.volume as number) || 0.7
+      const playMode = (detail.playMode as string) || 'loop'
+      
+      const modeMap: Record<string, string> = {
+        'loop': 'loop',
+        'single': 'single',
+        'shuffle': 'shuffle'
+      }
+      
+      const mediaState = {
+        isPlaying: detail.isPlaying || false,
+        isPaused: !detail.isPlaying && currentSong !== null,
+        currentTrack: currentSong ? {
+          id: currentSong.id || '',
+          title: currentSong.name || currentSong.title || '',
+          name: currentSong.name || currentSong.title || '',
+          artist: currentSong.artist || '',
+          album: currentSong.album || '',
+          cover: currentSong.cover || '',
+          duration: currentSong.duration || 0,
+        } : null,
+        progress: {
+          current: currentTime,
+          duration: audioDuration,
+          percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0
+        },
+        position: currentTime,
+        volume: Math.round(volume * 100),
+        mode: modeMap[playMode] || 'sequence',
+        muted: volume === 0,
+        lyrics: detail.lyrics || [],
+        currentLyricIndex: detail.currentLyricIndex ?? -1,
+        primaryColor: detail.musicColor || '#fc3c44',
+        secondaryColor: detail.musicColors?.secondary || detail.musicColor || '#fc3c44',
+        accentColor: detail.musicColors?.accent || detail.musicColor || '#fc3c44',
+        lightColor: detail.musicColors?.light || '#ffffff',
+        darkColor: detail.musicColors?.dark || '#000000',
+      }
+      
+      bridge.emit('mediaStateChange', mediaState)
+    }
+    
+    window.addEventListener('music-player-state-change', handleMusicStateChange)
+    return () => {
+      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+    }
+  }, [isReady])
+
+  // 动画级别变化
+  useEffect(() => {
+    if (!isReady) return
+    bridgeRef.current?.emit('animationLevel:change', animationConfig.level)
+  }, [isReady, animationConfig.level])
+
+  const handleReady = useCallback(() => {
+    setIsReady(true)
+    onReady?.()
+  }, [onReady])
+
+  // 初始化 iframe
+  useEffect(() => {
+    if (!iframeRef.current) return
+    
+    const currentTappInstance = tappInstanceRef.current
+    const currentCode = codeRef.current
 
     const bridge = createTappBridge()
     bridgeRef.current = bridge
 
-    const permission = createPermissionController(tappInstance)
+    const permission = createPermissionController(currentTappInstance)
     permissionRef.current = permission
 
-    bridge.initialize(iframe, tappInstance)
+    bridge.initialize(iframeRef.current, currentTappInstance)
 
-    const handleReady = useCallback(() => {}, [])
-    
-    registerLifecycleHandlers(bridge, tappInstance, handleReady)
-    registerUIHandlers(bridge, () => localeRef.current)
-    registerStorageHandlers(bridge, tappInstance.id)
-    registerUserHandlers(bridge, tappInstance)
-    registerWidgetHandlers(bridge, tappInstance)
-    registerPlatformHandlers(bridge, tappInstance)
-    registerAIHandlers(bridge, permission, tappInstance)
-    registerReportHandlers(bridge, tappInstance)
-    registerMediaHandlers(bridge, tappInstance)
-    registerBackgroundHandlers(bridge, tappInstance)
+    // 注册所有处理器（与 TappPageSandbox 保持一致）
+    registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
+    registerUIHandlers(bridge, () => localeRef.current, onNotification)
+    registerStorageHandlers(bridge, currentTappInstance.id)
+    registerUserHandlers(bridge, currentTappInstance)
+    registerWidgetHandlers(bridge, currentTappInstance)
+    registerPlatformHandlers(bridge, currentTappInstance)
+    registerAIHandlers(bridge, permission, currentTappInstance)
+    registerReportHandlers(bridge, currentTappInstance)
+    registerMediaHandlers(bridge, currentTappInstance)
+    registerBackgroundHandlers(bridge, currentTappInstance)
     registerAnimationHandlers(bridge, animationConfigRef)
-    registerDynamicContentHandlers(bridge, tappInstance)
-    registerAdvancedHandlers(bridge, tappInstance)
-    registerContextHandlers(bridge, tappInstance)
+    registerDynamicContentHandlers(bridge, currentTappInstance)
+    registerAdvancedHandlers(bridge, currentTappInstance)
+    registerContextHandlers(bridge, currentTappInstance)
 
+    // 获取 session token（Bridge 在 initialize 时已生成）
     const sessionToken = bridge.getSessionToken()
-    const html = generatePageHTML(tappInstance, code, sessionToken)
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    iframe.src = url
+    
+    // 生成 HTML 并加载到 iframe
+    const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+    
+    iframeRef.current.src = blobUrl
 
     return () => {
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(blobUrl)
       bridge.destroy()
+      bridgeRef.current = null
+      permissionRef.current = null
+      onDestroy?.()
     }
-  }, [tappInstance.id, codeFingerprint])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tappInstance.id, codeFingerprint, handleReady])
 
+  // 🎯 WebKit 专用渲染：最简化的 CSS，避免任何可能影响 iframe 渲染的属性
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div 
+      ref={containerRef} 
+      className={`tapp-page-sandbox-webkit ${className || ''}`}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        // 🎯 WebKit: 不使用 overflow, isolation, contain 等可能影响渲染的 CSS
+        ...style,
+      }}
+    >
       <iframe
         ref={iframeRef}
-        className="absolute inset-0 w-full h-full border-none"
+        className="tapp-page-iframe-webkit"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          border: 'none',
+          display: 'block',
+          // 🎯 WebKit: 强制可见
+          visibility: 'visible',
+          opacity: 1,
+        }}
         sandbox={IFRAME_SANDBOX_ATTRS}
         referrerPolicy="no-referrer"
         title={tappInstance.manifest.name}
         allowFullScreen
+        // @ts-expect-error Safari webkit prefix
+        webkitallowfullscreen="true"
       />
     </div>
   )
