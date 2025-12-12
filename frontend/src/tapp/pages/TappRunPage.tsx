@@ -40,29 +40,8 @@ interface TappRunPageProps {
 
 /**
  * Tapp 运行页面入口
- * 根据浏览器类型选择渲染标准版或 WebKit 版
  */
 export const TappRunPage = ({ tappId }: TappRunPageProps) => {
-  const [isWebKitBrowser, setIsWebKitBrowser] = useState(false)
-  const [isDetected, setIsDetected] = useState(false)
-  
-  // 客户端检测 WebKit
-  useEffect(() => {
-    setIsWebKitBrowser(isWebKit())
-    setIsDetected(true)
-  }, [])
-  
-  // 等待检测完成
-  if (!isDetected) {
-    return null
-  }
-  
-  // WebKit 使用专用组件
-  if (isWebKitBrowser) {
-    return <TappRunPageWebKit tappId={tappId} />
-  }
-  
-  // 非 WebKit 使用标准组件
   return <TappRunPageStandard tappId={tappId} />
 }
 
@@ -81,7 +60,6 @@ const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
   const [code, setCode] = useState<TappCodeStructure | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // 🎯 WebKit 兼容性：WebKit 浏览器直接全屏，避免非全屏模式下的 iframe 渲染问题
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasEntered, setHasEntered] = useState(false) // 追踪入场动画是否完成
   const [notification, setNotification] = useState<{ 
@@ -92,15 +70,6 @@ const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
     tappIcon?: string
     tappIconSvg?: string 
   } | null>(null)
-  
-  // 🎯 WebKit 检测：在客户端挂载后检测，避免 SSR hydration 不匹配
-  useEffect(() => {
-    const webkit = isWebKit()
-    setIsWebKitBrowser(webkit)
-    if (webkit) {
-      setIsFullscreen(true)  // WebKit 直接进入全屏模式
-    }
-  }, [])
   
   const runtime = getTappRuntime()
 
@@ -221,65 +190,9 @@ const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
   // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同
   // 页面级动画由 App.tsx 的 FixedPageWrapper 提供（纯 opacity，不用 transform）
   return (
-    // 🎯 WebKit 兼容性：移除 overflow-hidden，它可能影响 iframe 渲染
-    <div className={`fixed inset-0 ${isWebKitBrowser ? '' : 'overflow-hidden'}`}>
+    <div className="fixed inset-0 overflow-hidden">
       {/* 全屏模式工具栏 */}
-      {isWebKitBrowser ? (
-        // 🎯 WebKit: 纯静态工具栏，无动画，无 transform
-        isFullscreen && isReady && tapp && (
-          <div
-            className="absolute top-4 left-4 z-[60] opacity-0 hover:opacity-100 transition-opacity duration-300"
-          >
-            <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
-              <div className="flex items-center gap-2">
-                {iconStyle && (
-                  <div 
-                    className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
-                    style={iconStyle.style}
-                  >
-                    <TappIcon
-                      icon={tapp.manifest.icon}
-                      iconSvg={tapp.manifest.iconSvg}
-                      name={tapp.manifest.name}
-                      sizeClass="w-4 h-4"
-                      textSizeClass="text-sm"
-                    />
-                  </div>
-                )}
-                <div className="hidden sm:block">
-                  <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
-                    {tapp.manifest.name}
-                  </h1>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                    v{tapp.manifest.version}
-                  </p>
-                </div>
-              </div>
-              <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={toggleFullscreen}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-                  title={t.tapp.exitFullscreen}
-                >
-                  <FaCompress className="w-3.5 h-3.5" />
-                </button>
-                {canStartStop && (
-                  <button
-                    onClick={handleStop}
-                    className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                    title={t.tapp.stopApp}
-                  >
-                    <FaPause className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )
-      ) : (
-        // 🎯 非 WebKit: 使用 Framer Motion 动画
-        <AnimatePresence>
+      <AnimatePresence>
           {isFullscreen && isReady && tapp && (
             <motion.div
               key="fullscreen-toolbar"
@@ -343,7 +256,6 @@ const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
             </motion.div>
           )}
         </AnimatePresence>
-      )}
 
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       <motion.div 
@@ -600,7 +512,6 @@ const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
           </div>
         </div>
       </motion.div>
-      )}
 
       {/* 🎯 沙箱容器 - 只渲染一次，通过 CSS 切换全屏/普通模式 */}
       {tapp && code && (
