@@ -206,7 +206,7 @@ export function generateSecurityWrapper(sessionToken: string): string {
         if (_parentPostMessage && message && typeof message === 'object') {
           message._sessionToken = _SESSION_TOKEN;
         }
-        return _parentPostMessage?.(message, origin);
+        return _parentPostMessage ? _parentPostMessage(message, origin) : undefined;
       }
     },
     writable: false
@@ -272,10 +272,15 @@ export function generateSecurityWrapper(sessionToken: string): string {
               return;
             }
           }
-          originalSrcDescriptor?.set?.call(this, value);
+          if (originalSrcDescriptor && typeof originalSrcDescriptor.set === 'function') {
+            originalSrcDescriptor.set.call(this, value);
+          }
         },
         get() {
-          return originalSrcDescriptor?.get?.call(this);
+          if (originalSrcDescriptor && typeof originalSrcDescriptor.get === 'function') {
+            return originalSrcDescriptor.get.call(this);
+          }
+          return '';
         },
         configurable: false
       });
@@ -342,10 +347,15 @@ export function generateSecurityWrapper(sessionToken: string): string {
           // 移除 script 标签
           value = value.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
         }
-        _originalInnerHTMLDescriptor.set?.call(this, value);
+        if (_originalInnerHTMLDescriptor && typeof _originalInnerHTMLDescriptor.set === 'function') {
+          _originalInnerHTMLDescriptor.set.call(this, value);
+        }
       },
       get() {
-        return _originalInnerHTMLDescriptor.get?.call(this);
+        if (_originalInnerHTMLDescriptor && typeof _originalInnerHTMLDescriptor.get === 'function') {
+          return _originalInnerHTMLDescriptor.get.call(this);
+        }
+        return '';
       },
       configurable: false
     });
@@ -360,10 +370,15 @@ export function generateSecurityWrapper(sessionToken: string): string {
           console.warn('[Security] Script tag in outerHTML blocked');
           value = value.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
         }
-        _originalOuterHTMLDescriptor.set?.call(this, value);
+        if (_originalOuterHTMLDescriptor && typeof _originalOuterHTMLDescriptor.set === 'function') {
+          _originalOuterHTMLDescriptor.set.call(this, value);
+        }
       },
       get() {
-        return _originalOuterHTMLDescriptor.get?.call(this);
+        if (_originalOuterHTMLDescriptor && typeof _originalOuterHTMLDescriptor.get === 'function') {
+          return _originalOuterHTMLDescriptor.get.call(this);
+        }
+        return '';
       },
       configurable: false
     });

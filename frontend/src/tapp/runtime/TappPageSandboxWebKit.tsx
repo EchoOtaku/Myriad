@@ -165,7 +165,7 @@ function generatePageHTML(
   <div id="__tapp_debug_center">IFRAME DRAW CHECK…</div>
   ${bodyContent}
   
-  <script nonce="${nonce}">
+  <script>
     window._TAPP_MODE = 'page';
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
     window._TAPP_INITIAL_SAFE_INSETS = {
@@ -270,12 +270,12 @@ function generatePageHTML(
     });
   </script>
   
-  <script nonce="${nonce}">${securityWrapper}</script>
-  <script nonce="${nonce}">${sdkCode}</script>
-  ${pageCode ? `<script nonce="${nonce}">${pageCode}</script>` : ''}
+  <script>${securityWrapper}</script>
+  <script>${sdkCode}</script>
+  ${pageCode ? `<script>${pageCode}</script>` : ''}
   
   ${needsJsRender ? `
-  <script nonce="${nonce}">
+  <script>
     (function() {
       setTimeout(function() {
         if (typeof Tapp !== 'undefined' && Tapp.pages && typeof Tapp.pages['${tappInstance.id}'] === 'object') {
@@ -313,9 +313,11 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const bridgeRef = useRef<TappBridge | null>(null)
   const permissionRef = useRef<TappPermissionController | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'blob' | 'srcdoc' }>(() => ({ boot: false, strategy: 'blob' }))
+  const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'blob' | 'srcdoc' | 'data' | 'write' }>(() => ({ boot: false, strategy: 'blob' }))
   const sandboxRelaxedRef = useRef<boolean>(false)
   const secondFallbackUsedRef = useRef<boolean>(false)
+  const writeFallbackUsedRef = useRef<boolean>(false)
+  const pendingWriteHtmlRef = useRef<string>('')
   
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -598,6 +600,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     paintKickDoneRef.current = false
     sandboxRelaxedRef.current = false
     secondFallbackUsedRef.current = false
+    writeFallbackUsedRef.current = false
 
     // 先用严格 sandbox
     try {
@@ -659,6 +662,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
         secondFallbackUsedRef.current = true
         const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(lastHtmlRef.current)
+        setIframeDebug((p) => ({ ...p, strategy: 'data' }))
         emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'data' })
         emitHostDebug({ kind: 'load:data', t: Date.now() })
 
@@ -678,11 +682,42 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       })
     }, 3200)
 
+    // 🔧 三级兜底：about:blank + document.write（Safari 经典绕法，绕开 srcdoc/data/blob 的各种坑）
+    const fallback3Id = window.setTimeout(() => {
+      setIframeDebug((prev) => {
+        if (prev.boot) return prev
+        const iframe = iframeRef.current
+        if (!iframe) return prev
+        if (writeFallbackUsedRef.current) return prev
+
+        writeFallbackUsedRef.current = true
+        pendingWriteHtmlRef.current = lastHtmlRef.current
+
+        setIframeDebug((p) => ({ ...p, strategy: 'write' }))
+        emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'write' })
+        emitHostDebug({ kind: 'load:aboutblank', t: Date.now() })
+
+        try {
+          iframe.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
+        } catch {}
+
+        try {
+          iframe.removeAttribute('srcdoc')
+          iframe.src = 'about:blank'
+        } catch {
+          emitHostDebug({ kind: 'load:aboutblank:error', t: Date.now() })
+        }
+
+        return prev
+      })
+    }, 5200)
+
     return () => {
       console.log('[TappPageSandboxWebKit] Cleanup')
       setIsReady(false)
       window.clearTimeout(fallbackId)
       window.clearTimeout(fallback2Id)
+      window.clearTimeout(fallback3Id)
       try {
         if (lastBlobUrlRef.current) {
           URL.revokeObjectURL(lastBlobUrlRef.current)
@@ -737,6 +772,25 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           onLoad={() => {
             console.log('[TappPageSandboxWebKit] iframe onLoad fired')
             emitHostDebug({ kind: 'iframe:onLoad', t: Date.now() })
+
+            // 如果进入了 write 兜底路径：在 about:blank 的 onLoad 后注入完整 HTML
+            try {
+              if (writeFallbackUsedRef.current && pendingWriteHtmlRef.current) {
+                const doc = iframeRef.current?.contentDocument
+                if (doc) {
+                  emitHostDebug({ kind: 'write:begin', t: Date.now() })
+                  doc.open()
+                  doc.write(pendingWriteHtmlRef.current)
+                  doc.close()
+                  emitHostDebug({ kind: 'write:done', t: Date.now() })
+                  // 清一次，避免循环写
+                  pendingWriteHtmlRef.current = ''
+                }
+              }
+            } catch (e) {
+              emitHostDebug({ kind: 'write:error', t: Date.now() })
+            }
+
             kickWebKitPaint()
           }}
           onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
