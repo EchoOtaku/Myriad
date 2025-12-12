@@ -22,6 +22,8 @@ export type {
 // 沙箱组件
 export { TappPageSandbox } from './TappPageSandbox'
 export type { TappPageSandboxProps } from './TappPageSandbox'
+export { TappPageSandboxWebKit } from './TappPageSandboxWebKit'
+export type { TappPageSandboxWebKitProps } from './TappPageSandboxWebKit'
 export { TappWidgetSandbox } from './TappWidgetSandbox'
 export type { TappWidgetSandboxProps } from './TappWidgetSandbox'
 
