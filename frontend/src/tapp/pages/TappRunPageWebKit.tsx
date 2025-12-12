@@ -85,19 +85,43 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
           setIframeInspect('')
           return
         }
+
+        const sandboxVal = (iframe.getAttribute('sandbox') || '').replace(/\s+/g, ' ').trim()
+        const src = iframe.getAttribute('src') || ''
+        const hasSrcdoc = typeof (iframe as any).srcdoc === 'string' && ((iframe as any).srcdoc as string).length > 0
+
         const doc = iframe.contentDocument
         const win = iframe.contentWindow as any
         if (!doc || !win) {
-          setIframeInspect('inspect=blocked')
+          setIframeInspect(`inspect=blocked sandbox=${sandboxVal || 'none'} src=${src ? src.slice(0, 24) : 'none'}${hasSrcdoc ? ' srcdoc=1' : ''}`)
           return
         }
         const bootAttr = doc.documentElement?.getAttribute('data-tapp-boot') || ''
         const errAttr = doc.documentElement?.getAttribute('data-tapp-error') || ''
         const bootVar = win.__TAPP_BOOT_SCRIPT_RAN ? '1' : '0'
         const lastErr = typeof win.__TAPP_LAST_ERROR === 'string' ? win.__TAPP_LAST_ERROR : ''
-        setIframeInspect(`inspect=ok bootAttr=${bootAttr || '0'} bootVar=${bootVar}${(errAttr || lastErr) ? ` err=${(errAttr || lastErr).slice(0, 60)}` : ''}`)
+
+        const title = typeof doc.title === 'string' ? doc.title : ''
+        const rs = (doc as any).readyState ? String((doc as any).readyState) : ''
+        const scripts = typeof (doc as any).scripts?.length === 'number' ? (doc as any).scripts.length : 0
+        const hasDebugCenter = !!doc.getElementById('__tapp_debug_center')
+        const hasDebugBar = !!doc.getElementById('__tapp_debug_bar')
+
+        const err = (errAttr || lastErr) ? ` err=${(errAttr || lastErr).slice(0, 60)}` : ''
+        setIframeInspect(
+          `inspect=ok bootAttr=${bootAttr || '0'} bootVar=${bootVar}${err}` +
+          ` | doc=${rs} title=${title ? title.slice(0, 18) : 'none'} scripts=${scripts} dbg=${hasDebugBar ? 'bar' : '0'}/${hasDebugCenter ? 'center' : '0'}` +
+          ` | sandbox=${sandboxVal || 'none'} src=${src ? src.slice(0, 18) : 'none'}${hasSrcdoc ? ' srcdoc=1' : ''}`
+        )
       } catch {
-        setIframeInspect('inspect=blocked')
+        try {
+          const iframe = document.querySelector('iframe.tapp-page-iframe') as HTMLIFrameElement | null
+          const sandboxVal = (iframe?.getAttribute('sandbox') || '').replace(/\s+/g, ' ').trim()
+          const src = iframe?.getAttribute('src') || ''
+          setIframeInspect(`inspect=blocked sandbox=${sandboxVal || 'none'} src=${src ? src.slice(0, 24) : 'none'}`)
+        } catch {
+          setIframeInspect('inspect=blocked')
+        }
       }
     }
 
