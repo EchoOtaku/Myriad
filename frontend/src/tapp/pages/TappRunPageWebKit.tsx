@@ -47,6 +47,7 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
   const [error, setError] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
   const [debugRects, setDebugRects] = useState<string>('')
+  const [sandboxSignals, setSandboxSignals] = useState<string>('')
   const [notification, setNotification] = useState<{ 
     title?: string
     message: string
@@ -81,6 +82,21 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
     tick()
     const id = window.setInterval(tick, 500)
     return () => window.clearInterval(id)
+  }, [])
+
+  // 🔧 从 Sandbox 收集信号（即使 iframe 把内部 overlay 全盖住，也能在这里看到）
+  useEffect(() => {
+    const onEvt = (e: Event) => {
+      const ce = e as CustomEvent
+      const d = (ce.detail || {}) as any
+      const kind = typeof d.kind === 'string' ? d.kind : 'unknown'
+      const when = typeof d.t === 'number' ? new Date(d.t).toLocaleTimeString() : ''
+      const extra = [d.strategy ? `strategy=${d.strategy}` : '', d.doc ? `doc=${d.doc}` : ''].filter(Boolean).join(' ')
+      setSandboxSignals(`${when} ${kind}${extra ? ` ${extra}` : ''}`)
+    }
+
+    window.addEventListener('__tapp_webkit_sandbox', onEvt as EventListener)
+    return () => window.removeEventListener('__tapp_webkit_sandbox', onEvt as EventListener)
   }, [])
 
   // 处理 Tapp 通知
@@ -195,7 +211,7 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
 
       {/* 🔧 顶部固定调试面板：确认宿主/iframe 尺寸是否为 0，以及是否被覆盖 */}
       <div className="fixed top-0 left-0 right-0 px-2 py-1.5 bg-yellow-300/90 text-black text-[11px] z-[1000000] font-mono pointer-events-none">
-        {debugRects}
+        {debugRects}{sandboxSignals ? ` | sandbox=${sandboxSignals}` : ''}
       </div>
       {/* 🎯 加载/错误状态 - 全屏显示 */}
       {(loading || hasError) && (

@@ -310,6 +310,14 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const animationConfigRef = useRef<AnimationConfigRef>(animationConfig)
   useEffect(() => { animationConfigRef.current = animationConfig }, [animationConfig])
 
+  const emitHostDebug = useCallback((detail: Record<string, unknown>) => {
+    try {
+      window.dispatchEvent(new CustomEvent('__tapp_webkit_sandbox', { detail }))
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const kickWebKitPaint = useCallback(() => {
     const iframe = iframeRef.current
     if (!iframe || paintKickDoneRef.current) return
@@ -335,6 +343,12 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     }
   }, [])
 
+  // 🔧 告诉宿主：本组件确实 mounted（即便 iframe 永远盖住内部 overlay）
+  useEffect(() => {
+    emitHostDebug({ kind: 'mount', t: Date.now() })
+    return () => emitHostDebug({ kind: 'unmount', t: Date.now() })
+  }, [emitHostDebug])
+
   // 🔧 接收 iframe 的 boot/ping（用于判断：JS 是否活着 vs 彻底没跑）
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
@@ -344,6 +358,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
       if (data.kind === 'boot') {
         setIframeDebug((prev) => ({ ...prev, boot: true }))
+        emitHostDebug({ kind: 'iframe:boot', t: Date.now(), strategy: iframeDebug.strategy })
         kickWebKitPaint()
         return
       }
@@ -354,6 +369,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           lastPing: typeof data.t === 'number' ? data.t : Date.now(),
           lastDoc: (typeof data.docW === 'number' && typeof data.docH === 'number') ? `${data.docW}x${data.docH}` : prev.lastDoc,
         }))
+        emitHostDebug({ kind: 'iframe:ping', t: Date.now(), doc: (typeof data.docW === 'number' && typeof data.docH === 'number') ? `${data.docW}x${data.docH}` : undefined })
         kickWebKitPaint()
       }
     }
@@ -534,6 +550,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
     // 默认先用 blob；如果 WebKit 不跑/不绘制，后面自动切换 srcdoc
     setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'blob' }))
+    emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'blob' })
     paintKickDoneRef.current = false
 
     // 先清空 srcdoc，避免策略切换残留
@@ -553,8 +570,10 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           iframe.removeAttribute('src')
           iframe.srcdoc = lastHtmlRef.current
           paintKickDoneRef.current = false
+          emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'srcdoc' })
         } catch (e) {
           console.error('[TappPageSandboxWebKit] Failed to apply srcdoc fallback:', e)
+          emitHostDebug({ kind: 'strategy:error', t: Date.now() })
         }
 
         return { ...prev, strategy: 'srcdoc' }
@@ -616,7 +635,11 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           sandbox="allow-scripts allow-pointer-lock"
           referrerPolicy="no-referrer"
           title={tappInstance.manifest.name}
-          onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired')}
+          onLoad={() => {
+            console.log('[TappPageSandboxWebKit] iframe onLoad fired')
+            emitHostDebug({ kind: 'iframe:onLoad', t: Date.now() })
+            kickWebKitPaint()
+          }}
           onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
         />
       </div>
