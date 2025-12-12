@@ -126,10 +126,27 @@ function generatePageHTML(
     ${tailwindCSS}
     ${themeCSS}
     ${customCSS}
+    /* 🔧 WebKit 调试：确保能一眼看出 iframe 是否在绘制 */
+    html, body { background: #10203a !important; }
+    #__tapp_debug_bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 2147483647;
+      background: rgba(255, 0, 255, 0.85);
+      color: #000;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      padding: 6px 8px;
+      pointer-events: none;
+    }
+    #tapp-root { outline: 3px solid rgba(0, 255, 255, 0.6); outline-offset: -3px; }
     #tapp-content { padding: ${initialPadding}; box-sizing: border-box; }
   </style>
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
+  <div id="__tapp_debug_bar">IFRAME DEBUG: booting…</div>
   ${bodyContent}
   
   <script nonce="${nonce}">
@@ -142,6 +159,23 @@ function generatePageHTML(
       left: ${safeInsets?.left ?? 0}
     };
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1 };
+
+    (function() {
+      var bar = document.getElementById('__tapp_debug_bar');
+      function updateBar(extra) {
+        if (!bar) return;
+        var d = window._TAPP_DIMENSIONS || {};
+        bar.textContent = 'IFRAME DEBUG | ' +
+          'doc=' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight +
+          ' | dims=' + (d.width || 0) + 'x' + (d.height || 0) +
+          ' | scale=' + (d.scale || 1) +
+          ' | font=' + (d.fontScale || 1) +
+          (extra ? (' | ' + extra) : '');
+      }
+      updateBar('init');
+      setInterval(function(){ updateBar(); }, 500);
+    })();
+
     window.addEventListener('message', function(e) {
       var msg = e.data;
       if (msg?.type === 'event' && msg.action === 'container:resize') {
