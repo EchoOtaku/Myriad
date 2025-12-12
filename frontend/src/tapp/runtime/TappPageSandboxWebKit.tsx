@@ -86,9 +86,8 @@ function generatePageHTML(
     .getPropertyValue('--color-primary').trim() || '#94a3b8'
 
   const nonce = generateNonce()
-  // 🔧 WebKit: iOS Safari 对「meta CSP + nonce」历史上存在兼容性问题，可能导致所有脚本静默不执行。
-  // 在 WebKit 专用沙箱里用 unsafe-inline 以换取“能跑起来”。安全性仍由 iframe sandbox + runtime wrapper 兜底。
-  const csp = generateCSP(undefined, false)
+  // 🔧 WebKit: iOS Safari 对 meta CSP（尤其与 blob/srcdoc/nonce 组合）存在“脚本静默不执行”的历史兼容性问题。
+  // WebKit 专用沙箱先移除 CSP meta，用 iframe sandbox + security wrapper 作为主要安全边界。
   const securityWrapper = generateSecurityWrapper(sessionToken)
   const sdkCode = generateFullSDK(tappInstance, sessionToken)
   const themeCSS = generateThemeCSS(isDark, primaryColor)
@@ -118,7 +117,6 @@ function generatePageHTML(
 <html class="tapp-mode-page">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name}</title>
   <style>
@@ -274,6 +272,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const permissionRef = useRef<TappPermissionController | null>(null)
   const [isReady, setIsReady] = useState(false)
   const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'blob' | 'srcdoc' }>(() => ({ boot: false, strategy: 'blob' }))
+  const sandboxRelaxedRef = useRef<boolean>(false)
   
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -360,7 +359,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
       if (data.kind === 'boot') {
         setIframeDebug((prev) => ({ ...prev, boot: true }))
-        emitHostDebug({ kind: 'iframe:boot', t: Date.now(), strategy: iframeDebug.strategy })
+        emitHostDebug({ kind: 'iframe:boot', t: Date.now() })
         kickWebKitPaint()
         return
       }
@@ -550,35 +549,57 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     console.log('[TappPageSandboxWebKit] Blob URL:', url)
     lastBlobUrlRef.current = url
 
-    // 默认先用 blob；如果 WebKit 不跑/不绘制，后面自动切换 srcdoc
-    setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'blob' }))
-    emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'blob' })
+    // WebKit：优先用 srcdoc（更少的 blob 兼容性坑）
+    setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'srcdoc' }))
+    emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'srcdoc' })
     paintKickDoneRef.current = false
+    sandboxRelaxedRef.current = false
 
-    // 先清空 srcdoc，避免策略切换残留
-    iframeRef.current.removeAttribute('srcdoc')
-    iframeRef.current.src = url
-    console.log('[TappPageSandboxWebKit] Set iframe src')
+    // 先用严格 sandbox
+    try {
+      iframeRef.current.setAttribute('sandbox', 'allow-scripts allow-pointer-lock')
+    } catch {
+      // ignore
+    }
 
-    // 🔧 兜底：若一定时间内收不到 boot/ping，则切换到 srcdoc 再试一次
+    // srcdoc-first
+    try {
+      iframeRef.current.removeAttribute('src')
+      iframeRef.current.srcdoc = html
+      console.log('[TappPageSandboxWebKit] Set iframe srcdoc')
+    } catch (e) {
+      console.warn('[TappPageSandboxWebKit] Failed to set srcdoc, fallback to blob src:', e)
+      setIframeDebug((prev) => ({ ...prev, strategy: 'blob' }))
+      emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'blob' })
+      iframeRef.current.removeAttribute('srcdoc')
+      iframeRef.current.src = url
+      console.log('[TappPageSandboxWebKit] Set iframe src (blob)')
+    }
+
+    // 🔧 兜底：若一定时间内收不到 boot/ping，则放宽 sandbox（加 allow-same-origin）并强制重载 srcdoc
     const fallbackId = window.setTimeout(() => {
       setIframeDebug((prev) => {
         if (prev.boot) return prev
         const iframe = iframeRef.current
         if (!iframe) return prev
 
-        console.warn('[TappPageSandboxWebKit] No iframe boot detected; switching to srcdoc fallback')
+        if (sandboxRelaxedRef.current) return prev
+
+        console.warn('[TappPageSandboxWebKit] No iframe boot detected; relaxing sandbox + reload srcdoc')
         try {
+          sandboxRelaxedRef.current = true
+          iframe.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
+          emitHostDebug({ kind: 'sandbox:relax', t: Date.now() })
+
           iframe.removeAttribute('src')
           iframe.srcdoc = lastHtmlRef.current
           paintKickDoneRef.current = false
-          emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'srcdoc' })
         } catch (e) {
           console.error('[TappPageSandboxWebKit] Failed to apply srcdoc fallback:', e)
-          emitHostDebug({ kind: 'strategy:error', t: Date.now() })
+          emitHostDebug({ kind: 'sandbox:relax:error', t: Date.now() })
         }
 
-        return { ...prev, strategy: 'srcdoc' }
+        return prev
       })
     }, 1600)
 

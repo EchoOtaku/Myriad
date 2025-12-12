@@ -47,7 +47,7 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
   const [error, setError] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
   const [debugRects, setDebugRects] = useState<string>('')
-  const [sandboxSignals, setSandboxSignals] = useState<string>('')
+  const [sandboxSignals, setSandboxSignals] = useState<string[]>([])
   const [notification, setNotification] = useState<{ 
     title?: string
     message: string
@@ -92,7 +92,11 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
       const kind = typeof d.kind === 'string' ? d.kind : 'unknown'
       const when = typeof d.t === 'number' ? new Date(d.t).toLocaleTimeString() : ''
       const extra = [d.strategy ? `strategy=${d.strategy}` : '', d.doc ? `doc=${d.doc}` : ''].filter(Boolean).join(' ')
-      setSandboxSignals(`${when} ${kind}${extra ? ` ${extra}` : ''}`)
+      const line = `${when} ${kind}${extra ? ` ${extra}` : ''}`
+      setSandboxSignals((prev) => {
+        const next = [line, ...prev]
+        return next.slice(0, 6)
+      })
     }
 
     window.addEventListener('__tapp_webkit_sandbox', onEvt as EventListener)
@@ -211,7 +215,7 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
 
       {/* 🔧 顶部固定调试面板：确认宿主/iframe 尺寸是否为 0，以及是否被覆盖 */}
       <div className="fixed top-0 left-0 right-0 px-2 py-1.5 bg-yellow-300/90 text-black text-[11px] z-[1000000] font-mono pointer-events-none">
-        {debugRects}{sandboxSignals ? ` | sandbox=${sandboxSignals}` : ''}
+        {debugRects}{sandboxSignals.length ? ` | sandbox=${sandboxSignals.join(' ; ')}` : ''}
       </div>
       {/* 🎯 加载/错误状态 - 全屏显示 */}
       {(loading || hasError) && (
