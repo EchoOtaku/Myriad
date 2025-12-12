@@ -1,10 +1,8 @@
 /**
  * Tapp Page 沙箱组件 - WebKit 专用版本
- * 
- * 🎯 设计原则：
- * - 使用最简化的 CSS，避免任何可能影响 iframe 渲染的属性
- * - 无 overflow:hidden, isolation, contain, transform 等
- * - 功能与标准版本完全一致
+ *
+ * 🎯 目标：恢复旧版本“非全屏可用”的架构（容器/iframe/加载方式），
+ * 同时让运行页保留新 UI 与全屏模式。
  */
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react'
@@ -25,10 +23,10 @@ import {
   generateCSP,
   generateNonce,
   generateSecurityWrapper,
+  IFRAME_SANDBOX_ATTRS,
   generateFullSDK,
   generateThemeCSS,
   PAGE_STATIC_CSS,
-  // IFRAME_SANDBOX_ATTRS 不再使用，WebKit 版本使用更宽松的设置
   type TappNotificationOptions,
   type SafeInsets,
   type AnimationConfigRef,
@@ -85,9 +83,9 @@ function generatePageHTML(
   const primaryColor = getComputedStyle(document.documentElement)
     .getPropertyValue('--color-primary').trim() || '#94a3b8'
 
+  // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
-  // 🔧 WebKit: iOS Safari 对 meta CSP（尤其与 blob/srcdoc/nonce 组合）存在“脚本静默不执行”的历史兼容性问题。
-  // WebKit 专用沙箱先移除 CSP meta，用 iframe sandbox + security wrapper 作为主要安全边界。
+  const csp = generateCSP(nonce)
   const securityWrapper = generateSecurityWrapper(sessionToken)
   const sdkCode = generateFullSDK(tappInstance, sessionToken)
   const themeCSS = generateThemeCSS(isDark, primaryColor)
@@ -95,11 +93,13 @@ function generatePageHTML(
   const customCSS = code.styles || ''
   const hasHtmlTemplate = !!code.pageHtml
   const pageHtmlContent = code.pageHtml || ''
-  
-  const hasLayeredStructure = pageHtmlContent.includes('id="tapp-background"') || 
-                               pageHtmlContent.includes("id='tapp-background'") ||
-                               pageHtmlContent.includes('id="tapp-content"') ||
-                               pageHtmlContent.includes("id='tapp-content'")
+
+  // 🎯 检测 pageHtml 是否已经包含分层结构
+  // 如果包含 #tapp-background 或 #tapp-content，说明 Tapp 自己定义了分层
+  const hasLayeredStructure = pageHtmlContent.includes('id="tapp-background"') ||
+    pageHtmlContent.includes("id='tapp-background'") ||
+    pageHtmlContent.includes('id="tapp-content"') ||
+    pageHtmlContent.includes("id='tapp-content'")
   
   const pageCode = getCodeForMode(code, 'page')
   const tailwindCSS = code.pageCSS || ''
@@ -117,6 +117,7 @@ function generatePageHTML(
 <html class="tapp-mode-page">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${manifest.name}</title>
   <style>
@@ -124,48 +125,17 @@ function generatePageHTML(
     ${tailwindCSS}
     ${themeCSS}
     ${customCSS}
-    /* 🔧 WebKit 调试：确保能一眼看出 iframe 是否在绘制 */
-    html, body { background: #10203a !important; }
-    #__tapp_debug_bar {
-      position: fixed;
-      top: 30px; /* 避免被宿主页面顶部 fixed 调试面板遮住 */
-      left: 0;
-      right: 0;
-      z-index: 2147483647;
-      background: rgba(255, 0, 255, 0.85);
-      color: #000;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 12px;
-      padding: 6px 8px;
-      pointer-events: none;
-    }
-    #__tapp_debug_center {
-      position: fixed;
-      inset: 0;
-      z-index: 2147483646;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      pointer-events: none;
-      background: rgba(255, 0, 255, 0.12);
-      color: #fff;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 18px;
-      line-height: 1.3;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-      padding: 16px;
-    }
-    #tapp-root { outline: 3px solid rgba(0, 255, 255, 0.6); outline-offset: -3px; }
+    /* 初始安全区域 padding - 确保全屏模式下内容不被遮挡 */
     #tapp-content { padding: ${initialPadding}; box-sizing: border-box; }
   </style>
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
-  <div id="__tapp_debug_bar">IFRAME DEBUG: booting…</div>
-  <div id="__tapp_debug_center">IFRAME DRAW CHECK…</div>
   ${bodyContent}
-  
-  <script>
+
+  <script nonce="${nonce}">
+    // WebKit 专用：显式禁用 SDK 内的 transform repaint hack（避免 iframe 空白回归）
+    window._TAPP_DISABLE_TRANSFORM_REPAINT = true;
+
     window._TAPP_MODE = 'page';
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
     window._TAPP_INITIAL_SAFE_INSETS = {
@@ -175,118 +145,63 @@ function generatePageHTML(
       left: ${safeInsets?.left ?? 0}
     };
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1 };
-
-    // 🔧 WebKit 调试/心跳：确认 iframe JS 是否真的在运行
-    // 同时写入可被父页面（allow-same-origin 时）读取的标记，避免 postMessage 在 WebKit 下异常时“静默丢信号”。
-    (function(){
-      try {
-        window['__TAPP_BOOT_SCRIPT_RAN'] = true;
-        document.documentElement.setAttribute('data-tapp-boot', '1');
-      } catch (e) {}
-
-      try {
-        window['__TAPP_LAST_ERROR'] = '';
-        window.addEventListener('error', function(ev) {
-          try {
-            var msg = '';
-            try { msg = String(ev && ev.message || ev); } catch (e) { msg = 'error'; }
-            window['__TAPP_LAST_ERROR'] = msg;
-            document.documentElement.setAttribute('data-tapp-error', msg);
-          } catch (e) {}
-        });
-        window.addEventListener('unhandledrejection', function(ev) {
-          try {
-            var reason = '';
-            try { reason = String(ev && ev.reason || ev); } catch (e) { reason = 'rejection'; }
-            window['__TAPP_LAST_ERROR'] = reason;
-            document.documentElement.setAttribute('data-tapp-error', reason);
-          } catch (e) {}
-        });
-      } catch (e) {}
-
-      function safePost(kind) {
-        var payload = { __tapp_iframe_debug: true, kind: kind, tappId: '${tappInstance.id}', t: Date.now(), docW: 0, docH: 0 };
-        try { payload.docW = document.documentElement.clientWidth; payload.docH = document.documentElement.clientHeight; } catch (e) {}
-
-        // Safari/WebKit 在某些沙箱组合下读取 parent/top 可能抛异常，分别 try
-        try {
-          var p = null;
-          try { p = window.parent; } catch (e) { p = null; }
-          if (p && p !== window && typeof p.postMessage === 'function') p.postMessage(payload, '*');
-        } catch (e) {}
-
-        try {
-          var t = null;
-          try { t = window.top; } catch (e) { t = null; }
-          if (t && t !== window && typeof t.postMessage === 'function') t.postMessage(payload, '*');
-        } catch (e) {}
-      }
-
-      safePost('boot');
-      try {
-        setInterval(function(){ safePost('ping'); }, 700);
-      } catch (e) {}
-    })();
-
-    (function() {
-      var bar = document.getElementById('__tapp_debug_bar');
-      var center = document.getElementById('__tapp_debug_center');
-      function updateBar(extra) {
-        if (!bar && !center) return;
-        var d = window._TAPP_DIMENSIONS || {};
-        var txt = 'IFRAME DEBUG\n' +
-          'doc=' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight +
-          ' | dims=' + (d.width || 0) + 'x' + (d.height || 0) +
-          ' | scale=' + (d.scale || 1) +
-          ' | font=' + (d.fontScale || 1) +
-          (extra ? (' | ' + extra) : '');
-        if (bar) bar.textContent = txt.replace(/\n/g, ' | ');
-        if (center) center.textContent = txt;
-      }
-      updateBar('init');
-      setInterval(function(){ updateBar(); }, 500);
-    })();
-
     window.addEventListener('message', function(e) {
       var msg = e.data;
-      if (!msg || typeof msg !== 'object') return;
-      if (msg.type === 'event' && msg.action === 'container:resize') {
+      if (msg?.type === 'event' && msg.action === 'container:resize') {
         window._TAPP_DIMENSIONS = msg.payload;
         var root = document.documentElement;
-        try {
-          root.style.setProperty('--tapp-scale', (msg.payload && msg.payload.scale) || 1);
-          root.style.setProperty('--tapp-font-scale', (msg.payload && msg.payload.fontScale) || 1);
-        } catch (e) {}
-
+        root.style.setProperty('--tapp-scale', msg.payload.scale || 1);
+        root.style.setProperty('--tapp-font-scale', msg.payload.fontScale || 1);
         var content = document.getElementById('tapp-content');
-        if (content && msg.payload) {
-          content.style.padding = 
-            ((msg.payload.safeInsetTop || 0)) + 'px ' +
-            ((msg.payload.safeInsetRight || 0)) + 'px ' +
-            ((msg.payload.safeInsetBottom || 0)) + 'px ' +
-            ((msg.payload.safeInsetLeft || 0)) + 'px';
+        if (content) {
+          content.style.padding =
+            (msg.payload.safeInsetTop || 0) + 'px ' +
+            (msg.payload.safeInsetRight || 0) + 'px ' +
+            (msg.payload.safeInsetBottom || 0) + 'px ' +
+            (msg.payload.safeInsetLeft || 0) + 'px';
         }
+        window.dispatchEvent(new CustomEvent('tapp:resize', { detail: msg.payload }));
       }
     });
   </script>
-  
-  <script>${securityWrapper}</script>
-  <script>${sdkCode}</script>
-  ${pageCode ? `<script>${pageCode}</script>` : ''}
-  
-  ${needsJsRender ? `
-  <script>
+
+  <script nonce="${nonce}">${securityWrapper}</script>
+  <script nonce="${nonce}">${sdkCode}</script>
+
+  <!-- JS 代码始终加载（用于事件绑定等） -->
+  <script nonce="${nonce}">
     (function() {
+      'use strict';
+      try {
+        ${pageCode}
+      } catch (error) {
+        console.error('[Page] Code error:', error);
+        Tapp.lifecycle._notifyError(error);
+      }
+    })();
+  </script>
+
+  ${needsJsRender ? `
+  <!-- 纯 JS 模式：调用 render 函数 -->
+  <script nonce="${nonce}">
+    (function() {
+      'use strict';
       setTimeout(function() {
-        if (typeof Tapp !== 'undefined' && Tapp.pages && typeof Tapp.pages['${tappInstance.id}'] === 'object') {
-          var pageDef = Tapp.pages['${tappInstance.id}'];
-          if (typeof pageDef.render === 'function') {
-            try {
+        try {
+          var pageKeys = Object.keys(Tapp.pages || {});
+          if (pageKeys.length > 0) {
+            var pageId = pageKeys[0];
+            var pageDef = Tapp.pages[pageId];
+            if (pageDef && typeof pageDef.render === 'function') {
               var container = document.getElementById('tapp-content');
               container.innerHTML = '';
               pageDef.render(container, {});
-            } catch(e) { console.error('[Tapp] Page render error:', e); }
+            }
           }
+        } catch (error) {
+          console.error('[Page] Render error:', error);
+          document.getElementById('tapp-content').innerHTML =
+            '<div class="tapp-empty tapp-text-error">Page Error: ' + error.message + '</div>';
         }
       }, 50);
     })();
@@ -313,8 +228,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const bridgeRef = useRef<TappBridge | null>(null)
   const permissionRef = useRef<TappPermissionController | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'bootstrap' }>(() => ({ boot: false, strategy: 'bootstrap' }))
-  const bootstrapSentRef = useRef<boolean>(false)
+  const lastBlobUrlRef = useRef<string | null>(null)
   
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -323,9 +237,6 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const tappInstanceRef = useRef(tappInstance)
   const codeRef = useRef(code)
   const safeInsetsRef = useRef(safeInsets)
-  const lastHtmlRef = useRef<string>('')
-  const lastBlobUrlRef = useRef<string | null>(null)
-  const paintKickDoneRef = useRef<boolean>(false)
   tappInstanceRef.current = tappInstance
   codeRef.current = code
   safeInsetsRef.current = safeInsets
@@ -360,79 +271,6 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       // ignore
     }
   }, [])
-
-  // 🔧 监听 bootstrap 页面信号（同源静态页面，确认“脚本能跑”）
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      const data = e.data as any
-      if (!data || data.__tapp_webkit_bootstrap !== true) return
-      const kind = typeof data.kind === 'string' ? data.kind : 'unknown'
-      const extra = data.extra
-      emitHostDebug({ kind: `bootstrap:${kind}`, t: Date.now(), extra })
-    }
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [emitHostDebug])
-
-  const kickWebKitPaint = useCallback(() => {
-    const iframe = iframeRef.current
-    if (!iframe || paintKickDoneRef.current) return
-    paintKickDoneRef.current = true
-
-    try {
-      // 典型“踢合成层/重绘”手法：轻微切换 transform/opacity/display
-      const prevTransform = iframe.style.transform
-      const prevWebkitTransform = (iframe.style as any).webkitTransform as string | undefined
-
-      iframe.style.willChange = 'transform, opacity'
-      iframe.style.opacity = '0.999'
-      ;(iframe.style as any).webkitTransform = 'translate3d(0,0,0)'
-      iframe.style.transform = 'translate3d(0,0,0)'
-
-      requestAnimationFrame(() => {
-        iframe.style.opacity = '1'
-        ;(iframe.style as any).webkitTransform = prevWebkitTransform || 'translate3d(0,0,0)'
-        iframe.style.transform = prevTransform || 'translate3d(0,0,0)'
-      })
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  // 🔧 告诉宿主：本组件确实 mounted（即便 iframe 永远盖住内部 overlay）
-  useEffect(() => {
-    emitHostDebug({ kind: 'mount', t: Date.now() })
-    return () => emitHostDebug({ kind: 'unmount', t: Date.now() })
-  }, [emitHostDebug])
-
-  // 🔧 接收 iframe 的 boot/ping（用于判断：JS 是否活着 vs 彻底没跑）
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      const data = e.data as any
-      if (!data || data.__tapp_iframe_debug !== true) return
-      if (data.tappId && data.tappId !== tappInstanceRef.current.id) return
-
-      if (data.kind === 'boot') {
-        setIframeDebug((prev) => ({ ...prev, boot: true }))
-        emitHostDebug({ kind: 'iframe:boot', t: Date.now() })
-        kickWebKitPaint()
-        return
-      }
-      if (data.kind === 'ping') {
-        setIframeDebug((prev) => ({
-          ...prev,
-          boot: true,
-          lastPing: typeof data.t === 'number' ? data.t : Date.now(),
-          lastDoc: (typeof data.docW === 'number' && typeof data.docH === 'number') ? `${data.docW}x${data.docH}` : prev.lastDoc,
-        }))
-        emitHostDebug({ kind: 'iframe:ping', t: Date.now(), doc: (typeof data.docW === 'number' && typeof data.docH === 'number') ? `${data.docW}x${data.docH}` : undefined })
-        kickWebKitPaint()
-      }
-    }
-
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [kickWebKitPaint])
 
   // 尺寸更新
   useEffect(() => {
@@ -551,21 +389,15 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     onReady?.()
   }, [onReady])
 
-  // 初始化 iframe
+  // 初始化 iframe（恢复旧版：blob URL + 标准容器样式）
   useEffect(() => {
-    console.log('[TappPageSandboxWebKit] Init effect triggered')
-    console.log('[TappPageSandboxWebKit] iframeRef.current:', iframeRef.current)
-    
     if (!iframeRef.current) {
-      console.error('[TappPageSandboxWebKit] iframeRef is null!')
       return
     }
     
     const currentTappInstance = tappInstanceRef.current
     const currentCode = codeRef.current
     
-    console.log('[TappPageSandboxWebKit] Loading tapp:', currentTappInstance.id)
-
     const bridge = createTappBridge()
     bridgeRef.current = bridge
 
@@ -592,35 +424,16 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
 
     // 获取 session token（Bridge 在 initialize 时已生成）
     const sessionToken = bridge.getSessionToken()
-    
-    // 生成 HTML 并加载到 iframe
-    // 🎯 WebKit: 使用 blob URL（旧版本就是这样工作的）
+
+    // 生成 HTML（传递 session token 用于安全验证）
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
-    console.log('[TappPageSandboxWebKit] Generated HTML length:', html.length)
-    lastHtmlRef.current = html
-    
-    // WebKit：使用同源静态 bootstrap 页面，让 iframe 先“跑起脚本”，再由 iframe 自己 document.write() 注入真实 HTML。
-    setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'bootstrap' }))
-    emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'bootstrap' })
-    paintKickDoneRef.current = false
-    bootstrapSentRef.current = false
-
-    try {
-      // 需要 allow-same-origin 才能让我们 inspect；bootstrap 本身也需要 allow-scripts。
-      iframeRef.current.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
-    } catch {
-      // ignore
-    }
-
-    try {
-      iframeRef.current.removeAttribute('srcdoc')
-    } catch {}
-
-    iframeRef.current.src = '/tapp-webkit-bootstrap.html'
-    emitHostDebug({ kind: 'load:bootstrap', t: Date.now() })
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    lastBlobUrlRef.current = url
+    iframeRef.current.src = url
+    emitHostDebug({ kind: 'load:blob', t: Date.now() })
 
     return () => {
-      console.log('[TappPageSandboxWebKit] Cleanup')
       setIsReady(false)
       try {
         if (lastBlobUrlRef.current) {
@@ -638,68 +451,21 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tappInstance.id, codeFingerprint, handleReady])
 
-  // 🎯 WebKit 专用渲染：尽可能接近旧版本（ae9d05a）的实现
-  // 旧版本在普通模式下是可以工作的！
-  // 添加调试日志
-  useEffect(() => {
-    console.log('[TappPageSandboxWebKit] Mounted, containerRef:', containerRef.current)
-    console.log('[TappPageSandboxWebKit] iframeRef:', iframeRef.current)
-  }, [])
-  
-  useEffect(() => {
-    console.log('[TappPageSandboxWebKit] isReady:', isReady)
-  }, [isReady])
-
   return (
-    <div 
-      ref={containerRef} 
-      className={`tapp-page-sandbox relative w-full h-full overflow-visible box-border border-[3px] border-lime-400 ${className || ''}`}
+    <div
+      ref={containerRef}
+      className={`tapp-page-sandbox relative w-full h-full overflow-hidden isolate [contain:strict] ${className || ''}`}
     >
-      {/* 🔧 调试：sandbox 容器内的可见标记 */}
-      <div className="absolute top-5 left-0 right-0 text-center p-1 bg-blue-600 text-white text-[11px] z-[9998] pointer-events-none">
-        TappPageSandboxWebKit | dims: {dimensions.width}x{dimensions.height} | ready: {String(isReady)} | iframeBoot: {String(iframeDebug.boot)} | strategy: {iframeDebug.strategy}{iframeDebug.lastDoc ? ` | doc: ${iframeDebug.lastDoc}` : ''}
-      </div>
-
-      {/* 内层裁剪器：把 overflow:hidden 放到更“远离根容器”的层，降低 WebKit 合成概率问题 */}
-      <div className="absolute inset-0 overflow-hidden bg-[#2a2a4a] z-0">
-        <iframe
-          ref={iframeRef}
-          className={
-            'tapp-page-iframe block w-full h-full border-2 border-dashed border-orange-400 bg-[#2a2a4a] ' +
-            '[transform:translate3d(0,0,0)] [-webkit-transform:translate3d(0,0,0)] ' +
-            '[backface-visibility:hidden] [-webkit-backface-visibility:hidden] ' +
-            '[will-change:transform,opacity]'
-          }
-          sandbox="allow-scripts allow-pointer-lock"
-          referrerPolicy="no-referrer"
-          title={tappInstance.manifest.name}
-          onLoad={() => {
-            console.log('[TappPageSandboxWebKit] iframe onLoad fired')
-            emitHostDebug({ kind: 'iframe:onLoad', t: Date.now() })
-
-            // bootstrap 页面加载完成后，把真实 HTML 发给它，让它在 iframe 内部 document.write()
-            try {
-              if (!bootstrapSentRef.current) {
-                const win = iframeRef.current?.contentWindow
-                if (win) {
-                  bootstrapSentRef.current = true
-                  emitHostDebug({ kind: 'bootstrap:send', t: Date.now(), bytes: lastHtmlRef.current.length })
-                  win.postMessage({ __tapp_webkit_bootstrap: true, kind: 'load-html', html: lastHtmlRef.current }, '*')
-                }
-              }
-            } catch (e) {
-              emitHostDebug({ kind: 'bootstrap:send:error', t: Date.now() })
-            }
-
-            kickWebKitPaint()
-          }}
-          onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
-        />
-      </div>
-      {/* 🔧 调试：iframe 后的标记 */}
-      <div className="absolute bottom-10 left-0 right-0 text-center p-1 bg-purple-700 text-white text-[11px] z-[9997] pointer-events-none">
-        iframe should be above this (orange dashed border)
-      </div>
+      <iframe
+        ref={iframeRef}
+        className="tapp-page-iframe absolute inset-0 w-full h-full border-0 block"
+        sandbox={IFRAME_SANDBOX_ATTRS}
+        referrerPolicy="no-referrer"
+        title={tappInstance.manifest.name}
+        allowFullScreen
+        // @ts-expect-error Safari webkit prefix
+        webkitallowfullscreen="true"
+      />
     </div>
   )
 }
