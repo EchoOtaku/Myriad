@@ -180,22 +180,26 @@ function generatePageHTML(
     // 同时写入可被父页面（allow-same-origin 时）读取的标记，避免 postMessage 在 WebKit 下异常时“静默丢信号”。
     (function(){
       try {
-        (window as any).__TAPP_BOOT_SCRIPT_RAN = true;
+        window['__TAPP_BOOT_SCRIPT_RAN'] = true;
         document.documentElement.setAttribute('data-tapp-boot', '1');
       } catch (e) {}
 
       try {
-        (window as any).__TAPP_LAST_ERROR = null;
+        window['__TAPP_LAST_ERROR'] = '';
         window.addEventListener('error', function(ev) {
           try {
-            (window as any).__TAPP_LAST_ERROR = String(ev && (ev as any).message || ev);
-            document.documentElement.setAttribute('data-tapp-error', String((window as any).__TAPP_LAST_ERROR));
+            var msg = '';
+            try { msg = String(ev && ev.message || ev); } catch (e) { msg = 'error'; }
+            window['__TAPP_LAST_ERROR'] = msg;
+            document.documentElement.setAttribute('data-tapp-error', msg);
           } catch (e) {}
         });
         window.addEventListener('unhandledrejection', function(ev) {
           try {
-            (window as any).__TAPP_LAST_ERROR = String(ev && (ev as any).reason || ev);
-            document.documentElement.setAttribute('data-tapp-error', String((window as any).__TAPP_LAST_ERROR));
+            var reason = '';
+            try { reason = String(ev && ev.reason || ev); } catch (e) { reason = 'rejection'; }
+            window['__TAPP_LAST_ERROR'] = reason;
+            document.documentElement.setAttribute('data-tapp-error', reason);
           } catch (e) {}
         });
       } catch (e) {}
@@ -245,18 +249,22 @@ function generatePageHTML(
 
     window.addEventListener('message', function(e) {
       var msg = e.data;
-      if (msg?.type === 'event' && msg.action === 'container:resize') {
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'event' && msg.action === 'container:resize') {
         window._TAPP_DIMENSIONS = msg.payload;
         var root = document.documentElement;
-        root.style.setProperty('--tapp-scale', msg.payload.scale || 1);
-        root.style.setProperty('--tapp-font-scale', msg.payload.fontScale || 1);
+        try {
+          root.style.setProperty('--tapp-scale', (msg.payload && msg.payload.scale) || 1);
+          root.style.setProperty('--tapp-font-scale', (msg.payload && msg.payload.fontScale) || 1);
+        } catch (e) {}
+
         var content = document.getElementById('tapp-content');
-        if (content) {
+        if (content && msg.payload) {
           content.style.padding = 
-            (msg.payload.safeInsetTop || 0) + 'px ' +
-            (msg.payload.safeInsetRight || 0) + 'px ' +
-            (msg.payload.safeInsetBottom || 0) + 'px ' +
-            (msg.payload.safeInsetLeft || 0) + 'px';
+            ((msg.payload.safeInsetTop || 0)) + 'px ' +
+            ((msg.payload.safeInsetRight || 0)) + 'px ' +
+            ((msg.payload.safeInsetBottom || 0)) + 'px ' +
+            ((msg.payload.safeInsetLeft || 0)) + 'px';
         }
       }
     });
