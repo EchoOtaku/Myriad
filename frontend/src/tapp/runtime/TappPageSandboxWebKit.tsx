@@ -86,7 +86,9 @@ function generatePageHTML(
     .getPropertyValue('--color-primary').trim() || '#94a3b8'
 
   const nonce = generateNonce()
-  const csp = generateCSP(nonce)
+  // 🔧 WebKit: iOS Safari 对「meta CSP + nonce」历史上存在兼容性问题，可能导致所有脚本静默不执行。
+  // 在 WebKit 专用沙箱里用 unsafe-inline 以换取“能跑起来”。安全性仍由 iframe sandbox + runtime wrapper 兜底。
+  const csp = generateCSP(undefined, false)
   const securityWrapper = generateSecurityWrapper(sessionToken)
   const sdkCode = generateFullSDK(tappInstance, sessionToken)
   const themeCSS = generateThemeCSS(isDark, primaryColor)
