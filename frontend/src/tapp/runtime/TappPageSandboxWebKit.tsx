@@ -313,11 +313,8 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const bridgeRef = useRef<TappBridge | null>(null)
   const permissionRef = useRef<TappPermissionController | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'blob' | 'srcdoc' | 'data' | 'write' }>(() => ({ boot: false, strategy: 'blob' }))
-  const sandboxRelaxedRef = useRef<boolean>(false)
-  const secondFallbackUsedRef = useRef<boolean>(false)
-  const writeFallbackUsedRef = useRef<boolean>(false)
-  const pendingWriteHtmlRef = useRef<string>('')
+  const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'bootstrap' }>(() => ({ boot: false, strategy: 'bootstrap' }))
+  const bootstrapSentRef = useRef<boolean>(false)
   
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -363,6 +360,19 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       // ignore
     }
   }, [])
+
+  // 🔧 监听 bootstrap 页面信号（同源静态页面，确认“脚本能跑”）
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const data = e.data as any
+      if (!data || data.__tapp_webkit_bootstrap !== true) return
+      const kind = typeof data.kind === 'string' ? data.kind : 'unknown'
+      const extra = data.extra
+      emitHostDebug({ kind: `bootstrap:${kind}`, t: Date.now(), extra })
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [emitHostDebug])
 
   const kickWebKitPaint = useCallback(() => {
     const iframe = iframeRef.current
@@ -589,135 +599,29 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     console.log('[TappPageSandboxWebKit] Generated HTML length:', html.length)
     lastHtmlRef.current = html
     
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    console.log('[TappPageSandboxWebKit] Blob URL:', url)
-    lastBlobUrlRef.current = url
-
-    // WebKit：优先用 srcdoc（更少的 blob 兼容性坑）
-    setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'srcdoc' }))
-    emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'srcdoc' })
+    // WebKit：使用同源静态 bootstrap 页面，让 iframe 先“跑起脚本”，再由 iframe 自己 document.write() 注入真实 HTML。
+    setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'bootstrap' }))
+    emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'bootstrap' })
     paintKickDoneRef.current = false
-    sandboxRelaxedRef.current = false
-    secondFallbackUsedRef.current = false
-    writeFallbackUsedRef.current = false
+    bootstrapSentRef.current = false
 
-    // 先用严格 sandbox
     try {
-      iframeRef.current.setAttribute('sandbox', 'allow-scripts allow-pointer-lock')
+      // 需要 allow-same-origin 才能让我们 inspect；bootstrap 本身也需要 allow-scripts。
+      iframeRef.current.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
     } catch {
       // ignore
     }
 
-    // srcdoc-first
     try {
-      iframeRef.current.removeAttribute('src')
-      iframeRef.current.srcdoc = html
-      console.log('[TappPageSandboxWebKit] Set iframe srcdoc')
-      emitHostDebug({ kind: 'load:srcdoc', t: Date.now() })
-    } catch (e) {
-      console.warn('[TappPageSandboxWebKit] Failed to set srcdoc, fallback to blob src:', e)
-      setIframeDebug((prev) => ({ ...prev, strategy: 'blob' }))
-      emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'blob' })
       iframeRef.current.removeAttribute('srcdoc')
-      iframeRef.current.src = url
-      console.log('[TappPageSandboxWebKit] Set iframe src (blob)')
-      emitHostDebug({ kind: 'load:blob', t: Date.now() })
-    }
+    } catch {}
 
-    // 🔧 兜底：若一定时间内收不到 boot/ping，则放宽 sandbox（加 allow-same-origin）并强制重载 srcdoc
-    const fallbackId = window.setTimeout(() => {
-      setIframeDebug((prev) => {
-        if (prev.boot) return prev
-        const iframe = iframeRef.current
-        if (!iframe) return prev
-
-        if (sandboxRelaxedRef.current) return prev
-
-        console.warn('[TappPageSandboxWebKit] No iframe boot detected; relaxing sandbox + reload srcdoc')
-        try {
-          sandboxRelaxedRef.current = true
-          iframe.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
-          emitHostDebug({ kind: 'sandbox:relax', t: Date.now() })
-
-          iframe.removeAttribute('src')
-          iframe.srcdoc = lastHtmlRef.current
-          paintKickDoneRef.current = false
-        } catch (e) {
-          console.error('[TappPageSandboxWebKit] Failed to apply srcdoc fallback:', e)
-          emitHostDebug({ kind: 'sandbox:relax:error', t: Date.now() })
-        }
-
-        return prev
-      })
-    }, 1600)
-
-    // 🔧 二级兜底：如果放宽 sandbox + 重载后仍然没有 boot，则切换 data: URL（部分 Safari 对 srcdoc/blob 有怪问题）
-    const fallback2Id = window.setTimeout(() => {
-      setIframeDebug((prev) => {
-        if (prev.boot) return prev
-        const iframe = iframeRef.current
-        if (!iframe) return prev
-        if (secondFallbackUsedRef.current) return prev
-
-        secondFallbackUsedRef.current = true
-        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(lastHtmlRef.current)
-        setIframeDebug((p) => ({ ...p, strategy: 'data' }))
-        emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'data' })
-        emitHostDebug({ kind: 'load:data', t: Date.now() })
-
-        try {
-          // data URL 也可能需要 allow-same-origin 才能在 Safari 下正常执行/可诊断
-          iframe.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
-        } catch {}
-
-        try {
-          iframe.removeAttribute('srcdoc')
-          iframe.src = dataUrl
-        } catch (e) {
-          emitHostDebug({ kind: 'load:data:error', t: Date.now() })
-        }
-
-        return prev
-      })
-    }, 3200)
-
-    // 🔧 三级兜底：about:blank + document.write（Safari 经典绕法，绕开 srcdoc/data/blob 的各种坑）
-    const fallback3Id = window.setTimeout(() => {
-      setIframeDebug((prev) => {
-        if (prev.boot) return prev
-        const iframe = iframeRef.current
-        if (!iframe) return prev
-        if (writeFallbackUsedRef.current) return prev
-
-        writeFallbackUsedRef.current = true
-        pendingWriteHtmlRef.current = lastHtmlRef.current
-
-        setIframeDebug((p) => ({ ...p, strategy: 'write' }))
-        emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'write' })
-        emitHostDebug({ kind: 'load:aboutblank', t: Date.now() })
-
-        try {
-          iframe.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
-        } catch {}
-
-        try {
-          iframe.removeAttribute('srcdoc')
-          iframe.src = 'about:blank'
-        } catch {
-          emitHostDebug({ kind: 'load:aboutblank:error', t: Date.now() })
-        }
-
-        return prev
-      })
-    }, 5200)
+    iframeRef.current.src = '/tapp-webkit-bootstrap.html'
+    emitHostDebug({ kind: 'load:bootstrap', t: Date.now() })
 
     return () => {
       console.log('[TappPageSandboxWebKit] Cleanup')
       setIsReady(false)
-      window.clearTimeout(fallbackId)
-      window.clearTimeout(fallback2Id)
-      window.clearTimeout(fallback3Id)
       try {
         if (lastBlobUrlRef.current) {
           URL.revokeObjectURL(lastBlobUrlRef.current)
@@ -773,22 +677,18 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
             console.log('[TappPageSandboxWebKit] iframe onLoad fired')
             emitHostDebug({ kind: 'iframe:onLoad', t: Date.now() })
 
-            // 如果进入了 write 兜底路径：在 about:blank 的 onLoad 后注入完整 HTML
+            // bootstrap 页面加载完成后，把真实 HTML 发给它，让它在 iframe 内部 document.write()
             try {
-              if (writeFallbackUsedRef.current && pendingWriteHtmlRef.current) {
-                const doc = iframeRef.current?.contentDocument
-                if (doc) {
-                  emitHostDebug({ kind: 'write:begin', t: Date.now() })
-                  doc.open()
-                  doc.write(pendingWriteHtmlRef.current)
-                  doc.close()
-                  emitHostDebug({ kind: 'write:done', t: Date.now() })
-                  // 清一次，避免循环写
-                  pendingWriteHtmlRef.current = ''
+              if (!bootstrapSentRef.current) {
+                const win = iframeRef.current?.contentWindow
+                if (win) {
+                  bootstrapSentRef.current = true
+                  emitHostDebug({ kind: 'bootstrap:send', t: Date.now(), bytes: lastHtmlRef.current.length })
+                  win.postMessage({ __tapp_webkit_bootstrap: true, kind: 'load-html', html: lastHtmlRef.current }, '*')
                 }
               }
             } catch (e) {
-              emitHostDebug({ kind: 'write:error', t: Date.now() })
+              emitHostDebug({ kind: 'bootstrap:send:error', t: Date.now() })
             }
 
             kickWebKitPaint()
