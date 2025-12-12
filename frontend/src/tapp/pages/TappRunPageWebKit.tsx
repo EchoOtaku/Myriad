@@ -48,6 +48,7 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
   const [isReady, setIsReady] = useState(false)
   const [debugRects, setDebugRects] = useState<string>('')
   const [sandboxSignals, setSandboxSignals] = useState<string[]>([])
+  const [iframeInspect, setIframeInspect] = useState<string>('')
   const [notification, setNotification] = useState<{ 
     title?: string
     message: string
@@ -77,6 +78,27 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
       setDebugRects(
         `root=${fmt(rootRect)} | host=${fmt(hostRect)} | iframe=${fmt(iframeRect)}`
       )
+
+      // 🔧 在 allow-same-origin 放宽后尝试读取 iframe 内部标记，判断“脚本是否执行/是否有错误”
+      try {
+        if (!iframe) {
+          setIframeInspect('')
+          return
+        }
+        const doc = iframe.contentDocument
+        const win = iframe.contentWindow as any
+        if (!doc || !win) {
+          setIframeInspect('inspect=blocked')
+          return
+        }
+        const bootAttr = doc.documentElement?.getAttribute('data-tapp-boot') || ''
+        const errAttr = doc.documentElement?.getAttribute('data-tapp-error') || ''
+        const bootVar = win.__TAPP_BOOT_SCRIPT_RAN ? '1' : '0'
+        const lastErr = typeof win.__TAPP_LAST_ERROR === 'string' ? win.__TAPP_LAST_ERROR : ''
+        setIframeInspect(`inspect=ok bootAttr=${bootAttr || '0'} bootVar=${bootVar}${(errAttr || lastErr) ? ` err=${(errAttr || lastErr).slice(0, 60)}` : ''}`)
+      } catch {
+        setIframeInspect('inspect=blocked')
+      }
     }
 
     tick()
@@ -214,8 +236,18 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
       </div>
 
       {/* 🔧 顶部固定调试面板：确认宿主/iframe 尺寸是否为 0，以及是否被覆盖 */}
-      <div className="fixed top-0 left-0 right-0 px-2 py-1.5 bg-yellow-300/90 text-black text-[11px] z-[1000000] font-mono pointer-events-none">
-        {debugRects}{sandboxSignals.length ? ` | sandbox=${sandboxSignals.join(' ; ')}` : ''}
+      <div className="fixed top-0 left-0 right-0 bg-yellow-300/90 text-black text-[11px] z-[1000000] font-mono max-h-[45vh] overflow-auto pointer-events-auto select-text">
+        <div className="px-2 py-1.5 whitespace-pre-wrap break-words">
+          <div>{debugRects}{iframeInspect ? ` | ${iframeInspect}` : ''}</div>
+          {sandboxSignals.length ? (
+            <div className="mt-1">
+              <div>sandbox (latest first):</div>
+              {sandboxSignals.map((line, idx) => (
+                <div key={idx}>- {line}</div>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
       {/* 🎯 加载/错误状态 - 全屏显示 */}
       {(loading || hasError) && (

@@ -176,18 +176,52 @@ function generatePageHTML(
     };
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1 };
 
-    // 🔧 WebKit 调试/心跳：确认 iframe JS 是否真的在运行（即使不绘制也应该能 postMessage）
+    // 🔧 WebKit 调试/心跳：确认 iframe JS 是否真的在运行
+    // 同时写入可被父页面（allow-same-origin 时）读取的标记，避免 postMessage 在 WebKit 下异常时“静默丢信号”。
     (function(){
       try {
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ __tapp_iframe_debug: true, kind: 'boot', tappId: '${tappInstance.id}', t: Date.now() }, '*');
-          setInterval(function(){
-            window.parent.postMessage({ __tapp_iframe_debug: true, kind: 'ping', tappId: '${tappInstance.id}', t: Date.now(), docW: document.documentElement.clientWidth, docH: document.documentElement.clientHeight }, '*');
-          }, 700);
-        }
-      } catch (e) {
-        // ignore
+        (window as any).__TAPP_BOOT_SCRIPT_RAN = true;
+        document.documentElement.setAttribute('data-tapp-boot', '1');
+      } catch (e) {}
+
+      try {
+        (window as any).__TAPP_LAST_ERROR = null;
+        window.addEventListener('error', function(ev) {
+          try {
+            (window as any).__TAPP_LAST_ERROR = String(ev && (ev as any).message || ev);
+            document.documentElement.setAttribute('data-tapp-error', String((window as any).__TAPP_LAST_ERROR));
+          } catch (e) {}
+        });
+        window.addEventListener('unhandledrejection', function(ev) {
+          try {
+            (window as any).__TAPP_LAST_ERROR = String(ev && (ev as any).reason || ev);
+            document.documentElement.setAttribute('data-tapp-error', String((window as any).__TAPP_LAST_ERROR));
+          } catch (e) {}
+        });
+      } catch (e) {}
+
+      function safePost(kind) {
+        var payload = { __tapp_iframe_debug: true, kind: kind, tappId: '${tappInstance.id}', t: Date.now(), docW: 0, docH: 0 };
+        try { payload.docW = document.documentElement.clientWidth; payload.docH = document.documentElement.clientHeight; } catch (e) {}
+
+        // Safari/WebKit 在某些沙箱组合下读取 parent/top 可能抛异常，分别 try
+        try {
+          var p = null;
+          try { p = window.parent; } catch (e) { p = null; }
+          if (p && p !== window && typeof p.postMessage === 'function') p.postMessage(payload, '*');
+        } catch (e) {}
+
+        try {
+          var t = null;
+          try { t = window.top; } catch (e) { t = null; }
+          if (t && t !== window && typeof t.postMessage === 'function') t.postMessage(payload, '*');
+        } catch (e) {}
       }
+
+      safePost('boot');
+      try {
+        setInterval(function(){ safePost('ping'); }, 700);
+      } catch (e) {}
     })();
 
     (function() {
@@ -273,6 +307,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const [isReady, setIsReady] = useState(false)
   const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'blob' | 'srcdoc' }>(() => ({ boot: false, strategy: 'blob' }))
   const sandboxRelaxedRef = useRef<boolean>(false)
+  const secondFallbackUsedRef = useRef<boolean>(false)
   
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -554,6 +589,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'srcdoc' })
     paintKickDoneRef.current = false
     sandboxRelaxedRef.current = false
+    secondFallbackUsedRef.current = false
 
     // 先用严格 sandbox
     try {
@@ -567,6 +603,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       iframeRef.current.removeAttribute('src')
       iframeRef.current.srcdoc = html
       console.log('[TappPageSandboxWebKit] Set iframe srcdoc')
+      emitHostDebug({ kind: 'load:srcdoc', t: Date.now() })
     } catch (e) {
       console.warn('[TappPageSandboxWebKit] Failed to set srcdoc, fallback to blob src:', e)
       setIframeDebug((prev) => ({ ...prev, strategy: 'blob' }))
@@ -574,6 +611,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       iframeRef.current.removeAttribute('srcdoc')
       iframeRef.current.src = url
       console.log('[TappPageSandboxWebKit] Set iframe src (blob)')
+      emitHostDebug({ kind: 'load:blob', t: Date.now() })
     }
 
     // 🔧 兜底：若一定时间内收不到 boot/ping，则放宽 sandbox（加 allow-same-origin）并强制重载 srcdoc
@@ -603,10 +641,40 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       })
     }, 1600)
 
+    // 🔧 二级兜底：如果放宽 sandbox + 重载后仍然没有 boot，则切换 data: URL（部分 Safari 对 srcdoc/blob 有怪问题）
+    const fallback2Id = window.setTimeout(() => {
+      setIframeDebug((prev) => {
+        if (prev.boot) return prev
+        const iframe = iframeRef.current
+        if (!iframe) return prev
+        if (secondFallbackUsedRef.current) return prev
+
+        secondFallbackUsedRef.current = true
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(lastHtmlRef.current)
+        emitHostDebug({ kind: 'strategy', t: Date.now(), strategy: 'data' })
+        emitHostDebug({ kind: 'load:data', t: Date.now() })
+
+        try {
+          // data URL 也可能需要 allow-same-origin 才能在 Safari 下正常执行/可诊断
+          iframe.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-same-origin')
+        } catch {}
+
+        try {
+          iframe.removeAttribute('srcdoc')
+          iframe.src = dataUrl
+        } catch (e) {
+          emitHostDebug({ kind: 'load:data:error', t: Date.now() })
+        }
+
+        return prev
+      })
+    }, 3200)
+
     return () => {
       console.log('[TappPageSandboxWebKit] Cleanup')
       setIsReady(false)
       window.clearTimeout(fallbackId)
+      window.clearTimeout(fallback2Id)
       try {
         if (lastBlobUrlRef.current) {
           URL.revokeObjectURL(lastBlobUrlRef.current)
