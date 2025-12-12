@@ -392,35 +392,15 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     const sessionToken = bridge.getSessionToken()
     
     // 生成 HTML 并加载到 iframe
+    // 🎯 WebKit: 使用 blob URL（旧版本就是这样工作的）
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
-    
-    // 🎯 WebKit 关键修复：使用 srcdoc 代替 blob URL
-    // Safari/WebKit 对 blob URL 的 iframe 有已知的渲染问题
-    // srcdoc 直接嵌入 HTML，避免了 blob URL 的异步加载问题
-    // 
-    // 同时使用 requestAnimationFrame 确保 DOM 已经准备好
-    requestAnimationFrame(() => {
-      if (iframeRef.current) {
-        // 方案1: 使用 srcdoc（Safari 对此支持更好）
-        iframeRef.current.srcdoc = html
-        
-        // 🎯 WebKit: 强制重绘 - 某些 Safari 版本需要这个
-        // 通过触发样式重计算来确保 iframe 内容显示
-        requestAnimationFrame(() => {
-          if (iframeRef.current) {
-            // 触发重绘
-            iframeRef.current.style.opacity = '0.99'
-            requestAnimationFrame(() => {
-              if (iframeRef.current) {
-                iframeRef.current.style.opacity = '1'
-              }
-            })
-          }
-        })
-      }
-    })
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    iframeRef.current.src = url
 
     return () => {
+      setIsReady(false)
+      URL.revokeObjectURL(url)
       bridge.destroy()
       bridgeRef.current = null
       permissionRef.current = null
@@ -429,27 +409,27 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tappInstance.id, codeFingerprint, handleReady])
 
-  // 🎯 WebKit 专用渲染：最简化的 CSS，避免任何可能影响 iframe 渲染的属性
+  // 🎯 WebKit 专用渲染：尽可能接近旧版本（ae9d05a）的实现
+  // 旧版本在普通模式下是可以工作的！
   return (
     <div 
       ref={containerRef} 
-      className={`tapp-page-sandbox-webkit ${className || ''}`}
+      className={`tapp-page-sandbox ${className || ''}`}
       style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        // 🎯 WebKit: 强制硬件加速，有助于解决某些渲染问题
-        WebkitTransform: 'translateZ(0)',
-        transform: 'translateZ(0)',
-        // 🎯 WebKit: 不使用 overflow, isolation, contain 等可能影响渲染的 CSS
+        // 🎯 关键：使用 relative 而不是 absolute，与旧版本一致
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        // 🎯 旧版本有这些属性且能工作
+        overflow: 'hidden',
+        contain: 'strict',
+        isolation: 'isolate',
         ...style,
       }}
     >
       <iframe
         ref={iframeRef}
-        className="tapp-page-iframe-webkit"
+        className="tapp-page-iframe"
         style={{
           position: 'absolute',
           top: 0,
@@ -458,25 +438,10 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           height: '100%',
           border: 'none',
           display: 'block',
-          // 🎯 WebKit: 强制可见
-          visibility: 'visible',
-          opacity: 1,
-          // 🎯 WebKit: 确保没有任何会触发合成层问题的属性
-          WebkitTransform: 'translateZ(0)',
-          transform: 'translateZ(0)',
-          // 🎯 WebKit: 强制硬件加速
-          WebkitBackfaceVisibility: 'hidden',
-          backfaceVisibility: 'hidden',
         }}
-        // 🎯 WebKit: 使用更宽松的 sandbox，某些限制可能导致渲染问题
-        sandbox="allow-scripts allow-pointer-lock allow-same-origin"
+        sandbox="allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
         title={tappInstance.manifest.name}
-        // 🎯 WebKit: 显式设置这些属性可能有助于渲染
-        loading="eager"
-        // @ts-expect-error Safari webkit prefix
-        webkitallowfullscreen="true"
-        allowFullScreen
       />
     </div>
   )

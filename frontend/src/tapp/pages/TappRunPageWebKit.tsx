@@ -153,7 +153,9 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
   }, [])
 
   return (
-    <div className="fixed inset-0">
+    // 🎯 WebKit 专用：模仿旧版本 (ae9d05a) 非全屏模式的 flex 布局结构
+    // 旧版本非全屏模式是可用的！
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* 🎯 加载/错误状态 - 全屏显示 */}
       {(loading || hasError) && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-100 dark:bg-neutral-900">
@@ -192,9 +194,9 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
         </div>
       )}
 
-      {/* 🎯 全屏工具栏 - 右上角 mini 提示 */}
+      {/* 🎯 工具栏 - 左上角悬浮 */}
       {isReady && tapp && !loading && !hasError && (
-        <div className="absolute top-4 right-4 z-[60]">
+        <div className="absolute top-4 left-4 z-[60]">
           <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 shadow-lg">
             {/* 返回按钮 */}
             <button
@@ -256,15 +258,24 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
         </div>
       )}
 
-      {/* 🎯 沙箱容器 - 始终全屏 */}
+      {/* 🎯 沙箱容器 - 使用 flex-1 布局（模仿旧版本 ae9d05a 非全屏模式，该模式在 WebKit 上可用！）*/}
       {tapp && code && !loading && !hasError && (
-        <div className="absolute inset-0 z-40">
+        <div 
+          className="flex-1 min-h-0 relative overflow-hidden"
+          style={{
+            // 🎯 关键样式 - 旧版本非全屏模式的容器样式
+            contain: 'strict',
+            isolation: 'isolate',
+            willChange: 'contents',
+          }}
+        >
           <TappPageSandboxWebKit
             tappInstance={tapp}
             code={code}
             onReady={handleReady}
             onError={(err: Error) => console.error('[TappRunPageWebKit] Error:', err)}
             onNotification={handleNotification}
+            className="absolute inset-0"
             safeInsets={safeInsets}
           />
         </div>
