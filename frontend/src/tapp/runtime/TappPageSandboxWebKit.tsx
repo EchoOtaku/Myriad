@@ -423,55 +423,27 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tappInstance.id, codeFingerprint, handleReady])
 
-  // 🎯 WebKit 专用渲染：尽可能接近旧版本（ae9d05a）的实现
-  // 旧版本在普通模式下是可以工作的！
-  // 添加调试日志
-  useEffect(() => {
-    console.log('[TappPageSandboxWebKit] Mounted, containerRef:', containerRef.current)
-    console.log('[TappPageSandboxWebKit] iframeRef:', iframeRef.current)
-  }, [])
-  
-  useEffect(() => {
-    console.log('[TappPageSandboxWebKit] isReady:', isReady)
-  }, [isReady])
-
+  // 🎯 WebKit 专用渲染：与旧版本 (ae9d05a) 完全一致
   return (
     <div 
       ref={containerRef} 
       className={`tapp-page-sandbox ${className || ''}`}
       style={{
-        // 🎯 WebKit: 直接使用传入的 style，不再强制 position/width/height
-        // 移除 contain: strict 因为它可能在 WebKit 上导致问题
+        position: 'relative',
+        width: '100%',
+        height: '100%',
         overflow: 'hidden',
-        // 🔧 调试：添加边框确认容器边界
-        border: '3px solid lime',
-        boxSizing: 'border-box',
+        contain: 'strict',
+        isolation: 'isolate',
+        border: '3px solid cyan',
         ...style,
       }}
     >
-      {/* 🔧 调试：sandbox 容器内的可见标记 */}
-      <div style={{ position: 'absolute', top: 20, left: 0, right: 0, textAlign: 'center', padding: '4px', background: 'blue', color: 'white', fontSize: '11px', zIndex: 9998 }}>
-        TappPageSandboxWebKit | dimensions: {dimensions.width}x{dimensions.height} | ready: {String(isReady)}
-      </div>
+      <div style={{ position: 'absolute', top: '20px', left: 0, right: 0, background: 'cyan', color: 'black', fontSize: '10px', padding: '2px', zIndex: 9998, textAlign: 'center' }}>TappPageSandboxWebKit (dim: {dimensions.width}x{dimensions.height})</div>
+      <div style={{ position: 'absolute', bottom: '20px', left: 0, right: 0, background: 'magenta', color: 'white', fontSize: '10px', padding: '2px', zIndex: 9998, textAlign: 'center' }}>iframe 应该在这上面显示</div>
       <iframe
         ref={iframeRef}
         className="tapp-page-iframe"
-        onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired')}
-        onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          display: 'block',
-        }}
-        sandbox="allow-scripts allow-pointer-lock"
-        referrerPolicy="no-referrer"
-        title={tappInstance.manifest.name}
-        onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired!')}
-        onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
         style={{
           position: 'absolute',
           top: 0,
@@ -480,13 +452,12 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
           height: '100%',
           border: '2px dashed orange',
           display: 'block',
-          background: '#2a2a4a',
+          background: 'rgba(100, 100, 255, 0.3)',
         }}
+        sandbox="allow-scripts allow-pointer-lock"
+        referrerPolicy="no-referrer"
+        title={tappInstance.manifest.name}
       />
-      {/* 🔧 调试：iframe 后的标记 */}
-      <div style={{ position: 'absolute', bottom: 40, left: 0, right: 0, textAlign: 'center', padding: '4px', background: 'purple', color: 'white', fontSize: '11px', zIndex: 9997 }}>
-        iframe should be above this (orange dashed border)
-      </div>
     </div>
   )
 }
