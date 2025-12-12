@@ -15,6 +15,8 @@ import { TappBridge, createTappBridge } from './TappBridge'
 import { TappPermissionController, createPermissionController } from './TappPermission'
 import { useIframeResize, sendResizeMessage } from '../utils/iframeResize'
 import { useI18n } from '../../contexts/I18nContext'
+
+import './TappPageSandboxWebKit.css'
 import { subscribeToTheme, getIsDarkMode } from '../../utils/themeSubscriber'
 import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -67,8 +69,6 @@ export interface TappPageSandboxWebKitProps {
   onNotification?: (options: TappNotificationOptions) => void
   /** 自定义类名 */
   className?: string
-  /** 自定义样式 */
-  style?: React.CSSProperties
   /** 安全区域内边距 */
   safeInsets?: SafeInsets
 }
@@ -130,7 +130,7 @@ function generatePageHTML(
     html, body { background: #10203a !important; }
     #__tapp_debug_bar {
       position: fixed;
-      top: 0;
+      top: 30px; /* 避免被宿主页面顶部 fixed 调试面板遮住 */
       left: 0;
       right: 0;
       z-index: 2147483647;
@@ -141,12 +141,30 @@ function generatePageHTML(
       padding: 6px 8px;
       pointer-events: none;
     }
+    #__tapp_debug_center {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483646;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+      background: rgba(255, 0, 255, 0.12);
+      color: #fff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 18px;
+      line-height: 1.3;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      padding: 16px;
+    }
     #tapp-root { outline: 3px solid rgba(0, 255, 255, 0.6); outline-offset: -3px; }
     #tapp-content { padding: ${initialPadding}; box-sizing: border-box; }
   </style>
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
   <div id="__tapp_debug_bar">IFRAME DEBUG: booting…</div>
+  <div id="__tapp_debug_center">IFRAME DRAW CHECK…</div>
   ${bodyContent}
   
   <script nonce="${nonce}">
@@ -160,17 +178,34 @@ function generatePageHTML(
     };
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1 };
 
+    // 🔧 WebKit 调试/心跳：确认 iframe JS 是否真的在运行（即使不绘制也应该能 postMessage）
+    (function(){
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ __tapp_iframe_debug: true, kind: 'boot', tappId: '${tappInstance.id}', t: Date.now() }, '*');
+          setInterval(function(){
+            window.parent.postMessage({ __tapp_iframe_debug: true, kind: 'ping', tappId: '${tappInstance.id}', t: Date.now(), docW: document.documentElement.clientWidth, docH: document.documentElement.clientHeight }, '*');
+          }, 700);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+
     (function() {
       var bar = document.getElementById('__tapp_debug_bar');
+      var center = document.getElementById('__tapp_debug_center');
       function updateBar(extra) {
-        if (!bar) return;
+        if (!bar && !center) return;
         var d = window._TAPP_DIMENSIONS || {};
-        bar.textContent = 'IFRAME DEBUG | ' +
+        var txt = 'IFRAME DEBUG\n' +
           'doc=' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight +
           ' | dims=' + (d.width || 0) + 'x' + (d.height || 0) +
           ' | scale=' + (d.scale || 1) +
           ' | font=' + (d.fontScale || 1) +
           (extra ? (' | ' + extra) : '');
+        if (bar) bar.textContent = txt.replace(/\n/g, ' | ');
+        if (center) center.textContent = txt;
       }
       updateBar('init');
       setInterval(function(){ updateBar(); }, 500);
@@ -232,13 +267,13 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   onDestroy,
   onNotification,
   className,
-  style,
   safeInsets,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
   const permissionRef = useRef<TappPermissionController | null>(null)
   const [isReady, setIsReady] = useState(false)
+  const [iframeDebug, setIframeDebug] = useState<{ boot: boolean; lastPing?: number; lastDoc?: string; strategy: 'blob' | 'srcdoc' }>(() => ({ boot: false, strategy: 'blob' }))
   
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -247,6 +282,9 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   const tappInstanceRef = useRef(tappInstance)
   const codeRef = useRef(code)
   const safeInsetsRef = useRef(safeInsets)
+  const lastHtmlRef = useRef<string>('')
+  const lastBlobUrlRef = useRef<string | null>(null)
+  const paintKickDoneRef = useRef<boolean>(false)
   tappInstanceRef.current = tappInstance
   codeRef.current = code
   safeInsetsRef.current = safeInsets
@@ -273,6 +311,58 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   
   const animationConfigRef = useRef<AnimationConfigRef>(animationConfig)
   useEffect(() => { animationConfigRef.current = animationConfig }, [animationConfig])
+
+  const kickWebKitPaint = useCallback(() => {
+    const iframe = iframeRef.current
+    if (!iframe || paintKickDoneRef.current) return
+    paintKickDoneRef.current = true
+
+    try {
+      // 典型“踢合成层/重绘”手法：轻微切换 transform/opacity/display
+      const prevTransform = iframe.style.transform
+      const prevWebkitTransform = (iframe.style as any).webkitTransform as string | undefined
+
+      iframe.style.willChange = 'transform, opacity'
+      iframe.style.opacity = '0.999'
+      ;(iframe.style as any).webkitTransform = 'translate3d(0,0,0)'
+      iframe.style.transform = 'translate3d(0,0,0)'
+
+      requestAnimationFrame(() => {
+        iframe.style.opacity = '1'
+        ;(iframe.style as any).webkitTransform = prevWebkitTransform || 'translate3d(0,0,0)'
+        iframe.style.transform = prevTransform || 'translate3d(0,0,0)'
+      })
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // 🔧 接收 iframe 的 boot/ping（用于判断：JS 是否活着 vs 彻底没跑）
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const data = e.data as any
+      if (!data || data.__tapp_iframe_debug !== true) return
+      if (data.tappId && data.tappId !== tappInstanceRef.current.id) return
+
+      if (data.kind === 'boot') {
+        setIframeDebug((prev) => ({ ...prev, boot: true }))
+        kickWebKitPaint()
+        return
+      }
+      if (data.kind === 'ping') {
+        setIframeDebug((prev) => ({
+          ...prev,
+          boot: true,
+          lastPing: typeof data.t === 'number' ? data.t : Date.now(),
+          lastDoc: (typeof data.docW === 'number' && typeof data.docH === 'number') ? `${data.docW}x${data.docH}` : prev.lastDoc,
+        }))
+        kickWebKitPaint()
+      }
+    }
+
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [kickWebKitPaint])
 
   // 尺寸更新
   useEffect(() => {
@@ -437,18 +527,54 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
     // 🎯 WebKit: 使用 blob URL（旧版本就是这样工作的）
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
     console.log('[TappPageSandboxWebKit] Generated HTML length:', html.length)
+    lastHtmlRef.current = html
     
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     console.log('[TappPageSandboxWebKit] Blob URL:', url)
-    
+    lastBlobUrlRef.current = url
+
+    // 默认先用 blob；如果 WebKit 不跑/不绘制，后面自动切换 srcdoc
+    setIframeDebug((prev) => ({ ...prev, boot: false, lastPing: undefined, lastDoc: undefined, strategy: 'blob' }))
+    paintKickDoneRef.current = false
+
+    // 先清空 srcdoc，避免策略切换残留
+    iframeRef.current.removeAttribute('srcdoc')
     iframeRef.current.src = url
     console.log('[TappPageSandboxWebKit] Set iframe src')
+
+    // 🔧 兜底：若一定时间内收不到 boot/ping，则切换到 srcdoc 再试一次
+    const fallbackId = window.setTimeout(() => {
+      setIframeDebug((prev) => {
+        if (prev.boot) return prev
+        const iframe = iframeRef.current
+        if (!iframe) return prev
+
+        console.warn('[TappPageSandboxWebKit] No iframe boot detected; switching to srcdoc fallback')
+        try {
+          iframe.removeAttribute('src')
+          iframe.srcdoc = lastHtmlRef.current
+          paintKickDoneRef.current = false
+        } catch (e) {
+          console.error('[TappPageSandboxWebKit] Failed to apply srcdoc fallback:', e)
+        }
+
+        return { ...prev, strategy: 'srcdoc' }
+      })
+    }, 1600)
 
     return () => {
       console.log('[TappPageSandboxWebKit] Cleanup')
       setIsReady(false)
-      URL.revokeObjectURL(url)
+      window.clearTimeout(fallbackId)
+      try {
+        if (lastBlobUrlRef.current) {
+          URL.revokeObjectURL(lastBlobUrlRef.current)
+          lastBlobUrlRef.current = null
+        }
+      } catch {
+        // ignore
+      }
       bridge.destroy()
       bridgeRef.current = null
       permissionRef.current = null
@@ -472,44 +598,27 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   return (
     <div 
       ref={containerRef} 
-      className={`tapp-page-sandbox ${className || ''}`}
-      style={{
-        // 🎯 保持与旧版一致的基线尺寸，避免父级没给出明确尺寸时变成 0
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-        // 🔧 调试：添加边框确认容器边界
-        border: '3px solid lime',
-        boxSizing: 'border-box',
-        ...style,
-      }}
+      className={`tapp-page-sandbox tapp-webkit-sandbox-container ${className || ''}`}
     >
       {/* 🔧 调试：sandbox 容器内的可见标记 */}
-      <div style={{ position: 'absolute', top: 20, left: 0, right: 0, textAlign: 'center', padding: '4px', background: 'blue', color: 'white', fontSize: '11px', zIndex: 9998, pointerEvents: 'none' }}>
-        TappPageSandboxWebKit | dimensions: {dimensions.width}x{dimensions.height} | ready: {String(isReady)}
+      <div className="tapp-webkit-sandbox-debug-top">
+        TappPageSandboxWebKit | dims: {dimensions.width}x{dimensions.height} | ready: {String(isReady)} | iframeBoot: {String(iframeDebug.boot)} | strategy: {iframeDebug.strategy}{iframeDebug.lastDoc ? ` | doc: ${iframeDebug.lastDoc}` : ''}
       </div>
-      <iframe
-        ref={iframeRef}
-        className="tapp-page-iframe"
-        sandbox="allow-scripts allow-pointer-lock"
-        referrerPolicy="no-referrer"
-        title={tappInstance.manifest.name}
-        onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired')}
-        onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          border: '2px dashed orange',
-          display: 'block',
-          background: '#2a2a4a',
-        }}
-      />
+
+      {/* 内层裁剪器：把 overflow:hidden 放到更“远离根容器”的层，降低 WebKit 合成概率问题 */}
+      <div className="tapp-webkit-sandbox-clipper">
+        <iframe
+          ref={iframeRef}
+          className="tapp-page-iframe tapp-webkit-sandbox-iframe"
+          sandbox="allow-scripts allow-pointer-lock"
+          referrerPolicy="no-referrer"
+          title={tappInstance.manifest.name}
+          onLoad={() => console.log('[TappPageSandboxWebKit] iframe onLoad fired')}
+          onError={(e) => console.error('[TappPageSandboxWebKit] iframe onError:', e)}
+        />
+      </div>
       {/* 🔧 调试：iframe 后的标记 */}
-      <div style={{ position: 'absolute', bottom: 40, left: 0, right: 0, textAlign: 'center', padding: '4px', background: 'purple', color: 'white', fontSize: '11px', zIndex: 9997, pointerEvents: 'none' }}>
+      <div className="tapp-webkit-sandbox-debug-bottom">
         iframe should be above this (orange dashed border)
       </div>
     </div>

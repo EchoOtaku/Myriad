@@ -186,21 +186,15 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
     // 旧版本非全屏模式是可用的！
     <div
       ref={rootRef}
-      className="flex flex-col overflow-hidden"
-      style={{
-        background: '#1a1a2e',
-        // iOS Safari 的 100vh 在地址栏收起/展开时会抖动；dvh 更稳定
-        height: '100dvh',
-        minHeight: '100vh',
-      }}
+      className="flex flex-col overflow-hidden bg-[#1a1a2e] h-[100dvh] min-h-[100vh]"
     >
       {/* 🔧 全局调试条 */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '8px', background: 'rgba(0,0,0,0.8)', color: '#0f0', fontSize: '10px', zIndex: 99999, fontFamily: 'monospace' }}>
+      <div className="fixed bottom-0 left-0 right-0 p-2 bg-black/80 text-[#00ff00] text-[10px] z-[99999] font-mono">
         WebKit Mode | loading: {String(loading)} | error: {String(hasError)} | tapp: {String(!!tapp)} | code: {String(!!code)} | ready: {String(isReady)}
       </div>
 
       {/* 🔧 顶部固定调试面板：确认宿主/iframe 尺寸是否为 0，以及是否被覆盖 */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, padding: '6px 8px', background: 'rgba(255,255,0,0.9)', color: '#000', fontSize: '11px', zIndex: 1000000, fontFamily: 'monospace', pointerEvents: 'none' }}>
+      <div className="fixed top-0 left-0 right-0 px-2 py-1.5 bg-yellow-300/90 text-black text-[11px] z-[1000000] font-mono pointer-events-none">
         {debugRects}
       </div>
       {/* 🎯 加载/错误状态 - 全屏显示 */}
@@ -243,7 +237,7 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
 
       {/* 🎯 工具栏 - 左上角悬浮 */}
       {isReady && tapp && !loading && !hasError && (
-        <div className="fixed top-4 left-4" style={{ zIndex: 1000001 }}>
+        <div className="fixed top-4 left-4 z-[1000001]">
           <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 shadow-lg">
             {/* 返回按钮 */}
             <button
@@ -263,7 +257,6 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
               {iconStyle && (
                 <div 
                   className={`w-6 h-6 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
-                  style={iconStyle.style}
                 >
                   <TappIcon
                     icon={tapp.manifest.icon}
@@ -309,13 +302,10 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
       {tapp && code && !loading && !hasError && (
         <div
           ref={sandboxHostRef}
-          className="flex-1 min-h-0 relative overflow-hidden"
-          style={{
-            background: '#0f0f1a',
-          }}
+          className="flex-1 min-h-0 relative overflow-hidden bg-[#0f0f1a]"
         >
           {/* 🔧 调试：显示容器是否正确渲染 */}
-          <div style={{ position: 'absolute', top: 30, left: 0, right: 0, padding: '4px', background: 'red', color: 'white', fontSize: '12px', zIndex: 9999, pointerEvents: 'none' }}>
+          <div className="absolute top-[30px] left-0 right-0 p-1 bg-red-600 text-white text-xs z-[9999] pointer-events-none">
             DEBUG: Host container rendered (flex-1)
           </div>
           <TappPageSandboxWebKit
