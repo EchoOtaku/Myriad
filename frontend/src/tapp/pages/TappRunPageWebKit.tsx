@@ -265,21 +265,23 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
         </div>
       )}
 
-      {/* 🎯 沙箱容器 - 使用 flex-1 布局（模仿旧版本 ae9d05a 非全屏模式，该模式在 WebKit 上可用！）*/}
+      {/* 🎯 沙箱容器 - WebKit 需要明确的高度，不能依赖 flex-1 */}
       {tapp && code && !loading && !hasError && (
         <div 
-          className="flex-1 min-h-0 relative overflow-hidden"
           style={{
-            // 🎯 关键样式 - 旧版本非全屏模式的容器样式
+            // 🎯 关键：WebKit 需要明确的高度计算
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             background: '#0f0f1a',
-            contain: 'strict',
-            isolation: 'isolate',
-            willChange: 'contents',
+            // 移除可能导致问题的 contain: strict
           }}
         >
           {/* 🔧 调试：显示容器是否正确渲染 */}
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '4px', background: 'red', color: 'white', fontSize: '12px', zIndex: 9999 }}>
-            DEBUG: Container rendered
+            DEBUG: Container rendered (absolute inset-0)
           </div>
           <TappPageSandboxWebKit
             tappInstance={tapp}
@@ -287,7 +289,13 @@ export const TappRunPageWebKit = ({ tappId }: TappRunPageWebKitProps) => {
             onReady={handleReady}
             onError={(err: Error) => console.error('[TappRunPageWebKit] Error:', err)}
             onNotification={handleNotification}
-            className="absolute inset-0"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
             safeInsets={safeInsets}
           />
         </div>

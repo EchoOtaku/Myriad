@@ -440,14 +440,9 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
       ref={containerRef} 
       className={`tapp-page-sandbox ${className || ''}`}
       style={{
-        // 🎯 关键：使用 relative 而不是 absolute，与旧版本一致
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        // 🎯 旧版本有这些属性且能工作
+        // 🎯 WebKit: 直接使用传入的 style，不再强制 position/width/height
+        // 移除 contain: strict 因为它可能在 WebKit 上导致问题
         overflow: 'hidden',
-        contain: 'strict',
-        isolation: 'isolate',
         // 🔧 调试：添加边框确认容器边界
         border: '3px solid lime',
         boxSizing: 'border-box',
