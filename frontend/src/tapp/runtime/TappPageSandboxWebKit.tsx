@@ -15,8 +15,6 @@ import { TappBridge, createTappBridge } from './TappBridge'
 import { TappPermissionController, createPermissionController } from './TappPermission'
 import { useIframeResize, sendResizeMessage } from '../utils/iframeResize'
 import { useI18n } from '../../contexts/I18nContext'
-
-import './TappPageSandboxWebKit.css'
 import { subscribeToTheme, getIsDarkMode } from '../../utils/themeSubscriber'
 import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -598,18 +596,23 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
   return (
     <div 
       ref={containerRef} 
-      className={`tapp-page-sandbox tapp-webkit-sandbox-container ${className || ''}`}
+      className={`tapp-page-sandbox relative w-full h-full overflow-visible box-border border-[3px] border-lime-400 ${className || ''}`}
     >
       {/* 🔧 调试：sandbox 容器内的可见标记 */}
-      <div className="tapp-webkit-sandbox-debug-top">
+      <div className="absolute top-5 left-0 right-0 text-center p-1 bg-blue-600 text-white text-[11px] z-[9998] pointer-events-none">
         TappPageSandboxWebKit | dims: {dimensions.width}x{dimensions.height} | ready: {String(isReady)} | iframeBoot: {String(iframeDebug.boot)} | strategy: {iframeDebug.strategy}{iframeDebug.lastDoc ? ` | doc: ${iframeDebug.lastDoc}` : ''}
       </div>
 
       {/* 内层裁剪器：把 overflow:hidden 放到更“远离根容器”的层，降低 WebKit 合成概率问题 */}
-      <div className="tapp-webkit-sandbox-clipper">
+      <div className="absolute inset-0 overflow-hidden bg-[#2a2a4a] z-0">
         <iframe
           ref={iframeRef}
-          className="tapp-page-iframe tapp-webkit-sandbox-iframe"
+          className={
+            'tapp-page-iframe block w-full h-full border-2 border-dashed border-orange-400 bg-[#2a2a4a] ' +
+            '[transform:translate3d(0,0,0)] [-webkit-transform:translate3d(0,0,0)] ' +
+            '[backface-visibility:hidden] [-webkit-backface-visibility:hidden] ' +
+            '[will-change:transform,opacity]'
+          }
           sandbox="allow-scripts allow-pointer-lock"
           referrerPolicy="no-referrer"
           title={tappInstance.manifest.name}
@@ -618,7 +621,7 @@ export const TappPageSandboxWebKit: React.FC<TappPageSandboxWebKitProps> = ({
         />
       </div>
       {/* 🔧 调试：iframe 后的标记 */}
-      <div className="tapp-webkit-sandbox-debug-bottom">
+      <div className="absolute bottom-10 left-0 right-0 text-center p-1 bg-purple-700 text-white text-[11px] z-[9997] pointer-events-none">
         iframe should be above this (orange dashed border)
       </div>
     </div>
