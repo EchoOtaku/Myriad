@@ -482,6 +482,31 @@ async fn update_control_panel_config_wrapper(
     }
 }
 
+/// Wrapper for update_tapp_window_schemes that gets DB from global state
+async fn update_tapp_window_schemes_wrapper(
+    Json(payload): Json<api::config::TappWindowSchemesPayload>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::update_tapp_window_schemes(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，配置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for get_permissions that gets DB from global state
 async fn get_permissions_wrapper(headers: axum::http::HeaderMap) -> Response {
     let db_opt = DB_CONNECTION.read().await;
@@ -917,6 +942,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/config/control-panel",
             post(update_control_panel_config_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/config/tapp-window-schemes",
+            post(update_tapp_window_schemes_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)), // 登录用户可保存
         )
         // 权限配置 API
         .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限

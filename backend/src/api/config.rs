@@ -615,7 +615,10 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     key: "base_url".to_string(),
                     label: "Site Base URL".to_string(),
                     field_type: "text".to_string(),
-                    value: db_config.as_ref().and_then(|c| c.base_url.clone()).unwrap_or_default(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.base_url.clone())
+                        .unwrap_or_default(),
                     placeholder: "https://yourdomain.com (用于生成 OAuth 回调 URL)".to_string(),
                     required: false,
                 },
@@ -1457,6 +1460,7 @@ pub async fn get_public_ui_config(
         "custom_platforms": db_config.as_ref().and_then(|c| c.custom_platforms.clone()),
         "control_panel_layout": db_config.as_ref().and_then(|c| c.control_panel_layout.clone()),
         "control_panel_rows": db_config.as_ref().map(|c| c.control_panel_rows).unwrap_or(2),
+        "tapp_window_schemes": db_config.as_ref().and_then(|c| c.tapp_window_schemes.clone()),
     });
 
     (StatusCode::OK, Json(ui_config))
@@ -1543,6 +1547,41 @@ pub async fn update_control_panel_config(
         Json(json!({
             "success": true,
             "message": "Control panel configuration updated successfully"
+        })),
+    )
+}
+
+// ========== Tapp 窗口方案 API ==========
+
+#[derive(Debug, Deserialize)]
+pub struct TappWindowSchemesPayload {
+    pub schemes: String,
+}
+
+pub async fn update_tapp_window_schemes(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<TappWindowSchemesPayload>,
+) -> (StatusCode, Json<Value>) {
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    let mut updates = std::collections::HashMap::new();
+
+    updates.insert("tapp_window_schemes".to_string(), json!(payload.schemes));
+
+    if let Err(e) = config_service.update_configs(updates).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": format!("Failed to update tapp window schemes: {}", e)
+            })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "message": "Tapp window schemes updated successfully"
         })),
     )
 }

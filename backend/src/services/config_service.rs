@@ -229,6 +229,15 @@ impl ConfigService {
             }
         }
 
+        // Tapp 多窗口方案配置
+        if let Some(v) = map.get("tapp_window_schemes") {
+            if let Some(s) = v.as_str() {
+                config.tapp_window_schemes = Some(s.to_string());
+            } else {
+                config.tapp_window_schemes = Some(v.to_string());
+            }
+        }
+
         // 网站元数据配置
         if let Some(v) = map.get("site_title") {
             config.site_title = v.as_str().map(|s| s.to_string());

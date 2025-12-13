@@ -193,6 +193,9 @@ pub struct DynamicConfig {
     pub control_panel_layout: Option<String>,
     pub control_panel_rows: i32,
 
+    // Tapp 多窗口方案配置
+    pub tapp_window_schemes: Option<String>, // 窗口方案数据 (JSON)
+
     // ========== Tapp 权限下放配置 ==========
     // 基于 Tapp 系统的 elevated 级别权限（共12个）
     // 这些权限默认只有管理员可用，可以配置下放给普通用户或游客
@@ -321,6 +324,8 @@ impl Default for DynamicConfig {
 
             control_panel_layout: None,
             control_panel_rows: 2,
+
+            tapp_window_schemes: None,
 
             // ===== 普通用户 elevated 权限默认值 (10个) =====
             // 默认全部关闭，管理员可选择性开放

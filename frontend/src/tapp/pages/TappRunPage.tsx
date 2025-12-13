@@ -7,10 +7,11 @@
  * - 这样避免了切换全屏时 iframe 被销毁重建，保持应用状态
  * - 加载状态整合到顶部控制条，避免页面级状态切换
  * - WebKit 浏览器使用独立的 TappRunPageWebKit 组件
+ * - 支持多窗口模式，可同时运行最多3个应用
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motionShim as motion, AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { TappToast, type ToastType } from '../../components/Toast'
@@ -23,16 +24,19 @@ import {
   FaExclamationTriangle,
   FaSpinner,
   FaRedo,
+  FaTh,
 } from '@lib/icons'
 import { getTappRuntime } from '../runtime'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { TappIcon } from '../components/TappIcon'
+import { TappWindowManager } from '../components/TappWindowManager'
 import type { TappNotificationOptions } from '../runtime/sandbox/types'
 import type { TappInstance } from '../types'
 import type { TappCodeStructure } from '../examples/tapps/types'
 import { useI18n } from '../../contexts/I18nContext'
+import { useBreakpoints } from '../../hooks/useSharedEventListener'
 
 interface TappRunPageProps {
   tappId: string
@@ -40,15 +44,41 @@ interface TappRunPageProps {
 
 /**
  * Tapp 运行页面入口
+ * 支持单窗口模式和多窗口模式
  */
 export const TappRunPage = ({ tappId }: TappRunPageProps) => {
-  return <TappRunPageStandard tappId={tappId} />
+  const [searchParams] = useSearchParams()
+  const { isMobile } = useBreakpoints()
+  // 多窗口模式仅限平板和PC端
+  const isMultiWindow = searchParams.get('multi') === 'true' && !isMobile
+  const navigate = useNavigate()
+  
+  // 多窗口模式
+  if (isMultiWindow) {
+    return (
+      <TappWindowManager
+        initialTappId={tappId}
+        onBack={() => navigate('/tapp')}
+        onNotification={(options) => {
+          // 多窗口模式下的通知处理
+          console.log('[MultiWindow] Notification:', options)
+        }}
+      />
+    )
+  }
+  
+  // 单窗口模式（默认）
+  return <TappRunPageStandard tappId={tappId} isMobile={isMobile} />
+}
+
+interface TappRunPageStandardProps extends TappRunPageProps {
+  isMobile: boolean
 }
 
 /**
  * 标准版 Tapp 运行页面组件（非 WebKit）
  */
-const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
+const TappRunPageStandard = ({ tappId, isMobile }: TappRunPageStandardProps) => {
   const navigate = useNavigate()
   const { t } = useI18n()
   
@@ -413,6 +443,21 @@ const TappRunPageStandard = ({ tappId }: TappRunPageProps) => {
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={transitions.stateSwitch}
                   >
+                    {/* 多窗口模式按钮 - 仅平板和PC端显示 */}
+                    {!isMobile && (
+                      <motion.button
+                        onClick={() => navigate(`/tapp/run/${tappId}?multi=true`)}
+                        className="p-1.5 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                        title="多窗口模式"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0 }}
+                        whileHover={noAnimation ? undefined : { scale: 1.15 }}
+                        whileTap={noAnimation ? undefined : { scale: 0.9 }}
+                      >
+                        <FaTh className="w-3.5 h-3.5" />
+                      </motion.button>
+                    )}
                     <motion.button
                       onClick={toggleFullscreen}
                       className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"

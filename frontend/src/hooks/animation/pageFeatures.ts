@@ -77,6 +77,9 @@ export const PAGE_FEATURES: Record<string, number> = {
   
   // 设置页：轮询检测(Timeout)
   'setup': Feature.Timeout,
+  
+  // Tapp 多窗口模式：可见性感知暂停、空闲预加载
+  'tapp-multi': Feature.Visibility | Feature.Idle,
 };
 
 /**
