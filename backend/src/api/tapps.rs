@@ -1885,6 +1885,7 @@ pub struct RecentTappItem {
     pub name: String,
     pub icon: Option<String>,
     pub icon_svg: Option<String>,
+    pub theme_color: Option<String>,
     pub last_run_at: String,
     pub run_count: i32,
 }
@@ -1972,6 +1973,7 @@ async fn get_recent_tapps(
                 name: tapp.name.clone(),
                 icon: tapp.icon.clone(),
                 icon_svg,
+                theme_color: tapp.theme_color.clone(),
                 last_run_at: activity.last_run_at.to_rfc3339(),
                 run_count: activity.run_count,
             });

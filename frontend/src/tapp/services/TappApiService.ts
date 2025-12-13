@@ -148,6 +148,7 @@ export interface RecentTappItem {
   name: string
   icon?: string
   iconSvg?: string
+  themeColor?: string
   lastRunAt: string
   runCount: number
 }

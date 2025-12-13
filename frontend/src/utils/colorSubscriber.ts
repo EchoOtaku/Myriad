@@ -82,7 +82,8 @@ export function subscribeToPrimaryColor(callback: ColorCallback): () => void {
   ensureObserver();
   
   // 立即调用一次，确保初始状态同步
-  callback(currentColor);
+  // 🎯 修复：获取最新颜色而不是使用可能过期的 currentColor
+  callback(getPrimaryColor());
   
   return () => {
     subscribers.delete(callback);
@@ -92,8 +93,16 @@ export function subscribeToPrimaryColor(callback: ColorCallback): () => void {
 
 /**
  * 获取当前主色调（同步）
+ * 每次调用都会尝试从 DOM 获取最新值，确保在 observer 启动前也能获取到正确颜色
  */
 export function getPrimaryColor(): string {
+  if (typeof document !== 'undefined') {
+    const newColor = getComputedStyle(document.documentElement)
+      .getPropertyValue('--color-primary').trim();
+    if (newColor && newColor !== currentColor) {
+      currentColor = newColor;
+    }
+  }
   return currentColor;
 }
 

@@ -352,13 +352,19 @@ export const UserModal: React.FC<UserModalProps> = ({
                   onClick={() => handleTappClick(tapp.id)}
                   className="user-modal-tapp-item"
                 >
-                  <div className="user-modal-tapp-icon">
+                  <div 
+                    className="user-modal-tapp-icon"
+                    style={tapp.themeColor ? {
+                      background: `linear-gradient(135deg, ${tapp.themeColor}30 0%, ${tapp.themeColor}40 100%)`
+                    } : undefined}
+                  >
                     <TappIcon
                       icon={tapp.icon}
                       iconSvg={tapp.iconSvg}
                       name={tapp.name}
                       sizeClass="w-4 h-4"
                       textSizeClass="text-base"
+                      svgColor={tapp.themeColor || undefined}
                     />
                   </div>
                   <span className="user-modal-tapp-name">{tapp.name}</span>
