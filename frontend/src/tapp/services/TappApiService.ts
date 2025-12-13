@@ -142,6 +142,26 @@ export async function listTapps(): Promise<TappListItem[]> {
   return apiRequest('/api/tapps')
 }
 
+/** 最近使用的 Tapp 项 */
+export interface RecentTappItem {
+  id: string
+  name: string
+  icon?: string
+  iconSvg?: string
+  lastRunAt: string
+  runCount: number
+}
+
+/**
+ * 获取当前用户最近使用的 Tapp 列表
+ * 
+ * @param limit 返回的最大数量，默认 10
+ * @returns 最近使用的 Tapp 列表（按最后运行时间降序）
+ */
+export async function getRecentTapps(limit: number = 10): Promise<RecentTappItem[]> {
+  return apiRequest(`/api/tapps/recent?limit=${limit}`)
+}
+
 /**
  * 安装 Tapp 请求体（统一格式）
  */
@@ -894,6 +914,7 @@ export async function getPlatformReport(platform: string): Promise<{
 export default {
   // Tapp 应用管理
   listTapps,
+  getRecentTapps,
   installTapp,
   installTappFile,
   installFromCode,

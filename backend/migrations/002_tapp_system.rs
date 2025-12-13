@@ -722,10 +722,84 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ==================== 8. TAPP_USER_ACTIVITIES 表 ====================
+        // 记录用户使用 Tapp 的活动历史（解决普通用户运行管理员 Tapp 时无法记录 last_run_at 的问题）
+        manager
+            .create_table(
+                Table::create()
+                    .table(TappUserActivities::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(TappUserActivities::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    // 用户 ID
+                    .col(
+                        ColumnDef::new(TappUserActivities::UserId)
+                            .integer()
+                            .not_null(),
+                    )
+                    // Tapp ID（应用标识符）
+                    .col(
+                        ColumnDef::new(TappUserActivities::TappId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    // 最后运行时间
+                    .col(
+                        ColumnDef::new(TappUserActivities::LastRunAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    // 运行次数
+                    .col(
+                        ColumnDef::new(TappUserActivities::RunCount)
+                            .integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 唯一索引：同一用户同一 Tapp 只有一条记录
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_user_activities_unique")
+                    .table(TappUserActivities::Table)
+                    .col(TappUserActivities::UserId)
+                    .col(TappUserActivities::TappId)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 索引：按用户和最后运行时间查询（用于获取最近使用的 Tapp）
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tapp_user_activities_user_last_run")
+                    .table(TappUserActivities::Table)
+                    .col(TappUserActivities::UserId)
+                    .col(TappUserActivities::LastRunAt)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(TappUserActivities::Table).to_owned())
+            .await?;
         manager
             .drop_table(Table::drop().table(TappTaskExecutions::Table).to_owned())
             .await?;
@@ -877,4 +951,14 @@ enum TappTaskExecutions {
     Error,
     DurationMs,
     RetryCount,
+}
+
+#[derive(DeriveIden)]
+enum TappUserActivities {
+    Table,
+    Id,
+    UserId,
+    TappId,
+    LastRunAt,
+    RunCount,
 }

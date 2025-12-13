@@ -1115,6 +1115,22 @@ export const zhCN: TranslationKeys = {
     stopApp: '停止应用',
     back: '返回',
     
+    // 多窗口模式
+    windowScheme: '窗口方案',
+    scheme: '方案',
+    saveCurrentScheme: '保存当前方案',
+    saving: '保存中...',
+    noSavedSchemes: '暂无保存的方案',
+    windowCount: '{count} 个窗口',
+    deleteScheme: '删除方案',
+    schemeNamePrefix: '方案',
+    addWindow: '添加窗口',
+    noOpenWindows: '没有打开的窗口',
+    clickToAddWindow: '点击上方按钮添加应用窗口',
+    openFirstApp: '打开第一个应用',
+    selectApp: '选择应用',
+    noAvailableApps: '没有可用的应用',
+    
     // 详情页面
     appSettings: '应用设置',
     customizeBehavior: '自定义应用行为',

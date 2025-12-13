@@ -1116,6 +1116,22 @@ export interface TranslationKeys {
     stopApp: string;
     back: string;
     
+    // 多窗口模式
+    windowScheme: string;
+    scheme: string;
+    saveCurrentScheme: string;
+    saving: string;
+    noSavedSchemes: string;
+    windowCount: string;
+    deleteScheme: string;
+    schemeNamePrefix: string;
+    addWindow: string;
+    noOpenWindows: string;
+    clickToAddWindow: string;
+    openFirstApp: string;
+    selectApp: string;
+    noAvailableApps: string;
+    
     // 详情页面
     appSettings: string;
     customizeBehavior: string;

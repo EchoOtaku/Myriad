@@ -799,7 +799,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     
     const newScheme: WindowScheme = {
       id: `scheme-${Date.now()}`,
-      name: `方案 ${savedSchemes.length + 1}`,
+      name: `${t.tapp.schemeNamePrefix} ${savedSchemes.length + 1}`,
       windows: schemeWindows,
       createdAt: Date.now(),
     }
@@ -811,22 +811,34 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     
     setIsSaving(false)
     setShowSchemeMenu(false)
-  }, [windows, savedSchemes, isSaving, saveToCloud])
+  }, [windows, savedSchemes, isSaving, saveToCloud, t.tapp.schemeNamePrefix])
 
   // 加载窗口方案
   const loadScheme = useCallback(async (scheme: WindowScheme) => {
-    // 先关闭所有现有窗口
-    setWindows([])
-    setActiveWindowId(null)
+    // 1. 先关闭菜单
     setShowSchemeMenu(false)
     
-    // 依次打开方案中的窗口
+    // 2. 清空所有当前窗口并等待状态更新完成
+    await new Promise<void>(resolve => {
+      setWindows([])
+      setActiveWindowId(null)
+      // 使用 requestAnimationFrame 确保 React 状态更新完成
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve()
+        })
+      })
+    })
+    
+    // 3. 准备所有新窗口的初始状态
+    const newWindows: TappWindow[] = []
+    const baseZIndex = nextZIndex
+    
     for (let i = 0; i < scheme.windows.length && i < MAX_WINDOWS; i++) {
       const schemeWindow = scheme.windows[i]
       const windowId = generateWindowId()
       
-      // 创建初始窗口状态，使用保存的位置和尺寸
-      const newWindow: TappWindow = {
+      newWindows.push({
         windowId,
         tappId: schemeWindow.tappId,
         tapp: null,
@@ -836,19 +848,25 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         position: { ...schemeWindow.position },
         size: { ...schemeWindow.size },
         isMaximized: false,
-        zIndex: nextZIndex + i,
-      }
-
-      setWindows(prev => [...prev, newWindow])
-      if (i === scheme.windows.length - 1) {
-        setActiveWindowId(windowId)
-      }
-
-      // 异步加载 Tapp
+        zIndex: baseZIndex + i,
+      })
+    }
+    
+    // 4. 一次性设置所有窗口（批量更新，减少重渲染）
+    if (newWindows.length > 0) {
+      setWindows(newWindows)
+      setActiveWindowId(newWindows[newWindows.length - 1].windowId)
+      setNextZIndex(baseZIndex + newWindows.length)
+    }
+    
+    // 5. 异步加载所有 Tapp 的资源
+    await runtime.waitForSync()
+    
+    for (const newWindow of newWindows) {
+      const { windowId, tappId } = newWindow
+      
       try {
-        await runtime.waitForSync()
-        
-        const instance = runtime.getTapp(schemeWindow.tappId)
+        const instance = runtime.getTapp(tappId)
         if (!instance) {
           setWindows(prev => prev.map(w => 
             w.windowId === windowId 
@@ -867,8 +885,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           pageCSS: resources.css,
         }
 
-        if (!runtime.isRunning(schemeWindow.tappId)) {
-          await runtime.startTapp(schemeWindow.tappId)
+        if (!runtime.isRunning(tappId)) {
+          await runtime.startTapp(tappId)
         }
 
         setWindows(prev => prev.map(w => 
@@ -884,8 +902,6 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         ))
       }
     }
-    
-    setNextZIndex(prev => prev + scheme.windows.length)
   }, [nextZIndex, runtime, t.tapp.appNotExist, t.tapp.loadAppFailed])
 
   // 删除方案
@@ -949,10 +965,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                   style={{ color: 'var(--text-secondary)' }}
                   whileHover={{ backgroundColor: 'var(--bg-hover)' }}
                   whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                  title="窗口方案"
+                  title={t.tapp.windowScheme}
                 >
                   <FaTh className="w-4 h-4" />
-                  <span className="text-xs font-medium">方案</span>
+                  <span className="text-xs font-medium">{t.tapp.scheme}</span>
                 </motion.button>
             
                 {/* 方案下拉菜单 */}
@@ -984,7 +1000,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                             ) : (
                               <FaSave className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
                             )}
-                            <span>{isSaving ? '保存中...' : '保存当前方案'}</span>
+                            <span>{isSaving ? t.tapp.saving : t.tapp.saveCurrentScheme}</span>
                           </motion.button>
                         )}
                         
@@ -1015,7 +1031,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                                     className="text-xs"
                                     style={{ color: 'var(--text-muted)' }}
                                   >
-                                    {scheme.windows.length} 个窗口
+                                    {t.tapp.windowCount.replace('{count}', String(scheme.windows.length))}
                                   </span>
                                 </motion.button>
                                 <motion.button
@@ -1027,7 +1043,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                                   style={{ color: 'var(--text-muted)' }}
                                   whileHover={{ color: 'var(--color-error, #ef4444)' }}
                                   whileTap={{ scale: 0.9 }}
-                                  title="删除方案"
+                                  title={t.tapp.deleteScheme}
                                 >
                                   <FaTrash className="w-3.5 h-3.5" />
                                 </motion.button>
@@ -1039,7 +1055,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                             className="px-4 py-5 text-center text-sm"
                             style={{ color: 'var(--text-muted)' }}
                           >
-                            暂无保存的方案
+                            {t.tapp.noSavedSchemes}
                           </div>
                         ) : null}
                       </motion.div>
@@ -1071,7 +1087,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                 style={{ color: 'var(--color-primary)' }}
                 whileHover={{ backgroundColor: 'color-mix(in srgb, var(--color-primary) 15%, transparent)' }}
                 whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                title="添加窗口"
+                title={t.tapp.addWindow}
               >
                 <FaPlus className="w-4 h-4" />
               </motion.button>
@@ -1113,10 +1129,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                 <FaPlus className="w-8 h-8 text-gray-400 dark:text-gray-500" />
               </div>
               <h3 className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-2">
-                没有打开的窗口
+                {t.tapp.noOpenWindows}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                点击上方按钮添加应用窗口
+                {t.tapp.clickToAddWindow}
               </p>
               <motion.button
                 onClick={() => setShowTappSelector(true)}
@@ -1124,7 +1140,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                 whileHover={noAnimation ? undefined : { scale: 1.02 }}
                 whileTap={noAnimation ? undefined : { scale: 0.98 }}
               >
-                打开第一个应用
+                {t.tapp.openFirstApp}
               </motion.button>
             </div>
           </motion.div>
@@ -1168,7 +1184,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                     className="text-lg font-semibold"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    选择应用
+                    {t.tapp.selectApp}
                   </h3>
                   <motion.button
                     onClick={() => setShowTappSelector(false)}
@@ -1186,7 +1202,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                   {selectableTapps.length === 0 ? (
                     <div className="text-center py-8">
                       <p style={{ color: 'var(--text-muted)' }}>
-                        没有可用的应用
+                        {t.tapp.noAvailableApps}
                       </p>
                     </div>
                   ) : (

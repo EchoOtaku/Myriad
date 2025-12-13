@@ -28,7 +28,9 @@ use std::path::PathBuf;
 use tokio::fs;
 
 use crate::middleware::auth::{auth_middleware, extract_optional_claims, Claims};
-use crate::models::entities::{tapp_storage, tapp_store_sources, tapp_widgets, tapps};
+use crate::models::entities::{
+    tapp_storage, tapp_store_sources, tapp_user_activities, tapp_widgets, tapps,
+};
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
@@ -380,6 +382,7 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/install", post(install_tapp))
         .route("/install-file", post(install_tapp_file))
         .route("/cleanup-temporary", post(cleanup_temporary_tapps))
+        .route("/recent", get(get_recent_tapps))
         .route("/:tapp_id", delete(uninstall_tapp))
         .route("/:tapp_id/update", post(update_tapp))
         .route("/:tapp_id/start", post(start_tapp))
@@ -1702,6 +1705,8 @@ async fn export_tapp(
 /// - 管理员可以启动自己的 Tapp（修改数据库状态）
 /// - 普通用户可以启动管理员的 Tapp（不修改数据库，运行状态在前端维护）
 /// - 普通用户可以启动自己临时安装的 Tapp
+///
+/// 所有用户启动 Tapp 时都会记录到 tapp_user_activities 表
 async fn start_tapp(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1709,6 +1714,7 @@ async fn start_tapp(
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let admin_id = get_admin_user_id(&db).await?;
+    let now = Utc::now().fixed_offset();
 
     // 先尝试从管理员的 Tapp 中查找
     let admin_tapp = tapps::Entity::find()
@@ -1722,7 +1728,6 @@ async fn start_tapp(
         // 管理员的 Tapp
         if claims.is_admin {
             // 管理员启动自己的 Tapp，更新数据库状态
-            let now = Utc::now().fixed_offset();
             let mut active: tapps::ActiveModel = tapp.into();
             active.status = Set(tapps::TappStatus::Running);
             active.last_run_at = Set(Some(now));
@@ -1732,7 +1737,8 @@ async fn start_tapp(
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
-        // 普通用户启动管理员的 Tapp，不修改数据库（只读）
+        // 记录用户活动（所有用户都记录）
+        record_user_activity(&db, user_id, &tapp_id, now).await?;
         return Ok(Json(ApiResponse::success(())));
     }
 
@@ -1746,7 +1752,6 @@ async fn start_tapp(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if let Some(tapp) = user_tapp {
-            let now = Utc::now().fixed_offset();
             let mut active: tapps::ActiveModel = tapp.into();
             active.status = Set(tapps::TappStatus::Running);
             active.last_run_at = Set(Some(now));
@@ -1755,11 +1760,57 @@ async fn start_tapp(
                 .update(&db)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            // 记录用户活动
+            record_user_activity(&db, user_id, &tapp_id, now).await?;
             return Ok(Json(ApiResponse::success(())));
         }
     }
 
     Err(StatusCode::NOT_FOUND)
+}
+
+/// 记录用户 Tapp 使用活动
+///
+/// 使用 upsert 模式：如果记录存在则更新 last_run_at 和 run_count，否则插入新记录
+async fn record_user_activity(
+    db: &DatabaseConnection,
+    user_id: i32,
+    tapp_id: &str,
+    now: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<(), StatusCode> {
+    // 尝试查找现有记录
+    let existing = tapp_user_activities::Entity::find()
+        .filter(tapp_user_activities::Column::UserId.eq(user_id))
+        .filter(tapp_user_activities::Column::TappId.eq(tapp_id))
+        .one(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if let Some(record) = existing {
+        // 更新现有记录
+        let mut active: tapp_user_activities::ActiveModel = record.clone().into();
+        active.last_run_at = Set(now);
+        active.run_count = Set(record.run_count + 1);
+        active
+            .update(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    } else {
+        // 插入新记录
+        let new_record = tapp_user_activities::ActiveModel {
+            id: NotSet,
+            user_id: Set(user_id),
+            tapp_id: Set(tapp_id.to_string()),
+            last_run_at: Set(now),
+            run_count: Set(1),
+        };
+        new_record
+            .insert(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    Ok(())
 }
 
 /// 停止 Tapp
@@ -1824,6 +1875,111 @@ async fn stop_tapp(
     }
 
     Err(StatusCode::NOT_FOUND)
+}
+
+/// 最近使用的 Tapp 响应项
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentTappItem {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub icon_svg: Option<String>,
+    pub last_run_at: String,
+    pub run_count: i32,
+}
+
+/// 获取最近使用的 Tapp 查询参数
+#[derive(Debug, Deserialize)]
+struct GetRecentTappsQuery {
+    /// 返回的最大数量，默认 10
+    #[serde(default = "default_recent_limit")]
+    limit: i32,
+}
+
+fn default_recent_limit() -> i32 {
+    10
+}
+
+/// 获取当前用户最近使用的 Tapp 列表
+///
+/// 从 tapp_user_activities 表中获取，按 last_run_at 降序排列
+async fn get_recent_tapps(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Query(query): Query<GetRecentTappsQuery>,
+) -> Result<Json<ApiResponse<Vec<RecentTappItem>>>, StatusCode> {
+    use sea_orm::QueryOrder;
+
+    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let admin_id = get_admin_user_id(&db).await?;
+    let limit = query.limit.min(50).max(1) as u64; // 限制在 1-50 之间
+
+    // 获取用户活动记录
+    let activities = tapp_user_activities::Entity::find()
+        .filter(tapp_user_activities::Column::UserId.eq(user_id))
+        .order_by_desc(tapp_user_activities::Column::LastRunAt)
+        .all(&db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // 获取管理员的所有 Tapp（用于查找 Tapp 详情）
+    let admin_tapps = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(admin_id))
+        .all(&db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // 获取用户自己的临时 Tapp
+    let user_tapps = if user_id != admin_id {
+        tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(user_id))
+            .all(&db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        Vec::new()
+    };
+
+    // 合并 Tapp 列表，建立 tapp_id -> tapp 映射
+    let mut tapp_map: std::collections::HashMap<String, &tapps::Model> =
+        std::collections::HashMap::new();
+    for tapp in &admin_tapps {
+        tapp_map.insert(tapp.tapp_id.clone(), tapp);
+    }
+    for tapp in &user_tapps {
+        tapp_map.insert(tapp.tapp_id.clone(), tapp);
+    }
+
+    // 构建响应
+    let mut result: Vec<RecentTappItem> = Vec::new();
+    for activity in activities {
+        if result.len() >= limit as usize {
+            break;
+        }
+
+        // 查找对应的 Tapp 详情
+        if let Some(tapp) = tapp_map.get(&activity.tapp_id) {
+            // 从 manifest 中提取 iconSvg
+            let icon_svg = tapp
+                .manifest
+                .get("iconSvg")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+
+            result.push(RecentTappItem {
+                id: activity.tapp_id.clone(),
+                name: tapp.name.clone(),
+                icon: tapp.icon.clone(),
+                icon_svg,
+                last_run_at: activity.last_run_at.to_rfc3339(),
+                run_count: activity.run_count,
+            });
+        }
+        // 如果 Tapp 已被卸载，跳过该记录
+    }
+
+    Ok(Json(ApiResponse::success(result)))
 }
 
 /// 卸载 Tapp 查询参数

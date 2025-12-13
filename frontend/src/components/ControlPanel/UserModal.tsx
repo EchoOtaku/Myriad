@@ -2,7 +2,7 @@
 import { API_URL } from '../../config';
 import { getCSRFToken } from '../../utils/csrf';
 import { useI18n } from '../../contexts/I18nContext';
-import { listTapps, type TappListItem } from '../../tapp/services/TappApiService';
+import { listTapps, getRecentTapps, type TappListItem, type RecentTappItem } from '../../tapp/services/TappApiService';
 import { TappIcon, isIconSvg } from '../../tapp/components/TappIcon';
 import { useNavigate } from 'react-router-dom';
 import { SiAppstore } from '@lib/icons';
@@ -48,30 +48,30 @@ export const UserModal: React.FC<UserModalProps> = ({
   const [passwordError, setPasswordError] = useState('');
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [tapps, setTapps] = useState<TappListItem[]>([]);
+  const [recentTapps, setRecentTapps] = useState<RecentTappItem[]>([]);
   const [tappsLoading, setTappsLoading] = useState(true);
   const { t } = useI18n();
   const navigate = useNavigate();
 
-  // 加载 Tapp 列表
+  // 加载 Tapp 列表和最近使用记录
   useEffect(() => {
-    const loadTapps = async () => {
+    const loadData = async () => {
       try {
-        const list = await listTapps();
-        setTapps(list);
+        // 并行加载 Tapp 列表和最近使用记录
+        const [tappList, recentList] = await Promise.all([
+          listTapps(),
+          getRecentTapps(3).catch(() => [] as RecentTappItem[]) // 如果获取失败返回空数组
+        ]);
+        setTapps(tappList);
+        setRecentTapps(recentList);
       } catch (error) {
         console.error('Failed to load tapps:', error);
       } finally {
         setTappsLoading(false);
       }
     };
-    loadTapps();
+    loadData();
   }, []);
-
-  // 获取最近使用的 Tapp（按 last_run_at 排序，取前3个）
-  const recentTapps = [...tapps]
-    .filter(t => t.last_run_at)
-    .sort((a, b) => new Date(b.last_run_at!).getTime() - new Date(a.last_run_at!).getTime())
-    .slice(0, 3);
 
   // 处理修改密码
   const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {

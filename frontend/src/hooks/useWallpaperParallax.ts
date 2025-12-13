@@ -71,16 +71,7 @@ export function useWallpaperParallax(
   useEffect(() => {
     const s = stateRef.current;
     
-    // 🔍 调试日志
-    console.log('[WallpaperParallax] Hook init', {
-      enabled,
-      enableMouse,
-      enableGyroscope,
-      elementId,
-    });
-    
     if (!enabled) {
-      console.log('[WallpaperParallax] Disabled, cleaning up');
       const el = document.getElementById(elementId);
       if (el) {
         el.style.transform = '';
@@ -95,8 +86,6 @@ export function useWallpaperParallax(
       console.warn('[WallpaperParallax] Element not found:', elementId);
       return;
     }
-    
-    console.log('[WallpaperParallax] Element found:', el);
 
     // 初始化
     s.tx = 0; s.ty = 0; s.cx = 0; s.cy = 0;
@@ -218,22 +207,11 @@ export function useWallpaperParallax(
     // 改为：检测是否为纯移动设备（无鼠标指针）
     const isMobileOnly = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
     
-    console.log('[WallpaperParallax] Device detection', {
-      isMobileOnly,
-      enableMouse,
-      maxTouchPoints: navigator.maxTouchPoints,
-      hoverNone: window.matchMedia('(hover: none)').matches,
-      pointerCoarse: window.matchMedia('(pointer: coarse)').matches,
-    });
-    
     // 桌面设备（包括带触摸屏的笔记本）：启用鼠标事件
     // 纯移动设备（手机/平板无鼠标）：跳过鼠标事件，使用陀螺仪
     if (enableMouse && !isMobileOnly) {
-      console.log('[WallpaperParallax] Registering mouse events');
       window.addEventListener('mousemove', onMouse, { passive: true });
       document.addEventListener('mouseleave', onMouseLeave);
-    } else {
-      console.log('[WallpaperParallax] Mouse events SKIPPED (mobile-only device)');
     }
 
     if (enableGyroscope && 'DeviceOrientationEvent' in window) {

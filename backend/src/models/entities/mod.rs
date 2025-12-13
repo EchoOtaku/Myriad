@@ -11,6 +11,7 @@ pub mod reports;
 // Tapp 系统实体
 pub mod tapp_storage;
 pub mod tapp_store_sources;
+pub mod tapp_user_activities;
 pub mod tapp_widgets;
 pub mod tapps;
 

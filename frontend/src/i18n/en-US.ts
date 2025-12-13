@@ -1112,6 +1112,22 @@ export const enUS: TranslationKeys = {
     stopApp: 'Stop app',
     back: 'Back',
     
+    // Multi-window mode
+    windowScheme: 'Window Scheme',
+    scheme: 'Scheme',
+    saveCurrentScheme: 'Save Current Scheme',
+    saving: 'Saving...',
+    noSavedSchemes: 'No saved schemes',
+    windowCount: '{count} windows',
+    deleteScheme: 'Delete scheme',
+    schemeNamePrefix: 'Scheme',
+    addWindow: 'Add Window',
+    noOpenWindows: 'No open windows',
+    clickToAddWindow: 'Click the button above to add an app window',
+    openFirstApp: 'Open first app',
+    selectApp: 'Select App',
+    noAvailableApps: 'No available apps',
+    
     // Detail page
     appSettings: 'App Settings',
     customizeBehavior: 'Customize app behavior',

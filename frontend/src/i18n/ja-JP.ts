@@ -1115,6 +1115,22 @@ export const jaJP: TranslationKeys = {
     stopApp: 'アプリを停止',
     back: '戻る',
     
+    // マルチウィンドウモード
+    windowScheme: 'ウィンドウスキーム',
+    scheme: 'スキーム',
+    saveCurrentScheme: '現在のスキームを保存',
+    saving: '保存中...',
+    noSavedSchemes: '保存されたスキームはありません',
+    windowCount: '{count} 個のウィンドウ',
+    deleteScheme: 'スキームを削除',
+    schemeNamePrefix: 'スキーム',
+    addWindow: 'ウィンドウを追加',
+    noOpenWindows: '開いているウィンドウがありません',
+    clickToAddWindow: '上のボタンをクリックしてアプリウィンドウを追加',
+    openFirstApp: '最初のアプリを開く',
+    selectApp: 'アプリを選択',
+    noAvailableApps: '利用可能なアプリがありません',
+    
     // 詳細ページ
     appSettings: 'アプリ設定',
     customizeBehavior: 'アプリの動作をカスタマイズ',
@@ -1156,6 +1172,12 @@ export const jaJP: TranslationKeys = {
     retry: '再試行',
     uninstallFailed: 'アンインストールに失敗しました',
     unknownError: '不明なエラー',
+    // 更新機能
+    update: '更新',
+    updateFailed: '更新に失敗しました',
+    updateSuccess: '更新しました',
+    verified: '公式認証',
+    hasUpdate: '新バージョンあり',
     // アンインストール確認ダイアログ
     keepDataOnUninstall: 'アプリデータを保持',
     keepDataOnUninstallDesc: '再インストール時に復元できるよう、保存されたデータと設定を保持します',
