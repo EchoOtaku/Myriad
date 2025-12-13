@@ -13,7 +13,7 @@ import { TappPermissionController, createPermissionController } from './TappPerm
 import { useIframeResize, sendResizeMessage } from '../utils/iframeResize'
 import { useI18n } from '../../contexts/I18nContext'
 import { subscribeToTheme, getIsDarkMode } from '../../utils/themeSubscriber'
-import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
+import { subscribeToPrimaryColor, getPrimaryColor } from '../../utils/colorSubscriber'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 
@@ -346,8 +346,18 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // 主色调变化
   // 🎯 优化：使用共享的 colorSubscriber，避免每个组件都创建 MutationObserver
+  // 🎯 修复：isReady 时立即发送当前颜色，确保多窗口场景下正确初始化
   useEffect(() => {
     if (!isReady) return
+    
+    // 立即发送当前主色调，确保新打开的窗口能获取到
+    const bridge = bridgeRef.current
+    const currentColor = getPrimaryColor()
+    if (bridge && currentColor) {
+      bridge.emit('primaryColor:change', currentColor)
+    }
+    
+    // 订阅后续变化
     return subscribeToPrimaryColor((color) => {
       const bridge = bridgeRef.current
       if (bridge && color) {

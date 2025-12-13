@@ -19,7 +19,7 @@ import { useIframeResize, sendResizeMessage, calculateWidgetDimensions } from '.
 import { TappBridge } from './TappBridge'
 import { TappPermissionController } from './TappPermission'
 import { subscribeToTheme } from '../../utils/themeSubscriber'
-import { subscribeToPrimaryColor } from '../../utils/colorSubscriber'
+import { subscribeToPrimaryColor, getPrimaryColor } from '../../utils/colorSubscriber'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 
 // 核心模块
@@ -415,11 +415,19 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
   
   // 主色调变化监听（通过事件通知 iframe，而不是重建）
   // 🎯 优化：使用共享的 colorSubscriber，避免每个组件都创建 MutationObserver
+  // 🎯 修复：isReady 时立即发送当前颜色，确保多窗口/多组件场景下正确初始化
   useEffect(() => {
     if (!isReady) return
     
+    // 立即发送当前主色调，确保新创建的组件能获取到
+    const bridge = bridgeRef.current
+    const currentColor = getPrimaryColor()
+    if (bridge && currentColor) {
+      bridge.emit('primaryColor:change', currentColor)
+    }
+    
+    // 订阅后续变化
     return subscribeToPrimaryColor((color) => {
-      // 直接使用 bridgeRef.current，确保获取最新的 bridge 实例
       const bridge = bridgeRef.current
       if (bridge && color) {
         bridge.emit('primaryColor:change', color)
