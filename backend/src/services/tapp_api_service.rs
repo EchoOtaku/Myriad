@@ -369,13 +369,33 @@ impl TappApiService {
         api_def: &TappApiDef,
         context: &HashMap<String, Value>,
     ) -> Result<Value, String> {
-        let endpoint = api_def
+        // 支持 endpoint 或 url 字段（url 是 endpoint 的别名，向后兼容）
+        let base_url = api_def
             .endpoint
             .as_ref()
-            .ok_or("HTTP API requires endpoint")?;
+            .or(api_def.url.as_ref())
+            .ok_or("HTTP API requires endpoint or url")?;
 
         // 解析模板变量
-        let url = Self::resolve_template(endpoint, context);
+        let mut url = Self::resolve_template(base_url, context);
+
+        // 处理 params 字段（向后兼容旧格式）
+        // 如果有 params，将其转换为 URL 查询参数
+        if let Some(params) = &api_def.params {
+            let mut query_parts: Vec<String> = Vec::new();
+            for (key, value) in params {
+                let resolved_value = Self::resolve_template(value, context);
+                query_parts.push(format!(
+                    "{}={}",
+                    urlencoding::encode(key),
+                    urlencoding::encode(&resolved_value)
+                ));
+            }
+            if !query_parts.is_empty() {
+                let separator = if url.contains('?') { "&" } else { "?" };
+                url = format!("{}{}{}", url, separator, query_parts.join("&"));
+            }
+        }
 
         // 验证 URL 安全性
         Self::validate_url_security(&url)?;

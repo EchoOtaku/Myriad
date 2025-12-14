@@ -38,6 +38,7 @@ import {
   registerLifecycleHandlers,
   registerUIHandlers,
   registerStorageHandlers,
+  registerContextHandlers,
 } from './sandbox/handlers'
 
 import * as TappApiService from '../services/TappApiService'
@@ -378,6 +379,8 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
     registerUIHandlers(bridge)
     registerStorageHandlers(bridge, currentTappInstance.id)
     registerWidgetAIHandler(bridge, permission, currentTappInstance.id)
+    // 🎯 注册 Context 处理器（包含 api.execute 和 context.getGeo）
+    registerContextHandlers(bridge, currentTappInstance)
     
     // 监听 tapp.ready 事件（Widget HTML 发送的早期 ready 事件）
     const unsubscribeReady = bridge.on('tapp.ready', () => {

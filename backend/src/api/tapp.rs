@@ -4031,6 +4031,8 @@ pub async fn get_context_geo(
         access: TappApiAccess::Public,
         api_type: "builtin".to_string(),
         endpoint: None,
+        url: None,
+        params: None,
         method: "GET".to_string(),
         headers: None,
         body: None,

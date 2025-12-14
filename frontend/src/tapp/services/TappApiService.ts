@@ -1219,10 +1219,29 @@ export async function executeTappApi(
   apiName: string,
   params?: Record<string, unknown>
 ): Promise<TappApiExecuteResponse> {
-  return apiRequest(`/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`, {
+  // 不使用 apiRequest 因为它会自动解包 data 字段
+  // 这里需要返回完整的 { success, data, error, cached } 响应
+  const csrfToken = await getCSRFToken() || ''
+  
+  const response = await fetch(`${API_URL}/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken,
+    },
     body: JSON.stringify({ params }),
+    credentials: 'include',
   })
+
+  const result = await response.json()
+  
+  // 返回完整的响应结构
+  return {
+    success: result.success ?? false,
+    data: result.data,
+    error: result.error,
+    cached: result.cached,
+  }
 }
 
 /**

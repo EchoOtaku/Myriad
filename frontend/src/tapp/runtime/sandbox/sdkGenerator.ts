@@ -701,6 +701,17 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       onLocaleChange: function(cb) { return addEventListener('localeChange', cb); }
     },
     
+    // Tapp API 声明系统：调用 manifest 中声明的 API
+    // 支持两种访问级别：
+    // - public: 所有用户（包括游客）可调用
+    // - protected: 需要 network:fetch 权限
+    api: function(name, params) { return sendRequest('api', 'execute', [name, params]); },
+    
+    // 获取上下文信息
+    context: {
+      getGeo: function() { return sendRequest('context', 'getGeo', []); }
+    },
+    
     dom: {
       setText: function(el, text) { if (el) el.textContent = text; },
       setHtml: function(el, html) { if (el) el.innerHTML = html; },
@@ -726,6 +737,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   Object.freeze(Tapp.background);
   Object.freeze(Tapp.animation);
   Object.freeze(Tapp.ui);
+  Object.freeze(Tapp.context);
   Object.freeze(Tapp.dom);
   
   // 使用 seal 允许添加 widget/page 定义但禁止替换整个对象

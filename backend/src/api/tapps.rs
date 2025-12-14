@@ -236,6 +236,13 @@ pub struct TappApiDef {
     /// HTTP API 的端点 URL（支持模板变量）
     pub endpoint: Option<String>,
 
+    /// HTTP API 的端点 URL（endpoint 的别名，向后兼容）
+    pub url: Option<String>,
+
+    /// URL 查询参数（向后兼容旧格式，支持模板变量）
+    /// 当使用 url 字段时，params 会被转换为查询字符串
+    pub params: Option<std::collections::HashMap<String, String>>,
+
     /// HTTP 方法 (GET, POST, etc.)，默认 GET
     #[serde(default = "default_http_method")]
     pub method: String,
