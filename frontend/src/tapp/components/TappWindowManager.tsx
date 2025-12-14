@@ -174,31 +174,37 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
     window.tapp ? getTappIconStyle(window.tapp.manifest) : null
   , [window.tapp])
 
-  // 拖拽处理
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
+  // 拖拽处理 - 支持鼠标和触摸
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(true)
-    dragStartRef.current = { x: e.clientX, y: e.clientY }
+    // 获取坐标（支持鼠标和触摸）
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    dragStartRef.current = { x: clientX, y: clientY }
     // 使用 ref 中的当前值，确保从正确位置开始
     positionStartRef.current = { ...currentPositionRef.current }
     onFocus(window.windowId)
   }, [window.windowId, onFocus])
 
-  // 调整大小处理
-  const handleResizeStart = useCallback((e: React.MouseEvent, direction: string) => {
+  // 调整大小处理 - 支持鼠标和触摸
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent, direction: string) => {
     e.preventDefault()
     e.stopPropagation()
     setIsResizing(true)
     setResizeDirection(direction)
-    dragStartRef.current = { x: e.clientX, y: e.clientY }
+    // 获取坐标（支持鼠标和触摸）
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    dragStartRef.current = { x: clientX, y: clientY }
     // 使用 ref 中的当前值，确保从正确位置和尺寸开始
     positionStartRef.current = { ...currentPositionRef.current }
     sizeStartRef.current = { ...currentSizeRef.current }
     onFocus(window.windowId)
   }, [window.windowId, onFocus])
 
-  // 鼠标移动处理 - 使用 requestAnimationFrame 节流优化性能
+  // 移动处理 - 使用 requestAnimationFrame 节流优化性能，支持鼠标和触摸
   useEffect(() => {
     if (!isDragging && !isResizing) return
     
@@ -209,11 +215,15 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
     let lastX = dragStartRef.current.x
     let lastY = dragStartRef.current.y
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      // 获取坐标（支持鼠标和触摸）
+      const clientX = 'touches' in e ? e.touches[0]?.clientX ?? lastX : e.clientX
+      const clientY = 'touches' in e ? e.touches[0]?.clientY ?? lastY : e.clientY
+      
       // 避免重复计算相同位置
-      if (e.clientX === lastX && e.clientY === lastY) return
-      lastX = e.clientX
-      lastY = e.clientY
+      if (clientX === lastX && clientY === lastY) return
+      lastX = clientX
+      lastY = clientY
 
       // 取消上一次未执行的 RAF
       if (rafId) cancelAnimationFrame(rafId)
@@ -221,8 +231,8 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
       rafId = requestAnimationFrame(() => {
         if (!windowRef.current) return
         
-        const deltaX = e.clientX - dragStartRef.current.x
-        const deltaY = e.clientY - dragStartRef.current.y
+        const deltaX = clientX - dragStartRef.current.x
+        const deltaY = clientY - dragStartRef.current.y
 
         if (isDragging) {
           // 拖拽移动 - 直接操作 DOM
@@ -275,7 +285,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
       })
     }
 
-    const handleMouseUp = () => {
+    const handleEnd = () => {
       if (rafId) cancelAnimationFrame(rafId)
       
       // 交互结束时一次性同步状态到 React
@@ -293,13 +303,21 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
       setResizeDirection(null)
     }
 
-    document.addEventListener('mousemove', handleMouseMove, { passive: true })
-    document.addEventListener('mouseup', handleMouseUp)
+    // 鼠标事件
+    document.addEventListener('mousemove', handleMove, { passive: true })
+    document.addEventListener('mouseup', handleEnd)
+    // 触摸事件 - 使用 passive: true 优化滚动性能
+    document.addEventListener('touchmove', handleMove, { passive: true })
+    document.addEventListener('touchend', handleEnd)
+    document.addEventListener('touchcancel', handleEnd)
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('mouseup', handleEnd)
+      document.removeEventListener('touchmove', handleMove)
+      document.removeEventListener('touchend', handleEnd)
+      document.removeEventListener('touchcancel', handleEnd)
     }
   // 注意：onMove, onResize, window.windowId 通过闭包捕获，不加入依赖以避免不必要的重新绑定
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -370,11 +388,12 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
       }}
       onClick={handleWindowClick}
     >
-      {/* 窗口标题栏 - 可拖拽 */}
+      {/* 窗口标题栏 - 可拖拽（支持鼠标和触摸） */}
       <div
         className={`flex items-center justify-between px-3 h-10 flex-shrink-0 select-none backdrop-blur-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={headerStyle}
         onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
       >
         {/* 左侧：拖拽手柄 + 图标 + 名称 */}
         <div className="flex items-center gap-2 min-w-0">
@@ -477,12 +496,13 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
         ) : null}
       </div>
 
-      {/* 调整大小的手柄 */}
+      {/* 调整大小的手柄（支持鼠标和触摸） */}
       {resizeHandles.map(({ direction, className }) => (
         <div
           key={direction}
           className={`absolute ${className} z-10`}
           onMouseDown={(e) => handleResizeStart(e, direction)}
+          onTouchStart={(e) => handleResizeStart(e, direction)}
           onMouseEnter={(e) => {
             (e.target as HTMLElement).style.backgroundColor = 'color-mix(in srgb, var(--color-primary) 30%, transparent)'
           }}
