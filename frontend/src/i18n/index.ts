@@ -1083,6 +1083,7 @@ export interface TranslationKeys {
     // 列表页面
     listTitle: string;
     listSubtitle: string;
+    multiWindow: string;
     noAppsInstalled: string;
     noAppsInstalledDesc: string;
     browseStore: string;
@@ -1179,6 +1180,7 @@ export interface TranslationKeys {
     updateSuccess: string;
     verified: string;
     hasUpdate: string;
+    currentVersion: string;
     // 卸载确认对话框
     keepDataOnUninstall: string;
     keepDataOnUninstallDesc: string;

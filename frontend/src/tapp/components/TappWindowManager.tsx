@@ -435,7 +435,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
           <motion.button
             onClick={handleCloseClick}
             className="p-1 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-            title="关闭"
+            title={t.common.close}
             whileHover={noAnimation ? undefined : { scale: 1.1 }}
             whileTap={noAnimation ? undefined : { scale: 0.9 }}
           >

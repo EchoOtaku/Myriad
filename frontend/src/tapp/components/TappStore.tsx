@@ -288,14 +288,14 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
               <span className={`text-xs ${hasUpdate ? 'text-amber-500 font-medium' : 'text-gray-400 dark:text-gray-500'}`}>
                 v{app.version}
                 {hasUpdate && installedVersion && (
-                  <span className="text-gray-400 dark:text-gray-500 font-normal"> (当前 v{installedVersion})</span>
+                  <span className="text-gray-400 dark:text-gray-500 font-normal"> ({t.tapp.currentVersion.replace('{version}', installedVersion)})</span>
                 )}
               </span>
               {app.source === 'remote' && (
                 <SiAppstore className="w-3 h-3 text-indigo-400" title={t.tapp.remoteStore} />
               )}
               {app.verified && (
-                <FaCheckCircle className="w-3 h-3 text-blue-500" title={t.tapp.verified || '官方验证'} />
+                <FaCheckCircle className="w-3 h-3 text-blue-500" title={t.tapp.verified} />
               )}
             </div>
           </div>
@@ -309,7 +309,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
               className="p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
-              title={t.tapp.update || '更新'}
+              title={t.tapp.update}
             >
               {updating ? (
                 <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
@@ -1058,7 +1058,7 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
       onInstalled()
     } catch (error) {
       console.error('Failed to update Tapp:', error)
-      alert((t.tapp.updateFailed || '更新失败') + ': ' + (error instanceof Error ? error.message : t.tapp.unknownError))
+      alert(t.tapp.updateFailed + ': ' + (error instanceof Error ? error.message : t.tapp.unknownError))
     } finally {
       setUpdating(null)
     }

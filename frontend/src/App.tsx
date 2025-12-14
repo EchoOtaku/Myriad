@@ -209,8 +209,8 @@ const fixedPageVariants = {
 function AppRoutes() {
   const location = useLocation();
   
-  // 🎯 判断是否是 fixed 布局页面（如 TappRunPage）
-  const isFixedLayoutPage = location.pathname.startsWith('/tapp/run/');
+  // 🎯 判断是否是 fixed 布局页面（如 TappRunPage、多任务模式）
+  const isFixedLayoutPage = location.pathname.startsWith('/tapp/run/') || location.pathname === '/tapp/run';
 
   // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
   // 这会在路由切换时清理旧页面的订阅并初始化新页面
@@ -255,6 +255,7 @@ function AppRoutes() {
         
         {/* Tapp 路由 */}
         <Route path="/tapp" element={<SuspensePage><TappList /></SuspensePage>} />
+        <Route path="/tapp/run" element={<SuspensePage><TappRun /></SuspensePage>} />
         <Route path="/tapp/run/:id" element={<SuspensePage><TappRun /></SuspensePage>} />
         <Route path="/tapp/detail/:id" element={<SuspensePage><TappDetail /></SuspensePage>} />
 

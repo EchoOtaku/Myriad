@@ -624,10 +624,18 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       audioManager.setCurrentAudio(audioRef.current, song);
       
       if (autoPlay) {
-        setTimeout(() => {
-          audioRef.current?.play().catch(() => setIsPlaying(false));
-          setIsPlaying(true);
-          audioManager.setPlaybackState('playing');
+        // 🔧 简化：延迟后尝试播放，状态由 audio 事件处理器同步
+        setTimeout(async () => {
+          try {
+            await audioRef.current?.play();
+            // 播放成功后才设置状态（handlePlay 事件也会设置，这里确保一致）
+            setIsPlaying(true);
+            audioManager.setPlaybackState('playing');
+          } catch (error) {
+            // 播放失败
+            setIsPlaying(false);
+            audioManager.setPlaybackState('paused');
+          }
         }, 100);
       } else {
         setIsPlaying(false);
@@ -1131,10 +1139,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
             audioRef.current.src = preloadAudioRef.current.src;
             audioRef.current.volume = volume;
             audioRef.current.load();
-            audioRef.current.play().catch(() => setIsPlaying(false));
-            setIsPlaying(true);
-            
-            audioManager.setCurrentAudio(audioRef.current, nextSong);
+            // 🔧 使用 async/await 确保播放成功后才更新状态
+            try {
+              await audioRef.current.play();
+              setIsPlaying(true);
+              audioManager.setCurrentAudio(audioRef.current, nextSong);
+            } catch {
+              setIsPlaying(false);
+            }
           }
           
           setCurrentSong(nextSong);
@@ -1239,55 +1251,22 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   }, [playlist]);
   
   // 移动端后台播放恢复 - 页面可见性变化时检查音频状态
-  // 使用 ref 存储状态避免频繁重建监听器
-  const isPlayingRef = useRef(isPlaying);
-  const currentSongRef = useRef(currentSong);
-  // 记录页面进入后台前的播放状态（持久化在 ref 中）
-  const wasPlayingBeforeHiddenRef = useRef(false);
-  isPlayingRef.current = isPlaying;
-  currentSongRef.current = currentSong;
-  
+  // 🔧 简化逻辑：只处理 AudioContext 恢复，不自动恢复播放
+  // 用户通过系统媒体控制暂停后，不应该在页面恢复时自动播放
   useEffect(() => {
     const handleVisibilityChange = async () => {
       const audio = audioRef.current;
       if (!audio) return;
       
-      if (document.hidden) {
-        // 页面进入后台：记录当前播放状态
-        // 注意：此时 audio.paused 可能还没被浏览器设置为 true
-        wasPlayingBeforeHiddenRef.current = isPlayingRef.current || !audio.paused;
-        
-        // 更新 Media Session 状态以保持系统媒体控制可用
-        if (wasPlayingBeforeHiddenRef.current) {
-          audioManager.setPlaybackState('playing');
-          // 强制更新位置状态
-          if (audio.duration && isFinite(audio.duration)) {
-            audioManager.updatePositionState(audio.duration, audio.currentTime, audio.playbackRate);
-          }
-        }
-      } else {
-        // 页面恢复到前台
-        // 1. 恢复可能被暂停的 AudioContext（用于频谱分析）
+      if (!document.hidden) {
+        // 页面恢复到前台：只恢复 AudioContext（用于频谱分析）
         await audioManager.resumeAudioContext();
         
-        // 2. 检查是否需要恢复播放（某些移动端浏览器会在后台暂停音频）
-        if (wasPlayingBeforeHiddenRef.current && audio.paused && currentSongRef.current) {
-          // 尝试恢复播放 - 这是关键！
-          try {
-            await audio.play();
-            setIsPlaying(true);
-            audioManager.setPlaybackState('playing');
-          } catch (error) {
-            console.warn('Failed to resume playback after visibility change:', error);
-          }
-        } else if (!audio.paused) {
-          // 同步播放状态
-          setIsPlaying(true);
-          audioManager.setPlaybackState('playing');
-        }
-        
-        // 重置标记
-        wasPlayingBeforeHiddenRef.current = false;
+        // 🔧 同步播放状态到 React 状态（以音频元素实际状态为准）
+        // 不主动恢复播放，尊重用户的暂停操作
+        const actuallyPlaying = !audio.paused;
+        setIsPlaying(actuallyPlaying);
+        audioManager.setPlaybackState(actuallyPlaying ? 'playing' : 'paused');
       }
     };
     
@@ -1305,16 +1284,20 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   
   useEffect(() => {
     audioManager.setMediaSessionHandlers({
-      play: () => {
+      play: async () => {
         if (audioRef.current) {
-          audioRef.current.play().catch(() => {});
-          setIsPlaying(true);
+          try {
+            await audioRef.current.play();
+            // 状态由 handlePlay 事件同步，这里不需要额外设置
+          } catch {
+            // 播放失败，静默处理
+          }
         }
       },
       pause: () => {
         if (audioRef.current) {
           audioRef.current.pause();
-          setIsPlaying(false);
+          // 状态由 handlePause 事件同步，这里不需要额外设置
         }
       },
       previoustrack: () => playPreviousRef.current(),

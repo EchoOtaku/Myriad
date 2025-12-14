@@ -1079,6 +1079,7 @@ export const enUS: TranslationKeys = {
     // List page
     listTitle: 'Tapp Apps',
     listSubtitle: 'Manage and run your extension apps',
+    multiWindow: 'Multi-window',
     noAppsInstalled: 'No apps installed yet',
     noAppsInstalledDesc: 'Install Tapp apps to extend functionality, add custom widgets and data sources',
     browseStore: 'Browse Store',
@@ -1175,6 +1176,7 @@ export const enUS: TranslationKeys = {
     updateSuccess: 'Update successful',
     verified: 'Verified',
     hasUpdate: 'Update available',
+    currentVersion: 'Current v{version}',
     // Uninstall confirmation dialog
     keepDataOnUninstall: 'Keep app data',
     keepDataOnUninstallDesc: 'Preserve stored data and settings for recovery when reinstalling',

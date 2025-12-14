@@ -1082,6 +1082,7 @@ export const jaJP: TranslationKeys = {
     // リストページ
     listTitle: 'Tapp アプリ',
     listSubtitle: '拡張アプリを管理・実行',
+    multiWindow: 'マルチウィンドウ',
     noAppsInstalled: 'アプリがインストールされていません',
     noAppsInstalledDesc: 'Tapp アプリをインストールして機能を拡張し、カスタムウィジェットやデータソースを追加',
     browseStore: 'ストアを見る',
@@ -1178,6 +1179,7 @@ export const jaJP: TranslationKeys = {
     updateSuccess: '更新しました',
     verified: '公式認証',
     hasUpdate: '新バージョンあり',
+    currentVersion: '現在 v{version}',
     // アンインストール確認ダイアログ
     keepDataOnUninstall: 'アプリデータを保持',
     keepDataOnUninstallDesc: '再インストール時に復元できるよう、保存されたデータと設定を保持します',

@@ -10,6 +10,7 @@ import AnimatedView from '../../components/AnimatedView'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useTappScheduler, useTappStagger } from '../../hooks/animation/pages/tapp'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
+import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { 
   FaPlus, 
   FaPlay, 
@@ -21,6 +22,7 @@ import {
   FaUpload,
   FaTimes,
   FaFileAlt,
+  FaTh,
   SiAppstore,
 } from '@lib/icons'
 import { getTappRuntime } from '../runtime'
@@ -554,6 +556,7 @@ const InstallTappModal = ({
 export const TappListPage = () => {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const { isMobile } = useBreakpoints()
   const { isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
   const [tapps, setTapps] = useState<TappInstance[]>([])
   const [runningTapps, setRunningTapps] = useState<Set<string>>(new Set())
@@ -622,11 +625,12 @@ export const TappListPage = () => {
     initLoad()
 
     // 鐩戝惉浜嬩欢
-    const unsubInstalled = runtime.on('tapp:installed', loadTapps)
-    const unsubUninstalled = runtime.on('tapp:uninstalled', loadTapps)
-    const unsubStarted = runtime.on('tapp:started', loadTapps)
-    const unsubStopped = runtime.on('tapp:stopped', loadTapps)
-    const unsubSyncComplete = runtime.on('sync:complete', loadTapps)
+    const handleTappChange = () => loadTapps()
+    const unsubInstalled = runtime.on('tapp:installed', handleTappChange)
+    const unsubUninstalled = runtime.on('tapp:uninstalled', handleTappChange)
+    const unsubStarted = runtime.on('tapp:started', handleTappChange)
+    const unsubStopped = runtime.on('tapp:stopped', handleTappChange)
+    const unsubSyncComplete = runtime.on('sync:complete', handleTappChange)
 
     return () => {
       mounted = false
@@ -737,6 +741,18 @@ export const TappListPage = () => {
                     <SiAppstore className="w-3 h-3" />
                     {t.tapp.store}
                   </button>
+                  {/* 多任务入口 - 仅平板和PC端显示 */}
+                  {!isMobile && (
+                    <button
+                      onClick={() => navigate('/tapp/run?multi=true')}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                      style={{ color: 'var(--color-primary)' }}
+                      title={t.tapp.multiWindow}
+                    >
+                      <FaTh className="w-3 h-3" />
+                      {t.tapp.multiWindow}
+                    </button>
+                  )}
                   {isAdmin && (
                     <button
                       onClick={() => setShowInstallModal(true)}

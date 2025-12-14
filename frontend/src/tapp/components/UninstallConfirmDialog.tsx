@@ -99,10 +99,10 @@ export function UninstallConfirmDialog({
               />
               <div className="flex-1">
                 <div className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                  {t.tapp.keepDataOnUninstall || '保留应用数据'}
+                  {t.tapp.keepDataOnUninstall}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {t.tapp.keepDataOnUninstallDesc || '保留存储的数据和设置，以便再次安装时恢复'}
+                  {t.tapp.keepDataOnUninstallDesc}
                 </p>
               </div>
             </label>
@@ -114,7 +114,7 @@ export function UninstallConfirmDialog({
                 disabled={uninstalling}
                 className="flex-1 px-4 py-2.5 font-medium rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-gray-300 disabled:opacity-50"
               >
-                {t.tapp.cancel || '取消'}
+                {t.tapp.cancel}
               </button>
               <button
                 onClick={handleConfirm}
@@ -124,12 +124,12 @@ export function UninstallConfirmDialog({
                 {uninstalling ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {t.tapp.uninstalling || '卸载中...'}
+                    {t.tapp.uninstalling}
                   </>
                 ) : (
                   <>
                     <FaTrash className="w-4 h-4" />
-                    {t.tapp.confirmUninstallBtn || '确认卸载'}
+                    {t.tapp.confirmUninstallBtn}
                   </>
                 )}
               </button>

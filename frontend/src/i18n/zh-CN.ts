@@ -1082,6 +1082,7 @@ export const zhCN: TranslationKeys = {
     // 列表页面
     listTitle: 'Tapp 应用',
     listSubtitle: '管理和运行你的扩展应用',
+    multiWindow: '多窗口',
     noAppsInstalled: '还没有安装任何应用',
     noAppsInstalledDesc: '安装 Tapp 应用来扩展功能，添加自定义小组件和数据源',
     browseStore: '浏览商店',
@@ -1178,6 +1179,7 @@ export const zhCN: TranslationKeys = {
     updateSuccess: '更新成功',
     verified: '官方验证',
     hasUpdate: '有新版本',
+    currentVersion: '当前 v{version}',
     // 卸载确认对话框
     keepDataOnUninstall: '保留应用数据',
     keepDataOnUninstallDesc: '保留存储的数据和设置，以便再次安装时恢复',

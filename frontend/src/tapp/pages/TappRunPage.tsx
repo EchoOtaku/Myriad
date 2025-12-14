@@ -427,7 +427,7 @@ const TappRunPageStandard = ({ tappId, isMobile }: TappRunPageStandardProps) => 
                     <motion.button
                       onClick={handleRetry}
                       className="p-1.5 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
-                      title={t.tapp.retry || '重试'}
+                      title={t.tapp.retry}
                       whileHover={noAnimation ? undefined : { scale: 1.1, rotate: 180 }}
                       whileTap={noAnimation ? undefined : { scale: 0.9 }}
                     >
@@ -448,7 +448,7 @@ const TappRunPageStandard = ({ tappId, isMobile }: TappRunPageStandardProps) => 
                       <motion.button
                         onClick={() => navigate(`/tapp/run/${tappId}?multi=true`)}
                         className="p-1.5 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
-                        title="多窗口模式"
+                        title={t.tapp.multiWindow}
                         initial={{ opacity: 0, y: 4 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0 }}
@@ -544,7 +544,7 @@ const TappRunPageStandard = ({ tappId, isMobile }: TappRunPageStandardProps) => 
                         className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
                       >
                         <FaRedo className="w-3.5 h-3.5" />
-                        {t.tapp.retry || '重试'}
+                        {t.tapp.retry}
                       </button>
                     </div>
                   </motion.div>

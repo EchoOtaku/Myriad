@@ -25,6 +25,9 @@ function spaFallbackPlugin() {
         // 服务端将这些路径重写为占位路径，但浏览器 URL 保持不变
         if (url.match(/^\/tapp\/run\/[^_/][^/]*/)) {
           req.url = '/tapp/run/_';
+        } else if (url.match(/^\/tapp\/run(\?|$)/)) {
+          // 多任务模式：/tapp/run 或 /tapp/run?multi=true
+          req.url = '/tapp/run/_';
         } else if (url.match(/^\/tapp\/detail\/[^_/][^/]*/)) {
           req.url = '/tapp/detail/_';
         }

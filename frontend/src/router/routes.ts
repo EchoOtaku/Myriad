@@ -68,6 +68,12 @@ export const routes: RouteConfig[] = [
     description: '管理和运行扩展应用',
   },
   {
+    path: '/tapp/run',
+    component: () => import('../views/TappRunView.tsx'),
+    title: 'Tapp 多任务 - Myriad',
+    description: '多窗口应用管理',
+  },
+  {
     path: '/tapp/run/:id',
     component: () => import('../views/TappRunView.tsx'),
     title: 'Tapp - Myriad',

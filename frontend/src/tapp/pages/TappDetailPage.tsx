@@ -266,7 +266,7 @@ export const TappDetailPage = ({ tappId }: TappDetailPageProps) => {
       }
     } catch (err) {
       console.error('Failed to save setting:', err)
-      setToastMessage(`✗ ${t.tapp.settingSaveFailed || '保存失败'}`)
+      setToastMessage(`✗ ${t.tapp.settingSaveFailed}`)
     } finally {
       setSettingsSaving(null)
     }
