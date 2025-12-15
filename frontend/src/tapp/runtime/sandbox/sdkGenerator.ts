@@ -378,6 +378,10 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       },
     },
 
+    file: {
+      download: (content, filename, mimeType) => sendRequest('file', 'download', [{ content, filename, mimeType }]),
+    },
+
     user: {
       getRole: () => sendRequest('user', 'getRole', []),
       isAdmin: () => sendRequest('user', 'isAdmin', []),
@@ -433,6 +437,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   Object.freeze(Tapp.shortcut);
   Object.freeze(Tapp.event);
   Object.freeze(Tapp.dom);
+  Object.freeze(Tapp.file);
   Object.freeze(Tapp.user);
   Object.freeze(Tapp.background);
   Object.freeze(Tapp.dynamicContent);
@@ -720,6 +725,10 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       toggleClass: function(el, cls) { if (el) el.classList.toggle(cls); }
     },
     
+    file: {
+      download: function(content, filename, mimeType) { return sendRequest('file', 'download', [{ content: content, filename: filename, mimeType: mimeType }]); }
+    },
+    
     lifecycle: {
       onReady: function(cb) { if (document.readyState === 'complete') setTimeout(cb, 0); else window.addEventListener('load', cb); },
       onDestroy: function(cb) { window.addEventListener('beforeunload', cb); }
@@ -739,6 +748,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   Object.freeze(Tapp.ui);
   Object.freeze(Tapp.context);
   Object.freeze(Tapp.dom);
+  Object.freeze(Tapp.file);
   
   // 使用 seal 允许添加 widget/page 定义但禁止替换整个对象
   Object.seal(Tapp.widgets);

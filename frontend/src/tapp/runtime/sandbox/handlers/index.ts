@@ -7,6 +7,7 @@ export {
   registerUIHandlers,
   registerStorageHandlers,
   registerUserHandlers,
+  registerFileHandlers,
 } from './baseHandlers'
 
 export {

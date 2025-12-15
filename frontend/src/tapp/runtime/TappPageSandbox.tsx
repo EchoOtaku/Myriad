@@ -56,6 +56,7 @@ import {
   registerUIHandlers,
   registerStorageHandlers,
   registerUserHandlers,
+  registerFileHandlers,
   registerWidgetHandlers,
   registerPlatformHandlers,
   registerAIHandlers,
@@ -469,6 +470,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerUIHandlers(bridge, () => localeRef.current, onNotification)
     registerStorageHandlers(bridge, currentTappInstance.id)
     registerUserHandlers(bridge, currentTappInstance)
+    registerFileHandlers(bridge)
     registerWidgetHandlers(bridge, currentTappInstance)
     registerPlatformHandlers(bridge, currentTappInstance)
     registerAIHandlers(bridge, permission, currentTappInstance)

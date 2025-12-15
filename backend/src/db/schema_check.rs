@@ -1461,8 +1461,8 @@ pub async fn ensure_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
 async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 检查版本是否已应用
     if is_schema_version_applied(db, SCHEMA_VERSION).await? {
-        tracing::debug!(
-            "✅ Schema version {} already applied, skipping",
+        tracing::info!(
+            "✅ Schema version {} already applied, skipping check",
             SCHEMA_VERSION
         );
         return Ok(());

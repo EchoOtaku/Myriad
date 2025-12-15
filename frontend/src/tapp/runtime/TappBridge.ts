@@ -200,6 +200,9 @@ const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = new Map([
   ['dynamicContent.update', 'ui:notification'],
   ['dynamicContent.remove', 'ui:notification'],
   
+  // 文件操作权限
+  ['file.download', 'storage'],
+  
   // 定时任务权限
   ['scheduler.register', 'scheduler:register'],
   ['scheduler.unregister', 'scheduler:register'],

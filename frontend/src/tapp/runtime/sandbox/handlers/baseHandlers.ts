@@ -319,3 +319,60 @@ export function registerUserHandlers(
     return { success: true, data: allowed }
   })
 }
+
+/**
+ * 注册文件处理器
+ * 
+ * 提供文件下载功能，绕过 iframe 沙箱限制
+ */
+export function registerFileHandlers(
+  bridge: TappBridge
+): void {
+  bridge.registerHandler('file.download', async (message) => {
+    const [options] = (message.payload as { args: unknown[] }).args || []
+    if (!options) return { success: false, error: 'Options required' }
+    
+    const { content, filename, mimeType } = options as {
+      content: string
+      filename: string
+      mimeType?: string
+    }
+    
+    if (!content) return { success: false, error: 'Content is required' }
+    if (!filename) return { success: false, error: 'Filename is required' }
+    
+    // 验证文件名（防止路径遍历）
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return { success: false, error: 'Invalid filename' }
+    }
+    
+    // 限制文件大小（最大 10MB）
+    const MAX_SIZE = 10 * 1024 * 1024
+    if (content.length > MAX_SIZE) {
+      return { success: false, error: `Content too large (max ${MAX_SIZE} bytes)` }
+    }
+    
+    try {
+      // 在主应用上下文中创建下载（绕过 iframe 沙箱限制）
+      const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      
+      // 清理
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 100)
+      
+      return { success: true, data: { filename } }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Download failed' }
+    }
+  })
+}

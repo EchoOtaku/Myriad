@@ -38,6 +38,7 @@ import {
   registerLifecycleHandlers,
   registerUIHandlers,
   registerStorageHandlers,
+  registerFileHandlers,
   registerContextHandlers,
 } from './sandbox/handlers'
 
@@ -378,6 +379,7 @@ export const TappWidgetSandbox = memo(function TappWidgetSandbox({
     registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
     registerUIHandlers(bridge)
     registerStorageHandlers(bridge, currentTappInstance.id)
+    registerFileHandlers(bridge)
     registerWidgetAIHandler(bridge, permission, currentTappInstance.id)
     // 🎯 注册 Context 处理器（包含 api.execute 和 context.getGeo）
     registerContextHandlers(bridge, currentTappInstance)
