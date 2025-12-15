@@ -525,6 +525,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
           // 不使用 overflow: hidden, isolation, contain 等
           ...style,
         }}
+        data-no-ripple
       >
         <iframe
           ref={iframeRef}
@@ -565,6 +566,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         isolation: 'isolate',
         ...style,
       }}
+      data-no-ripple
     >
       <iframe
         ref={iframeRef}

@@ -941,7 +941,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   }, [availableTapps])
 
   return (
-    <div className="fixed inset-0 overflow-hidden">
+    <div className="fixed inset-0 overflow-hidden" data-no-ripple>
       {/* 顶部工具栏 - 简化合并 */}
       <div className="absolute top-4 left-4 z-[1000]">
         <div 

@@ -52,6 +52,12 @@ pub struct UiConfig {
     pub wallpaper_url: String,
     pub wallpaper_blur: u32,
     pub wallpaper_parallax: bool,
+    // Evocative 壁纸动效
+    pub evocative_parallax: bool,
+    pub evocative_dynamic_blur: bool,
+    pub evocative_ripple: bool,
+    pub evocative_fps: u32,
+    pub evocative_ripple_quality: f64,
     pub theme: String,
     pub primary_color: String,
     pub secondary_color: String,
@@ -465,6 +471,52 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .parse()
                         .unwrap_or(true)
                 }),
+            // Evocative 壁纸动效
+            evocative_parallax: db_config
+                .as_ref()
+                .map(|c| c.ui_evocative_parallax)
+                .unwrap_or_else(|| {
+                    std::env::var("UI_EVOCATIVE_PARALLAX")
+                        .unwrap_or_else(|_| "true".to_string())
+                        .parse()
+                        .unwrap_or(true)
+                }),
+            evocative_dynamic_blur: db_config
+                .as_ref()
+                .map(|c| c.ui_evocative_dynamic_blur)
+                .unwrap_or_else(|| {
+                    std::env::var("UI_EVOCATIVE_DYNAMIC_BLUR")
+                        .unwrap_or_else(|_| "false".to_string())
+                        .parse()
+                        .unwrap_or(false)
+                }),
+            evocative_ripple: db_config
+                .as_ref()
+                .map(|c| c.ui_evocative_ripple)
+                .unwrap_or_else(|| {
+                    std::env::var("UI_EVOCATIVE_RIPPLE")
+                        .unwrap_or_else(|_| "false".to_string())
+                        .parse()
+                        .unwrap_or(false)
+                }),
+            evocative_fps: db_config
+                .as_ref()
+                .map(|c| c.ui_evocative_fps as u32)
+                .unwrap_or_else(|| {
+                    std::env::var("UI_EVOCATIVE_FPS")
+                        .unwrap_or_else(|_| "30".to_string())
+                        .parse()
+                        .unwrap_or(30)
+                }),
+            evocative_ripple_quality: db_config
+                .as_ref()
+                .map(|c| c.ui_evocative_ripple_quality)
+                .unwrap_or_else(|| {
+                    std::env::var("UI_EVOCATIVE_RIPPLE_QUALITY")
+                        .unwrap_or_else(|_| "0.85".to_string())
+                        .parse()
+                        .unwrap_or(0.85)
+                }),
             theme: db_config
                 .as_ref()
                 .and_then(|c| c.ui_theme.clone())
@@ -551,6 +603,76 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                                 .unwrap_or_else(|_| "true".to_string())
                         }),
                     placeholder: "true".to_string(),
+                    required: false,
+                },
+                // Evocative 壁纸动效配置
+                ConfigField {
+                    key: "evocative_parallax".to_string(),
+                    label: "微动效果".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ui_evocative_parallax.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("UI_EVOCATIVE_PARALLAX")
+                                .unwrap_or_else(|_| "true".to_string())
+                        }),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "evocative_dynamic_blur".to_string(),
+                    label: "动态模糊".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ui_evocative_dynamic_blur.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("UI_EVOCATIVE_DYNAMIC_BLUR")
+                                .unwrap_or_else(|_| "false".to_string())
+                        }),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "evocative_ripple".to_string(),
+                    label: "涟漪效果".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ui_evocative_ripple.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("UI_EVOCATIVE_RIPPLE")
+                                .unwrap_or_else(|_| "false".to_string())
+                        }),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "evocative_fps".to_string(),
+                    label: "动效帧率".to_string(),
+                    field_type: "select".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ui_evocative_fps.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("UI_EVOCATIVE_FPS").unwrap_or_else(|_| "30".to_string())
+                        }),
+                    placeholder: "30".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "evocative_ripple_quality".to_string(),
+                    label: "涟漪画质".to_string(),
+                    field_type: "select".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ui_evocative_ripple_quality.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("UI_EVOCATIVE_RIPPLE_QUALITY")
+                                .unwrap_or_else(|_| "0.85".to_string())
+                        }),
+                    placeholder: "0.85".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -944,6 +1066,33 @@ async fn save_to_database(
                 let enabled = field.value == "true";
                 ("ui_wallpaper_parallax", JsonValue::Bool(enabled))
             }
+            // Evocative 壁纸动效
+            "evocative_parallax" => {
+                let enabled = field.value == "true";
+                ("ui_evocative_parallax", JsonValue::Bool(enabled))
+            }
+            "evocative_dynamic_blur" => {
+                let enabled = field.value == "true";
+                ("ui_evocative_dynamic_blur", JsonValue::Bool(enabled))
+            }
+            "evocative_ripple" => {
+                let enabled = field.value == "true";
+                ("ui_evocative_ripple", JsonValue::Bool(enabled))
+            }
+            "evocative_fps" => {
+                if let Ok(n) = field.value.parse::<i64>() {
+                    ("ui_evocative_fps", JsonValue::Number(n.into()))
+                } else {
+                    continue;
+                }
+            }
+            "evocative_ripple_quality" => {
+                if let Ok(n) = field.value.parse::<f64>() {
+                    ("ui_evocative_ripple_quality", JsonValue::from(n))
+                } else {
+                    continue;
+                }
+            }
             "pet_enabled" => {
                 let enabled = field.value == "true";
                 ("pet_enabled", JsonValue::Bool(enabled))
@@ -1088,6 +1237,12 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "wallpaper_url" => "UI_WALLPAPER_URL",
             "wallpaper_blur" => "UI_WALLPAPER_BLUR",
             "wallpaper_parallax" => "UI_WALLPAPER_PARALLAX",
+            // Evocative 壁纸动效
+            "evocative_parallax" => "UI_EVOCATIVE_PARALLAX",
+            "evocative_dynamic_blur" => "UI_EVOCATIVE_DYNAMIC_BLUR",
+            "evocative_ripple" => "UI_EVOCATIVE_RIPPLE",
+            "evocative_fps" => "UI_EVOCATIVE_FPS",
+            "evocative_ripple_quality" => "UI_EVOCATIVE_RIPPLE_QUALITY",
             "image_gen_enabled" => "IMAGE_GEN_ENABLED",
             "image_gen_model" => "IMAGE_GEN_MODEL",
             "image_gen_width" => "IMAGE_GEN_WIDTH",
@@ -1545,6 +1700,22 @@ pub async fn get_public_ui_config(
         ),
         "wallpaper_parallax": db_config.as_ref().map(|c| c.ui_wallpaper_parallax).unwrap_or_else(||
             std::env::var("UI_WALLPAPER_PARALLAX").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
+        ),
+        // Evocative 壁纸动效
+        "evocative_parallax": db_config.as_ref().map(|c| c.ui_evocative_parallax).unwrap_or_else(||
+            std::env::var("UI_EVOCATIVE_PARALLAX").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
+        ),
+        "evocative_dynamic_blur": db_config.as_ref().map(|c| c.ui_evocative_dynamic_blur).unwrap_or_else(||
+            std::env::var("UI_EVOCATIVE_DYNAMIC_BLUR").unwrap_or_else(|_| "false".to_string()).parse().unwrap_or(false)
+        ),
+        "evocative_ripple": db_config.as_ref().map(|c| c.ui_evocative_ripple).unwrap_or_else(||
+            std::env::var("UI_EVOCATIVE_RIPPLE").unwrap_or_else(|_| "false".to_string()).parse().unwrap_or(false)
+        ),
+        "evocative_fps": db_config.as_ref().map(|c| c.ui_evocative_fps as u32).unwrap_or_else(||
+            std::env::var("UI_EVOCATIVE_FPS").unwrap_or_else(|_| "30".to_string()).parse::<u32>().unwrap_or(30)
+        ),
+        "evocative_ripple_quality": db_config.as_ref().map(|c| c.ui_evocative_ripple_quality).unwrap_or_else(||
+            std::env::var("UI_EVOCATIVE_RIPPLE_QUALITY").unwrap_or_else(|_| "0.85".to_string()).parse::<f64>().unwrap_or(0.85)
         ),
         "music_enabled": get_value(
             db_config.as_ref().and_then(|c| c.music_enabled.clone()),

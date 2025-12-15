@@ -1460,18 +1460,20 @@ pub async fn ensure_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
 /// 实际执行 schema 检查的内部函数
 async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 检查版本是否已应用
-    if is_schema_version_applied(db, SCHEMA_VERSION).await? {
+    // 修改：即使版本已应用也强制检查，确保 schema 完整性
+    let version_applied = is_schema_version_applied(db, SCHEMA_VERSION).await?;
+
+    if version_applied {
         tracing::info!(
-            "✅ Schema version {} already applied, skipping check",
+            "ℹ️ Schema version {} marked as applied, but performing safety check...",
             SCHEMA_VERSION
         );
-        return Ok(());
+    } else {
+        tracing::info!(
+            "🔍 Schema version {} not applied, checking database structure...",
+            SCHEMA_VERSION
+        );
     }
-
-    tracing::info!(
-        "🔍 Schema version {} not applied, checking database structure...",
-        SCHEMA_VERSION
-    );
 
     let mut ddl_statements: Vec<String> = Vec::new();
     let mut changes_made = 0;

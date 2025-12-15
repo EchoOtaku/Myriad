@@ -711,6 +711,7 @@ export const TappWidgetComponent = memo(({
       ref={containerRef}
       className="w-full h-full rounded-xl overflow-hidden"
       style={pointerEventsStyle}
+      data-no-ripple
     >
       <TappWidgetSandbox
         tappInstance={tappInstance}

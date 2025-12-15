@@ -12,7 +12,7 @@ import { wallpaperState } from '../utils/wallpaperState';
 import GlobalControlPanel from '../components/GlobalControlPanel';
 import { useNotification } from '../contexts/NotificationContext';
 import { useAnimationLevel } from '../hooks/useAnimationLevel';
-import { useWallpaperParallax } from '../hooks/useWallpaperParallax';
+import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper';
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget';
 import { invalidateAuthCache, getUserAvatarWithCache } from '../utils/userInfoCache';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,17 +64,37 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 壁纸管理 Hook
   const { loadWallpaper: loadWallpaperFromHook } = useWallpaper();
 
-  // 壁纸视差效果配置状态
-  const [wallpaperParallaxEnabled, setWallpaperParallaxEnabled] = useState(true);
+  // Evocative 壁纸动效配置状态
+  const [evocativeParallax, setEvocativeParallax] = useState(true);
+  const [evocativeDynamicBlur, setEvocativeDynamicBlur] = useState(false);
+  const [evocativeRipple, setEvocativeRipple] = useState(false);
+  const [evocativeFps, setEvocativeFps] = useState(30);
+  const [evocativeRippleQuality, setEvocativeRippleQuality] = useState(0.85);
+  // 壁纸模糊度状态
+  const [wallpaperBlur, setWallpaperBlur] = useState(3);
 
-  // 🎨 壁纸视差效果 Hook - 创造立体空间感
-  // ⚠️ 低性能模式下强制禁用视差效果
-  useWallpaperParallax('wallpaper', {
-    enabled: wallpaperParallaxEnabled && anim.level !== 'light' && anim.level !== 'none',
-    enableGyroscope: true,
-    enableMouse: true,
-    maxOffset: 8,
-    scale: 1.02,
+  // 🎨 Evocative 壁纸动效统一 Hook
+  // ⚠️ 低性能模式下强制禁用所有动效
+  const isLowPerformance = anim.level === 'light' || anim.level === 'none';
+  useEvocativeWallpaper('wallpaper', {
+    parallax: {
+      enabled: evocativeParallax && !isLowPerformance,
+      enableGyroscope: true,
+      enableMouse: true,
+      maxOffset: 8,
+      scale: 1.02,
+    },
+    dynamicBlur: {
+      enabled: evocativeDynamicBlur && !isLowPerformance,
+      baseBlur: wallpaperBlur,
+      unblurZone: 0.4,
+      blurZone: 0.6,
+    },
+    ripple: {
+      enabled: evocativeRipple && !isLowPerformance,
+    },
+    fps: evocativeFps,
+    rippleQuality: evocativeRippleQuality,
   });
 
   // 导航岛状态管理
@@ -753,8 +773,19 @@ export function AppLayout({ children }: AppLayoutProps) {
     
     console.debug('[AppLayout] Wallpaper loaded:', wallpaperResult.actualUrl.substring(0, 80));
     
-    // 更新视差效果配置
-    setWallpaperParallaxEnabled(wallpaperResult.parallaxEnabled);
+    // 更新 Evocative 动效配置
+    if (wallpaperResult.evocative) {
+      setEvocativeParallax(wallpaperResult.evocative.parallax);
+      setEvocativeDynamicBlur(wallpaperResult.evocative.dynamicBlur);
+      setEvocativeRipple(wallpaperResult.evocative.ripple);
+      setEvocativeFps(wallpaperResult.evocative.fps);
+      setEvocativeRippleQuality(wallpaperResult.evocative.rippleQuality);
+    } else {
+      // 向后兼容：使用旧字段
+      setEvocativeParallax(wallpaperResult.parallaxEnabled);
+    }
+    // 更新模糊度配置
+    setWallpaperBlur(wallpaperResult.blur);
     
     if (wallpaperResult) {
       const { actualUrl, verified } = wallpaperResult;

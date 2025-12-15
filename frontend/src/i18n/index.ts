@@ -213,6 +213,8 @@ export interface TranslationKeys {
     oauthDesc: string;
     music: string;
     musicDesc: string;
+    network: string;
+    networkDesc: string;
     data: string;
     dataDesc: string;
     selectProject: string;
@@ -249,6 +251,25 @@ export interface TranslationKeys {
     siteMetadata: string;
     backgroundAndTheme: string;
     parallaxHint: string;
+    // Evocative 壁纸动效
+    evocativeTitle: string;
+    evocativeDesc: string;
+    fieldEvocativeParallax: string;
+    fieldEvocativeParallaxHint: string;
+    fieldEvocativeDynamicBlur: string;
+    fieldEvocativeDynamicBlurHint: string;
+    fieldEvocativeRipple: string;
+    fieldEvocativeRippleHint: string;
+    fieldEvocativeFps: string;
+    fieldEvocativeFpsHint: string;
+    fpsBalanced: string;
+    fpsSmooth: string;
+    fieldEvocativeRippleQuality: string;
+    fieldEvocativeRippleQualityHint: string;
+    qualityLow: string;
+    qualityMedium: string;
+    qualityHigh: string;
+    qualityUltra: string;
     // UI 字段标签
     fieldWallpaperUrl: string;
     fieldWallpaperBlur: string;
@@ -261,6 +282,27 @@ export interface TranslationKeys {
     fieldMusicEnabled: string;
     fieldMusicSource: string;
     fieldMusicPlaylistId: string;
+    // 网络代理配置
+    networkConfigTitle: string;
+    networkConfigDesc: string;
+    networkProxyInfoTitle: string;
+    networkProxyInfo: string;
+    enableProxy: string;
+    enableProxyHint: string;
+    proxyUrl: string;
+    proxyUrlHint: string;
+    proxyBypass: string;
+    proxyBypassHint: string;
+    apiMirrorConfig: string;
+    apiMirrorConfigHint: string;
+    geminiBaseUrl: string;
+    geminiBaseUrlHint: string;
+    githubApiBaseUrl: string;
+    githubApiBaseUrlHint: string;
+    proxyOption: string;
+    proxyOptionDesc: string;
+    mirrorOption: string;
+    mirrorOptionDesc: string;
     // UI 字段占位符
     placeholderWallpaperUrl: string;
     placeholderSiteTitle: string;

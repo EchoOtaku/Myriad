@@ -1296,40 +1296,126 @@ const ModernConfigForm: React.FC = () => {
                 <div>
                   <h3 className="section-subtitle">🎨 {t.config.backgroundAndTheme}</h3>
                   {config.ui_config.config_fields
-                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !field.key.startsWith('proxy_') && !field.key.endsWith('_base_url') && !['site_title', 'site_description', 'site_favicon', 'base_url'].includes(field.key))
+                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !field.key.startsWith('proxy_') && !field.key.startsWith('evocative_') && !field.key.endsWith('_base_url') && !['site_title', 'site_description', 'site_favicon', 'base_url', 'wallpaper_parallax'].includes(field.key))
                     .map((field) => (
                       <div key={field.key} className="config-field">
                         <label htmlFor={`ui-${field.key}`} className="field-label">
                           {getFieldLabel(field.key, field.label)}
                           {field.required && <span className="required">*</span>}
                         </label>
-                        {field.field_type === 'checkbox' ? (
-                          <div className="checkbox-wrapper">
-                            <input
-                              id={`ui-${field.key}`}
-                              type="checkbox"
-                              checked={field.value === 'true'}
-                              onChange={(e) => updateUiFieldValue(field.key, e.target.checked ? 'true' : 'false')}
-                              className="field-checkbox"
-                            />
-                            <span className="checkbox-hint">
-                              {field.key === 'wallpaper_parallax' && t.config.wallpaperParallaxHint}
-                            </span>
-                          </div>
-                        ) : (
-                          <input
-                            id={`ui-${field.key}`}
-                            type={field.field_type}
-                            value={field.value}
-                            onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
-                            placeholder={getFieldPlaceholder(field.key, field.placeholder)}
-                            min={field.field_type === 'number' ? '0' : undefined}
-                            max={field.field_type === 'number' ? '10' : undefined}
-                            className="field-input"
-                          />
-                        )}
+                        <input
+                          id={`ui-${field.key}`}
+                          type={field.field_type}
+                          value={field.value}
+                          onChange={(e) => updateUiFieldValue(field.key, e.target.value)}
+                          placeholder={getFieldPlaceholder(field.key, field.placeholder)}
+                          min={field.field_type === 'number' ? '0' : undefined}
+                          max={field.field_type === 'number' ? '10' : undefined}
+                          className="field-input"
+                        />
                       </div>
                     ))}
+                </div>
+
+                {/* Evocative 壁纸动效 */}
+                <div>
+                  <h3 className="section-subtitle">✨ {t.config.evocativeTitle}</h3>
+                  <p className="evocative-desc">
+                    {t.config.evocativeDesc}
+                  </p>
+                  
+                  {/* 微动效果 */}
+                  <div className="config-field">
+                    <label htmlFor="evocative-parallax" className="field-label">
+                      {t.config.fieldEvocativeParallax}
+                    </label>
+                    <div className="checkbox-wrapper">
+                      <input
+                        id="evocative-parallax"
+                        type="checkbox"
+                        checked={config.ui_config.config_fields.find(f => f.key === 'evocative_parallax')?.value === 'true'}
+                        onChange={(e) => updateUiFieldValue('evocative_parallax', e.target.checked ? 'true' : 'false')}
+                        className="field-checkbox"
+                      />
+                      <span className="checkbox-hint">
+                        {t.config.fieldEvocativeParallaxHint}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 动态模糊 */}
+                  <div className="config-field">
+                    <label htmlFor="evocative-dynamic-blur" className="field-label">
+                      {t.config.fieldEvocativeDynamicBlur}
+                    </label>
+                    <div className="checkbox-wrapper">
+                      <input
+                        id="evocative-dynamic-blur"
+                        type="checkbox"
+                        checked={config.ui_config.config_fields.find(f => f.key === 'evocative_dynamic_blur')?.value === 'true'}
+                        onChange={(e) => updateUiFieldValue('evocative_dynamic_blur', e.target.checked ? 'true' : 'false')}
+                        className="field-checkbox"
+                      />
+                      <span className="checkbox-hint">
+                        {t.config.fieldEvocativeDynamicBlurHint}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 涟漪效果 */}
+                  <div className="config-field">
+                    <label htmlFor="evocative-ripple" className="field-label">
+                      {t.config.fieldEvocativeRipple}
+                    </label>
+                    <div className="checkbox-wrapper">
+                      <input
+                        id="evocative-ripple"
+                        type="checkbox"
+                        checked={config.ui_config.config_fields.find(f => f.key === 'evocative_ripple')?.value === 'true'}
+                        onChange={(e) => updateUiFieldValue('evocative_ripple', e.target.checked ? 'true' : 'false')}
+                        className="field-checkbox"
+                      />
+                      <span className="checkbox-hint">
+                        {t.config.fieldEvocativeRippleHint}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 动效帧率 */}
+                  <div className="config-field">
+                    <label htmlFor="evocative-fps" className="field-label">
+                      {t.config.fieldEvocativeFps}
+                    </label>
+                    <select
+                      id="evocative-fps"
+                      className="field-select"
+                      value={config.ui_config.config_fields.find(f => f.key === 'evocative_fps')?.value || '30'}
+                      onChange={(e) => updateUiFieldValue('evocative_fps', e.target.value)}
+                    >
+                      <option value="30">30 FPS ({t.config.fpsBalanced})</option>
+                      <option value="60">60 FPS ({t.config.fpsSmooth})</option>
+                    </select>
+                    <span className="field-hint">{t.config.fieldEvocativeFpsHint}</span>
+                  </div>
+
+                  {/* 涟漪画质 */}
+                  <div className="config-field">
+                    <label htmlFor="evocative-ripple-quality" className="field-label">
+                      {t.config.fieldEvocativeRippleQuality}
+                    </label>
+                    <select
+                      id="evocative-ripple-quality"
+                      className="field-select"
+                      value={config.ui_config.config_fields.find(f => f.key === 'evocative_ripple_quality')?.value || '0.85'}
+                      onChange={(e) => updateUiFieldValue('evocative_ripple_quality', e.target.value)}
+                    >
+                      <option value="0.5">50% ({t.config.qualityLow})</option>
+                      <option value="0.65">65% ({t.config.qualityMedium})</option>
+                      <option value="0.85">85% ({t.config.qualityHigh})</option>
+                      <option value="1">100% ({t.config.qualityUltra})</option>
+                    </select>
+                    <span className="field-hint">{t.config.fieldEvocativeRippleQualityHint}</span>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -1582,8 +1668,8 @@ const ModernConfigForm: React.FC = () => {
                   <p className="info-title">💡 {t.config.networkProxyInfoTitle || '代理配置说明'}</p>
                   <p className="info-text">
                     {t.config.networkProxyInfo || '如果您的服务器位于中国大陆，可能需要配置代理才能正常访问 GitHub OAuth、Gemini AI 等外部服务。您可以选择以下方式：'}<br/><br/>
-                    <strong>1. HTTP/SOCKS 代理</strong>：配置代理服务器地址，所有外部请求将通过代理发送。<br/>
-                    <strong>2. API 镜像服务</strong>：使用第三方 API 镜像/中转服务，无需配置代理。
+                    <strong>1. HTTP/SOCKS {t.config.proxyOption || '代理'}</strong>：{t.config.proxyOptionDesc || '配置代理服务器地址，所有外部请求将通过代理发送。'}<br/>
+                    <strong>2. API {t.config.mirrorOption || '镜像服务'}</strong>：{t.config.mirrorOptionDesc || '使用第三方 API 镜像/中转服务，无需配置代理。'}
                   </p>
                 </div>
 

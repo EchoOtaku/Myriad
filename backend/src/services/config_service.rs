@@ -128,6 +128,32 @@ impl ConfigService {
                 config.ui_wallpaper_parallax = b;
             }
         }
+        // Evocative 壁纸动效
+        if let Some(v) = map.get("ui_evocative_parallax") {
+            if let Some(b) = v.as_bool() {
+                config.ui_evocative_parallax = b;
+            }
+        }
+        if let Some(v) = map.get("ui_evocative_dynamic_blur") {
+            if let Some(b) = v.as_bool() {
+                config.ui_evocative_dynamic_blur = b;
+            }
+        }
+        if let Some(v) = map.get("ui_evocative_ripple") {
+            if let Some(b) = v.as_bool() {
+                config.ui_evocative_ripple = b;
+            }
+        }
+        if let Some(v) = map.get("ui_evocative_fps") {
+            if let Some(n) = v.as_i64() {
+                config.ui_evocative_fps = n as i32;
+            }
+        }
+        if let Some(v) = map.get("ui_evocative_ripple_quality") {
+            if let Some(n) = v.as_f64() {
+                config.ui_evocative_ripple_quality = n;
+            }
+        }
         if let Some(v) = map.get("pet_enabled") {
             if let Some(b) = v.as_bool() {
                 config.pet_enabled = b;

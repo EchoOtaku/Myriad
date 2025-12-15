@@ -1158,6 +1158,7 @@ export const TappStore = ({ isOpen, onClose, onInstalled }: TappStoreProps) => {
       exit={modalAnimProps.backdrop.exit}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4"
       onClick={onClose}
+      data-no-ripple
     >
       <motion.div
         initial={modalAnimProps.content.initial}

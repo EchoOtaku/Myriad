@@ -977,6 +977,17 @@ html.dark .section-description {
   color: #9ca3af;
 }
 
+/* Evocative 动效说明文本 */
+.evocative-desc {
+  margin-bottom: 1rem;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.875rem;
+}
+
+html.dark .evocative-desc {
+  color: var(--text-secondary, #9ca3af);
+}
+
 /* 配置项列表 */
 .config-items-list {
   display: flex;

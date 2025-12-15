@@ -42,7 +42,12 @@ export {
 interface WallpaperConfig {
   wallpaper_url: string;
   wallpaper_blur: number;
-  wallpaper_parallax?: boolean;
+  // Evocative 壁纸动效配置
+  evocative_parallax?: boolean;
+  evocative_dynamic_blur?: boolean;
+  evocative_ripple?: boolean;
+  evocative_fps?: number;
+  evocative_ripple_quality?: number;
 }
 
 interface LoadWallpaperResult {
@@ -52,8 +57,16 @@ interface LoadWallpaperResult {
   blur: number;
   /** URL是否经过验证 */
   verified: boolean;
-  /** 是否启用视差效果 */
+  /** @deprecated 使用 evocative 替代 */
   parallaxEnabled: boolean;
+  /** Evocative 壁纸动效配置 */
+  evocative: {
+    parallax: boolean;
+    dynamicBlur: boolean;
+    ripple: boolean;
+    fps: number;
+    rippleQuality: number;
+  };
 }
 
 // ============================================================================
@@ -309,13 +322,28 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
       },
     });
 
-    console.debug('[Wallpaper] Config received:', { wallpaper_url: data.wallpaper_url, blur: data.wallpaper_blur });
+    console.debug('[Wallpaper] Config received:', { 
+      wallpaper_url: data.wallpaper_url, 
+      blur: data.wallpaper_blur,
+      evocative: {
+        parallax: data.evocative_parallax,
+        dynamicBlur: data.evocative_dynamic_blur,
+        ripple: data.evocative_ripple,
+        fps: data.evocative_fps,
+        rippleQuality: data.evocative_ripple_quality,
+      }
+    });
     
     if (data.wallpaper_url) {
       return {
         wallpaper_url: data.wallpaper_url,
         wallpaper_blur: data.wallpaper_blur ?? 3,
-        wallpaper_parallax: data.wallpaper_parallax ?? true,
+        // Evocative 壁纸动效配置
+        evocative_parallax: data.evocative_parallax ?? true,
+        evocative_dynamic_blur: data.evocative_dynamic_blur ?? false,
+        evocative_ripple: data.evocative_ripple ?? false,
+        evocative_fps: data.evocative_fps ?? 30,
+        evocative_ripple_quality: data.evocative_ripple_quality ?? 0.85,
       };
     }
     console.debug('[Wallpaper] No wallpaper_url in config');
@@ -413,7 +441,16 @@ export function useWallpaper() {
           actualUrl: verifiedUrl, 
           blur: config.wallpaper_blur,
           verified: areUrlsEquivalent(verifiedUrl, actualUrl),
-          parallaxEnabled: config.wallpaper_parallax ?? true,
+          // 兼容旧配置
+          parallaxEnabled: config.evocative_parallax ?? true,
+          // 新的 Evocative 配置
+          evocative: {
+            parallax: config.evocative_parallax ?? true,
+            dynamicBlur: config.evocative_dynamic_blur ?? false,
+            ripple: config.evocative_ripple ?? false,
+            fps: config.evocative_fps ?? 30,
+            rippleQuality: config.evocative_ripple_quality ?? 0.85,
+          },
         };
         
         // 缓存结果
