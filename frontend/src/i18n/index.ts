@@ -463,6 +463,27 @@ export interface TranslationKeys {
     platformProfile: string;
   };
   
+  // 标题样式选择器
+  titleStyle: {
+    style: string;
+    title: string;
+    tabFont: string;
+    tabSize: string;
+    tabColor: string;
+    // 颜色选项
+    colorPrimary: string;
+    colorSecondary: string;
+    colorAccent: string;
+    colorLight: string;
+    colorDark: string;
+    colorAdaptive: string;
+    // 字体大小选项
+    sizeMedium: string;
+    sizeLarge: string;
+    sizeXLarge: string;
+    sizeXXLarge: string;
+  };
+  
   // 首页
   home: {
     dashboard: string;

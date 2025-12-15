@@ -10,6 +10,8 @@ import { useNavigate } from 'react-router-dom';
 import { motionShim as motion } from '@lib/motionShim';
 import { FaEdit } from '@lib/icons';
 import WidgetGrid, { WidgetConfig, WidgetType } from '../components/WidgetGrid';
+import { TitleFontSelector } from '../components/TitleFontSelector';
+import { useTitleFont, getTitleFontFamily } from '../hooks/useTitleFont';
 import { WelcomeWidget } from '../components/widgets/WelcomeWidget';
 import { QuickStatsWidget } from '../components/widgets/QuickStatsWidget';
 import { RecentActivityWidget } from '../components/widgets/RecentActivityWidget';
@@ -42,6 +44,38 @@ export default function Home() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [dashboardTitle, setDashboardTitle] = useState('Dashboard');
   const [csrfToken, setCsrfToken] = useState<string>('');
+  
+  // 标题字体 Hook
+  const { currentFont, titleFontSize, titleColor } = useTitleFont();
+  
+  // 检测深色模式
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkDarkMode();
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  
+  // 计算标题颜色
+  const getTitleColor = () => {
+    if (titleColor === 'adaptive') {
+      return isDark 
+        ? 'color-mix(in srgb, var(--color-primary) 50%, #ffffff)'
+        : 'color-mix(in srgb, var(--color-primary) 50%, #000000)';
+    }
+    const colorMap: Record<string, string> = {
+      'primary': 'var(--color-primary)',
+      'secondary': 'var(--color-secondary)',
+      'accent': 'var(--color-accent)',
+      'light': 'var(--color-light)',
+      'dark': 'var(--color-dark)',
+    };
+    return `color-mix(in srgb, ${colorMap[titleColor] || 'var(--color-primary)'} 70%, transparent)`;
+  };
 
   // 默认小组件布局
   const DEFAULT_WIDGETS: WidgetConfig[] = useMemo(() => [
@@ -378,21 +412,27 @@ export default function Home() {
                   aria-label="Dashboard Title"
                   value={dashboardTitle}
                   onChange={(e) => handleTitleChange(e.target.value)}
-                  className="absolute left-1 text-8xl whitespace-nowrap z-0 qwitcher-grypen-bold hidden md:block bg-transparent border-none outline-none p-0 m-0 w-full"
+                  className="absolute left-1 whitespace-nowrap z-0 hidden md:block bg-transparent border-none outline-none p-0 m-0 w-full"
                   style={{ 
-                    top: 'calc(30px - 1em)',
-                    color: 'color-mix(in srgb, var(--color-primary) 70%, transparent)',
-                    WebkitTextStroke: '0.5px color-mix(in srgb, var(--color-primary) 30%, transparent)',
-                    lineHeight: 1
+                    top: `calc(30px - ${7.5 * titleFontSize}rem)`,
+                    fontSize: `${6 * titleFontSize}rem`,
+                    color: getTitleColor(),
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                    lineHeight: 1,
+                    fontFamily: currentFont.family,
+                    fontWeight: 700,
                   }}
                 />
               ) : (
                 <div 
-                  className="absolute left-1 text-8xl whitespace-nowrap pointer-events-none z-0 qwitcher-grypen-bold hidden md:block" 
+                  className="absolute left-1 whitespace-nowrap pointer-events-none z-0 hidden md:block" 
                   style={{ 
-                    top: 'calc(30px - 1em)',
-                    color: 'color-mix(in srgb, var(--color-primary) 70%, transparent)',
-                    WebkitTextStroke: '0.5px color-mix(in srgb, var(--color-primary) 30%, transparent)'
+                    top: `calc(30px - ${7.5 * titleFontSize}rem)`,
+                    fontSize: `${6 * titleFontSize}rem`,
+                    color: getTitleColor(),
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                    fontFamily: currentFont.family,
+                    fontWeight: 700,
                   }}
                 >
                   {dashboardTitle}
@@ -445,6 +485,11 @@ export default function Home() {
                   {isAdmin && (
                     <>
                       <div className="hidden lg:block h-6 w-px bg-gray-200 dark:bg-white/10 mx-1" />
+
+                      {/* 字体选择器 - 仅在编辑模式下显示 */}
+                      {isEditMode && (
+                        <TitleFontSelector csrfToken={csrfToken} className="hidden lg:block" />
+                      )}
 
                       <button
                         onClick={() => setIsEditMode(!isEditMode)}

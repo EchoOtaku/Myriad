@@ -1735,6 +1735,10 @@ pub async fn get_public_ui_config(
         "control_panel_layout": db_config.as_ref().and_then(|c| c.control_panel_layout.clone()),
         "control_panel_rows": db_config.as_ref().map(|c| c.control_panel_rows).unwrap_or(2),
         "tapp_window_schemes": db_config.as_ref().and_then(|c| c.tapp_window_schemes.clone()),
+        // 标题字体样式设置
+        "title_font": db_config.as_ref().and_then(|c| c.title_font.clone()),
+        "title_font_size": db_config.as_ref().and_then(|c| c.title_font_size),
+        "title_color": db_config.as_ref().and_then(|c| c.title_color.clone()),
     });
 
     (StatusCode::OK, Json(ui_config))
@@ -1745,6 +1749,9 @@ pub struct DashboardConfigPayload {
     pub layout: Option<String>,
     pub title: Option<String>,
     pub custom_platforms: Option<String>,
+    pub title_font: Option<String>,
+    pub title_font_size: Option<f64>,
+    pub title_color: Option<String>,
 }
 
 pub async fn update_dashboard_config(
@@ -1764,6 +1771,18 @@ pub async fn update_dashboard_config(
 
     if let Some(custom_platforms) = payload.custom_platforms {
         updates.insert("custom_platforms".to_string(), json!(custom_platforms));
+    }
+
+    if let Some(title_font) = payload.title_font {
+        updates.insert("title_font".to_string(), json!(title_font));
+    }
+
+    if let Some(title_font_size) = payload.title_font_size {
+        updates.insert("title_font_size".to_string(), json!(title_font_size));
+    }
+
+    if let Some(title_color) = payload.title_color {
+        updates.insert("title_color".to_string(), json!(title_color));
     }
 
     if let Err(e) = config_service.update_configs(updates).await {

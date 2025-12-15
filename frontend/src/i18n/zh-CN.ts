@@ -462,6 +462,27 @@ export const zhCN: TranslationKeys = {
     platformProfile: '平台画像 + AI综合分析',
   },
   
+  // 标题样式选择器
+  titleStyle: {
+    style: '样式',
+    title: '标题样式',
+    tabFont: '字体',
+    tabSize: '大小',
+    tabColor: '颜色',
+    // 颜色选项
+    colorPrimary: '主色',
+    colorSecondary: '次色',
+    colorAccent: '强调色',
+    colorLight: '浅色',
+    colorDark: '深色',
+    colorAdaptive: '自适应',
+    // 字体大小选项
+    sizeMedium: '中',
+    sizeLarge: '大',
+    sizeXLarge: '超大',
+    sizeXXLarge: '特大',
+  },
+  
   // 首页
   home: {
     dashboard: '仪表盘',

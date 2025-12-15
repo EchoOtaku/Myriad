@@ -462,6 +462,27 @@ export const enUS: TranslationKeys = {
     platformProfile: 'Platform Profile + AI Comprehensive Analysis',
   },
   
+  // Title Style Selector
+  titleStyle: {
+    style: 'Style',
+    title: 'Title Style',
+    tabFont: 'Font',
+    tabSize: 'Size',
+    tabColor: 'Color',
+    // Color options
+    colorPrimary: 'Primary',
+    colorSecondary: 'Secondary',
+    colorAccent: 'Accent',
+    colorLight: 'Light',
+    colorDark: 'Dark',
+    colorAdaptive: 'Adaptive',
+    // Font size options
+    sizeMedium: 'Medium',
+    sizeLarge: 'Large',
+    sizeXLarge: 'X-Large',
+    sizeXXLarge: 'XX-Large',
+  },
+  
   // Home
   home: {
     dashboard: 'Dashboard',

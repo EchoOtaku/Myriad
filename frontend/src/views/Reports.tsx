@@ -28,6 +28,7 @@ import { useAnimationLevel } from '../hooks/useAnimationLevel';
 import { useLoopAnimation, usePageReady } from '../hooks/animation';
 import { useReportsScheduler, useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
+import { useTitleFont } from '../hooks/useTitleFont';
 
 // 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
 const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i);
@@ -1168,6 +1169,44 @@ export default function Reports() {
   
   const { t } = useI18n();
   const isPageReady = usePageReady();
+  // 🆕 标题字体 Hook
+  const { currentFont, titleFontSize, titleColor } = useTitleFont();
+  
+  // 检测深色模式
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkDarkMode();
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  
+  // 计算标题颜色
+  const getTitleColor = (colorType: 'primary' | 'accent' = 'primary') => {
+    // 如果设置了自定义颜色，使用自定义颜色
+    if (titleColor !== 'primary') {
+      if (titleColor === 'adaptive') {
+        return isDark 
+          ? 'color-mix(in srgb, var(--color-primary) 50%, #ffffff)'
+          : 'color-mix(in srgb, var(--color-primary) 50%, #000000)';
+      }
+      const colorMap: Record<string, string> = {
+        'secondary': 'var(--color-secondary)',
+        'accent': 'var(--color-accent)',
+        'light': 'var(--color-light)',
+        'dark': 'var(--color-dark)',
+      };
+      return `color-mix(in srgb, ${colorMap[titleColor] || 'var(--color-primary)'} 70%, transparent)`;
+    }
+    // 否则使用默认颜色（primary 或 accent）
+    return colorType === 'accent' 
+      ? 'color-mix(in srgb, var(--color-accent) 70%, transparent)'
+      : 'color-mix(in srgb, var(--color-primary) 70%, transparent)';
+  };
+  
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
   const [report, setReport] = useState<CrossPlatformReport | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
@@ -1912,7 +1951,15 @@ export default function Reports() {
               <>
                 {/* 平台报告标题 - 绝对定位在整个区域 */}
                 <div 
-                  className={`absolute left-2 text-8xl whitespace-nowrap pointer-events-none z-0 qwitcher-grypen-bold decorative-title-position text-primary-mix ${isStageMode ? 'hidden md:block' : ''}`}
+                  className={`absolute left-2 whitespace-nowrap pointer-events-none z-0 ${isStageMode ? 'hidden md:block' : ''}`}
+                  style={{ 
+                    top: `calc(25px - ${7.5 * titleFontSize}rem)`,
+                    fontFamily: currentFont.family, 
+                    fontWeight: 700,
+                    fontSize: `${6 * titleFontSize}rem`,
+                    color: getTitleColor('primary'),
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor('primary')} 30%, transparent)`,
+                  }}
                 >
                   Character
                 </div>
@@ -1922,7 +1969,15 @@ export default function Reports() {
               <>
                 {/* 综合报告标题 - 绝对定位在整个区域 */}
                 <div
-                  className={`absolute left-2 text-8xl whitespace-nowrap pointer-events-none z-0 qwitcher-grypen-bold decorative-title-position text-accent-mix ${isStageMode ? 'hidden md:block' : ''}`}
+                  className={`absolute left-2 whitespace-nowrap pointer-events-none z-0 ${isStageMode ? 'hidden md:block' : ''}`}
+                  style={{ 
+                    top: `calc(25px - ${7.5 * titleFontSize}rem)`,
+                    fontFamily: currentFont.family, 
+                    fontWeight: 700,
+                    fontSize: `${6 * titleFontSize}rem`,
+                    color: getTitleColor('accent'),
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor('accent')} 30%, transparent)`,
+                  }}
                 >
                   Stage
                 </div>

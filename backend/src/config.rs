@@ -197,6 +197,11 @@ pub struct DynamicConfig {
     pub dashboard_title: Option<String>,
     pub custom_platforms: Option<String>, // 自定义社交平台数据 (JSON)
 
+    // 标题字体样式配置
+    pub title_font: Option<String>,   // 标题字体 ID
+    pub title_font_size: Option<f64>, // 标题字体大小倍率
+    pub title_color: Option<String>,  // 标题颜色 ID
+
     // 控制面板小组件配置
     pub control_panel_layout: Option<String>,
     pub control_panel_rows: i32,
@@ -347,6 +352,10 @@ impl Default for DynamicConfig {
             dashboard_layout: None,
             dashboard_title: None,
             custom_platforms: None,
+
+            title_font: None,
+            title_font_size: None,
+            title_color: None,
 
             control_panel_layout: None,
             control_panel_rows: 2,

@@ -462,6 +462,27 @@ export const jaJP: TranslationKeys = {
     platformProfile: 'プラットフォームプロファイル + AI総合分析',
   },
   
+  // タイトルスタイルセレクター
+  titleStyle: {
+    style: 'スタイル',
+    title: 'タイトルスタイル',
+    tabFont: 'フォント',
+    tabSize: 'サイズ',
+    tabColor: '色',
+    // 色オプション
+    colorPrimary: 'プライマリ',
+    colorSecondary: 'セカンダリ',
+    colorAccent: 'アクセント',
+    colorLight: 'ライト',
+    colorDark: 'ダーク',
+    colorAdaptive: 'アダプティブ',
+    // フォントサイズオプション
+    sizeMedium: '中',
+    sizeLarge: '大',
+    sizeXLarge: '特大',
+    sizeXXLarge: '極大',
+  },
+  
   // ホーム
   home: {
     dashboard: 'ダッシュボード',

@@ -241,6 +241,23 @@ impl ConfigService {
             }
         }
 
+        // 标题字体样式配置
+        if let Some(v) = map.get("title_font") {
+            if let Some(s) = v.as_str() {
+                config.title_font = Some(s.to_string());
+            }
+        }
+        if let Some(v) = map.get("title_font_size") {
+            if let Some(n) = v.as_f64() {
+                config.title_font_size = Some(n);
+            }
+        }
+        if let Some(v) = map.get("title_color") {
+            if let Some(s) = v.as_str() {
+                config.title_color = Some(s.to_string());
+            }
+        }
+
         // 控制面板小组件配置
         if let Some(v) = map.get("control_panel_layout") {
             if let Some(s) = v.as_str() {

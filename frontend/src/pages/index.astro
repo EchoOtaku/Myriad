@@ -43,13 +43,14 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || '';
       media="print"
       onload="this.media='all'"
     />
-    <!-- Qwitcher Grypen 字体 - 延迟加载避免渲染阻塞 -->
+    <!-- Qwitcher Grypen 字体 - 延迟加载避免渲染阻塞（默认标题字体） -->
     <link
       href="https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@400;700&display=swap"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"
     />
+    <!-- 其他标题字体按需加载，由 useTitleFont hook 动态加载 -->
     <noscript>
       <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Qwitcher+Grypen:wght@400;700&display=swap"

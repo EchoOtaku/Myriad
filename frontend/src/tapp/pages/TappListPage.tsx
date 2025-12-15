@@ -11,6 +11,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useTappScheduler, useTappStagger } from '../../hooks/animation/pages/tapp'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
+import { useTitleFont } from '../../hooks/useTitleFont'
 import { 
   FaPlus, 
   FaPlay, 
@@ -558,6 +559,38 @@ export const TappListPage = () => {
   const { t } = useI18n()
   const { isMobile } = useBreakpoints()
   const { isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
+  // 🆕 标题字体 Hook
+  const { currentFont, titleFontSize, titleColor } = useTitleFont()
+  
+  // 检测深色模式
+  const [isDark, setIsDark] = useState(false)
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDark(document.documentElement.classList.contains('dark'))
+    }
+    checkDarkMode()
+    const observer = new MutationObserver(checkDarkMode)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+  
+  // 计算标题颜色
+  const getTitleColor = () => {
+    if (titleColor === 'adaptive') {
+      return isDark 
+        ? 'color-mix(in srgb, var(--color-primary) 50%, #ffffff)'
+        : 'color-mix(in srgb, var(--color-primary) 50%, #000000)'
+    }
+    const colorMap: Record<string, string> = {
+      'primary': 'var(--color-primary)',
+      'secondary': 'var(--color-secondary)',
+      'accent': 'var(--color-accent)',
+      'light': 'var(--color-light)',
+      'dark': 'var(--color-dark)',
+    }
+    return `color-mix(in srgb, ${colorMap[titleColor] || 'var(--color-primary)'} 70%, transparent)`
+  }
+  
   const [tapps, setTapps] = useState<TappInstance[]>([])
   const [runningTapps, setRunningTapps] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -705,11 +738,14 @@ export const TappListPage = () => {
           <div className="relative h-[48px] flex-shrink-0 z-10">
             {/* 鑳屾櫙鏍囬 */}
             <div 
-              className="absolute left-0 text-8xl whitespace-nowrap pointer-events-none z-0 qwitcher-grypen-bold hidden md:block" 
+              className="absolute left-0 whitespace-nowrap pointer-events-none z-0 hidden md:block" 
               style={{ 
-                top: 'calc(24px - 1em)',
-                color: 'color-mix(in srgb, var(--color-primary) 70%, transparent)',
-                WebkitTextStroke: '0.5px color-mix(in srgb, var(--color-primary) 30%, transparent)'
+                top: `calc(24px - ${7.5 * titleFontSize}rem)`,
+                fontSize: `${6 * titleFontSize}rem`,
+                color: getTitleColor(),
+                WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                fontFamily: currentFont.family,
+                fontWeight: 700,
               }}
             >
               Tapp
