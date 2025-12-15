@@ -112,6 +112,7 @@ const GenericConfigSection = React.memo<GenericConfigSectionProps>(({
                 onChange={(e) => onUpdateField(field.key, e.target.value)}
                 placeholder={field.placeholder}
                 className="form-input"
+                autoComplete="off"
               />
             </div>
           );

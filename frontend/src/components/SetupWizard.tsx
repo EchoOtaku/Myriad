@@ -404,6 +404,7 @@ const SetupWizard: React.FC = () => {
                             onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="localhost"
+                            autoComplete="off"
                           />
                         </div>
                         <div>
@@ -414,6 +415,7 @@ const SetupWizard: React.FC = () => {
                             onChange={(e) => setDbConfig({ ...dbConfig, port: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="5432"
+                            autoComplete="off"
                           />
                         </div>
                         <div>
@@ -424,6 +426,7 @@ const SetupWizard: React.FC = () => {
                             onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="myriad"
+                            autoComplete="off"
                           />
                         </div>
                         <div>
@@ -434,6 +437,7 @@ const SetupWizard: React.FC = () => {
                             onChange={(e) => setDbConfig({ ...dbConfig, username: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="postgres"
+                            autoComplete="off"
                           />
                         </div>
                         <div className="col-span-2">
@@ -444,6 +448,7 @@ const SetupWizard: React.FC = () => {
                             onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder={t.auth.enterPassword}
+                            autoComplete="off"
                           />
                         </div>
                       </div>
@@ -540,6 +545,7 @@ const SetupWizard: React.FC = () => {
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder="admin"
                                 pattern="^[a-zA-Z0-9_]{3,20}$"
+                                autoComplete="username"
                               />
                             </div>
                             <div>
@@ -551,6 +557,7 @@ const SetupWizard: React.FC = () => {
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder={t.setup.atLeast8Chars}
                                 minLength={8}
+                                autoComplete="new-password"
                               />
                             </div>
                             <div>
@@ -562,6 +569,7 @@ const SetupWizard: React.FC = () => {
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder={t.setup.enterPasswordAgain}
                                 minLength={8}
+                                autoComplete="new-password"
                               />
                             </div>
                           </div>

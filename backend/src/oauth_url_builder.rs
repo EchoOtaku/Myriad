@@ -68,48 +68,41 @@ impl SiteConfig {
 /// OAuth URL构建器
 ///
 /// 设计原则：
-/// 1. OAuth 凭证：数据库优先，回退到环境变量
+/// 1. OAuth 凭证：仅从数据库读取（纯数据库配置）
 /// 2. redirect_url：自动从 base_url 生成
 pub struct OAuthUrlBuilder;
 
 impl OAuthUrlBuilder {
     /// 获取 GitHub OAuth 完整配置
     ///
-    /// # 配置来源优先级
-    /// - github_client_id: 数据库 > 环境变量
-    /// - github_client_secret: 数据库 > 环境变量
+    /// # 配置来源
+    /// - github_client_id: 仅数据库
+    /// - github_client_secret: 仅数据库
     /// - redirect_url: 自动从 base_url 生成
     pub async fn get_github_oauth_config() -> Result<GitHubOAuthConfig, String> {
         use crate::GLOBAL_DYNAMIC_CONFIG;
-        use std::env;
 
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
 
-        // client_id: 数据库 > 环境变量
+        // client_id: 仅从数据库读取
         let client_id = config
             .github_client_id
             .clone()
             .filter(|s| !s.is_empty())
-            .or_else(|| env::var("GITHUB_CLIENT_ID").ok().filter(|s| !s.is_empty()))
             .ok_or_else(|| {
                 "GitHub OAuth not configured: missing client_id. \
-                Please configure in Settings > OAuth or set GITHUB_CLIENT_ID env."
+                Please configure in Settings > OAuth."
                     .to_string()
             })?;
 
-        // client_secret: 数据库 > 环境变量
+        // client_secret: 仅从数据库读取
         let client_secret = config
             .github_client_secret
             .clone()
             .filter(|s| !s.is_empty())
-            .or_else(|| {
-                env::var("GITHUB_CLIENT_SECRET")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-            })
             .ok_or_else(|| {
                 "GitHub OAuth not configured: missing client_secret. \
-                Please configure in Settings > OAuth or set GITHUB_CLIENT_SECRET env."
+                Please configure in Settings > OAuth."
                     .to_string()
             })?;
 
@@ -137,30 +130,32 @@ impl OAuthUrlBuilder {
         SiteConfig::get_base_url().await
     }
 
-    /// 验证 OAuth 配置（启动时调用）
+    /// 验证 OAuth 配置（启动时调用，仅用于信息提示）
+    ///
+    /// 注意：这只是信息性检查，不会阻止服务启动。
+    /// GitHub OAuth 配置存储在数据库中，在实际使用时会动态检查。
     pub async fn validate_github_oauth_config() -> Result<(), String> {
         let base_url = SiteConfig::get_base_url().await;
 
         // 检查 base_url
         if base_url.contains("localhost") {
-            tracing::warn!(
-                "⚠️ base_url is localhost: {} - not suitable for production",
+            tracing::debug!(
+                "ℹ️  base_url is localhost: {} - configure BASE_URL for production",
                 base_url
             );
-            tracing::warn!("   Set BASE_URL env or configure in Settings > Site");
         } else {
             tracing::info!("✅ Site base_url: {}", base_url);
         }
 
-        // 检查 OAuth 凭证
+        // 检查 OAuth 凭证（仅信息性）
         match Self::get_github_oauth_config().await {
             Ok(config) => {
                 tracing::info!("✅ GitHub OAuth configured");
-                tracing::info!("   redirect_url: {}", config.redirect_url);
-                tracing::info!("   ⚠️ Ensure this URL is registered in GitHub OAuth App!");
+                tracing::debug!("   redirect_url: {}", config.redirect_url);
             }
-            Err(e) => {
-                tracing::warn!("⚠️ GitHub OAuth not configured: {}", e);
+            Err(_) => {
+                // GitHub OAuth 未配置是正常的，用户可以稍后在设置中配置
+                tracing::debug!("ℹ️  GitHub OAuth not configured (can be set in Settings > OAuth)");
             }
         }
 

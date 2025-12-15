@@ -71,12 +71,6 @@ async fn run_server() -> anyhow::Result<()> {
     *GLOBAL_CONFIG.write().await = config.clone();
     tracing::info!("✅ Configuration loaded and cached globally");
 
-    // Validate OAuth configuration (now async, needs database config)
-    use oauth_url_builder::OAuthUrlBuilder;
-    if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config().await {
-        tracing::warn!("⚠️  GitHub OAuth validation warning: {}", e);
-    }
-
     // ✅ 安全修复: 验证 JWT 密钥强度
     match std::env::var("JWT_SECRET") {
         Ok(secret) => {
@@ -135,6 +129,13 @@ async fn run_server() -> anyhow::Result<()> {
                         tracing::warn!("⚠️  Failed to load dynamic config: {}", e);
                         tracing::info!("Using default configuration");
                     }
+                }
+
+                // Validate GitHub OAuth configuration (after database config is loaded)
+                // This is informational only - OAuth will work if configured in database
+                use oauth_url_builder::OAuthUrlBuilder;
+                if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config().await {
+                    tracing::debug!("ℹ️  GitHub OAuth status: {}", e);
                 }
 
                 // Initialize Tapp scheduler engine

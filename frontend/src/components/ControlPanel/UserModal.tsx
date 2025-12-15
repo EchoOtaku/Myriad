@@ -270,6 +270,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                 required
                 className="user-modal-input"
                 placeholder={t.userModal.currentPassword}
+                autoComplete="current-password"
               />
               <input
                 type="password"
@@ -278,6 +279,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                 minLength={8}
                 className="user-modal-input"
                 placeholder={t.userModal.newPassword}
+                autoComplete="new-password"
               />
               <input
                 type="password"
@@ -286,6 +288,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                 minLength={8}
                 className="user-modal-input"
                 placeholder={t.userModal.confirmNewPassword}
+                autoComplete="new-password"
               />
               {passwordError && (
                 <p className="text-red-500 text-xs text-center">{passwordError}</p>

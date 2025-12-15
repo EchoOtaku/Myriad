@@ -1058,6 +1058,7 @@ const ModernConfigForm: React.FC = () => {
                           }}
                           placeholder={field.placeholder}
                           className="field-input"
+                          autoComplete="off"
                         />
                       </div>
                     ));
@@ -1172,6 +1173,7 @@ const ModernConfigForm: React.FC = () => {
                         }}
                         placeholder={t.config.imagineproPlaceholder}
                         className="field-input"
+                        autoComplete="off"
                       />
                     </div>
 
@@ -1416,6 +1418,7 @@ const ModernConfigForm: React.FC = () => {
                     }}
                     placeholder={t.config.githubClientSecretPlaceholder}
                     className="field-input"
+                    autoComplete="off"
                   />
                 </div>
               </div>

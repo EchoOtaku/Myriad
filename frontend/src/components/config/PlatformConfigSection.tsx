@@ -97,6 +97,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
                         onChange={(e) => onUpdateField(index, field.key, e.target.value)}
                         placeholder={field.placeholder}
                         className="form-input-inline"
+                        autoComplete="off"
                       />
                       {field.key === 'token' && (
                         <button
