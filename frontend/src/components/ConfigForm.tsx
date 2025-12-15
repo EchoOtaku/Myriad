@@ -1296,7 +1296,7 @@ const ModernConfigForm: React.FC = () => {
                 <div>
                   <h3 className="section-subtitle">🎨 {t.config.backgroundAndTheme}</h3>
                   {config.ui_config.config_fields
-                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !['site_title', 'site_description', 'site_favicon', 'base_url'].includes(field.key))
+                    .filter((field) => !field.key.startsWith('pet_') && !field.key.startsWith('github_') && !field.key.startsWith('music_') && !field.key.startsWith('proxy_') && !field.key.endsWith('_base_url') && !['site_title', 'site_description', 'site_favicon', 'base_url'].includes(field.key))
                     .map((field) => (
                       <div key={field.key} className="config-field">
                         <label htmlFor={`ui-${field.key}`} className="field-label">
