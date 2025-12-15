@@ -290,6 +290,7 @@ const ModernConfigForm: React.FC = () => {
     { id: 'ui', label: t.config.basic, icon: '⚙️', section: 'ui' },
     { id: 'music', label: t.config.music, icon: '🎵', section: 'music' },
     { id: 'oauth', label: t.config.oauth, icon: '🔐', section: 'oauth' },
+    { id: 'network', label: t.config.network || '网络代理', icon: '🔗', section: 'network' },
     { id: 'permissions', label: t.config.permissions, icon: '👥', section: 'permissions' },
   ], [t]);
 
@@ -344,6 +345,15 @@ const ModernConfigForm: React.FC = () => {
       title: t.config.music,
       description: t.config.musicDesc,
       keywords: ['音乐', 'music', '歌单', '播放器', '网易云', 'qq音乐']
+    });
+
+    // 网络代理
+    items.push({
+      type: 'section',
+      section: 'network',
+      title: t.config.network || '网络代理',
+      description: t.config.networkDesc || '配置网络代理以访问外部服务',
+      keywords: ['proxy', '代理', '网络', 'gemini', 'github', 'api', '镜像', 'mirror', 'socks']
     });
 
     return items;
@@ -1544,6 +1554,131 @@ const ModernConfigForm: React.FC = () => {
                     <span>🗑️</span>
                     <span>{t.config.clearMusicCacheBtn}</span>
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 网络代理配置 */}
+          {activeSection === 'network' && (
+            <motion.div 
+              className="config-section"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="section-header">
+                <div className="section-header-left">
+                  <span className="section-icon icon-network">🔗</span>
+                  <div>
+                    <h2 className="section-title">{t.config.networkConfigTitle || '网络代理'}</h2>
+                    <p className="section-description">{t.config.networkConfigDesc || '配置网络代理以便中国大陆服务器访问外部API服务'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="config-form">
+                <div className="info-card info-card-spaced">
+                  <p className="info-title">💡 {t.config.networkProxyInfoTitle || '代理配置说明'}</p>
+                  <p className="info-text">
+                    {t.config.networkProxyInfo || '如果您的服务器位于中国大陆，可能需要配置代理才能正常访问 GitHub OAuth、Gemini AI 等外部服务。您可以选择以下方式：'}<br/><br/>
+                    <strong>1. HTTP/SOCKS 代理</strong>：配置代理服务器地址，所有外部请求将通过代理发送。<br/>
+                    <strong>2. API 镜像服务</strong>：使用第三方 API 镜像/中转服务，无需配置代理。
+                  </p>
+                </div>
+
+                {/* 代理开关 */}
+                <div className="config-field-row">
+                  <div className="field-label-inline">
+                    <span>{t.config.enableProxy || '启用网络代理'}</span>
+                    <span className="field-hint">{t.config.enableProxyHint || '开启后将使用代理访问外部API'}</span>
+                  </div>
+                  <div className="field-control">
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={config.ui_config.config_fields.find(f => f.key === 'proxy_enabled')?.value === 'true'}
+                        onChange={(e) => updateUiFieldValue('proxy_enabled', e.target.checked.toString())}
+                        aria-label="Enable Proxy"
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 代理地址 - 仅在启用时显示 */}
+                {config.ui_config.config_fields.find(f => f.key === 'proxy_enabled')?.value === 'true' && (
+                  <>
+                    <div className="config-field">
+                      <label htmlFor="proxy-url" className="field-label">
+                        {t.config.proxyUrl || '代理地址'}
+                      </label>
+                      <input
+                        id="proxy-url"
+                        type="text"
+                        value={config.ui_config.config_fields.find(f => f.key === 'proxy_url')?.value || ''}
+                        onChange={(e) => updateUiFieldValue('proxy_url', e.target.value)}
+                        placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+                        className="field-input"
+                        autoComplete="off"
+                      />
+                      <p className="field-hint">{t.config.proxyUrlHint || '支持 HTTP、HTTPS、SOCKS5 代理协议'}</p>
+                    </div>
+
+                    <div className="config-field">
+                      <label htmlFor="proxy-bypass" className="field-label">
+                        {t.config.proxyBypass || '代理绕过列表'}
+                      </label>
+                      <input
+                        id="proxy-bypass"
+                        type="text"
+                        value={config.ui_config.config_fields.find(f => f.key === 'proxy_bypass')?.value || ''}
+                        onChange={(e) => updateUiFieldValue('proxy_bypass', e.target.value)}
+                        placeholder="localhost,127.0.0.1,bilibili.com"
+                        className="field-input"
+                        autoComplete="off"
+                      />
+                      <p className="field-hint">{t.config.proxyBypassHint || '不使用代理的域名，用逗号分隔。国内服务（如 Bilibili）建议添加到绕过列表'}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* API 镜像配置 */}
+                <div className="metadata-section" style={{ marginTop: '1.5rem' }}>
+                  <h3 className="section-subtitle">🔄 {t.config.apiMirrorConfig || 'API 镜像服务'}</h3>
+                  <p className="section-subtitle-hint">{t.config.apiMirrorConfigHint || '使用第三方 API 镜像服务，可替代代理配置'}</p>
+                  
+                  <div className="config-field">
+                    <label htmlFor="gemini-base-url" className="field-label">
+                      {t.config.geminiBaseUrl || 'Gemini API 基础地址'}
+                    </label>
+                    <input
+                      id="gemini-base-url"
+                      type="text"
+                      value={config.ui_config.config_fields.find(f => f.key === 'gemini_base_url')?.value || ''}
+                      onChange={(e) => updateUiFieldValue('gemini_base_url', e.target.value)}
+                      placeholder="https://generativelanguage.googleapis.com"
+                      className="field-input"
+                      autoComplete="off"
+                    />
+                    <p className="field-hint">{t.config.geminiBaseUrlHint || '留空使用官方地址，可填写第三方代理服务地址'}</p>
+                  </div>
+
+                  <div className="config-field">
+                    <label htmlFor="github-api-base-url" className="field-label">
+                      {t.config.githubApiBaseUrl || 'GitHub API 基础地址'}
+                    </label>
+                    <input
+                      id="github-api-base-url"
+                      type="text"
+                      value={config.ui_config.config_fields.find(f => f.key === 'github_api_base_url')?.value || ''}
+                      onChange={(e) => updateUiFieldValue('github_api_base_url', e.target.value)}
+                      placeholder="https://api.github.com"
+                      className="field-input"
+                      autoComplete="off"
+                    />
+                    <p className="field-hint">{t.config.githubApiBaseUrlHint || '留空使用官方地址，可填写 GitHub API 镜像地址（注意：OAuth 认证仍需使用官方地址）'}</p>
+                  </div>
                 </div>
               </div>
             </motion.div>

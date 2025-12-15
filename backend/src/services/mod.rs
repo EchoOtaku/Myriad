@@ -6,6 +6,7 @@ pub mod bilibili_utils; // ✅ Bilibili 工具函数（IP伪装、防封技术�
 pub mod config_service;
 pub mod content_databases; // ✅ 预置内容数据库（番剧/游戏/歌手）
 pub mod fetcher;
+pub mod http_client; // ✅ 统一 HTTP 客户端（代理支持）
 pub mod imaginepro;
 pub mod metadata_filter; // ✅ 5W元数据过滤器（旧版）
 pub mod metadata_service;

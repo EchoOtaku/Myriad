@@ -261,6 +261,18 @@ pub struct DynamicConfig {
     pub guest_ai_daily_tokens: i32,
     /// 游客 AI 调用冷却时间（秒）
     pub guest_ai_cooldown_seconds: i32,
+
+    // ===== 网络代理配置（用于中国大陆服务器访问外部API） =====
+    /// 是否启用网络代理
+    pub proxy_enabled: bool,
+    /// HTTP/HTTPS 代理地址（如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）
+    pub proxy_url: Option<String>,
+    /// 不使用代理的域名列表（逗号分隔，如 localhost,127.0.0.1,bilibili.com）
+    pub proxy_bypass: Option<String>,
+    /// Gemini API Base URL（用于使用第三方代理服务）
+    pub gemini_base_url: Option<String>,
+    /// GitHub API Base URL（用于使用 GitHub 镜像服务）
+    pub github_api_base_url: Option<String>,
 }
 
 impl Default for DynamicConfig {
@@ -363,6 +375,13 @@ impl Default for DynamicConfig {
             guest_ai_daily_calls: 10,
             guest_ai_daily_tokens: 5000,
             guest_ai_cooldown_seconds: 10,
+
+            // ===== 网络代理配置默认值 =====
+            proxy_enabled: false, // 默认关闭代理
+            proxy_url: None,
+            proxy_bypass: None,
+            gemini_base_url: None,     // 默认使用官方 API
+            github_api_base_url: None, // 默认使用官方 API
         }
     }
 }

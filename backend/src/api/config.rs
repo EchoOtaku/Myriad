@@ -57,6 +57,12 @@ pub struct UiConfig {
     pub secondary_color: String,
     pub pet_enabled: bool,
     pub pet_image_url: String,
+    // 网络代理配置
+    pub proxy_enabled: bool,
+    pub proxy_url: String,
+    pub proxy_bypass: String,
+    pub gemini_base_url: String,
+    pub github_api_base_url: String,
     pub config_fields: Vec<ConfigField>,
 }
 
@@ -490,6 +496,24 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                 db_config.as_ref().and_then(|c| c.pet_image_url.clone()),
                 "PET_IMAGE_URL",
             ),
+            // 网络代理配置
+            proxy_enabled: db_config.as_ref().map(|c| c.proxy_enabled).unwrap_or(false),
+            proxy_url: db_config
+                .as_ref()
+                .and_then(|c| c.proxy_url.clone())
+                .unwrap_or_default(),
+            proxy_bypass: db_config
+                .as_ref()
+                .and_then(|c| c.proxy_bypass.clone())
+                .unwrap_or_default(),
+            gemini_base_url: db_config
+                .as_ref()
+                .and_then(|c| c.gemini_base_url.clone())
+                .unwrap_or_default(),
+            github_api_base_url: db_config
+                .as_ref()
+                .and_then(|c| c.github_api_base_url.clone())
+                .unwrap_or_default(),
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
@@ -655,6 +679,63 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     placeholder: "Playlist ID from music platform".to_string(),
                     required: false,
                 },
+                // 网络代理配置
+                ConfigField {
+                    key: "proxy_enabled".to_string(),
+                    label: "启用网络代理".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.proxy_enabled.to_string())
+                        .unwrap_or_else(|| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "proxy_url".to_string(),
+                    label: "代理服务器地址".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.proxy_url.clone())
+                        .unwrap_or_default(),
+                    placeholder: "http://127.0.0.1:7890 或 socks5://127.0.0.1:1080".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "proxy_bypass".to_string(),
+                    label: "代理绕过列表".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.proxy_bypass.clone())
+                        .unwrap_or_default(),
+                    placeholder: "localhost,127.0.0.1,.local".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "gemini_base_url".to_string(),
+                    label: "Gemini API 基础 URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.gemini_base_url.clone())
+                        .unwrap_or_default(),
+                    placeholder: "https://generativelanguage.googleapis.com (留空使用默认)"
+                        .to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "github_api_base_url".to_string(),
+                    label: "GitHub API 基础 URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.github_api_base_url.clone())
+                        .unwrap_or_default(),
+                    placeholder: "https://api.github.com (留空使用默认)".to_string(),
+                    required: false,
+                },
             ],
         },
     };
@@ -711,6 +792,10 @@ pub async fn update_config(
         Ok(dynamic_config) => {
             *crate::GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
             tracing::info!("✅ Global dynamic configuration cache updated");
+
+            // 3.1 重载全局 HTTP 客户端（以应用新的代理配置）
+            crate::services::http_client::reload_global_client().await;
+            tracing::info!("✅ Global HTTP client reloaded with new proxy settings");
         }
         Err(e) => {
             tracing::warn!("⚠️ Failed to reload dynamic config into cache: {}", e);
@@ -879,6 +964,18 @@ async fn save_to_database(
             }
             "music_source" => ("music_source", JsonValue::String(field.value.clone())),
             "music_playlist_id" => ("music_playlist_id", JsonValue::String(field.value.clone())),
+            // 网络代理配置
+            "proxy_enabled" => {
+                let enabled = field.value == "true";
+                ("proxy_enabled", JsonValue::Bool(enabled))
+            }
+            "proxy_url" => ("proxy_url", JsonValue::String(field.value.clone())),
+            "proxy_bypass" => ("proxy_bypass", JsonValue::String(field.value.clone())),
+            "gemini_base_url" => ("gemini_base_url", JsonValue::String(field.value.clone())),
+            "github_api_base_url" => (
+                "github_api_base_url",
+                JsonValue::String(field.value.clone()),
+            ),
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）- github_client_secret 是敏感字段
@@ -1006,6 +1103,12 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "music_enabled" => "MUSIC_ENABLED",
             "music_source" => "MUSIC_SOURCE",
             "music_playlist_id" => "MUSIC_PLAYLIST_ID",
+            // 网络代理配置
+            "proxy_enabled" => "PROXY_ENABLED",
+            "proxy_url" => "PROXY_URL",
+            "proxy_bypass" => "PROXY_BYPASS",
+            "gemini_base_url" => "GEMINI_BASE_URL",
+            "github_api_base_url" => "GITHUB_API_BASE_URL",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);

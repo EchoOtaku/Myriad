@@ -370,6 +370,25 @@ impl ConfigService {
             }
         }
 
+        // ========== 网络代理配置 ==========
+        if let Some(v) = map.get("proxy_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.proxy_enabled = b;
+            }
+        }
+        if let Some(v) = map.get("proxy_url") {
+            config.proxy_url = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("proxy_bypass") {
+            config.proxy_bypass = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("gemini_base_url") {
+            config.gemini_base_url = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("github_api_base_url") {
+            config.github_api_base_url = v.as_str().map(|s| s.to_string());
+        }
+
         config
     }
 
