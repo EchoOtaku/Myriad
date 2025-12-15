@@ -621,6 +621,17 @@ export function useEvocativeWallpaper(
     const startRipple = async (x: number, y: number) => {
       if (!s.rippleCanvas || !s.rippleCtx || !s.el) return;
       
+      // 检查并更新 canvas 尺寸（窗口可能已调整大小）
+      const expectedWidth = (window.innerWidth * rippleScale) | 0;
+      const expectedHeight = (window.innerHeight * rippleScale) | 0;
+      if (s.rippleCanvas.width !== expectedWidth || s.rippleCanvas.height !== expectedHeight) {
+        s.rippleCanvas.width = expectedWidth;
+        s.rippleCanvas.height = expectedHeight;
+        // 尺寸变化后需要重新捕获壁纸
+        s.sourceImageData = null;
+        s.destImageData = null;
+      }
+      
       // 如果正在淡出，取消淡出并重新激活
       if (s.rippleIsFadingOut) {
         s.rippleIsFadingOut = false;
