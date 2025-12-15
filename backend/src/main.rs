@@ -116,6 +116,12 @@ async fn run_server() -> anyhow::Result<()> {
                     }
                 }
 
+                // Auto-complete missing schema fields (safe, idempotent operation)
+                if let Err(e) = db::schema_check::ensure_schema(&db).await {
+                    tracing::warn!("⚠️  Schema check failed: {}", e);
+                    tracing::info!("Continuing with existing schema...");
+                }
+
                 // Load dynamic configuration from database
                 let config_service = ConfigService::new(db.clone());
 
