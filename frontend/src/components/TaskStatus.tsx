@@ -140,7 +140,7 @@ export function TaskStatus({
           <div className="flex items-start gap-3">
             <FaExclamationCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-medium text-red-900 dark:text-red-100">{t('task.fetchFailed')}</h3>
+              <h3 className="font-medium text-red-900 dark:text-red-100">{t.task.fetchFailed}</h3>
               <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
             </div>
           </div>
@@ -148,8 +148,8 @@ export function TaskStatus({
             <button
               onClick={onClose}
               className="text-red-400 hover:text-red-600 transition-colors"
-              aria-label={t('task.closeError')}
-              title={t('common.close')}
+              aria-label={t.task.closeError}
+              title={t.common.close}
             >
               <FaTimes className="w-5 h-5" />
             </button>
@@ -164,7 +164,7 @@ export function TaskStatus({
       <div className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-lg p-4">
         <div className="flex items-center gap-3">
           <FaSpinner className="w-5 h-5 text-gray-400 animate-spin" />
-          <span className="text-gray-600 dark:text-gray-300">{t('task.loadingInfo')}</span>
+          <span className="text-gray-600 dark:text-gray-300">{t.task.loadingInfo}</span>
         </div>
       </div>
     );
@@ -176,28 +176,28 @@ export function TaskStatus({
       color: 'text-blue-500',
       bg: 'bg-blue-50 dark:bg-blue-900/20',
       border: 'border-blue-200 dark:border-blue-800',
-      label: t('task.pending'),
+      label: t.task.pending,
     },
     Processing: {
       icon: FaSpinner,
       color: 'text-yellow-500',
       bg: 'bg-yellow-50 dark:bg-yellow-900/20',
       border: 'border-yellow-200 dark:border-yellow-800',
-      label: t('task.processing'),
+      label: t.task.processing,
     },
     Completed: {
       icon: FaCheckCircle,
       color: 'text-green-500',
       bg: 'bg-green-50 dark:bg-green-900/20',
       border: 'border-green-200 dark:border-green-800',
-      label: t('task.completed'),
+      label: t.task.completed,
     },
     Failed: {
       icon: FaExclamationCircle,
       color: 'text-red-500',
       bg: 'bg-red-50 dark:bg-red-900/20',
       border: 'border-red-200 dark:border-red-800',
-      label: t('task.failed'),
+      label: t.task.failed,
     },
   };
 
@@ -227,8 +227,8 @@ export function TaskStatus({
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            aria-label={t('task.closeTask')}
-            title={t('common.close')}
+            aria-label={t.task.closeTask}
+            title={t.common.close}
           >
             <FaTimes className="w-5 h-5" />
           </button>
@@ -239,7 +239,7 @@ export function TaskStatus({
       {(task.status === 'Processing' || task.status === 'Pending') && (
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-            <span>{t('task.progress')}</span>
+            <span>{t.task.progress}</span>
             <span>{task.progress.toFixed(0)}%</span>
           </div>
           <div className="w-full bg-gray-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
@@ -253,9 +253,9 @@ export function TaskStatus({
 
       {/* 时间信息 */}
       <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-        <div>{t('task.createdTime')}: {new Date(task.created_at).toLocaleString(locale)}</div>
+        <div>{t.task.createdTime}: {new Date(task.created_at).toLocaleString(locale)}</div>
         {task.completed_at && (
-          <div>{t('task.completedTime')}: {new Date(task.completed_at).toLocaleString(locale)}</div>
+          <div>{t.task.completedTime}: {new Date(task.completed_at).toLocaleString(locale)}</div>
         )}
       </div>
     </div>

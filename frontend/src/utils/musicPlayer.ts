@@ -906,7 +906,7 @@ class GlobalAudioManager {
 
     try {
       // 获取频率数据
-      this.analyser.getByteFrequencyData(this.frequencyData);
+      this.analyser.getByteFrequencyData(this.frequencyData as Uint8Array<ArrayBuffer>);
 
       // 将32个频段分成8个区域，每个区域4个bin，获得更精细的频率分布
       const binCount = this.frequencyData.length; // 32 个频段
