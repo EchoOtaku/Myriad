@@ -3,6 +3,38 @@
  */
 
 import { API_URL } from '../config';
+import { isUserInChinaMainland } from './geoLocation';
+
+/**
+ * 获取网易云音乐音频URL
+ * 根据用户地理位置决定是使用代理还是直连
+ * 
+ * @param songId 歌曲ID
+ * @param useProxy 是否强制使用代理（覆盖自动检测）
+ * @returns 音频URL
+ */
+export async function getNeteaseAudioUrl(songId: string, useProxy?: boolean): Promise<string> {
+  // 如果显式指定了是否使用代理
+  if (useProxy !== undefined) {
+    if (useProxy) {
+      return `${API_URL}/api/proxy/music/netease/audio/${songId}`;
+    } else {
+      // 直连网易云音乐API获取音频URL
+      return `https://music.163.com/song/media/outer/url?id=${songId}.mp3`;
+    }
+  }
+  
+  // 自动检测是否需要代理
+  const inChina = await isUserInChinaMainland();
+  
+  if (inChina) {
+    // 中国大陆用户：直连网易云音乐
+    return `https://music.163.com/song/media/outer/url?id=${songId}.mp3`;
+  } else {
+    // 海外用户：通过后端代理
+    return `${API_URL}/api/proxy/music/netease/audio/${songId}`;
+  }
+}
 
 /**
  * 节流函数 - 限制函数执行频率
@@ -239,6 +271,7 @@ export function clearLyricsCache(): void {
 
 /**
  * 获取网易云音乐歌单（带缓存）
+ * 会根据用户地理位置自动决定音频URL是使用代理还是直连
  */
 export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
   const cacheKey = `netease-${playlistId}`;
@@ -250,7 +283,10 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
   }
 
   try {
-    // 通过后端代理访问网易云音乐API
+    // 预先检测用户地理位置（并行执行，不阻塞歌单请求）
+    const geoPromise = isUserInChinaMainland();
+    
+    // 通过后端代理访问网易云音乐API（歌单信息始终通过代理获取，确保稳定性）
     const response = await fetch(`${API_URL}/api/proxy/music/netease/playlist/${playlistId}`);
 
     if (!response.ok) {
@@ -279,6 +315,10 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
       throw new Error('歌单为空或无可用歌曲');
     }
 
+    // 等待地理位置检测结果
+    const inChina = await geoPromise;
+    console.log(`[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${inChina ? '使用直连' : '使用代理'}`);
+
     const songs = tracks.map((track: any) => {
       // 网易云音乐API v6返回格式：ar(艺术家数组), al(专辑对象), dt(时长毫秒)
       // 兼容旧格式：artists, album, duration
@@ -291,14 +331,20 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
       const isTrial = false; // 网易云playlist接口不返回试听信息
       const trialDuration = undefined;
       
+      // 根据用户地理位置决定音频URL
+      // 中国大陆用户：直连网易云（更快，无需代理）
+      // 海外用户：通过后端代理（绕过地理限制）
+      const audioUrl = inChina 
+        ? `https://music.163.com/song/media/outer/url?id=${track.id}.mp3`
+        : `${API_URL}/api/proxy/music/netease/audio/${track.id}`;
+      
       return {
         id: track.id.toString(),
         name: track.name,
         artist: artists.map((a: any) => a.name).join(', ') || 'Unknown',
         album: album.name || '',
         cover: album.picUrl || album.blurPicUrl || '',
-        // 使用代理获取音频链接
-        url: `${API_URL}/api/proxy/music/netease/audio/${track.id}`,
+        url: audioUrl,
         duration: Math.floor(duration / 1000),
         source: 'netease' as MusicSource,
         isVip,

@@ -1166,6 +1166,8 @@ export interface GeoContext {
   city: string
   region: string
   country: string
+  /** 国家代码（如 CN, US） */
+  countryCode?: string
 }
 
 /**
@@ -1179,6 +1181,14 @@ export async function getContextGeo(): Promise<GeoContext> {
   }
   throw new Error('Failed to get geo info')
 }
+
+// 从统一的地理位置工具重新导出，避免重复实现
+export { 
+  isUserInChinaMainland, 
+  resetGeoCache,
+  getClientGeoLocation,
+  type GeoLocationData 
+} from '../../utils/geoLocation'
 
 // ============ Tapp API 声明系统 ============
 

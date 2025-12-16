@@ -1,5 +1,12 @@
 import { API_URL } from '../config';
-import { getClientGeoDeduped, dedupedFetch } from './requestDedup';
+import { dedupedFetch } from './requestDedup';
+import { 
+  getClientGeoLocation, 
+  getClientIdentifier, 
+  getGeoLocationWithLocalCache,
+  getBrowserGeolocation,
+  type GeoLocationData 
+} from './geoLocation';
 
 export interface ForecastDay {
   date: string;
@@ -67,60 +74,39 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
 }
 
 /**
- * 获取客户端IP地址
- * 使用去重机制避免重复请求
+ * 获取客户端IP地址/标识
+ * 使用统一的地理位置服务
  */
 async function getClientIP(): Promise<string | null> {
-  try {
-    // 使用去重的 client-geo API
-    const data = await getClientGeoDeduped();
-    
-    // 使用 lat+lon 作为唯一标识（同一个位置的用户共享缓存）
-    if (data.lat && data.lon) {
-      return `${data.lat.toFixed(2)},${data.lon.toFixed(2)}`;
-    }
-    
-    if (data.ip) {
-      return data.ip;
-    }
-  } catch (error) {
-    console.warn('[IP] 获取失败:', error);
-  }
-
-  // 所有方案失败，使用固定标识符（基于浏览器特征）
-  return 'browser-default';
+  return getClientIdentifier();
 }
 
 /**
  * 获取地理位置（带IP缓存）
- * IP→地理位置的映射缓存24小时
+ * 使用统一的地理位置服务
  */
 async function getGeolocationWithCache(clientIP: string): Promise<{ latitude: number; longitude: number; city: string } | null> {
-  const cacheKey = `geo_location_${clientIP}`;
-  const cacheTimeKey = `geo_location_time_${clientIP}`;
-
-  // 检查缓存
-  const cached = localStorage.getItem(cacheKey);
-  const cacheTime = localStorage.getItem(cacheTimeKey);
-
-  if (cached && cacheTime) {
-    const cacheAge = Date.now() - parseInt(cacheTime);
-    // IP→位置缓存24小时（位置很少变）
-    if (cacheAge < 24 * 60 * 60 * 1000) {
-      return JSON.parse(cached);
-    }
-  }
-
-  // 缓存失效或不存在，重新获取
-  const location = await getGeolocation();
-
+  const location = await getGeoLocationWithLocalCache(clientIP);
+  
   if (location) {
-    // 缓存结果
-    localStorage.setItem(cacheKey, JSON.stringify(location));
-    localStorage.setItem(cacheTimeKey, Date.now().toString());
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      city: location.city
+    };
   }
-
-  return location;
+  
+  // 最后尝试浏览器地理位置 API
+  const browserLocation = await getBrowserGeolocation();
+  if (browserLocation) {
+    return {
+      latitude: browserLocation.latitude,
+      longitude: browserLocation.longitude,
+      city: browserLocation.city
+    };
+  }
+  
+  return null;
 }
 
 /**
@@ -218,144 +204,6 @@ async function getWeatherDataWithCache(location: { latitude: number; longitude: 
     console.warn('[天气数据] 获取失败:', error);
     return null;
   }
-}
-
-/**
- * 获取地理位置信息
- * 使用去重机制，尝试多个服务，返回第一个成功的结果
- */
-async function getGeolocation(): Promise<{ latitude: number; longitude: number; city: string } | null> {
-  // 方案1: 通过后端代理获取（最准确，能获取真实客户端IP，使用去重）
-  try {
-    const data = await getClientGeoDeduped();
-    
-    if (data.status === 'success' && data.lat && data.lon) {
-      const city = data.city || data.regionName || data.country || '未知';
-      return {
-        latitude: data.lat,
-        longitude: data.lon,
-        city: city
-      };
-    }
-  } catch (error) {
-    // 静默失败，尝试下一个服务
-  }
-
-  // 方案2: 使用 ipapi.co（免费，稳定）
-  try {
-    const response = await fetch('https://ipapi.co/json/', {
-      signal: AbortSignal.timeout(10000)
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.latitude && data.longitude) {
-        const city = data.city || data.region || data.country_name || '未知';
-        return {
-          latitude: data.latitude,
-          longitude: data.longitude,
-          city: city
-        };
-      }
-    }
-  } catch (error) {
-    // 静默失败，尝试下一个服务
-  }
-
-  // 方案3: 使用 ip-api.com（备用）
-  try {
-    const response = await fetch('http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country', {
-      signal: AbortSignal.timeout(10000)
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.status === 'success' && data.lat && data.lon) {
-        const city = data.city || data.regionName || data.country || '未知';
-        return {
-          latitude: data.lat,
-          longitude: data.lon,
-          city: city
-        };
-      }
-    }
-  } catch (error) {
-    // 静默失败，尝试下一个服务
-  }
-
-  // 方案4: 使用 geojs.io（第三备用）
-  try {
-    const response = await fetch('https://get.geojs.io/v1/ip/geo.json', {
-      signal: AbortSignal.timeout(10000)
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.latitude && data.longitude) {
-        const city = data.city || data.region || data.country || '未知';
-        const lat = typeof data.latitude === 'string' ? parseFloat(data.latitude) : data.latitude;
-        const lon = typeof data.longitude === 'string' ? parseFloat(data.longitude) : data.longitude;
-        
-        return {
-          latitude: lat,
-          longitude: lon,
-          city: city
-        };
-      }
-    }
-  } catch (error) {
-    // 静默失败，尝试下一个服务
-  }
-
-  // 方案5: 所有服务都失败，使用浏览器地理位置 API（需要用户授权）
-  if ('geolocation' in navigator) {
-    try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          timeout: 10000,
-          maximumAge: 600000 // 10分钟缓存
-        });
-      });
-      // 使用 Nominatim 反向地理编码获取城市名
-      const reverseGeoUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=10&addressdetails=1`;
-      
-      let city = '当前位置';
-      try {
-        const reverseResponse = await fetch(reverseGeoUrl, {
-          signal: AbortSignal.timeout(5000),
-          headers: {
-            'User-Agent': 'Myriad Weather App'
-          }
-        });
-        
-        if (reverseResponse.ok) {
-          const reverseData = await reverseResponse.json();
-          city = reverseData.address?.city || 
-                 reverseData.address?.town || 
-                 reverseData.address?.village || 
-                 reverseData.address?.county || 
-                 reverseData.address?.state || 
-                 '当前位置';
-        }
-      } catch (e) {
-        // 反向地理编码失败，使用默认城市名
-      }
-
-      return {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        city: city
-      };
-    } catch (error) {
-      // 浏览器 API 失败（可能用户拒绝授权）
-    }
-  }
-
-  // 所有方案都失败，返回 null
-  return null;
 }
 
 /**

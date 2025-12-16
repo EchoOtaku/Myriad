@@ -627,4 +627,14 @@ export function registerContextHandlers(
       return { success: false, error: error instanceof Error ? error.message : 'Failed' }
     }
   })
+
+  // 检测用户是否在中国大陆（用于判断是否需要代理）
+  bridge.registerHandler('context.isInChinaMainland', async () => {
+    try {
+      const isInChina = await TappApiService.isUserInChinaMainland()
+      return { success: true, data: isInChina }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
 }

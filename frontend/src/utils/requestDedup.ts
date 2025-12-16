@@ -182,24 +182,6 @@ export async function getUIConfigDeduped(): Promise<any> {
 }
 
 /**
- * 获取客户端地理位置（去重）
- * 缓存 5 分钟（位置很少变化）
- */
-export async function getClientGeoDeduped(): Promise<any> {
-  return dedupedFetch(
-    `${API_URL}/api/proxy/client-geo`,
-    async () => {
-      const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
-        signal: AbortSignal.timeout(10000)
-      });
-      if (!response.ok) throw new Error('Failed to fetch client geo');
-      return response.json();
-    },
-    { cacheTTL: 5 * 60 * 1000 } // 5分钟
-  );
-}
-
-/**
  * 获取最新报告（去重）
  * 缓存 30 秒
  */
