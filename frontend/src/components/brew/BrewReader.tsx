@@ -175,6 +175,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const readerTransition = useMemo(() => getBrewTransition(animConfig, 'reader'), [animConfig]);
   const enableAnimations = animConfig.level !== 'none';
   
+  // WebKit 优化：延迟渲染内容，让入场动画先完成
+  const [contentReady, setContentReady] = useState(!enableAnimations);
+  
   // Brewlia AI 注释状态
   const isBrewlia = sourceType === 'brewlia';
   const [annotations, setAnnotations] = useState<AnnotationItem[]>([]);
@@ -368,8 +371,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     return result;
   }, [theme]);
 
-  // 处理文章内容（带注释、评论高亮和嵌入内容）- useMemo 缓存
-  const processedContent = useMemo(() => {
+  // 处理文章内容（带注释、评论高亮和嵌入内容）
+  // WebKit 优化：使用状态 + useEffect 异步处理，避免阻塞首次渲染
+  const [processedContent, setProcessedContent] = useState<string>('');
+  
+  useEffect(() => {
+    // 如果内容还没准备好，不处理
+    if (!contentReady) return;
+    
     let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`;
     
     console.debug('[BrewReader] processedContent:', {
@@ -403,8 +412,28 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       content = highlightComments(content, comments);
     }
     
-    return content;
-  }, [item.content, item.summary, item.link, showAnnotations, annotations, comments, highlightComments, isDark]);
+    setProcessedContent(content);
+  }, [contentReady, item.content, item.summary, item.link, showAnnotations, annotations, comments, highlightComments, isDark, t.brew.noContent]);
+
+  // WebKit 优化：延迟渲染内容，让入场动画先完成
+  // 这避免了同时执行动画 + 大量 DOM 渲染导致的卡顿
+  useEffect(() => {
+    if (!enableAnimations) {
+      setContentReady(true);
+      return;
+    }
+    
+    // 使用 requestAnimationFrame 确保在下一帧开始前设置
+    // 延迟时间略长于动画时长，确保动画完成
+    const delay = (readerTransition.duration * 1000) + 50;
+    const timer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        setContentReady(true);
+      });
+    }, delay);
+    
+    return () => clearTimeout(timer);
+  }, [enableAnimations, readerTransition.duration]);
 
   // 沉浸模式控制 - 进入阅读器时隐藏导航岛和控制面板
   useEffect(() => {
@@ -2876,10 +2905,20 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               fontFamily: currentFont.family,
             }}
             onClick={(e) => e.stopPropagation()}
-            dangerouslySetInnerHTML={{
-              __html: processedContent,
-            }}
-          />
+          >
+            {/* WebKit 优化：动画期间显示简单占位，避免同时渲染大量 DOM */}
+            {contentReady ? (
+              <div dangerouslySetInnerHTML={{ __html: processedContent }} />
+            ) : (
+              <div className="space-y-4 animate-pulse">
+                <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '90%' }} />
+                <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '100%' }} />
+                <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '85%' }} />
+                <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '95%' }} />
+                <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '70%' }} />
+              </div>
+            )}
+          </div>
 
           {/* 音频播放器 */}
           {item.audio_url && (
