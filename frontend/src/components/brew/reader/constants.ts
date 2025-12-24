@@ -84,6 +84,11 @@ export const DATE_FORMAT_FULL: Intl.DateTimeFormatOptions = {
 
 // 静态 style 常量
 export const STYLE_TRANSFORM_ORIGIN = { transformOrigin: 'center bottom' } as const;
+// WebKit 优化：添加 will-change 提示 GPU 加速
+export const STYLE_READER_CONTAINER = { 
+  transformOrigin: 'center bottom',
+  willChange: 'opacity, transform',
+} as const;
 export const STYLE_SCROLL_SMOOTH = { scrollBehavior: 'smooth' as const } as const;
 export const STYLE_MAX_HEIGHT_320 = { maxHeight: 'min(320px, 60vh)' } as const;
 export const STYLE_MAX_HEIGHT_60VH = { maxHeight: '60vh' } as const;

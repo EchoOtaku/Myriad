@@ -100,7 +100,7 @@ export function useBrewAnimationConfig(): AnimationConfig & {
       enableStagger: !isNone,
       enableHover: !isNone,
       cardDuration: isNone ? 0 : isLight ? 120 : 200,
-      readerDuration: isNone ? 0 : isLight ? 150 : 300,
+      readerDuration: isNone ? 0 : isLight ? 100 : 200,
     };
 
     ANIM_CONFIG_CACHE.set(cacheKey, config);
@@ -261,11 +261,11 @@ export const brewAnimationPresets = {
     animate: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: -8 },
   },
-  /** 阅读器入场动画 */
+  /** 阅读器入场动画 - WebKit 优化：移除 scale，仅用 opacity + translateY */
   readerEnter: {
-    initial: { opacity: 0, scale: 0.92, y: 60 },
-    animate: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.92, y: 60 },
+    initial: { opacity: 0, y: 40 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: 40 },
   },
   /** 淡入淡出 */
   fade: {

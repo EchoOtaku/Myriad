@@ -47,7 +47,7 @@ import {
   TRANSITION_PANEL,
   DATE_FORMAT_SHORT,
   DATE_FORMAT_FULL,
-  STYLE_TRANSFORM_ORIGIN,
+  STYLE_READER_CONTAINER,
   STYLE_SCROLL_SMOOTH,
   STYLE_MAX_HEIGHT_320,
   STYLE_MAX_HEIGHT_60VH,
@@ -2077,7 +2077,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   return (
     <motion.div
       {...readerAnimProps}
-      style={STYLE_TRANSFORM_ORIGIN}
+      style={STYLE_READER_CONTAINER}
       className={`fixed inset-0 z-50 ${currentTheme.bg}`}
       data-brew-reader="true"
     >
@@ -2935,7 +2935,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             exit={enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : undefined}
             transition={enableAnimations ? { duration: 0.25, ease: [0.16, 1, 0.3, 1] } : undefined}
             className={`fixed bottom-8 inset-x-0 mx-auto w-fit px-4 py-2 rounded-xl shadow-lg z-[60] ${
-              isDark ? 'bg-white/10 text-white backdrop-blur-md' : 'bg-black/80 text-white'
+              isDark ? 'bg-neutral-800/95 text-white' : 'bg-black/90 text-white'
             }`}
           >
             {showToast}
