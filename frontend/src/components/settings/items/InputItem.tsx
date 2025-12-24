@@ -27,7 +27,7 @@ export const InputItem = React.memo<InputItemProps>(({
   inputType = 'text',
   multiline = false,
   rows = 3,
-  autoComplete = 'off',
+  autoComplete = 'one-time-code',
   autoSelectOnMask = true,
   copyable = false,
   className = '',
@@ -91,6 +91,7 @@ export const InputItem = React.memo<InputItemProps>(({
           {multiline ? (
             <textarea
               id={id}
+              name={`setting-${itemKey}-${Date.now()}`}
               value={value}
               onChange={handleChange}
               onFocus={handleFocus}
@@ -100,10 +101,13 @@ export const InputItem = React.memo<InputItemProps>(({
               disabled={disabled || loading}
               className={`${inputClassName} resizable-textarea`}
               autoComplete={autoComplete}
+              data-form-type="other"
+              data-lpignore="true"
             />
           ) : (
             <input
               id={id}
+              name={`setting-${itemKey}-${Date.now()}`}
               type={inputType}
               value={value}
               onChange={handleChange}
@@ -113,6 +117,9 @@ export const InputItem = React.memo<InputItemProps>(({
               disabled={disabled || loading}
               className={inputClassName}
               autoComplete={autoComplete}
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
           )}
           {copyable && value && (

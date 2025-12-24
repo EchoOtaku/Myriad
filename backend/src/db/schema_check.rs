@@ -1203,6 +1203,12 @@ fn get_expected_schema() -> Vec<TableDef> {
                     default_value: None,
                 },
                 ColumnDef {
+                    name: "rsshub_route".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
                     name: "created_at".into(),
                     data_type: "timestamp with time zone".into(),
                     is_nullable: false,
@@ -1636,6 +1642,102 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== rsshub_instances 表 ====================
+        TableDef {
+            name: "rsshub_instances".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "name".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "url".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "access_key".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "priority".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("100".into()),
+                },
+                ColumnDef {
+                    name: "enabled".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("true".into()),
+                },
+                ColumnDef {
+                    name: "health_status".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'unknown'".into()),
+                },
+                ColumnDef {
+                    name: "last_health_check".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "last_response_time_ms".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "consecutive_failures".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "total_requests".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "success_requests".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
     ]
 }
 
@@ -1940,6 +2042,19 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["item_id".into(), "user_id".into()],
             is_unique: false,
         },
+        // rsshub_instances 索引
+        IndexDef {
+            name: "idx_rsshub_instances_user_url".into(),
+            table: "rsshub_instances".into(),
+            columns: vec!["user_id".into(), "url".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_rsshub_instances_priority".into(),
+            table: "rsshub_instances".into(),
+            columns: vec!["user_id".into(), "enabled".into(), "priority".into()],
+            is_unique: false,
+        },
     ]
 }
 
@@ -2111,6 +2226,30 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 sort_order INTEGER,
                 ai_style_tags JSONB,
                 extra_config JSONB,
+                rsshub_route TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        ),
+        // rsshub_instances 表
+        (
+            "rsshub_instances",
+            r#"
+            CREATE TABLE IF NOT EXISTS rsshub_instances (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                name VARCHAR(100) NOT NULL,
+                url TEXT NOT NULL,
+                access_key VARCHAR(255),
+                priority INTEGER NOT NULL DEFAULT 100,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                health_status VARCHAR(20) NOT NULL DEFAULT 'unknown',
+                last_health_check TIMESTAMPTZ,
+                last_response_time_ms INTEGER,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                total_requests INTEGER NOT NULL DEFAULT 0,
+                success_requests INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -2134,6 +2273,7 @@ async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
         "brew_annotations",
         "brew_podcasts",
         "brew_comments",
+        "rsshub_instances",
     ];
 
     for table_name in creation_order {

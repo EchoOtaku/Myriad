@@ -393,61 +393,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // ==================== 6. VIRTUAL_PERSONAS 表 ====================
-        // 虚拟人设（独立表）
-        manager
-            .create_table(
-                Table::create()
-                    .table(VirtualPersonas::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(VirtualPersonas::Id)
-                            .integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
-                    .col(ColumnDef::new(VirtualPersonas::UserId).integer().not_null())
-                    .col(ColumnDef::new(VirtualPersonas::Slot).integer().not_null()) // 0 或 1
-                    .col(ColumnDef::new(VirtualPersonas::Name).string().not_null())
-                    .col(ColumnDef::new(VirtualPersonas::Personality).text())
-                    .col(ColumnDef::new(VirtualPersonas::Appearance).text())
-                    .col(ColumnDef::new(VirtualPersonas::Hobbies).json())
-                    .col(ColumnDef::new(VirtualPersonas::LifeStyle).text())
-                    .col(ColumnDef::new(VirtualPersonas::VisualStyle).text())
-                    .col(ColumnDef::new(VirtualPersonas::ImagePrompt).text())
-                    .col(ColumnDef::new(VirtualPersonas::ImageUrl).text())
-                    .col(
-                        ColumnDef::new(VirtualPersonas::CreatedAt)
-                            .timestamp()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .col(
-                        ColumnDef::new(VirtualPersonas::UpdatedAt)
-                            .timestamp()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .col(ColumnDef::new(VirtualPersonas::ExpiresAt).timestamp())
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_virtual_personas_user_slot")
-                    .table(VirtualPersonas::Table)
-                    .col(VirtualPersonas::UserId)
-                    .col(VirtualPersonas::Slot)
-                    .unique()
-                    .if_not_exists()
-                    .to_owned(),
-            )
-            .await?;
-
-        // ==================== 7. PLATFORM_REPORTS 表 ====================
+        // ==================== 6. PLATFORM_REPORTS 表 ====================
         // 报告存储
         manager
             .create_table(
@@ -513,9 +459,6 @@ impl MigrationTrait for Migration {
         // 删除所有表（按依赖顺序反向）
         manager
             .drop_table(Table::drop().table(PlatformReports::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(VirtualPersonas::Table).to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(MetadataHistory::Table).to_owned())
@@ -613,25 +556,6 @@ enum MetadataHistory {
     OldData,
     NewData,
     ChangeDate,
-}
-
-#[derive(DeriveIden)]
-enum VirtualPersonas {
-    Table,
-    Id,
-    UserId,
-    Slot,
-    Name,
-    Personality,
-    Appearance,
-    Hobbies,
-    LifeStyle,
-    VisualStyle,
-    ImagePrompt,
-    ImageUrl,
-    CreatedAt,
-    UpdatedAt,
-    ExpiresAt,
 }
 
 #[derive(DeriveIden)]

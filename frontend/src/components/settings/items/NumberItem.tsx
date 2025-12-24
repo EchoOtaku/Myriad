@@ -55,6 +55,7 @@ export const NumberItem = React.memo<NumberItemProps>(({
           <div className="number-input-wrapper">
             <input
               id={id}
+              name={`setting-number-${itemKey}-${Date.now()}`}
               type="number"
               value={value}
               onChange={handleChange}
@@ -64,6 +65,10 @@ export const NumberItem = React.memo<NumberItemProps>(({
               disabled={disabled || loading}
               className={`field-input ${error ? 'has-error' : ''}`}
               aria-label={label}
+              autoComplete="one-time-code"
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
             {unit && <span className="number-unit">{unit}</span>}
           </div>
