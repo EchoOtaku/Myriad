@@ -29,6 +29,7 @@ import { useLoopAnimation, usePageReady } from '../hooks/animation';
 import { useReportsScheduler, useReportsVisibilityInterval } from '../hooks/animation/pages/reports';
 import { useI18n } from '../contexts/I18nContext';
 import { useTitleFont } from '../hooks/useTitleFont';
+import { useSecondaryNav, type SecondaryNavItem } from '../contexts/NavigationContext';
 
 // 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
 const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i);
@@ -1171,6 +1172,54 @@ export default function Reports() {
   const isPageReady = usePageReady();
   // 🆕 标题字体 Hook
   const { currentFont, titleFontSize, titleColor } = useTitleFont();
+
+  // 二级导航项配置
+  const navItems: SecondaryNavItem[] = useMemo(() => [
+    { 
+      id: 'platform', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z" />
+        </svg>
+      ), 
+      label: t.nav.platformReport, 
+      title: t.nav.platformReport, 
+      ariaLabel: t.nav.showPlatformReport 
+    },
+    { 
+      id: 'comprehensive', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+        </svg>
+      ), 
+      label: t.nav.comprehensiveReport, 
+      title: t.nav.comprehensiveReport, 
+      ariaLabel: t.nav.showComprehensiveReport 
+    },
+  ], [t]);
+
+  // 使用二级导航 Hook
+  const { activeId: activeTab, setActiveId: setActiveTab, setExpanded } = useSecondaryNav({
+    routePath: '/reports',
+    items: navItems,
+    defaultActiveId: 'platform',
+    expandHint: t.nav.switchTab,
+  });
+
+  // 监听展开事件
+  useEffect(() => {
+    const handleExpandSecondary = (e: CustomEvent<{ path: string }>) => {
+      if (e.detail.path === '/reports') {
+        setExpanded(true);
+      }
+    };
+
+    window.addEventListener('nav-expand-secondary', handleExpandSecondary as EventListener);
+    return () => {
+      window.removeEventListener('nav-expand-secondary', handleExpandSecondary as EventListener);
+    };
+  }, [setExpanded]);
   
   // 检测深色模式
   const [isDark, setIsDark] = useState(false);
@@ -1316,24 +1365,15 @@ export default function Reports() {
     return handlers;
   }, [handleContentChange]);
   
-  // 标签状态管理
-  const [activeTab, setActiveTab] = useState<'platform' | 'comprehensive'>('platform');
-  
-  // 🚀 性能优化：合并事件监听器
+  // 🚀 性能优化：监听舞台暂停状态
   useEffect(() => {
-    const handleTabChange = (e: CustomEvent<{ tab: 'platform' | 'comprehensive' }>) => {
-      setActiveTab(e.detail.tab);
-    };
-
     const handlePauseStateChange = (e: CustomEvent<{ isPaused: boolean }>) => {
       setStagePaused(e.detail.isPaused);
     };
 
-    window.addEventListener('reports-tab-change', handleTabChange as EventListener);
     window.addEventListener('stage-pause-state-change', handlePauseStateChange as EventListener);
     
     return () => {
-      window.removeEventListener('reports-tab-change', handleTabChange as EventListener);
       window.removeEventListener('stage-pause-state-change', handlePauseStateChange as EventListener);
     };
   }, []);

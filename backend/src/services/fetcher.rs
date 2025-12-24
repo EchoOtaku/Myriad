@@ -50,14 +50,6 @@ pub struct BilibiliBangumi {
     pub badge: String,
 }
 
-// Netease Cloud Music 数据结构 (已废弃,仅保留以兼容)
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NeteaseSong {
-    pub name: String,         // 曲名
-    pub artists: Vec<String>, // 歌手名称列表
-}
-
 // Steam 数据结构
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SteamUserInfo {

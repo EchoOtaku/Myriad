@@ -418,6 +418,42 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     placeholder: "Optional webhook endpoint".to_string(),
                     required: false,
                 },
+                // 腾讯云语音服务配置 (TTS/ASR)
+                ConfigField {
+                    key: "tencent_secret_id".to_string(),
+                    label: "Tencent Cloud Secret ID".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config.as_ref().and_then(|c| c.tencent_secret_id.clone()),
+                        "TENCENT_SECRET_ID",
+                    )),
+                    placeholder: "Get from https://console.cloud.tencent.com/cam/capi".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "tencent_secret_key".to_string(),
+                    label: "Tencent Cloud Secret Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.tencent_secret_key.clone()),
+                        "TENCENT_SECRET_KEY",
+                    )),
+                    placeholder: "Keep this secret secure".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "tencent_region".to_string(),
+                    label: "Tencent Cloud Region".to_string(),
+                    field_type: "select".to_string(),
+                    value: get_value(
+                        db_config.as_ref().and_then(|c| c.tencent_region.clone()),
+                        "TENCENT_REGION",
+                    ),
+                    placeholder: "ap-guangzhou".to_string(),
+                    required: false,
+                },
             ],
             image_provider: db_config
                 .as_ref()
@@ -734,6 +770,39 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     required: false,
                 },
                 ConfigField {
+                    key: "site_icp".to_string(),
+                    label: "ICP 备案号".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.site_icp.clone())
+                        .unwrap_or_default(),
+                    placeholder: "如：京ICP备12345678号".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_gongan".to_string(),
+                    label: "公安备案号".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.site_gongan.clone())
+                        .unwrap_or_default(),
+                    placeholder: "如：京公网安备11010802012345号".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "cloud_sponsors".to_string(),
+                    label: "云赞助商".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .and_then(|c| c.cloud_sponsors.clone())
+                        .unwrap_or_default(),
+                    placeholder: "cloudflare,edgeone,upyun（多个用逗号分隔）".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "github_client_id".to_string(),
                     label: "GitHub OAuth Client ID".to_string(),
                     field_type: "text".to_string(),
@@ -1033,6 +1102,10 @@ async fn save_to_database(
                 "imaginepro_callback_url",
                 JsonValue::String(field.value.clone()),
             ),
+            // 腾讯云语音服务配置 (TTS/ASR)
+            "tencent_secret_id" => ("tencent_secret_id", JsonValue::String(field.value.clone())),
+            "tencent_secret_key" => ("tencent_secret_key", JsonValue::String(field.value.clone())),
+            "tencent_region" => ("tencent_region", JsonValue::String(field.value.clone())),
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）- 保持数据库原值不变
@@ -1125,6 +1198,11 @@ async fn save_to_database(
                 "github_api_base_url",
                 JsonValue::String(field.value.clone()),
             ),
+            // 站点备案和云赞助商（允许清空）
+            "site_icp" | "site_gongan" | "cloud_sponsors" => {
+                updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
+                continue;
+            }
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）- github_client_secret 是敏感字段
@@ -1739,6 +1817,10 @@ pub async fn get_public_ui_config(
         "title_font": db_config.as_ref().and_then(|c| c.title_font.clone()),
         "title_font_size": db_config.as_ref().and_then(|c| c.title_font_size),
         "title_color": db_config.as_ref().and_then(|c| c.title_color.clone()),
+        // 站点信息（用于底部显示）
+        "site_icp": db_config.as_ref().and_then(|c| c.site_icp.clone()),
+        "site_gongan": db_config.as_ref().and_then(|c| c.site_gongan.clone()),
+        "cloud_sponsors": db_config.as_ref().and_then(|c| c.cloud_sponsors.clone()),
     });
 
     (StatusCode::OK, Json(ui_config))

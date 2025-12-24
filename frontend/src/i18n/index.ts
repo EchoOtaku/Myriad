@@ -75,6 +75,8 @@ export interface TranslationKeys {
     currentFilterTvSeries: string;
     currentTabPlatform: string;
     currentTabComprehensive: string;
+    expandFilters: string;
+    switchTab: string;
     // Tapp
     tapp: string;
     tappStore: string;
@@ -348,6 +350,25 @@ export interface TranslationKeys {
     fluxRealism: string;
     flux3D: string;
     imagineproPlaceholder: string;
+    // Speech service (TTS/ASR) configuration
+    speechServiceTitle: string;
+    speechServiceDesc: string;
+    tencentSecretId: string;
+    tencentSecretIdPlaceholder: string;
+    tencentSecretKey: string;
+    tencentSecretKeyPlaceholder: string;
+    tencentRegion: string;
+    tencentRegionGuangzhou: string;
+    tencentRegionShanghai: string;
+    tencentRegionBeijing: string;
+    tencentRegionChengdu: string;
+    tencentRegionChongqing: string;
+    tencentRegionNanjing: string;
+    speechTestAvailability: string;
+    speechTestSuccess: string;
+    speechTestFailed: string;
+    speechTestTesting: string;
+    speechNotConfigured: string;
     // Platform configuration
     platformsConfigTitle: string;
     platformsConfigDesc: string;
@@ -440,6 +461,21 @@ export interface TranslationKeys {
     aiCooldownSeconds: string;
     aiCooldownSecondsHint: string;
     aiQuotaAdminNote: string;
+    // 站点备案和云赞助商
+    siteFooterTitle: string;
+    siteFooterDesc: string;
+    siteIcp: string;
+    siteIcpHint: string;
+    siteIcpPlaceholder: string;
+    siteGongan: string;
+    siteGonganHint: string;
+    siteGonganPlaceholder: string;
+    cloudSponsors: string;
+    cloudSponsorsHint: string;
+    cloudSponsorsPlaceholder: string;
+    cloudflare: string;
+    edgeone: string;
+    upyun: string;
   };
   
   // 小组件
@@ -1279,6 +1315,556 @@ export interface TranslationKeys {
     noContent: string;
     loading: string;
     tappContent: string;
+  };
+  
+  // Brew RSS 阅读器
+  brew: {
+    // 通用
+    sources: string;
+    source: string;
+    articles: string;
+    article: string;
+    subscription: string;
+    subscriptions: string;
+    unread: string;
+    starred: string;
+    all: string;
+    uncategorized: string;
+    category: string;
+    categories: string;
+    friendLinks: string;
+    me: string;
+    
+    // 时间相关
+    justNow: string;
+    minutesAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+    
+    // 订阅类型
+    feedTypeRss: string;
+    feedTypeAtom: string;
+    feedTypeJson: string;
+    feedTypeNotion: string;
+    feedTypeRsshub: string;
+    feedTypeLink: string;
+    feedTypeBrewlia: string;
+    
+    // 订阅类型描述
+    feedTypeRssDesc: string;
+    feedTypeLinkDesc: string;
+    feedTypeNotionDesc: string;
+    feedTypeRsshubDesc: string;
+    feedTypeBrewliaDesc: string;
+    
+    // 操作
+    addSubscription: string;
+    editSubscription: string;
+    deleteSubscription: string;
+    refreshSubscription: string;
+    visitWebsite: string;
+    markAllRead: string;
+    expandSidebar: string;
+    collapseSidebar: string;
+    exitEdit: string;
+    selectAll: string;
+    deselectAll: string;
+    deleteSelected: string;
+    refreshAll: string;
+    importExportOpml: string;
+    keyboardShortcuts: string;
+    moreOptions: string;
+    
+    // 添加订阅
+    addLink: string;
+    addBrewlia: string;
+    addRsshub: string;
+    addRss: string;
+    subscriptionUrl: string;
+    linkUrl: string;
+    notionUrl: string;
+    subscriptionName: string;
+    autoFetch: string;
+    inputName: string;
+    selectCategory: string;
+    inputNewCategory: string;
+    detect: string;
+    detecting: string;
+    
+    // AI 增强
+    enableAiEnhance: string;
+    disableAiEnhance: string;
+    aiEnhanceDesc: string;
+    
+    // 编辑订阅
+    uploadIcon: string;
+    uploadIconHint: string;
+    clearIcon: string;
+    removeCategory: string;
+    maxCategories: string;
+    needPresetCategory: string;
+    addCategory: string;
+    selectThemeColor: string;
+    editNameCategoryColor: string;
+    generateTags: string;
+    regenerateTags: string;
+    deleteTag: string;
+    
+    // 更新间隔
+    updateInterval: string;
+    interval15min: string;
+    interval30min: string;
+    interval1hour: string;
+    interval2hours: string;
+    interval6hours: string;
+    interval12hours: string;
+    intervalDaily: string;
+    
+    // 排序
+    sortByUpdate: string;
+    sortByCustom: string;
+    sortByCategory: string;
+    sortByRandom: string;
+    sortByPinyin: string;
+    
+    // 快捷键分类
+    shortcutNavigation: string;
+    shortcutArticle: string;
+    shortcutSource: string;
+    shortcutOther: string;
+    
+    // 提示
+    tipJustUpdated: string;
+    tipUnreadCount: string;
+    tipClickToView: string;
+    tipSubscriptionCount: string;
+    tipManageSources: string;
+    tipMorning: string;
+    tipStartReading: string;
+    tipAfternoon: string;
+    tipRelaxReading: string;
+    tipEvening: string;
+    tipQuietTime: string;
+    
+    // 错误信息
+    errorDetectFailed: string;
+    errorRsshubRouteRequired: string;
+    errorUrlRequired: string;
+    errorNameRequired: string;
+    errorNotionTokenRequired: string;
+    errorAddSuccess: string;
+    errorAddFailed: string;
+    errorSelectImage: string;
+    errorImageTooLarge: string;
+    errorImageReadFailed: string;
+    errorImportFailed: string;
+    errorExportFailed: string;
+    errorSaveFailed: string;
+    errorGenerateTagsFailed: string;
+    
+    // 空状态
+    emptyNoSources: string;
+    emptyCategoryNoSources: string;
+    
+    // 搜索
+    searchSources: string;
+    closeSearch: string;
+    
+    // OPML
+    selectOpmlFile: string;
+    
+    // RSSHub 配置
+    rsshubInstanceStatus: string;
+    rsshubStatusNormal: string;
+    rsshubStatusError: string;
+    rsshubStatusUnknown: string;
+    rsshubParamLimit: string;
+    rsshubParamLimitDesc: string;
+    rsshubParamMode: string;
+    rsshubParamModeDefault: string;
+    rsshubParamModeFulltext: string;
+    rsshubParamModeDesc: string;
+    rsshubParamFilter: string;
+    rsshubParamFilterDesc: string;
+    rsshubParamFilterTitle: string;
+    rsshubParamFilterTitleDesc: string;
+    rsshubParamFilterout: string;
+    rsshubParamFilteroutDesc: string;
+    rsshubParamFilteroutTitle: string;
+    rsshubParamFilteroutTitleDesc: string;
+    rsshubParamFilterTime: string;
+    rsshubParamFilterTimeDesc: string;
+    rsshubParamFormat: string;
+    rsshubParamFormatDefault: string;
+    rsshubParamFormatDesc: string;
+    // RSSHub select options
+    rsshubDefault: string;
+    rsshubFulltext: string;
+    rsshubDefaultRss: string;
+    rsshubAtom: string;
+    rsshubJson: string;
+    
+    // RSSHub 分类
+    rsshubCategorySocial: string;
+    rsshubCategoryVideo: string;
+    rsshubCategoryNews: string;
+    rsshubCategoryBlog: string;
+    rsshubCategoryProgramming: string;
+    rsshubCategoryDesign: string;
+    rsshubCategoryShopping: string;
+    rsshubCategoryOther: string;
+    
+    // 选择文章
+    selectArticles: string;
+    cancelStarred: string;
+    returnToSourceList: string;
+    returnToAllSources: string;
+    
+    // ControlIsland 特有
+    tipFromSource: string;
+    articlesCount: string;
+    totalArticles: string;
+    starredArticles: string;
+    starredCount: string;
+    selectedCount: string;
+    unstar: string;
+    backToSourceList: string;
+    backToAllSources: string;
+    refreshSource: string;
+    markAllAsRead: string;
+    batchManage: string;
+    selectAllToggle: string;
+    sortMethod: string;
+    search: string;
+    edit: string;
+    editMode: string;
+    shortcuts: string;
+    add: string;
+    singleAdd: string;
+    deleteIcon: string;
+    deleteCustomIcon: string;
+    dropOpmlHere: string;
+    supportedFormats: string;
+    startImport: string;
+    exportOpml: string;
+    importResult: string;
+    skippedCount: string;
+    
+    // 更多 ControlIsland 键
+    sourceTypeLabel: string;
+    pureLink: string;
+    notionDesc: string;
+    rsshubDesc: string;
+    linkDesc: string;
+    rssDesc: string;
+    brewliaShortDesc: string;
+    brewliaFeatures: string;
+    disableAI: string;
+    enableAI: string;
+    notionUrlLabel: string;
+    linkUrlLabel: string;
+    subscriptionUrlLabel: string;
+    discover: string;
+    nameLabel: string;
+    enterName: string;
+    noCategory: string;
+    siteIcon: string;
+    upload: string;
+    close: string;
+    resultsCount: string;
+    refreshAllSources: string;
+    errorDiscoverFailed: string;
+    errorConfigRsshub: string;
+    errorEnterUrl: string;
+    errorLinkNeedName: string;
+    errorNotionToken: string;
+    addSuccess: string;
+    errorImageSize: string;
+    errorImageRead: string;
+
+    // BrewReader - Font and Layout
+    fontSerif: string;
+    fontSans: string;
+    fontSystem: string;
+    layoutNarrow: string;
+    layoutWide: string;
+
+    // BrewReader - Basic messages
+    noContent: string;
+    startPlaying: string;
+    playFailed: string;
+    linkCopied: string;
+    backToPrevParagraph: string;
+    backToTop: string;
+    cached: string;
+    fetchAnnotationFailed: string;
+
+    // BrewReader - Comment system
+    commentAdded: string;
+    addCommentFailed: string;
+    commentDeleted: string;
+    replyAdded: string;
+    addReplyFailed: string;
+
+    // BrewReader - TTS messages
+    regenerateFailed: string;
+    cloudTtsUnavailable: string;
+    cannotConnectSpeech: string;
+    checkingCloudTts: string;
+    cloudTtsUnavailableCheck: string;
+    switchedToCloudTts: string;
+    checkingCloudCache: string;
+    cloudCacheIncomplete: string;
+    noCloudCache: string;
+    checkCacheFailed: string;
+    switchedToSystemTts: string;
+    cloudTts: string;
+    reloadTts: string;
+    voiceSettingSaved: string;
+    reload: string;
+    switchFailed: string;
+    clearFailed: string;
+    male: string;
+    female: string;
+    loadingCloudCache: string;
+    generateFailed: string;
+    generatePodcastFailed: string;
+    regeneratingScript: string;
+    regeneratingCloudVoice: string;
+    loadFailed: string;
+
+    // BrewReader - UI elements
+    backEsc: string;
+    clickBackLongTop: string;
+    tableOfContents: string;
+    loading: string;
+    generatingPodcast: string;
+    readOriginal: string;
+    hideHighlight: string;
+    regenerate: string;
+    systemTts: string;
+    settings: string;
+    closePlayer: string;
+    emotional: string;
+    mixed: string;
+    switchToThisVoice: string;
+    clearVoiceCache: string;
+    hostA: string;
+    hostB: string;
+    podcastHostLabel: string;
+    podcastGuestLabel: string;
+    prevSegment: string;
+    pause: string;
+    play: string;
+    stop: string;
+    nextSegment: string;
+
+    // BrewReader - Comments UI
+    selectTextToComment: string;
+    increaseFontSize: string;
+    decreaseFontSize: string;
+    increaseLineHeight: string;
+    decreaseLineHeight: string;
+    anonymousUser: string;
+    writeYourThoughts: string;
+    closeCommentPanel: string;
+    reply: string;
+    deleteComment: string;
+    writeYourReply: string;
+    send: string;
+    cancel: string;
+    deleteReply: string;
+
+    // BrewReader - Additional UI text
+    analyzing: string;
+    noAnnotations: string;
+    loadingCloudVoice: string;
+    podcastSettings: string;
+    regenerateLabel: string;
+    hostAnchor: string;
+    defaultVoice: string;
+    guestLabel: string;
+    superNatural: string;
+    emotionalLabel: string;
+    articleAudio: string;
+    noCache: string;
+    currentVoice: string;
+    wordCount: string;
+    audioLabel: string;
+    selectedText: string;
+    myComments: string;
+    noComments: string;
+    selectTextToAddComment: string;
+    originalExcerpt: string;
+    replyTo: string;
+    showAnnotations: string;
+    back: string;
+    podcastScript: string;
+    voice: string;
+    readingTime: string;
+    viewComments: string;
+    switchTheme: string;
+    foundAnnotations: string;
+    fromCache: string;
+    regeneratedAnnotations: string;
+    // UI Panel titles
+    tocTitle: string;
+    aiAnnotations: string;
+    aiPodcast: string;
+    // Voice settings tooltips
+    voiceSuperNaturalSuffix: string;
+    voiceEmotionalSuffix: string;
+    // Voice role labels
+    voiceRoleHostA: string;
+    voiceRoleGuestB: string;
+    voiceRoleMixed: string;
+    fileCountSuffix: string;
+    useVoice: string;
+    autoGenerateAudioHint: string;
+    systemTtsHint: string;
+    // Comment actions
+    cancelAction: string;
+    saving: string;
+    addComment: string;
+    replyCountSuffix: string;
+    // Annotation fallback
+    annotationFallback: string;
+    fontLabel: string;
+    // Error messages
+    cloudTtsUnavailableError: string;
+    cannotConnectVoiceService: string;
+    // BrewFeedList - UI text
+    hasAnnotations: string;
+    annotationsLabel: string;
+    hasPodcast: string;
+    podcastLabel: string;
+    unstarArticle: string;
+    starArticle: string;
+    openInNewTab: string;
+    noArticles: string;
+    subscribeMoreSources: string;
+    loadedAllArticles: string;
+    
+    // BrewSidebar - UI text
+    brewReader: string;
+    sourcesCount: string;
+    unreadCount: string;
+    allArticles: string;
+    noSources: string;
+    addFirstSubscription: string;
+    keyboardShortcutsHint: string;
+    refresh: string;
+    delete: string;
+    
+    // EditModal - UI text
+    friendLink: string;
+    categoryMe: string;
+    interval2hour: string;
+    interval6hour: string;
+    interval12hour: string;
+    errorGenerateStyleTags: string;
+    editSource: string;
+    replace: string;
+    sourceName: string;
+    needFriendLinkFirst: string;
+    enterCategoryHint: string;
+    clearAllCategories: string;
+    categoryCount: string;
+    selectFriendLinkHint: string;
+    doneEditing: string;
+    themeColor: string;
+    editNameCategoryTheme: string;
+    sourceType: string;
+    sourceUrl: string;
+    rsshubRoute: string;
+    rsshubInstance: string;
+    subscriptionMode: string;
+    pauseFetch: string;
+    subscribe: string;
+    standardMode: string;
+    aiStyleTags: string;
+    generating: string;
+    styleTagsDesc: string;
+    noTagsHint: string;
+    saveChanges: string;
+    
+    // RSSHubConfig - Error messages
+    errorLoadFailed: string;
+    errorNetworkRetry: string;
+    errorUpdateFailed: string;
+    rsshubConfirmDelete: string;
+    errorDeleteFailed: string;
+    errorHealthCheckFailed: string;
+    errorResetFailed: string;
+    
+    // RSSHubConfig - Instance management
+    rsshubAccessKey: string;
+    rsshubAccessKeyKeep: string;
+    rsshubAddCustomParam: string;
+    rsshubAddInstance: string;
+    rsshubAddNewInstance: string;
+    rsshubAdvancedOptions: string;
+    rsshubBrowsePopular: string;
+    rsshubCheck: string;
+    rsshubCheckAll: string;
+    rsshubClickToAdd: string;
+    rsshubConfigured: string;
+    rsshubConnectionFailed: string;
+    rsshubConnectionOk: string;
+    rsshubCustomParams: string;
+    rsshubDeleteParam: string;
+    rsshubDeployDocs: string;
+    rsshubDisable: string;
+    rsshubEnable: string;
+    rsshubEnterParam: string;
+    rsshubFullUrl: string;
+    rsshubHasAccessKey: string;
+    rsshubCloseError: string;
+    rsshubHealthy: string;
+    rsshubDegraded: string;
+    rsshubUnhealthy: string;
+    rsshubUnknown: string;
+    rsshubInstanceCount: string;
+    rsshubInstanceName: string;
+    rsshubInstanceUrl: string;
+    rsshubInstanceUrlShort: string;
+    rsshubLastCheck: string;
+    rsshubNeedEnvConfig: string;
+    rsshubNever: string;
+    rsshubNoInstance: string;
+    rsshubNoInstances: string;
+    rsshubOptional: string;
+    rsshubOptionalConfig: string;
+    rsshubOptionalConfigHint: string;
+    rsshubOptionalConfigNote: string;
+    rsshubParamDocs: string;
+    rsshubParamName: string;
+    rsshubParamValue: string;
+    rsshubPriority: string;
+    rsshubPriorityHint: string;
+    rsshubQueryParams: string;
+    rsshubReset: string;
+    rsshubResponse: string;
+    rsshubRouteNeedsServer: string;
+    rsshubRouteParams: string;
+    rsshubRoutePath: string;
+    rsshubRouteSupportsOptional: string;
+    rsshubSearchRoute: string;
+    rsshubServerConfig: string;
+    rsshubSpecialRouteHint: string;
+    rsshubSuccessRate: string;
+    rsshubTest: string;
+    rsshubUsePrivateInstance: string;
+    rsshubViewFullDocs: string;
+    save: string;
+    label: string;
+    // Lightbox
+    lightboxZoomIn: string;
+    lightboxZoomOut: string;
+    lightboxRotate: string;
+    lightboxDownload: string;
+    lightboxClose: string;
+    lightboxCloseHint: string;
   };
 }
 

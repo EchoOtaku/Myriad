@@ -1,0 +1,62 @@
+/**
+ * 开关设置项组件
+ */
+
+import React, { useCallback } from 'react';
+import type { SwitchSettingConfig } from '../types';
+import './SettingItem.css';
+
+export interface SwitchItemProps extends Omit<SwitchSettingConfig, 'type'> {}
+
+export const SwitchItem = React.memo<SwitchItemProps>(({
+  key: itemKey,
+  label,
+  description,
+  hint,
+  value,
+  onChange,
+  disabled = false,
+  loading = false,
+  size = 'md',
+  layout = 'horizontal',
+  className = '',
+}) => {
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!disabled && !loading) {
+      onChange(e.target.checked);
+    }
+  }, [onChange, disabled, loading]);
+
+  const id = `setting-switch-${itemKey}`;
+
+  return (
+    <div 
+      className={`setting-item setting-item-switch setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+    >
+      <div className="setting-item-content">
+        <label htmlFor={id} className="setting-label">
+          <span className="setting-label-text">{label}</span>
+          {description && (
+            <span className="setting-description">{description}</span>
+          )}
+        </label>
+        <div className="setting-control">
+          <label className="toggle-switch">
+            <input
+              id={id}
+              type="checkbox"
+              checked={value}
+              onChange={handleChange}
+              disabled={disabled || loading}
+              aria-label={label}
+            />
+            <span className="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      {hint && <p className="setting-hint">{hint}</p>}
+    </div>
+  );
+});
+
+SwitchItem.displayName = 'SwitchItem';

@@ -26,6 +26,13 @@ export const routes: RouteConfig[] = [
     description: '浏览你的多平台数据收藏',
   },
   {
+    path: '/brew',
+    component: () => import('../views/Brew.tsx'),
+    title: 'Brew 阅读 - Myriad',
+    description: 'RSS/Atom 订阅阅读器',
+    requiresAuth: true,
+  },
+  {
     path: '/reports',
     component: () => import('../views/Reports.tsx'),
     title: '数据报告 - Myriad',

@@ -39,15 +39,24 @@ impl RateLimiter {
     /// 检查是否允许请求（宽松策略：每分钟60次，每小时1000次）
     pub fn check_rate_limit(&mut self, key: &str) -> bool {
         let now = Instant::now();
-        let one_minute_ago = now - Duration::from_secs(60);
-        let one_hour_ago = now - Duration::from_secs(3600);
+        // 使用 checked_sub 避免在 Instant 值较小时发生溢出 panic
+        let one_minute_ago = now.checked_sub(Duration::from_secs(60));
+        let one_hour_ago = now.checked_sub(Duration::from_secs(3600));
 
         // 清理过期的请求记录
         let times = self.requests.entry(key.to_string()).or_default();
-        times.retain(|&t| t > one_hour_ago);
+        
+        // 如果无法计算一小时前的时间点，保留所有记录
+        if let Some(hour_ago) = one_hour_ago {
+            times.retain(|&t| t > hour_ago);
+        }
 
         // 检查限制
-        let recent_count = times.iter().filter(|&&t| t > one_minute_ago).count();
+        let recent_count = if let Some(minute_ago) = one_minute_ago {
+            times.iter().filter(|&&t| t > minute_ago).count()
+        } else {
+            times.len() // 如果无法计算，视为全部都是最近的
+        };
         let hourly_count = times.len();
 
         if recent_count >= 60 || hourly_count >= 1000 {
@@ -556,6 +565,104 @@ impl NeteaseService {
         }
 
         Ok(data)
+    }
+
+    /// 获取单首歌曲详情
+    pub async fn fetch_song_detail(&self, song_id: i64) -> Result<Value> {
+        let cache_key = format!("song:{}", song_id);
+
+        // 检查限流
+        {
+            let mut limiter = RATE_LIMITER.write().await;
+            if !limiter.check_rate_limit(&cache_key) {
+                return Err(anyhow!("Rate limit exceeded for song {}", song_id));
+            }
+        }
+
+        // 检查缓存（歌曲详情缓存24小时）
+        {
+            let cache = MUSIC_CACHE.read().await;
+            if let Some(entry) = cache.get(&cache_key) {
+                if entry.expires_at > Instant::now() {
+                    return Ok(entry.data.clone());
+                }
+            }
+        }
+
+        let device_id = generate_device_id();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        let url = format!(
+            "https://music.163.com/api/song/detail?ids=[{}]",
+            song_id
+        );
+
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Referer", "https://music.163.com/")
+            .header("Origin", "https://music.163.com")
+            .header("Accept", "*/*")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Connection", "keep-alive")
+            .header("User-Agent", get_random_user_agent())
+            .header(
+                "Cookie",
+                format!(
+                    "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
+                    device_id,
+                    timestamp,
+                    rand::random::<u16>() % 10000
+                ),
+            )
+            .header("X-Forwarded-For", forwarded_for)
+            .header("X-Real-IP", client_ip)
+            .send()
+            .await?;
+
+        let data: Value = response.json().await?;
+        
+        // 检查返回码
+        if data.get("code").and_then(|c| c.as_i64()) != Some(200) {
+            return Err(anyhow!("Failed to fetch song detail: API returned error"));
+        }
+
+        // 提取歌曲信息
+        let song = data["songs"]
+            .get(0)
+            .ok_or_else(|| anyhow!("Song not found"))?
+            .clone();
+
+        // 添加 isVip 标记
+        let mut song_data = song;
+        let fee = song_data.get("fee").and_then(|f| f.as_i64()).unwrap_or(0);
+        let is_vip = fee == 1 || fee == 4;
+        if let Some(obj) = song_data.as_object_mut() {
+            obj.insert("isVip".to_string(), json!(is_vip));
+        }
+
+        convert_http_to_https(&mut song_data);
+
+        // 存入缓存（24小时）
+        {
+            let mut cache = MUSIC_CACHE.write().await;
+            cache.insert(
+                cache_key,
+                CacheEntry {
+                    data: song_data.clone(),
+                    expires_at: Instant::now() + Duration::from_secs(86400),
+                },
+            );
+        }
+
+        Ok(song_data)
     }
 
     /// 获取音频流 URL

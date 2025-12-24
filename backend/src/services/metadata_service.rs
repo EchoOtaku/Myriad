@@ -8,7 +8,6 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// 元数据服务，用于管理平台原始元数据的存储和变化历史
-#[allow(dead_code)]
 pub struct MetadataService {
     db: DatabaseConnection,
 }

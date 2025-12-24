@@ -242,7 +242,8 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
 
 /// 检查URL是否来自允许的域名
 fn is_allowed_domain(url: &str) -> bool {
-    let allowed_domains = [
+    // 核心平台白名单（需要特殊 Referer 处理的）
+    let core_domains = [
         "hdslb.com",                  // Bilibili CDN
         "bilibili.com",               // Bilibili
         "steamstatic.com",            // Steam CDN
@@ -250,7 +251,39 @@ fn is_allowed_domain(url: &str) -> bool {
         "music.126.net",              // 网易云音乐 CDN
     ];
 
-    allowed_domains.iter().any(|domain| url.contains(domain))
+    // 如果是核心平台，直接允许
+    if core_domains.iter().any(|domain| url.contains(domain)) {
+        return true;
+    }
+
+    // 对于其他 URL，检查是否是有效的图片 URL（支持 RSS 阅读器等场景）
+    // 只允许 http:// 和 https:// 开头的 URL
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return false;
+    }
+
+    // 检查 URL 是否看起来像图片（通过扩展名或常见图片路径模式）
+    let url_lower = url.to_lowercase();
+    let image_extensions = [
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".bmp", ".avif",
+    ];
+    let image_patterns = [
+        "/images/",
+        "/image/",
+        "/img/",
+        "/uploads/",
+        "/media/",
+        "/assets/",
+        "/static/",
+        "/files/",
+        "/wp-content/",
+    ];
+
+    // 如果 URL 包含图片扩展名或图片路径模式，允许代理
+    image_extensions.iter().any(|ext| url_lower.contains(ext))
+        || image_patterns
+            .iter()
+            .any(|pattern| url_lower.contains(pattern))
 }
 
 /// 根据URL获取适当的Referer
@@ -333,6 +366,41 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
                 StatusCode::BAD_GATEWAY,
                 Json(json!({
                     "error": "Failed to fetch lyrics",
+                    "message": e.to_string()
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// 代理网易云音乐单曲详情请求 - 使用统一服务层
+pub async fn proxy_netease_song(Path(song_id): Path<String>) -> Response {
+    let song_id_i64 = match song_id.parse::<i64>() {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid song ID"})),
+            )
+                .into_response();
+        }
+    };
+
+    let service = NeteaseService::new();
+    match service.fetch_song_detail(song_id_i64).await {
+        Ok(data) => (
+            StatusCode::OK,
+            [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+            Json(data),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to fetch Netease song {}: {}", song_id, e);
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Failed to fetch song detail",
                     "message": e.to_string()
                 })),
             )

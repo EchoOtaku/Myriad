@@ -13,7 +13,7 @@ use std::collections::HashSet;
 ///
 /// 修改此版本号将触发下次启动时的 schema 比对和补全。
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
-const SCHEMA_VERSION: &str = "2025.12.15.2";
+const SCHEMA_VERSION: &str = "2025.12.21.5";
 
 /// 列定义
 #[derive(Debug, Clone)]
@@ -1059,6 +1059,583 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== 003_brew_system.rs 表 ====================
+        // ==================== brew_sources 表 ====================
+        TableDef {
+            name: "brew_sources".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "name".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "url".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "feed_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'rss'".into()),
+                },
+                ColumnDef {
+                    name: "source_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'rss'".into()),
+                },
+                ColumnDef {
+                    name: "category".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "icon".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "description".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "site_url".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "update_interval".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("30".into()),
+                },
+                ColumnDef {
+                    name: "last_fetched_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "last_success_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "last_error".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "error_count".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "enabled".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("true".into()),
+                },
+                ColumnDef {
+                    name: "item_count".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "unread_count".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "card_size".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "theme_color".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "sort_order".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "ai_style_tags".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "extra_config".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== brew_items 表 ====================
+        TableDef {
+            name: "brew_items".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "source_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "guid".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "title".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "link".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "summary".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "content".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "author".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "image".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "audio_url".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "video_url".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "enclosures".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "categories".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "published_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "fetched_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "word_count".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "reading_time".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "fulltext_fetched".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+            ],
+        },
+        // ==================== brew_user_states 表 ====================
+        TableDef {
+            name: "brew_user_states".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "item_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "is_read".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "is_starred".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "read_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "read_progress".into(),
+                    data_type: "real".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "starred_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "notes".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== brew_categories 表 ====================
+        TableDef {
+            name: "brew_categories".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "name".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "icon".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "color".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "sort_order".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== brew_annotations 表 ====================
+        TableDef {
+            name: "brew_annotations".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "item_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "annotation_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'term'".into()),
+                },
+                ColumnDef {
+                    name: "term".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "explanation".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "position".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "context_hint".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== brew_podcasts 表 ====================
+        TableDef {
+            name: "brew_podcasts".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "item_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "title".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "language".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "dialogues".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "estimated_duration".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== brew_comments 表 ====================
+        TableDef {
+            name: "brew_comments".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "item_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "selected_text".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "comment".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "start_offset".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "end_offset".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "context_before".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "context_after".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "color".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "is_public".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "parent_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
     ]
 }
 
@@ -1259,7 +1836,321 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "last_run_at".into()],
             is_unique: false,
         },
+        // ==================== 003_brew_system.rs 索引 ====================
+        // brew_sources 索引
+        IndexDef {
+            name: "idx_brew_sources_user_id".into(),
+            table: "brew_sources".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_sources_user_url".into(),
+            table: "brew_sources".into(),
+            columns: vec!["user_id".into(), "url".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_brew_sources_category".into(),
+            table: "brew_sources".into(),
+            columns: vec!["user_id".into(), "category".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_sources_schedule".into(),
+            table: "brew_sources".into(),
+            columns: vec!["enabled".into(), "last_fetched_at".into()],
+            is_unique: false,
+        },
+        // brew_items 索引
+        IndexDef {
+            name: "idx_brew_items_source_guid".into(),
+            table: "brew_items".into(),
+            columns: vec!["source_id".into(), "guid".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_brew_items_published".into(),
+            table: "brew_items".into(),
+            columns: vec!["source_id".into(), "published_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_items_timeline".into(),
+            table: "brew_items".into(),
+            columns: vec!["published_at".into()],
+            is_unique: false,
+        },
+        // brew_user_states 索引
+        IndexDef {
+            name: "idx_brew_user_states_unique".into(),
+            table: "brew_user_states".into(),
+            columns: vec!["user_id".into(), "item_id".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_brew_user_states_unread".into(),
+            table: "brew_user_states".into(),
+            columns: vec!["user_id".into(), "is_read".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_user_states_starred".into(),
+            table: "brew_user_states".into(),
+            columns: vec!["user_id".into(), "is_starred".into()],
+            is_unique: false,
+        },
+        // brew_categories 索引
+        IndexDef {
+            name: "idx_brew_categories_unique".into(),
+            table: "brew_categories".into(),
+            columns: vec!["user_id".into(), "name".into()],
+            is_unique: true,
+        },
+        // brew_annotations 索引
+        IndexDef {
+            name: "idx_brew_annotations_item".into(),
+            table: "brew_annotations".into(),
+            columns: vec!["item_id".into()],
+            is_unique: false,
+        },
+        // brew_podcasts 索引
+        IndexDef {
+            name: "idx_brew_podcasts_item".into(),
+            table: "brew_podcasts".into(),
+            columns: vec!["item_id".into()],
+            is_unique: true, // 每篇文章只有一个播客
+        },
+        // brew_comments 索引
+        IndexDef {
+            name: "idx_brew_comments_item".into(),
+            table: "brew_comments".into(),
+            columns: vec!["item_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_comments_user".into(),
+            table: "brew_comments".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_comments_item_user".into(),
+            table: "brew_comments".into(),
+            columns: vec!["item_id".into(), "user_id".into()],
+            is_unique: false,
+        },
     ]
+}
+
+/// 获取创建缺失表的 DDL 语句
+fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
+    vec![
+        // brew_annotations 表
+        (
+            "brew_annotations",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_annotations (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER NOT NULL,
+                annotation_type VARCHAR(20) NOT NULL DEFAULT 'term',
+                term TEXT NOT NULL,
+                explanation TEXT NOT NULL,
+                position INTEGER,
+                context_hint TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_brew_annotations_item 
+                    FOREIGN KEY (item_id) 
+                    REFERENCES brew_items(id) 
+                    ON DELETE CASCADE
+            )
+            "#,
+        ),
+        // brew_podcasts 表
+        (
+            "brew_podcasts",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_podcasts (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                language VARCHAR(20),
+                dialogues JSONB NOT NULL,
+                estimated_duration INTEGER,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_brew_podcasts_item 
+                    FOREIGN KEY (item_id) 
+                    REFERENCES brew_items(id) 
+                    ON DELETE CASCADE,
+                CONSTRAINT uq_brew_podcasts_item UNIQUE (item_id)
+            )
+            "#,
+        ),
+        // brew_comments 表
+        (
+            "brew_comments",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_comments (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                selected_text TEXT NOT NULL,
+                comment TEXT NOT NULL,
+                start_offset INTEGER,
+                end_offset INTEGER,
+                context_before TEXT,
+                context_after TEXT,
+                color VARCHAR(20),
+                is_public BOOLEAN NOT NULL DEFAULT FALSE,
+                parent_id INTEGER,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_brew_comments_item 
+                    FOREIGN KEY (item_id) 
+                    REFERENCES brew_items(id) 
+                    ON DELETE CASCADE,
+                CONSTRAINT fk_brew_comments_parent
+                    FOREIGN KEY (parent_id)
+                    REFERENCES brew_comments(id)
+                    ON DELETE CASCADE
+            )
+            "#,
+        ),
+        // brew_categories 表
+        (
+            "brew_categories",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_categories (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                icon VARCHAR(50),
+                color VARCHAR(20),
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        ),
+        // brew_user_states 表
+        (
+            "brew_user_states",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_user_states (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
+                is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                is_starred BOOLEAN NOT NULL DEFAULT FALSE,
+                read_at TIMESTAMPTZ,
+                read_progress REAL,
+                starred_at TIMESTAMPTZ,
+                notes TEXT,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_brew_user_states_item 
+                    FOREIGN KEY (item_id) 
+                    REFERENCES brew_items(id) 
+                    ON DELETE CASCADE
+            )
+            "#,
+        ),
+        // brew_items 表
+        (
+            "brew_items",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_items (
+                id SERIAL PRIMARY KEY,
+                source_id INTEGER NOT NULL,
+                guid VARCHAR(512) NOT NULL,
+                title TEXT NOT NULL,
+                link TEXT NOT NULL,
+                summary TEXT,
+                content TEXT,
+                author VARCHAR(255),
+                image TEXT,
+                audio_url TEXT,
+                video_url TEXT,
+                enclosures JSONB,
+                categories JSONB,
+                published_at TIMESTAMPTZ NOT NULL,
+                fetched_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                word_count INTEGER,
+                reading_time INTEGER,
+                fulltext_fetched BOOLEAN NOT NULL DEFAULT FALSE,
+                CONSTRAINT fk_brew_items_source 
+                    FOREIGN KEY (source_id) 
+                    REFERENCES brew_sources(id) 
+                    ON DELETE CASCADE
+            )
+            "#,
+        ),
+        // brew_sources 表
+        (
+            "brew_sources",
+            r#"
+            CREATE TABLE IF NOT EXISTS brew_sources (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                url TEXT NOT NULL,
+                feed_type VARCHAR(20) NOT NULL DEFAULT 'rss',
+                source_type VARCHAR(20) NOT NULL DEFAULT 'rss',
+                category VARCHAR(100),
+                icon TEXT,
+                description TEXT,
+                site_url TEXT,
+                update_interval INTEGER NOT NULL DEFAULT 30,
+                last_fetched_at TIMESTAMPTZ,
+                last_success_at TIMESTAMPTZ,
+                last_error TEXT,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                item_count INTEGER NOT NULL DEFAULT 0,
+                unread_count INTEGER NOT NULL DEFAULT 0,
+                card_size VARCHAR(20),
+                theme_color VARCHAR(20),
+                sort_order INTEGER,
+                ai_style_tags JSONB,
+                extra_config JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        ),
+    ]
+}
+
+/// 确保所有必需的表都存在
+async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
+    let existing_tables = get_existing_tables(db).await?;
+    let table_ddls = get_create_table_ddl();
+    let mut created = 0u32;
+
+    // 按依赖顺序创建表: brew_sources -> brew_items -> brew_user_states/brew_annotations/brew_categories/brew_podcasts/brew_comments
+    let creation_order = [
+        "brew_sources",
+        "brew_items",
+        "brew_user_states",
+        "brew_categories",
+        "brew_annotations",
+        "brew_podcasts",
+        "brew_comments",
+    ];
+
+    for table_name in creation_order {
+        if !existing_tables.contains(table_name) {
+            if let Some((_, ddl)) = table_ddls.iter().find(|(name, _)| *name == table_name) {
+                tracing::info!("📝 Creating missing table: {}", table_name);
+                if let Err(e) = db.execute_unprepared(ddl).await {
+                    tracing::error!("Failed to create table {}: {}", table_name, e);
+                } else {
+                    created += 1;
+                    tracing::info!("✅ Created table: {}", table_name);
+                }
+            }
+        }
+    }
+
+    Ok(created)
 }
 
 /// 从数据库获取表的实际列
@@ -1478,7 +2369,14 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     let mut ddl_statements: Vec<String> = Vec::new();
     let mut changes_made = 0;
 
-    // 2. 获取现有表
+    // 1.5 首先确保所有必需的表存在
+    let tables_created = ensure_tables_exist(db).await?;
+    if tables_created > 0 {
+        tracing::info!("✅ Created {} missing tables", tables_created);
+        changes_made += tables_created as usize;
+    }
+
+    // 2. 获取现有表（更新后重新获取）
     let existing_tables = get_existing_tables(db).await?;
     let expected_tables = get_expected_schema();
 

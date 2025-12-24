@@ -144,6 +144,11 @@ pub struct DynamicConfig {
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
     pub openweather_api_key: Option<String>,
 
+    // 腾讯云语音服务配置（TTS 文本转语音 / ASR 语音转文本）
+    pub tencent_secret_id: Option<String>,
+    pub tencent_secret_key: Option<String>,
+    pub tencent_region: Option<String>, // 默认 ap-guangzhou
+
     // UI 配置
     pub ui_wallpaper_url: Option<String>,
     pub ui_wallpaper_blur: i32,
@@ -166,6 +171,9 @@ pub struct DynamicConfig {
     pub site_title: Option<String>,
     pub site_description: Option<String>,
     pub site_favicon: Option<String>,
+    pub site_icp: Option<String>,       // ICP 备案号
+    pub site_gongan: Option<String>,    // 公安备案号
+    pub cloud_sponsors: Option<String>, // 云赞助商（cloudflare,edgeone,upyun 逗号分隔）
 
     // 音乐配置
     pub music_enabled: Option<String>,
@@ -310,6 +318,11 @@ impl Default for DynamicConfig {
             // Tapp 外部 API 密钥
             openweather_api_key: None,
 
+            // 腾讯云语音服务配置
+            tencent_secret_id: None,
+            tencent_secret_key: None,
+            tencent_region: Some("ap-guangzhou".to_string()),
+
             ui_wallpaper_url: None,
             ui_wallpaper_blur: 3,
             ui_wallpaper_parallax: true,
@@ -328,6 +341,9 @@ impl Default for DynamicConfig {
             site_title: None,
             site_description: None,
             site_favicon: None,
+            site_icp: None,
+            site_gongan: None,
+            cloud_sponsors: None,
 
             music_enabled: None,
             music_source: None,

@@ -4,8 +4,13 @@ import tailwind from '@astrojs/tailwind';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { readFileSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 读取 package.json 版本号
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+const APP_VERSION = pkg.version || '0.1.0';
 
 /**
  * 自定义 Vite 插件：SPA 路由回退
@@ -54,6 +59,9 @@ export default defineConfig({
   // SPA 模式：所有路由都重定向到 index.html
   trailingSlash: 'never',
   vite: {
+    define: {
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
     plugins: [
       spaFallbackPlugin(), // 自定义 SPA 路由回退
       visualizer({

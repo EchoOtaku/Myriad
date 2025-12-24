@@ -70,6 +70,16 @@ main.relative {
  */
 .animated-view-container {
     /* 容器继承父级尺寸 */
+    width: 100%;
+}
+
+/* 移动端滚动修复 */
+@media (max-width: 767px) {
+    .animated-view-container {
+        /* 确保容器不限制高度，允许内容自然扩展 */
+        min-height: 0;
+        height: auto;
+    }
 }
 
 /* ========================================

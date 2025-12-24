@@ -519,6 +519,31 @@ export function clearColorCache(url?: string): void {
 }
 
 /**
+ * 从已加载的 HTMLImageElement 直接提取颜色
+ * 用于处理跨域图片（如网站图标），因为已经渲染到页面的图片可以绑定到 canvas
+ * 注意：如果图片跨域且服务器不支持 CORS，仍会失败
+ */
+export function extractColorsFromLoadedImage(img: HTMLImageElement): ColorPalette {
+  try {
+    // 使用池化的 Canvas
+    const scale = Math.min(MAX_CANVAS_SIZE / img.naturalWidth, MAX_CANVAS_SIZE / img.naturalHeight, 1);
+    const width = Math.floor(img.naturalWidth * scale) || 50;
+    const height = Math.floor(img.naturalHeight * scale) || 50;
+
+    const imageData = withPooledCanvas(width, height, (ctx) => {
+      ctx.drawImage(img, 0, 0, width, height);
+      return ctx.getImageData(0, 0, width, height);
+    });
+
+    return analyzeImageColors(imageData);
+  } catch (err) {
+    // 跨域图片会抛出安全错误
+    console.debug('[ColorExtractor] Cannot extract from image (likely CORS):', err);
+    return { ...DEFAULT_PALETTE };
+  }
+}
+
+/**
  * 获取当前提取任务的URL
  */
 export function getCurrentExtractionUrl(): string | null {

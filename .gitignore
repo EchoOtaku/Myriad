@@ -157,3 +157,4 @@ temp/
 /backend/data/tapps
 /.astro
 /node_modules
+/backend/data

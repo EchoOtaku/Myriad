@@ -190,6 +190,18 @@ impl ConfigService {
         if let Some(v) = map.get("imaginepro_callback_url") {
             config.imaginepro_callback_url = v.as_str().map(|s| s.to_string());
         }
+
+        // 腾讯云语音服务配置 (TTS/ASR)
+        if let Some(v) = map.get("tencent_secret_id") {
+            config.tencent_secret_id = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("tencent_secret_key") {
+            config.tencent_secret_key = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("tencent_region") {
+            config.tencent_region = v.as_str().map(|s| s.to_string());
+        }
+
         if let Some(v) = map.get("enable_auto_fetch") {
             if let Some(b) = v.as_bool() {
                 config.enable_auto_fetch = b;
@@ -290,6 +302,15 @@ impl ConfigService {
         }
         if let Some(v) = map.get("site_favicon") {
             config.site_favicon = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_icp") {
+            config.site_icp = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_gongan") {
+            config.site_gongan = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("cloud_sponsors") {
+            config.cloud_sponsors = v.as_str().map(|s| s.to_string());
         }
 
         // 音乐配置

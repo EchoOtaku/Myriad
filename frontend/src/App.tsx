@@ -15,6 +15,7 @@ import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext';
 import { I18nProvider } from './contexts/I18nContext';
+import { NavigationProvider } from './contexts/NavigationContext';
 import CustomScrollbar from './components/CustomScrollbar';
 import { preloadCriticalRoutes } from './utils/codeSplitting';
 import { useRouteScheduler } from './hooks/animation';
@@ -33,6 +34,7 @@ import './styles/performance.css'; // 🔧 性能优化 CSS
 // 懒加载视图组件 - 使用代码分割
 const Home = lazy(() => import('./views/Home.tsx'));
 const Library = lazy(() => import('./views/Library.tsx'));
+const Brew = lazy(() => import('./views/Brew.tsx'));
 const Reports = lazy(() => import('./views/Reports.tsx'));
 const Config = lazy(() => import('./views/Config.tsx'));
 const DataManagement = lazy(() => import('./views/DataManagement.tsx'));
@@ -130,9 +132,9 @@ function AnimatedPage({ children, useFixedWrapper = false }: { children: React.R
   
   // 🎯 根据页面类型选择不同的动画配置
   const variants = useFixedWrapper ? fixedPageVariants : pageVariants;
-  const wrapperStyle = useFixedWrapper 
+  const wrapperStyle = useFixedWrapper
     ? { position: 'absolute' as const, inset: 0 }
-    : { width: '100%', minHeight: '100%' };
+    : { width: '100%' };
   
   return (
     <AnimatePresence mode="wait">
@@ -232,6 +234,8 @@ function AppRoutes() {
       <Routes location={location}>
         <Route path="/" element={<SuspensePage><Home /></SuspensePage>} />
         <Route path="/library" element={<SuspensePage><Library /></SuspensePage>} />
+        {/* Brew 页面允许游客访问（只读），登录用户可使用已读/收藏，管理员可管理 */}
+        <Route path="/brew" element={<SuspensePage><Brew /></SuspensePage>} />
         <Route path="/reports" element={<SuspensePage><Reports /></SuspensePage>} />
         <Route
           path="/config"
@@ -309,20 +313,22 @@ export function App() {
           <AuthProvider>
             <NotificationProvider>
               <MusicPlayerProvider>
-                <RouteLoader />
-                <CustomScrollbar />
-                <Suspense fallback={null}>
-                  <TappBackgroundRunner />
-                </Suspense>
-                <AppLayout>
-                  <AppRoutes />
-                </AppLayout>
-                {/* 开发环境下显示合并的性能监控工具 */}
-                {import.meta.env.DEV && (
+                <NavigationProvider>
+                  <RouteLoader />
+                  <CustomScrollbar />
                   <Suspense fallback={null}>
-                    {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+                    <TappBackgroundRunner />
                   </Suspense>
-                )}
+                  <AppLayout>
+                    <AppRoutes />
+                  </AppLayout>
+                  {/* 开发环境下显示合并的性能监控工具 */}
+                  {import.meta.env.DEV && (
+                    <Suspense fallback={null}>
+                      {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+                    </Suspense>
+                  )}
+                </NavigationProvider>
               </MusicPlayerProvider>
             </NotificationProvider>
           </AuthProvider>

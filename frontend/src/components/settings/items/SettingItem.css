@@ -1,0 +1,331 @@
+/**
+ * 设置项通用样式
+ * 与 ConfigForm.css 共享基础样式变量
+ */
+
+/* ==========================================
+   设置项基础容器
+   ========================================== */
+
+.setting-item {
+  margin-bottom: 0.75rem;
+}
+
+.setting-item.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ==========================================
+   水平布局（横向排列）
+   ========================================== */
+
+.setting-horizontal .setting-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(229, 231, 235, 0.5);
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+}
+
+.setting-horizontal .setting-item-content:hover {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(229, 231, 235, 0.7);
+}
+
+html.dark .setting-horizontal .setting-item-content {
+  background: rgba(31, 41, 55, 0.4);
+  border-color: rgba(55, 65, 81, 0.5);
+}
+
+html.dark .setting-horizontal .setting-item-content:hover {
+  background: rgba(31, 41, 55, 0.6);
+  border-color: rgba(55, 65, 81, 0.7);
+}
+
+.setting-horizontal .setting-label {
+  flex: 1;
+  margin: 0;
+}
+
+.setting-horizontal .setting-control {
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   垂直布局
+   ========================================== */
+
+.setting-vertical .setting-label {
+  display: block;
+  margin-bottom: 0.375rem;
+}
+
+.setting-vertical .setting-control {
+  width: 100%;
+}
+
+/* ==========================================
+   标签样式
+   ========================================== */
+
+.setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.setting-label-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+html.dark .setting-label-text {
+  color: #d1d5db;
+}
+
+.setting-label-text .required {
+  color: #ef4444;
+  margin-left: 0.25rem;
+}
+
+.setting-description {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+html.dark .setting-description {
+  color: #9ca3af;
+}
+
+/* ==========================================
+   提示与错误
+   ========================================== */
+
+.setting-hint {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.375rem;
+  line-height: 1.4;
+}
+
+html.dark .setting-hint {
+  color: #9ca3af;
+}
+
+.setting-error {
+  font-size: 0.75rem;
+  color: #ef4444;
+  margin-top: 0.375rem;
+  line-height: 1.4;
+}
+
+html.dark .setting-error {
+  color: #f87171;
+}
+
+/* ==========================================
+   输入框包装器
+   ========================================== */
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.input-wrapper .copy-btn {
+  flex-shrink: 0;
+  padding: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.input-wrapper .copy-btn:hover {
+  opacity: 1;
+}
+
+/* ==========================================
+   数字输入包装器
+   ========================================== */
+
+.number-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.number-unit {
+  font-size: 0.875rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+html.dark .number-unit {
+  color: #9ca3af;
+}
+
+/* ==========================================
+   尺寸变体
+   ========================================== */
+
+/* 小尺寸 */
+.setting-sm .setting-label-text {
+  font-size: 0.8125rem;
+}
+
+.setting-sm .setting-horizontal .setting-item-content {
+  padding: 0.75rem;
+}
+
+/* 大尺寸 */
+.setting-lg .setting-label-text {
+  font-size: 1rem;
+}
+
+.setting-lg .setting-horizontal .setting-item-content {
+  padding: 1.25rem;
+}
+
+/* ==========================================
+   权限设置项特殊样式
+   ========================================== */
+
+.setting-item-permission .setting-label-text code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 0.25rem;
+  margin-right: 0.5rem;
+  color: #6366f1;
+}
+
+html.dark .setting-item-permission .setting-label-text code {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+}
+
+/* ==========================================
+   配额输入特殊样式
+   ========================================== */
+
+.setting-item-quota .quota-input {
+  width: 120px;
+  text-align: right;
+}
+
+/* ==========================================
+   按钮设置项样式
+   ========================================== */
+
+.setting-button-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.setting-button-row .test-result {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+}
+
+.setting-button-row .test-result.success {
+  color: #059669;
+  background: rgba(5, 150, 105, 0.1);
+}
+
+.setting-button-row .test-result.error {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+html.dark .setting-button-row .test-result.success {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.15);
+}
+
+html.dark .setting-button-row .test-result.error {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* ==========================================
+   紧凑布局适配 (config-compact-group)
+   ========================================== */
+
+.config-compact-group .setting-item {
+  margin-bottom: 0;
+}
+
+.config-compact-group .setting-item-number {
+  flex: 1;
+  min-width: 0;
+}
+
+.config-compact-group .number-input-wrapper {
+  width: 100%;
+}
+
+.config-compact-group .field-input {
+  width: 100%;
+}
+
+/* ==========================================
+   按钮设置项无标签时的样式
+   ========================================== */
+
+.setting-item-button.setting-vertical .setting-control {
+  margin-top: 0;
+}
+
+.setting-item-button .btn-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.setting-item-button .btn-secondary {
+  background: rgba(107, 114, 128, 0.1);
+  color: #4b5563;
+}
+
+.setting-item-button .btn-secondary:hover:not(:disabled) {
+  background: rgba(107, 114, 128, 0.2);
+}
+
+html.dark .setting-item-button .btn-secondary {
+  background: rgba(156, 163, 175, 0.15);
+  color: #d1d5db;
+}
+
+html.dark .setting-item-button .btn-secondary:hover:not(:disabled) {
+  background: rgba(156, 163, 175, 0.25);
+}
+
+.setting-item-button .btn-base:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

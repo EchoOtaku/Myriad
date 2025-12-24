@@ -23,13 +23,13 @@
 
 /* Dynamic Island - 主岛 */
 .dynamic-island {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.5);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  border-radius: 26px;
-  padding: 10px 14px;
-  border: 2px solid rgba(99, 102, 241, 0.4);
-  border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  border-radius: 30px;
+  padding: 10px;
+  border: 2px solid rgba(99, 102, 241, 0.15);
+  border: 2px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
   box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.15),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
   box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
@@ -40,25 +40,25 @@
 }
 
 html.dark .dynamic-island {
-  background: rgba(26, 26, 26, 0.8);
-  border: 2px solid rgba(99, 102, 241, 0.5);
-  border: 2px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
+  background: rgba(26, 26, 26, 0.5);
+  border: 2px solid rgba(99, 102, 241, 0.2);
+  border: 2px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
 }
 
 .dynamic-island:hover {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
   box-shadow: 0 12px 48px 0 rgba(99, 102, 241, 0.25),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
   box-shadow: 0 12px 48px 0 color-mix(in srgb, var(--color-primary) 25%, transparent),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
-  border-color: rgba(99, 102, 241, 0.5);
-  border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+  border-color: rgba(99, 102, 241, 0.25);
+  border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
 html.dark .dynamic-island:hover {
-  background: rgba(26, 26, 26, 0.9);
+  background: rgba(26, 26, 26, 0.6);
   box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.7),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
 }
@@ -71,10 +71,10 @@ html.dark .dynamic-island:hover {
   border-radius: 26px;
   padding: 2px;
   background: linear-gradient(135deg, 
-    color-mix(in srgb, var(--color-primary) 60%, transparent),
-    color-mix(in srgb, var(--color-secondary) 40%, transparent),
-    color-mix(in srgb, var(--color-accent) 40%, transparent),
-    color-mix(in srgb, var(--color-primary) 60%, transparent)
+    color-mix(in srgb, var(--color-primary) 30%, transparent),
+    color-mix(in srgb, var(--color-secondary) 18%, transparent),
+    color-mix(in srgb, var(--color-accent) 18%, transparent),
+    color-mix(in srgb, var(--color-primary) 30%, transparent)
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -83,7 +83,7 @@ html.dark .dynamic-island:hover {
   animation: border-flow 8s linear infinite;
   background-size: 300% 300%;
   pointer-events: none;
-  opacity: 0.8;
+  opacity: 0.35;
   transition: opacity 0.3s ease;
 }
 
@@ -93,7 +93,7 @@ html.dark .dynamic-island:hover {
 }
 
 .dynamic-island:hover::before {
-  opacity: 1;
+  opacity: 0.6;
 }
 
 /* 折叠状态 */
@@ -116,13 +116,13 @@ html.dark .dynamic-island:hover {
 
 /* 副岛 */
 .secondary-island {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.5);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border-radius: 26px;
   padding: 10px 14px;
-  border: 2px solid rgba(99, 102, 241, 0.4);
-  border: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  border: 2px solid rgba(99, 102, 241, 0.15);
+  border: 2px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
   box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.15),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
   box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--color-primary) 15%, transparent),
@@ -138,9 +138,9 @@ html.dark .dynamic-island:hover {
 }
 
 html.dark .secondary-island {
-  background: rgba(26, 26, 26, 0.8);
-  border: 2px solid rgba(99, 102, 241, 0.5);
-  border: 2px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
+  background: rgba(26, 26, 26, 0.5);
+  border: 2px solid rgba(99, 102, 241, 0.2);
+  border: 2px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
               inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
 }
@@ -149,7 +149,7 @@ html.dark .secondary-island {
 .nav-item {
   position: relative;
   padding: 12px;
-  border-radius: 18px;
+  border-radius: 20px;
   z-index: 10;
   cursor: pointer;
   color: var(--text-tertiary);
@@ -337,4 +337,11 @@ html.dark [aria-current="page"].nav-item {
     background: color-mix(in srgb, var(--color-primary) 20%, transparent);
     transition-duration: 0.1s;
   }
+}
+
+/* 沉浸模式 - 隐藏导航岛 */
+.nav-container.immersive {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s ease !important;
 }

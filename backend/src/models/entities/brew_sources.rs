@@ -1,0 +1,234 @@
+//! Brew 阅读 - 订阅源实体
+//!
+//! 存储 RSS/Atom 订阅源信息
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "brew_sources")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    /// 所属用户 ID
+    pub user_id: i32,
+    /// 订阅源名称
+    pub name: String,
+    /// 订阅源 URL
+    #[sea_orm(column_type = "Text")]
+    pub url: String,
+    /// 订阅源类型: rss, atom, json_feed
+    pub feed_type: FeedType,
+    /// 来源类型: link(纯链接), rss(RSS订阅), brewlia(AI增强订阅)
+    #[sea_orm(default_value = "rss")]
+    pub source_type: SourceType,
+    /// 分类标签
+    pub category: Option<String>,
+    /// 订阅源图标
+    #[sea_orm(column_type = "Text", nullable)]
+    pub icon: Option<String>,
+    /// 订阅源描述
+    #[sea_orm(column_type = "Text", nullable)]
+    pub description: Option<String>,
+    /// 订阅源网站链接
+    #[sea_orm(column_type = "Text", nullable)]
+    pub site_url: Option<String>,
+    /// 更新间隔（分钟）
+    pub update_interval: i32,
+    /// 最后抓取时间
+    pub last_fetched_at: Option<DateTimeWithTimeZone>,
+    /// 最后成功抓取时间
+    pub last_success_at: Option<DateTimeWithTimeZone>,
+    /// 最后错误信息
+    #[sea_orm(column_type = "Text", nullable)]
+    pub last_error: Option<String>,
+    /// 连续错误次数
+    pub error_count: i32,
+    /// 是否启用
+    pub enabled: bool,
+    /// 文章总数缓存
+    pub item_count: i32,
+    /// 未读数缓存
+    pub unread_count: i32,
+    /// 卡片显示尺寸: full, mini
+    pub card_size: Option<String>,
+    /// 主题颜色（从图标提取）
+    pub theme_color: Option<String>,
+    /// 自定义排序顺序
+    pub sort_order: Option<i32>,
+    /// AI 风格标签（JSON 数组，如 ["\u6280\u672f", "\u6559\u7a0b"]\uff09
+    #[sea_orm(column_type = "Json", nullable)]
+    pub ai_style_tags: Option<serde_json::Value>,
+    /// 额外配置（JSON 格式，用于存储 Notion token 等敏感配置）
+    /// 对于 Notion 源：{ "token": "secret_xxx", "resource_type": "database" }
+    #[sea_orm(column_type = "Json", nullable)]
+    pub extra_config: Option<serde_json::Value>,
+    /// RSSHub 路由路径（如 /bilibili/user/video/2267573）
+    /// 仅当 feed_type = rsshub 时使用
+    #[sea_orm(column_type = "Text", nullable)]
+    pub rsshub_route: Option<String>,
+    /// 创建时间
+    pub created_at: DateTimeWithTimeZone,
+    /// 更新时间
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+/// 订阅源类型
+#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+pub enum FeedType {
+    #[sea_orm(string_value = "rss")]
+    Rss,
+    #[sea_orm(string_value = "atom")]
+    Atom,
+    #[sea_orm(string_value = "json_feed")]
+    JsonFeed,
+    #[sea_orm(string_value = "notion")]
+    Notion,
+    #[sea_orm(string_value = "rsshub")]
+    RssHub,
+}
+
+impl Default for FeedType {
+    fn default() -> Self {
+        Self::Rss
+    }
+}
+
+/// 来源类型（订阅模式）
+/// - Link: 纯链接，不订阅，仅作为快捷入口
+/// - Rss: 标准 RSS/Atom 订阅
+/// - Brewlia: AI 增强订阅，在 RSS 基础上提供词汇注释等增强功能
+#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+pub enum SourceType {
+    #[sea_orm(string_value = "link")]
+    Link,
+    #[sea_orm(string_value = "rss")]
+    Rss,
+    #[sea_orm(string_value = "brewlia")]
+    Brewlia,
+}
+
+impl Default for SourceType {
+    fn default() -> Self {
+        Self::Rss
+    }
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(has_many = "super::brew_items::Entity")]
+    BrewItems,
+}
+
+impl Related<super::brew_items::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::BrewItems.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+/// 更新订阅源的请求
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateSourceRequest {
+    pub name: Option<String>,
+    pub category: Option<String>,
+    pub update_interval: Option<i32>,
+    pub enabled: Option<bool>,
+    pub card_size: Option<String>,
+    pub theme_color: Option<String>,
+    /// 自定义图标 URL 或 Base64 数据
+    pub icon: Option<String>,
+    /// 自定义排序顺序
+    pub sort_order: Option<i32>,
+    /// 来源类型: link, rss, brewlia
+    pub source_type: Option<String>,
+    /// Feed 类型: rss, atom, json_feed, notion
+    pub feed_type: Option<String>,
+    /// 额外配置（用于 Notion token 等）
+    pub extra_config: Option<serde_json::Value>,
+}
+
+/// 订阅源响应（包含额外信息）
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceResponse {
+    pub id: i32,
+    pub user_id: i32,
+    pub name: String,
+    pub url: String,
+    pub feed_type: String,
+    /// 来源类型: link, rss, brewlia
+    pub source_type: String,
+    pub category: Option<String>,
+    pub icon: Option<String>,
+    pub description: Option<String>,
+    pub site_url: Option<String>,
+    pub update_interval: i32,
+    pub last_fetched_at: Option<i64>,
+    pub last_success_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub error_count: i32,
+    pub enabled: bool,
+    pub item_count: i32,
+    pub unread_count: i32,
+    pub card_size: Option<String>,
+    pub theme_color: Option<String>,
+    pub sort_order: Option<i32>,
+    /// AI 风格标签
+    pub ai_style_tags: Option<Vec<String>>,
+    /// 是否有额外配置（不返回敏感信息，只返回是否配置）
+    pub has_extra_config: bool,
+    /// RSSHub 路由路径
+    pub rsshub_route: Option<String>,
+    pub created_at: i64,
+}
+
+impl From<Model> for SourceResponse {
+    fn from(m: Model) -> Self {
+        Self {
+            id: m.id,
+            user_id: m.user_id,
+            name: m.name,
+            url: m.url,
+            feed_type: match m.feed_type {
+                FeedType::Rss => "rss".to_string(),
+                FeedType::Atom => "atom".to_string(),
+                FeedType::JsonFeed => "json_feed".to_string(),
+                FeedType::Notion => "notion".to_string(),
+                FeedType::RssHub => "rsshub".to_string(),
+            },
+            source_type: match m.source_type {
+                SourceType::Link => "link".to_string(),
+                SourceType::Rss => "rss".to_string(),
+                SourceType::Brewlia => "brewlia".to_string(),
+            },
+            category: m.category,
+            icon: m.icon,
+            description: m.description,
+            site_url: m.site_url,
+            update_interval: m.update_interval,
+            last_fetched_at: m.last_fetched_at.map(|t| t.timestamp_millis()),
+            last_success_at: m.last_success_at.map(|t| t.timestamp_millis()),
+            last_error: m.last_error,
+            error_count: m.error_count,
+            enabled: m.enabled,
+            item_count: m.item_count,
+            unread_count: m.unread_count,
+            card_size: m.card_size,
+            theme_color: m.theme_color,
+            sort_order: m.sort_order,
+            ai_style_tags: m.ai_style_tags.and_then(|v| {
+                v.as_array().map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+            }),
+            has_extra_config: m.extra_config.is_some(),
+            rsshub_route: m.rsshub_route,
+            created_at: m.created_at.timestamp_millis(),
+        }
+    }
+}

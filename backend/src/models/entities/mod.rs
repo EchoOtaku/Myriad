@@ -18,3 +18,13 @@ pub mod tapps;
 // Tapp 定时任务系统
 pub mod tapp_scheduled_tasks;
 pub mod tapp_task_executions;
+
+// Brew 阅读系统实体
+pub mod brew_annotations;
+pub mod brew_categories;
+pub mod brew_comments;
+pub mod brew_items;
+pub mod brew_podcasts;
+pub mod brew_sources;
+pub mod brew_user_states;
+pub mod rsshub_instances;

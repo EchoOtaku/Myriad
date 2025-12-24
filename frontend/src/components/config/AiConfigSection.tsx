@@ -1,5 +1,21 @@
-import React from 'react';
+/**
+ * AI 配置区块
+ * 使用通用设置组件重构
+ */
+
+import React, { useCallback, useMemo, useState } from 'react';
 import { useI18n } from '../../contexts/I18nContext';
+import {
+  SettingSection,
+  SettingGroup,
+  InfoCard,
+  InputItem,
+  SelectItem,
+  NumberItem,
+  ProviderItem,
+  ButtonItem,
+} from '../settings';
+import type { SettingOption } from '../settings/types';
 
 interface ConfigField {
   key: string;
@@ -10,85 +26,298 @@ interface ConfigField {
   required: boolean;
 }
 
-interface AiConfig {
-  provider: string;
-  model: string;
-  api_key: string;
-  enabled: boolean;
-  config_fields: ConfigField[];
-}
-
 interface AiConfigSectionProps {
-  aiConfig: AiConfig;
-  onUpdateField: (fieldKey: string, value: string) => void;
+  /** AI 配置字段数组 */
+  configFields: ConfigField[];
+  /** 更新配置字段值 */
+  updateValue: (key: string, value: string) => void;
+  /** 语音测试回调 */
+  onSpeechTest: () => Promise<{ success: boolean; message: string }>;
 }
 
-const AiConfigSection = React.memo<AiConfigSectionProps>(({ aiConfig, onUpdateField }) => {
+export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
+  configFields,
+  updateValue,
+  onSpeechTest,
+}) => {
   const { t } = useI18n();
-  const providerField = aiConfig.config_fields.find(f => f.key === 'provider');
-  const otherFields = aiConfig.config_fields.filter(f => f.key !== 'provider');
+  const [speechTesting, setSpeechTesting] = useState(false);
+  const [speechTestResult, setSpeechTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // 辅助函数：获取配置字段值
+  const getFieldValue = useCallback((key: string, defaultValue = '') => {
+    return configFields.find(f => f.key === key)?.value || defaultValue;
+  }, [configFields]);
+
+  // 当前 AI Provider
+  const currentProvider = useMemo(() => 
+    getFieldValue('provider', 'gemini'),
+    [getFieldValue]
+  );
+
+  // 当前图片生成 Provider
+  const currentImageProvider = useMemo(() => 
+    getFieldValue('ai_image_provider', 'pollinations'),
+    [getFieldValue]
+  );
+
+  // AI Provider 选项
+  const aiProviderOptions: SettingOption<string>[] = useMemo(() => [
+    { value: 'gemini', label: 'Gemini', icon: '🤖' },
+    { value: 'openai', label: 'OpenAI', icon: '✨' },
+  ], []);
+
+  // 图片生成 Provider 选项
+  const imageProviderOptions: SettingOption<string>[] = useMemo(() => [
+    { value: 'pollinations', label: 'Pollinations', icon: '🆓', badge: t.config.pollinationsFree },
+    { value: 'imaginepro', label: 'ImaginePro', icon: '✨', badge: 'MJ' },
+  ], [t.config.pollinationsFree]);
+
+  // Pollinations 模型选项
+  const pollinationsModelOptions: SettingOption<string>[] = useMemo(() => [
+    { value: 'flux-anime', label: t.config.fluxAnimeRecommend },
+    { value: 'flux', label: t.config.fluxDefault },
+    { value: 'flux-realism', label: t.config.fluxRealism },
+    { value: 'flux-3d', label: t.config.flux3D },
+  ], [t.config.fluxAnimeRecommend, t.config.fluxDefault, t.config.fluxRealism, t.config.flux3D]);
+
+  // 腾讯云区域选项
+  const tencentRegionOptions: SettingOption<string>[] = useMemo(() => [
+    { value: 'ap-guangzhou', label: t.config.tencentRegionGuangzhou },
+    { value: 'ap-shanghai', label: t.config.tencentRegionShanghai },
+    { value: 'ap-beijing', label: t.config.tencentRegionBeijing },
+    { value: 'ap-chengdu', label: t.config.tencentRegionChengdu },
+    { value: 'ap-chongqing', label: t.config.tencentRegionChongqing },
+    { value: 'ap-nanjing', label: t.config.tencentRegionNanjing },
+  ], [t.config.tencentRegionGuangzhou, t.config.tencentRegionShanghai, t.config.tencentRegionBeijing, t.config.tencentRegionChengdu, t.config.tencentRegionChongqing, t.config.tencentRegionNanjing]);
+
+  // Provider 对应的配置字段
+  const providerFields = useMemo(() => {
+    return configFields.filter(field => {
+      if (field.key === 'provider') return false;
+      if (field.key.startsWith('ai_image_') || field.key.startsWith('imaginepro_')) return false;
+      if (field.key.startsWith('tencent_')) return false;
+      
+      if (currentProvider === 'gemini') {
+        return field.key.startsWith('gemini_');
+      } else if (currentProvider === 'openai') {
+        return field.key.startsWith('openai_');
+      }
+      return false;
+    });
+  }, [configFields, currentProvider]);
+
+  // 处理语音测试
+  const handleSpeechTest = useCallback(async () => {
+    setSpeechTesting(true);
+    setSpeechTestResult(null);
+    try {
+      const result = await onSpeechTest();
+      setSpeechTestResult(result);
+    } catch (error) {
+      setSpeechTestResult({ 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Test failed' 
+      });
+    } finally {
+      setSpeechTesting(false);
+    }
+  }, [onSpeechTest]);
 
   return (
-    <div className="config-section">
-      <div className="section-header">
-        <div className="section-header-left">
-          <span className="section-icon icon-ai">🤖</span>
-          <div>
-            <h2 className="section-title">{t.config.ai}</h2>
-            <p className="section-description">{t.config.aiDesc}</p>
-          </div>
-        </div>
-      </div>
+    <SettingSection
+      title={t.config.aiConfigTitle}
+      icon="🤖"
+      description={t.config.aiConfigDesc}
+    >
+      {/* AI 服务介绍 */}
+      <InfoCard
+        title={t.config.aiServiceInfoTitle}
+        content={
+          <>
+            {t.config.aiServiceInfoDescription}<br />
+            <strong>Google Gemini</strong>: {t.config.geminiDescription}
+            <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">
+              {t.config.getApiKey}
+            </a><br />
+            <strong>{t.config.openaiCompatible}</strong>: {t.config.openaiDescription}
+          </>
+        }
+      />
 
-      <div className="config-form">
-        {providerField && (
-          <div className="form-group">
-            <label className="form-label">
-              {providerField.label}
-              {providerField.required && <span className="required-mark">*</span>}
-            </label>
-            <div className="provider-selector">
-              <button
-                type="button"
-                onClick={() => onUpdateField('provider', 'gemini')}
-                className={`provider-option ${providerField.value === 'gemini' ? 'active' : ''}`}
-              >
-                <span className="provider-icon">🤖</span>
-                <span className="provider-name">Google Gemini</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdateField('provider', 'openai')}
-                className={`provider-option ${providerField.value === 'openai' ? 'active' : ''}`}
-              >
-                <span className="provider-icon">🔥</span>
-                <span className="provider-name">OpenAI</span>
-              </button>
-            </div>
-          </div>
-        )}
+      {/* AI Provider 选择 */}
+      <ProviderItem
+        key="ai_provider"
+        label={t.config.aiProvider}
+        value={currentProvider}
+        onChange={(v) => updateValue('provider', v)}
+        options={aiProviderOptions}
+        hint={t.config.aiProviderHint}
+        layout="horizontal"
+      />
 
-        {otherFields.map((field) => (
-          <div key={field.key} className="form-group">
-            <label className="form-label">
-              {field.label}
-              {field.required && <span className="required-mark">*</span>}
-            </label>
-            <input
-              type={field.field_type === 'password' ? 'password' : 'text'}
-              value={field.value}
-              onChange={(e) => onUpdateField(field.key, e.target.value)}
-              placeholder={field.placeholder}
-              className="form-input"
-              autoComplete="off"
+      {/* Provider 配置字段 */}
+      {providerFields.map((field) => (
+        <InputItem
+          key={field.key}
+          label={field.label}
+          required={field.required}
+          value={field.value}
+          onChange={(v) => updateValue(field.key, v)}
+          placeholder={field.placeholder}
+          inputType={field.field_type as 'text' | 'password'}
+          autoSelectOnMask
+          layout="vertical"
+        />
+      ))}
+
+      {/* AI 图片生成配置 */}
+      <InfoCard
+        title={`🎨 ${t.config.aiImageTitle}`}
+        content={
+          <>
+            <strong>Pollinations AI</strong>：{t.config.pollinationsDescription}<br />
+            <strong>ImaginePro</strong>：{t.config.imagineproDescription}
+          </>
+        }
+        className="mt-6"
+      />
+
+      {/* 图片生成 Provider 选择 */}
+      <ProviderItem
+        key="image_provider"
+        label={t.config.imageGenService}
+        value={currentImageProvider}
+        onChange={(v) => updateValue('ai_image_provider', v)}
+        options={imageProviderOptions}
+        layout="horizontal"
+      />
+
+      {/* Pollinations 配置 */}
+      {currentImageProvider === 'pollinations' && (
+        <>
+          <SelectItem
+            key="ai_image_model"
+            label={t.config.aiModel}
+            value={getFieldValue('ai_image_model', 'flux-anime')}
+            onChange={(v) => updateValue('ai_image_model', v)}
+            options={pollinationsModelOptions}
+            layout="vertical"
+          />
+          <div className="config-compact-group">
+            <NumberItem
+              key="ai_image_width_poll"
+              label={t.config.width}
+              value={parseInt(getFieldValue('ai_image_width', '512'), 10)}
+              onChange={(v) => updateValue('ai_image_width', String(v))}
+              min={256}
+              max={1024}
+              step={64}
+              layout="vertical"
+            />
+            <NumberItem
+              key="ai_image_height_poll"
+              label={t.config.height}
+              value={parseInt(getFieldValue('ai_image_height', '768'), 10)}
+              onChange={(v) => updateValue('ai_image_height', String(v))}
+              min={256}
+              max={1024}
+              step={64}
+              layout="vertical"
             />
           </div>
-        ))}
-      </div>
-    </div>
-  );
-});
+        </>
+      )}
 
-AiConfigSection.displayName = 'AiConfigSection';
+      {/* ImaginePro 配置 */}
+      {currentImageProvider === 'imaginepro' && (
+        <>
+          <InputItem
+            key="imaginepro_api_key"
+            label="API Key"
+            required
+            value={getFieldValue('imaginepro_api_key')}
+            onChange={(v) => updateValue('imaginepro_api_key', v)}
+            placeholder={t.config.imagineproPlaceholder}
+            inputType="password"
+            autoSelectOnMask
+            layout="vertical"
+          />
+          <div className="config-compact-group">
+            <NumberItem
+              key="ai_image_width_mj"
+              label={t.config.width}
+              value={parseInt(getFieldValue('ai_image_width', '1024'), 10)}
+              onChange={(v) => updateValue('ai_image_width', String(v))}
+              min={512}
+              max={2048}
+              step={128}
+              layout="vertical"
+            />
+            <NumberItem
+              key="ai_image_height_mj"
+              label={t.config.height}
+              value={parseInt(getFieldValue('ai_image_height', '1536'), 10)}
+              onChange={(v) => updateValue('ai_image_height', String(v))}
+              min={512}
+              max={2048}
+              step={128}
+              layout="vertical"
+            />
+          </div>
+        </>
+      )}
+
+      {/* 语音服务配置 */}
+      <SettingGroup
+        title={`🎙️ ${t.config.speechServiceTitle}`}
+        description={t.config.speechServiceDesc}
+      >
+        <InputItem
+          key="tencent_secret_id"
+          label={t.config.tencentSecretId}
+          value={getFieldValue('tencent_secret_id')}
+          onChange={(v) => updateValue('tencent_secret_id', v)}
+          placeholder={t.config.tencentSecretIdPlaceholder}
+          inputType="password"
+          autoSelectOnMask
+          layout="vertical"
+        />
+
+        <InputItem
+          key="tencent_secret_key"
+          label={t.config.tencentSecretKey}
+          value={getFieldValue('tencent_secret_key')}
+          onChange={(v) => updateValue('tencent_secret_key', v)}
+          placeholder={t.config.tencentSecretKeyPlaceholder}
+          inputType="password"
+          autoSelectOnMask
+          layout="vertical"
+        />
+
+        <SelectItem
+          key="tencent_region"
+          label={t.config.tencentRegion}
+          value={getFieldValue('tencent_region', 'ap-guangzhou')}
+          onChange={(v) => updateValue('tencent_region', v)}
+          options={tencentRegionOptions}
+          layout="vertical"
+        />
+
+        <ButtonItem
+          key="speech_test"
+          label=""
+          buttonText={`🔊 ${t.config.speechTestAvailability}`}
+          onClick={handleSpeechTest}
+          loading={speechTesting}
+          loadingText={t.config.speechTestTesting}
+          result={speechTestResult}
+          variant="secondary"
+          layout="vertical"
+        />
+      </SettingGroup>
+    </SettingSection>
+  );
+};
 
 export default AiConfigSection;

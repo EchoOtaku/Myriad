@@ -608,7 +608,7 @@ const AlbumCover = memo(({
             }}
           />
         ) : null}
-        <div className={`w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 ${cover ? 'hidden' : ''}`}>
+        <div className={`w-full h-full flex items-center justify-center bg-gray-200 dark:bg-neutral-700 text-gray-400 dark:text-neutral-500 ${cover ? 'hidden' : ''}`}>
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
           </svg>

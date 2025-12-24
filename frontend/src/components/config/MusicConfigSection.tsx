@@ -1,0 +1,132 @@
+/**
+ * 音乐播放器配置区块
+ * 使用通用设置组件重构
+ */
+
+import React, { useCallback } from 'react';
+import { SiNeteasecloudmusic } from '@lib/icons';
+import { useI18n } from '../../contexts/I18nContext';
+import {
+  SettingSection,
+  SettingGroup,
+  InfoCard,
+  SwitchItem,
+  ProviderItem,
+  InputItem,
+  ButtonItem,
+} from '../settings';
+import { clearPlaylistCache } from '../../utils/musicPlayer';
+
+interface ConfigField {
+  key: string;
+  value: string;
+}
+
+interface MusicConfigSectionProps {
+  /** UI 配置字段数组 */
+  configFields: ConfigField[];
+  /** 更新配置字段值 */
+  updateValue: (key: string, value: string) => void;
+  /** 消息回调 */
+  onMessage?: (message: string) => void;
+}
+
+export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
+  configFields,
+  updateValue,
+  onMessage,
+}) => {
+  const { t } = useI18n();
+
+  // 辅助函数：获取配置字段值
+  const getFieldValue = useCallback((key: string) => {
+    return configFields.find(f => f.key === key)?.value || '';
+  }, [configFields]);
+
+  const handleClearCache = useCallback(() => {
+    clearPlaylistCache();
+    onMessage?.(t.config.musicCacheCleared);
+  }, [onMessage, t]);
+
+  const musicEnabled = getFieldValue('music_enabled') === 'true';
+  const musicSource = getFieldValue('music_source');
+  const playlistId = getFieldValue('music_playlist_id');
+
+  return (
+    <SettingSection
+      title={t.config.musicConfigTitle}
+      icon="🎵"
+      description={t.config.musicConfigDesc}
+    >
+      {/* 使用说明 */}
+      <InfoCard
+        title={t.config.musicUsageTitle}
+        content={t.config.musicUsageInfo}
+      />
+
+      {/* 开关和平台选择 */}
+      <SwitchItem
+        key="music_enabled"
+        label={t.config.enableMusicPlayer}
+        description={t.config.musicPlayerDesc}
+        value={musicEnabled}
+        onChange={(v) => updateValue('music_enabled', v.toString())}
+        layout="horizontal"
+      />
+
+      <ProviderItem
+        key="music_source"
+        label={t.config.musicPlatform}
+        value={musicSource}
+        onChange={(v) => updateValue('music_source', v)}
+        options={[
+          { 
+            value: 'netease', 
+            label: t.config.neteaseMusic, 
+            icon: <SiNeteasecloudmusic /> 
+          },
+          { 
+            value: 'qq', 
+            label: t.config.qqMusic, 
+            icon: '🎧' 
+          },
+        ]}
+        layout="horizontal"
+      />
+
+      {/* 歌单 ID */}
+      <InputItem
+        key="music_playlist_id"
+        label={t.config.playlistId}
+        required
+        value={playlistId}
+        onChange={(v) => updateValue('music_playlist_id', v)}
+        placeholder={
+          musicSource === 'netease'
+            ? t.config.neteasePlaylistExample
+            : t.config.qqPlaylistExample
+        }
+        hint={
+          musicSource === 'netease'
+            ? t.config.neteasePlaylistHint
+            : t.config.qqPlaylistHint
+        }
+        layout="vertical"
+      />
+
+      {/* 缓存管理 */}
+      <SettingGroup title={t.config.cacheManagement}>
+        <ButtonItem
+          key="clear_cache"
+          description={t.config.clearMusicCacheDesc}
+          buttonText={t.config.clearMusicCacheBtn}
+          buttonIcon="🗑️"
+          variant="secondary"
+          onClick={handleClearCache}
+        />
+      </SettingGroup>
+    </SettingSection>
+  );
+};
+
+export default MusicConfigSection;

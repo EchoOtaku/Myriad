@@ -6,6 +6,8 @@ pub mod analysis;
 pub mod auth;
 pub mod auth_local;
 pub mod bilibili;
+pub mod brew; // ✅ Brew 阅读 RSS/Atom/JSON Feed 订阅 API
+pub mod brewlia; // ✅ Brewlia AI增强阅读 API
 pub mod cache; // ✅ 缓存管理 API
 pub mod config;
 pub mod metrics; // ✅ 系统监控指标 API (P2优化)
@@ -15,6 +17,7 @@ pub mod prompt;
 pub mod proxy;
 pub mod reports; // ✅ 双层报告系统API
 pub mod setup;
+pub mod speech; // 🎙️ 腾讯云语音服务 API (TTS/ASR)
 pub mod steam;
 pub mod system;
 pub mod tapp; // ✅ Tapp 第三方应用 API (旧)

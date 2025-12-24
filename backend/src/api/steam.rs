@@ -246,3 +246,77 @@ pub async fn get_steam_stats(
         }
     }
 }
+
+/// 获取单个 Steam 游戏详情
+/// 通过 Steam Store API 获取游戏信息（名称、描述、价格等）
+pub async fn get_steam_game_details(
+    Path(app_id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap();
+
+    let url = format!(
+        "https://store.steampowered.com/api/appdetails?appids={}&l=schinese",
+        app_id
+    );
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                tracing::error!("Steam API returned status: {}", resp.status());
+                return Ok(Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    message: format!("Steam API 返回错误状态: {}", resp.status()),
+                }));
+            }
+
+            match resp.json::<serde_json::Value>().await {
+                Ok(mut data) => {
+                    // Steam API 返回格式: { "appid": { "success": true, "data": {...} } }
+                    if let Some(app_data) = data.get_mut(&app_id) {
+                        if let Some(success) = app_data.get("success").and_then(|v| v.as_bool()) {
+                            if success {
+                                if let Some(game_data) = app_data.get("data") {
+                                    tracing::info!("Successfully fetched Steam game details for app {}", app_id);
+                                    return Ok(Json(ApiResponse {
+                                        success: true,
+                                        data: Some(game_data.clone()),
+                                        message: "获取成功".to_string(),
+                                    }));
+                                }
+                            }
+                        }
+                    }
+
+                    // 如果没有找到游戏数据
+                    tracing::warn!("No game data found for app {}", app_id);
+                    Ok(Json(ApiResponse {
+                        success: false,
+                        data: None,
+                        message: "未找到游戏信息".to_string(),
+                    }))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to parse Steam API response for {}: {}", app_id, e);
+                    Ok(Json(ApiResponse {
+                        success: false,
+                        data: None,
+                        message: format!("解析响应失败: {}", e),
+                    }))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch Steam game details for {}: {}", app_id, e);
+            Ok(Json(ApiResponse {
+                success: false,
+                data: None,
+                message: format!("请求失败: {}", e),
+            }))
+        }
+    }
+}

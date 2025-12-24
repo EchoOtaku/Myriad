@@ -805,7 +805,7 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh, play
                               key={i}
                               className={`w-1.5 h-1.5 rounded-full transition-all ${
                                 i <= currentChapter
-                                  ? 'bg-gray-900 dark:bg-gray-100 shadow-sm'
+                                  ? 'bg-neutral-900 dark:bg-neutral-100 shadow-sm'
                                   : 'bg-gray-300 dark:bg-neutral-700'
                               }`}
                             />

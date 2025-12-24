@@ -207,13 +207,15 @@ html.dark .dynamic-island:hover {
               transform 0.15s ease-out;
 }
 
-/* 二级菜单激活状态样式 */
+/* 一级/二级菜单激活状态样式 - 统一风格 */
+.nav-item.active,
 .nav-item.active-secondary {
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 15%, white);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
+html.dark .nav-item.active,
 html.dark .nav-item.active-secondary {
   background: color-mix(in srgb, var(--color-primary) 25%, transparent);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 35%, transparent),

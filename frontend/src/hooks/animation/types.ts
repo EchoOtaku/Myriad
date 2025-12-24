@@ -92,6 +92,8 @@ export interface CoordinatorConfig {
   defaultStaggerDelay: number;
   /** 刷新间隔(ms)，限制RAF频率 */
   flushInterval: number;
+  /** 循环动画最大槽位数 */
+  maxLoopSlots?: number;
 }
 
 /** 默认配置 */

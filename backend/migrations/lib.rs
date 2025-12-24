@@ -7,6 +7,9 @@ mod initial_schema;
 #[path = "002_tapp_system.rs"]
 mod tapp_system;
 
+#[path = "003_brew_system.rs"]
+mod brew_system;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -15,6 +18,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(initial_schema::Migration),
             Box::new(tapp_system::Migration),
+            Box::new(brew_system::Migration),
         ]
     }
 }

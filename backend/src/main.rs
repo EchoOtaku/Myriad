@@ -148,6 +148,10 @@ async fn run_server() -> anyhow::Result<()> {
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
                 tracing::info!("✅ Tapp scheduler engine initialized");
 
+                // Initialize Brew scheduler engine (RSS/Atom feed updates)
+                services::brew_scheduler::init_brew_scheduler(db.clone()).await;
+                tracing::info!("✅ Brew scheduler engine initialized");
+
                 tracing::info!("🌐 Starting in FULL MODE - all features available");
                 *DB_CONNECTION.write().await = Some(db);
                 CONFIG_MODE.store(false, Ordering::Relaxed);
@@ -1162,6 +1166,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // ============ Tapp 应用管理 API ============
             // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
             .nest("/api/tapps", api::tapps::create_tapp_routes())
+            // ============ Brew 阅读 API ============
+            // RSS/Atom 订阅管理、文章获取、阅读状态同步
+            .nest("/api/brew", api::brew::create_brew_routes())
+            // ============ Brewlia AI 增强 API ============
+            // AI 词汇注释、内容摘要等增强阅读功能
+            .nest("/api/brewlia", api::brewlia::create_brewlia_routes())
+            // ============ 语音服务 API ============
+            // 腾讯云 TTS 文本转语音、ASR 语音转文本
+            .nest("/api/speech", api::speech::create_speech_routes())
             // ============ Tapp API ============
             // Platform data API - 🔒 REQUIRE AUTHENTICATION
             .route(
@@ -1409,6 +1422,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::proxy::proxy_netease_lyrics),
             )
             .route(
+                "/api/proxy/music/netease/song/:id",
+                get(api::proxy::proxy_netease_song),
+            )
+            .route(
                 "/api/proxy/music/netease/audio/:id",
                 get(api::proxy::proxy_netease_audio),
             )
@@ -1447,6 +1464,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::steam::get_steam_wishlist),
             )
             .route("/api/steam/stats", get(api::steam::get_steam_stats))
+            .route(
+                "/api/steam/game/:app_id",
+                get(api::steam::get_steam_game_details),
+            )
             .with_state(db);
 
         // Merge with base router
@@ -1674,4 +1695,5 @@ async fn shutdown_signal() {
 
     // 停止调度器引擎
     api::tapp_scheduler::shutdown_scheduler().await;
+    services::brew_scheduler::shutdown_brew_scheduler().await;
 }
