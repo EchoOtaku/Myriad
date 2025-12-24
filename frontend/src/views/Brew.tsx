@@ -95,6 +95,7 @@ export default function Brew() {
   const [loading, setLoading] = useState(true);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sourceRefreshing, setSourceRefreshing] = useState(false);  // 订阅源刷新中状态
 
   // 收藏页面批量管理状态（仅登录用户可用）
   const [starredEditMode, setStarredEditMode] = useState(false);
@@ -398,17 +399,20 @@ export default function Brew() {
 
   // 处理刷新订阅源
   const handleRefreshSource = async (sourceId: number) => {
+    setSourceRefreshing(true);
     try {
       const newCount = await brewApi.refreshSource(sourceId);
       if (newCount > 0) {
         if (viewMode === 'items' && selectedSource?.id === sourceId) {
-          loadItems(true);
+          loadItems(true, sourceId, viewMode);
         }
         loadStats();
         loadSources();
       }
     } catch (err) {
       console.error('Failed to refresh source:', err);
+    } finally {
+      setSourceRefreshing(false);
     }
   };
 
@@ -426,14 +430,25 @@ export default function Brew() {
       });
 
       if (marked > 0) {
-        // 分类视图时需要传递分类参数
-        if (viewMode === 'category-feed' && categoryFilter) {
-          loadItems(true, undefined, viewMode, categoryFilter);
-        } else {
-          loadItems(true);
+        // 只更新当前列表中文章的已读状态，不重新加载列表，避免破坏排序
+        setItems(prev => prev.map(item => ({ ...item, is_read: true })));
+        // 更新订阅源的未读计数
+        if (selectedSource) {
+          setSources(prev => prev.map(s => 
+            s.id === selectedSource.id ? { ...s, unread_count: 0 } : s
+          ));
+        } else if (categoryFilter) {
+          // 分类视图：更新该分类下所有源的未读计数
+          setSources(prev => prev.map(s => {
+            if (!s.category) return s;
+            const cats = s.category.split(',').map(c => c.trim());
+            if (cats.includes(categoryFilter)) {
+              return { ...s, unread_count: 0 };
+            }
+            return s;
+          }));
         }
         loadStats();
-        loadSources();
       }
     } catch (err) {
       console.error('Failed to mark all read:', err);
@@ -667,7 +682,7 @@ export default function Brew() {
                 onBack: handleBackToSources,
                 onRefresh: () => handleRefreshSource(selectedSource.id),
                 onMarkAllRead: handleMarkAllRead,
-                isRefreshing: false,
+                isRefreshing: sourceRefreshing,
               }}
             />
 

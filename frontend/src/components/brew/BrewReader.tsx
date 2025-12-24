@@ -54,6 +54,23 @@ import {
 } from './reader';
 import type { ThemeKey, LayoutKey } from './reader';
 
+// API URL
+const API_URL = import.meta.env.PUBLIC_API_URL || '';
+
+// 处理图片 URL - 封面图等外部图片通过代理访问
+const getImageUrl = (imageUrl: string | null): string | null => {
+  if (!imageUrl) return null;
+  // 已经是本地路径或代理路径，直接使用
+  if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
+    return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl;
+  }
+  // 外部 URL，使用图片代理
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return `${API_URL}/api/proxy/image?url=${encodeURIComponent(imageUrl)}`;
+  }
+  return imageUrl;
+};
+
 interface BrewReaderProps {
   item: BrewItem;
   onClose: () => void;
@@ -494,15 +511,19 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     const handleContentClick = async (e: Event) => {
       const target = e.target as HTMLElement;
 
-      // 检查是否点击了图片
+      // 检查是否点击了图片（需要排除嵌入卡片内的图片）
       if (target.tagName === 'IMG') {
         const img = target as HTMLImageElement;
-        if (img.src) {
+        // 检查图片是否在嵌入卡片内（brew-embed-card, brew-embed-exempt, brew-bilibili-embed 等）
+        const isInEmbedCard = img.closest('.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video');
+        
+        if (img.src && !isInEmbedCard) {
           e.preventDefault();
           e.stopPropagation();
           setLightboxImage(img.src);
+          return;
         }
-        return;
+        // 如果是嵌入卡片内的图片，不阻止事件，让它继续冒泡到卡片处理
       }
 
       // 检查是否点击了网易云音乐嵌入卡片
@@ -2205,7 +2226,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           {item.image && (
             <div className="mb-8">
               <img
-                src={item.image}
+                src={getImageUrl(item.image) || ''}
                 alt=""
                 className="w-full rounded-2xl"
                 loading="lazy"

@@ -36,30 +36,30 @@ interface UseBrewKeyboardOptions {
 
 interface KeyboardShortcut {
   key: string;
-  description: string;
+  descriptionKey: string;  // 翻译键，如 'shortcutDescNextArticle'
   category: 'navigation' | 'article' | 'source' | 'other';
 }
 
 // 导出快捷键列表（供帮助弹窗使用）
 export const BREW_SHORTCUTS: KeyboardShortcut[] = [
   // 导航
-  { key: 'j / ↓', description: '下一篇文章', category: 'navigation' },
-  { key: 'k / ↑', description: '上一篇文章', category: 'navigation' },
-  { key: 'o / Enter', description: '打开/关闭阅读器', category: 'navigation' },
-  { key: 'Escape', description: '关闭阅读器', category: 'navigation' },
-  { key: '/', description: '聚焦搜索框', category: 'navigation' },
+  { key: 'j / ↓', descriptionKey: 'shortcutDescNextArticle', category: 'navigation' },
+  { key: 'k / ↑', descriptionKey: 'shortcutDescPrevArticle', category: 'navigation' },
+  { key: 'o / Enter', descriptionKey: 'shortcutDescOpenReader', category: 'navigation' },
+  { key: 'Escape', descriptionKey: 'shortcutDescCloseReader', category: 'navigation' },
+  { key: '/', descriptionKey: 'shortcutDescFocusSearch', category: 'navigation' },
   
   // 文章操作
-  { key: 'm', description: '切换已读/未读', category: 'article' },
-  { key: 's', description: '切换收藏', category: 'article' },
-  { key: 'Shift + A', description: '全部标记已读', category: 'article' },
+  { key: 'm', descriptionKey: 'shortcutDescToggleRead', category: 'article' },
+  { key: 's', descriptionKey: 'shortcutDescToggleStar', category: 'article' },
+  { key: 'Shift + A', descriptionKey: 'shortcutDescMarkAllRead', category: 'article' },
   
   // 订阅源操作
-  { key: 'r', description: '刷新当前订阅源', category: 'source' },
-  { key: 'a', description: '添加新订阅源', category: 'source' },
+  { key: 'r', descriptionKey: 'shortcutDescRefreshSource', category: 'source' },
+  { key: 'a', descriptionKey: 'shortcutDescAddSource', category: 'source' },
   
   // 其他
-  { key: '?', description: '显示快捷键帮助', category: 'other' },
+  { key: '?', descriptionKey: 'shortcutDescShowHelp', category: 'other' },
 ];
 
 export function useBrewKeyboard({

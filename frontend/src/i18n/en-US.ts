@@ -1429,6 +1429,19 @@ export const enUS: TranslationKeys = {
     shortcutSource: 'Source',
     shortcutOther: 'Other',
     
+    // Shortcut descriptions
+    shortcutDescNextArticle: 'Next article',
+    shortcutDescPrevArticle: 'Previous article',
+    shortcutDescOpenReader: 'Open/close reader',
+    shortcutDescCloseReader: 'Close reader',
+    shortcutDescFocusSearch: 'Focus search box',
+    shortcutDescToggleRead: 'Toggle read/unread',
+    shortcutDescToggleStar: 'Toggle star',
+    shortcutDescMarkAllRead: 'Mark all as read',
+    shortcutDescRefreshSource: 'Refresh current source',
+    shortcutDescAddSource: 'Add new source',
+    shortcutDescShowHelp: 'Show keyboard shortcuts',
+    
     // Tips
     tipJustUpdated: 'Just updated',
     tipUnreadCount: '{count} unread',
@@ -1457,6 +1470,17 @@ export const enUS: TranslationKeys = {
     errorExportFailed: 'Export failed',
     errorSaveFailed: 'Save failed',
     errorGenerateTagsFailed: 'Failed to generate style tags',
+    errorInvalidFormat: 'Invalid import file format',
+    
+    // Import/Export
+    exportBrewpack: 'Export Subscriptions',
+    importBrewpack: 'Import Subscriptions',
+    exportSuccess: 'Exported {count} sources',
+    importSuccess: 'Imported: {imported}, Skipped: {skipped}',
+    importStepReading: 'Reading file...',
+    importStepUnzipping: 'Extracting...',
+    importStepParsing: 'Parsing...',
+    importStepImporting: 'Importing: {name}',
     
     // Empty states
     emptyNoSources: 'No sources yet',

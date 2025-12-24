@@ -2,20 +2,17 @@
  * Brew 文章列表组件
  * 设计参考 TappCard 风格 - 瀑布流卡片展示
  * 
- * 性能优化：
- * - 接入统一动画调度器 (useBrewCardStagger)
- * - 使用 React.memo 避免不必要的重渲染
- * - 使用 useMemo 缓存计算结果
- * - 使用 useCallback 缓存回调函数
- * - 根据动画级别自动降级
+ * 性能优化（WebKit 重点优化）：
+ * - 移除 framer-motion，使用纯 CSS 动画
+ * - 减少 transition 属性数量
+ * - 使用 React.memo + 自定义比较避免重渲染
  * - 图片懒加载 + decoding="async"
  */
 
 import { useRef, useCallback, useState, memo, useMemo, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Star, ExternalLink, FileText, Sparkles, Mic } from 'lucide-react';
 import type { BrewItem } from '../../types/brew';
-import { useBrewCardStagger, getBrewTransition } from '../../hooks/animation/pages/brew';
+import { useBrewCardStagger } from '../../hooks/animation/pages/brew';
 import { useI18n } from '../../contexts/I18nContext';
 
 interface BrewFeedListProps {
@@ -52,19 +49,28 @@ const formatTime = (timestamp: number | null, translations: TimeTranslations, lo
   const diff = now.getTime() - date.getTime();
   
   if (diff < 60000) return translations.justNow;
-  if (diff < 3600000) return translations.minutesAgo.replace('{count}', String(Math.floor(diff / 60000)));
-  if (diff < 86400000) return translations.hoursAgo.replace('{count}', String(Math.floor(diff / 3600000)));
-  if (diff < 604800000) return translations.daysAgo.replace('{count}', String(Math.floor(diff / 86400000)));
+  if (diff < 3600000) return translations.minutesAgo.replace('{minutes}', String(Math.floor(diff / 60000)));
+  if (diff < 86400000) return translations.hoursAgo.replace('{hours}', String(Math.floor(diff / 3600000)));
+  if (diff < 604800000) return translations.daysAgo.replace('{days}', String(Math.floor(diff / 86400000)));
   
   // 根据 locale 格式化日期
   const dateLocale = locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US';
   return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' });
 };
 
+// 短文阈值（字符数）- 低于此值视为简讯/短文，直接在卡片显示全文
+const SHORT_CONTENT_THRESHOLD = 280;
+
 // 提取摘要纯文本 - 纯函数
 const getPlainText = (html: string | null) => {
   if (!html) return '';
   return html.replace(/<[^>]*>/g, '').slice(0, 200);
+};
+
+// 提取完整纯文本 - 用于短文判断和显示
+const getFullPlainText = (html: string | null) => {
+  if (!html) return '';
+  return html.replace(/<[^>]*>/g, '').trim();
 };
 
 // 默认主题色
@@ -85,6 +91,20 @@ const getIconUrl = (iconUrl: string | null): string | null => {
     return `${API_URL}/api/proxy/image?url=${encodeURIComponent(iconUrl)}`;
   }
   return iconUrl;
+};
+
+// 处理图片 URL - 封面图等外部图片通过代理访问
+const getImageUrl = (imageUrl: string | null): string | null => {
+  if (!imageUrl) return null;
+  // 已经是本地路径或代理路径，直接使用
+  if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
+    return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl;
+  }
+  // 外部 URL，使用图片代理
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return `${API_URL}/api/proxy/image?url=${encodeURIComponent(imageUrl)}`;
+  }
+  return imageUrl;
 };
 
 // ==================== ItemCard 组件 ====================
@@ -137,50 +157,27 @@ const ItemCard = memo<ItemCardProps>(({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
-  // 接入动画调度器
-  const { canAnimate, onComplete, animConfig } = useBrewCardStagger(index, 'item');
-  const transition = getBrewTransition(animConfig, 'card');
+  // 接入动画调度器 - 简化版，只用于控制入场
+  const { canAnimate, animateStyle, animConfig } = useBrewCardStagger(index, 'item');
   const enableHover = animConfig.level !== 'none';
 
-  // 动画属性
-  const animProps = useMemo(() => {
-    // 动画禁用时直接显示
-    if (animConfig.level === 'none') {
-      return {
-        initial: false as const,
-        animate: undefined,
-        transition: undefined,
-        onAnimationComplete: undefined,
-      };
-    }
-
-    return {
-      initial: { opacity: 0, y: 16, scale: 0.97 },
-      animate: canAnimate ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 16, scale: 0.97 },
-      transition: { duration: transition.duration, ease: [0.22, 1, 0.36, 1] as any },
-      onAnimationComplete: canAnimate ? onComplete : undefined,
-    };
-  }, [canAnimate, transition, onComplete, animConfig.level]);
-
-  // 缓存元信息文本
-  const metaText = useMemo(() => [
-    item.source_name,
-    item.author,
-    item.reading_time ? `${item.reading_time}min` : null,
-    formatTime(item.published_at, timeTranslations, locale)
-  ].filter(Boolean).join(' · '), [item.source_name, item.author, item.reading_time, item.published_at, timeTranslations, locale]);
-
-  // 缓存摘要文本
+  // 缓存摘要文本和完整文本
   const summaryText = useMemo(() => getPlainText(item.summary), [item.summary]);
+  const fullText = useMemo(() => getFullPlainText(item.content || item.summary), [item.content, item.summary]);
+  
+  // 判断是否为短文（简讯）- 内容短于阈值且没有封面图
+  const isShortContent = useMemo(() => {
+    return fullText.length > 0 && fullText.length < SHORT_CONTENT_THRESHOLD && !item.image;
+  }, [fullText, item.image]);
 
-  // 缓存点击处理
+  // 缓存点击处理 - 短文不进入阅读模式
   const handleClick = useCallback(() => {
     if (editMode && onToggleCheck) {
       onToggleCheck(item.id);
-    } else {
+    } else if (!isShortContent) {
       onItemSelect(item);
     }
-  }, [editMode, onToggleCheck, onItemSelect, item]);
+  }, [editMode, onToggleCheck, onItemSelect, item, isShortContent]);
   const handleStarClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onToggleStar(item);
@@ -196,23 +193,26 @@ const ItemCard = memo<ItemCardProps>(({
     e.currentTarget.style.display = 'none';
   }, []);
 
+  // WebKit 优化：简化悬浮类名
+  const hoverClass = enableHover && !isShortContent ? 'hover:-translate-y-px' : '';
+  // 短文不需要 cursor-pointer（不可点击进入阅读模式）
+  const cursorClass = isShortContent && !editMode ? 'cursor-default' : 'cursor-pointer';
+
   return (
-    <motion.div
+    <div
       ref={isLast ? lastItemRef : undefined}
-      {...animProps}
       onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`group relative rounded-2xl overflow-hidden bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl cursor-pointer will-change-transform transition-all duration-200 ease-out ${
+      className={`group relative rounded-2xl overflow-hidden bg-white/90 dark:bg-neutral-900/90 ${cursorClass} ${
         isSelected ? 'ring-2 ring-blue-500' : ''
-      } ${editMode && isChecked ? 'ring-2 ring-amber-500' : ''} ${item.is_read ? 'opacity-60' : ''} ${
-        enableHover ? 'hover:-translate-y-0.5 hover:scale-[1.006]' : ''
-      }`}
+      } ${editMode && isChecked ? 'ring-2 ring-amber-500' : ''} ${item.is_read ? 'opacity-60' : ''} ${hoverClass}`}
+      style={animateStyle}
     >
       {/* 编辑模式复选框 */}
       {editMode && (
         <div className="absolute top-3 left-3 z-20">
-          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${
             isChecked 
               ? 'bg-amber-500 border-amber-500' 
               : 'bg-white/80 dark:bg-neutral-800/80 border-gray-300 dark:border-neutral-600'
@@ -226,26 +226,28 @@ const ItemCard = memo<ItemCardProps>(({
         </div>
       )}
 
-      {/* 装饰光效 - 使用纯 opacity 过渡避免闪现 */}
+      {/* 装饰光效 - 简化，移除 transition */}
       <div
-        className={`absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl transition-opacity duration-250 ease-out ${isHovered ? 'opacity-30' : 'opacity-10'}`}
+        className={`absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl ${isHovered ? 'opacity-20' : 'opacity-10'}`}
         style={{ background: `linear-gradient(135deg, ${themeColor}, transparent 70%)` }}
       />
 
-      {/* 边框高光效果 - 仅使用内边框 */}
-      <div
-        className={`absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-200 ease-out ${isHovered ? 'opacity-100' : 'opacity-0'}`}
-        style={{ boxShadow: `inset 0 0 0 1px ${themeColor}40` }}
-      />
+      {/* 边框高光效果 - 简化，使用条件渲染替代 transition */}
+      {isHovered && (
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{ boxShadow: `inset 0 0 0 1px ${themeColor}30` }}
+        />
+      )}
 
       {/* 封面图 */}
       {item.image && (
         <div className="px-6 pt-6 relative">
           <div className="aspect-[7/2] overflow-hidden rounded-xl bg-gray-100 dark:bg-neutral-800">
             <img
-              src={item.image}
+              src={getImageUrl(item.image) || ''}
               alt=""
-              className="w-full h-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.08]"
+              className="w-full h-full object-cover"
               loading="lazy"
               decoding="async"
               onError={handleImageError}
@@ -254,7 +256,7 @@ const ItemCard = memo<ItemCardProps>(({
           {!item.is_read && (
             <div 
               className="absolute top-7 right-7 w-2.5 h-2.5 rounded-full"
-              style={{ backgroundColor: themeColor, boxShadow: `0 0 8px ${themeColor}80` }}
+              style={{ backgroundColor: themeColor }}
             />
           )}
         </div>
@@ -264,7 +266,7 @@ const ItemCard = memo<ItemCardProps>(({
       {!item.is_read && !item.image && (
         <div 
           className="absolute top-5 right-5 w-2.5 h-2.5 rounded-full"
-          style={{ backgroundColor: themeColor, boxShadow: `0 0 8px ${themeColor}80` }}
+          style={{ backgroundColor: themeColor }}
         />
       )}
 
@@ -368,8 +370,12 @@ const ItemCard = memo<ItemCardProps>(({
           </div>
         </div>
 
-        {/* 摘要 - 舒适行高 */}
-        {summaryText && (
+        {/* 内容区 - 短文显示全文，普通文章显示摘要 */}
+        {isShortContent ? (
+          <p className="mt-3 text-[15px] text-gray-600 dark:text-gray-300 leading-[1.75] whitespace-pre-wrap">
+            {fullText}
+          </p>
+        ) : summaryText && (
           <p className="mt-3 text-[15px] text-gray-500 dark:text-gray-400 line-clamp-3 leading-[1.7]">
             {summaryText}
           </p>
@@ -379,12 +385,14 @@ const ItemCard = memo<ItemCardProps>(({
       {/* 边框 */}
       <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/[0.04] dark:ring-white/[0.06] pointer-events-none" />
       
-      {/* 悬浮高光 - 仅使用内边框效果 */}
-      <div
-        className={`absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-200 ease-out ${isHovered ? 'opacity-100' : 'opacity-0'}`}
-        style={{ boxShadow: `inset 0 0 0 1.5px ${themeColor}45` }}
-      />
-    </motion.div>
+      {/* 悬浮高光 - 使用条件渲染替代 transition */}
+      {isHovered && (
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{ boxShadow: `inset 0 0 0 1.5px ${themeColor}45` }}
+        />
+      )}
+    </div>
   );
 }, (prevProps, nextProps) => {
   // 自定义比较：只在关键属性变化时重渲染

@@ -216,6 +216,8 @@ export interface AddSourceRequest {
   name?: string;
   category?: string;
   update_interval?: number;
+  /** 自定义图标 URL 或 Base64 数据 */
+  icon?: string;
   /** 来源类型: link, rss, brewlia, rsshub */
   source_type?: SourceType;
   /** 订阅源类型：rss, atom, json_feed, notion, rsshub */

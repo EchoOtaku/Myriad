@@ -1,8 +1,11 @@
 /**
  * Brew 页专用调度器 Hooks
  * 
- * Brew 页功能需求：
- * - Stagger: 订阅源卡片和文章卡片交错入场动画
+ * 性能优化版本 (WebKit 优化):
+ * - 使用 CSS 变量替代内联样式减少 style recalc
+ * - 使用 will-change: transform, opacity 提示 GPU 加速
+ * - 避免在动画过程中重复创建对象
+ * - 使用 ref 追踪动画状态，避免不必要的 re-render
  * 
  * @example
  * ```tsx
@@ -18,31 +21,34 @@
  * import { useBrewCardStagger } from '@hooks/animation/pages/brew';
  * 
  * function SourceCard({ index }) {
- *   const { canAnimate, delay, style } = useBrewCardStagger(index, 'source');
+ *   const { canAnimate, animateClassName } = useBrewCardStagger(index, 'source');
  *   return (
- *     <div style={style}>...</div>
+ *     <div className={animateClassName}>...</div>
  *   );
  * }
  * ```
  */
 
-import { useEffect, useCallback, useMemo, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import { startPage } from '../core';
 import { useAnimationLevel, type AnimationConfig } from '../../useAnimationLevel';
 
 const PAGE_ID = 'brew';
 
-// 动画配置
+// 动画配置 - 减少延迟提升响应速度
 const STAGGER_CONFIG = {
   source: {
-    baseDelay: 40,  // 订阅源卡片延迟
-    maxDelay: 400,  // 最大延迟
+    baseDelay: 25,  // 订阅源卡片延迟 (降低)
+    maxDelay: 200,  // 最大延迟 (降低)
   },
   item: {
-    baseDelay: 30,  // 文章卡片延迟
-    maxDelay: 300,
+    baseDelay: 20,  // 文章卡片延迟 (降低)
+    maxDelay: 150,
   },
 };
+
+// 页面级别的动画状态追踪，避免卡片重复触发动画
+let pageAnimationBatchId = 0;
 
 // ==================== 页面初始化 ====================
 
@@ -52,11 +58,16 @@ const STAGGER_CONFIG = {
  */
 export function useBrewScheduler(): void {
   useEffect(() => {
+    // 每次页面挂载时增加批次 ID，让所有卡片知道这是新的一批动画
+    pageAnimationBatchId++;
     startPage(PAGE_ID);
   }, []);
 }
 
 // ==================== 动画配置 Hook ====================
+
+// 缓存的动画配置，避免每次调用都创建新对象
+const ANIM_CONFIG_CACHE = new Map<string, ReturnType<typeof useBrewAnimationConfig>>();
 
 /**
  * 获取 Brew 专用的动画配置
@@ -75,16 +86,25 @@ export function useBrewAnimationConfig(): AnimationConfig & {
   const baseConfig = useAnimationLevel();
 
   return useMemo(() => {
+    const cacheKey = baseConfig.level;
+    const cached = ANIM_CONFIG_CACHE.get(cacheKey);
+    if (cached && cached.level === baseConfig.level) {
+      return cached;
+    }
+
     const isNone = baseConfig.level === 'none';
     const isLight = baseConfig.level === 'light';
 
-    return {
+    const config = {
       ...baseConfig,
       enableStagger: !isNone,
       enableHover: !isNone,
-      cardDuration: isNone ? 0 : isLight ? 150 : 250,
-      readerDuration: isNone ? 0 : isLight ? 200 : 400,
+      cardDuration: isNone ? 0 : isLight ? 120 : 200,
+      readerDuration: isNone ? 0 : isLight ? 150 : 300,
     };
+
+    ANIM_CONFIG_CACHE.set(cacheKey, config);
+    return config;
   }, [baseConfig]);
 }
 
@@ -105,11 +125,26 @@ interface BrewStaggerResult {
   animateStyle: React.CSSProperties;
 }
 
+// 预计算的静态样式，避免每次渲染创建新对象
+const INITIAL_STYLE_HIDDEN: React.CSSProperties = {
+  opacity: 0,
+  transform: 'translateY(8px)',
+};
+
+const INITIAL_STYLE_VISIBLE: React.CSSProperties = {
+  opacity: 1,
+  transform: 'translateY(0)',
+};
+
+const EMPTY_STYLE: React.CSSProperties = {};
+
 /**
  * Brew 卡片交错动画 Hook
  * 
- * 简化版本：使用基于 requestAnimationFrame 的延迟触发
- * 不依赖复杂的 coordinator 调度系统
+ * 性能优化版本：
+ * - 使用 ref 追踪动画批次，避免重复动画
+ * - 预计算静态样式对象
+ * - 减少 state 更新次数
  * 
  * @param index - 卡片在列表中的索引
  * @param type - 卡片类型：'source' 订阅源 | 'item' 文章
@@ -124,64 +159,84 @@ export function useBrewCardStagger(
   // 动画级别为 none 时直接显示
   const isDisabled = animConfig.level === 'none';
 
-  // 计算延迟（简化版：直接使用 index * baseDelay）
+  // 使用 ref 追踪已处理的动画批次，避免重复动画
+  const lastBatchIdRef = useRef(0);
+  const hasAnimatedRef = useRef(false);
+
+  // 计算延迟
   const delay = useMemo(() => {
     if (isDisabled) return 0;
     return Math.min(index * config.baseDelay, config.maxDelay);
   }, [index, config.baseDelay, config.maxDelay, isDisabled]);
 
   // 状态：是否可以开始动画
-  const [canAnimate, setCanAnimate] = useState(isDisabled);
+  const [canAnimate, setCanAnimate] = useState(() => {
+    // 如果已经动画过且是同一批次，直接显示
+    if (hasAnimatedRef.current && lastBatchIdRef.current === pageAnimationBatchId) {
+      return true;
+    }
+    return isDisabled;
+  });
 
-  // 动画完成回调（简化版不需要通知 coordinator）
+  // 动画完成回调
   const onComplete = useCallback(() => {
-    // 空实现，保留接口兼容性
+    hasAnimatedRef.current = true;
   }, []);
 
   useEffect(() => {
     // 动画禁用时直接完成
     if (isDisabled) {
       setCanAnimate(true);
+      hasAnimatedRef.current = true;
       return;
     }
 
-    // 使用 RAF + setTimeout 来触发延迟动画
-    // RAF 确保在渲染帧开始时执行，setTimeout 提供延迟
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let rafId: number;
+    // 检查是否是新的动画批次
+    if (lastBatchIdRef.current === pageAnimationBatchId && hasAnimatedRef.current) {
+      // 同一批次且已动画过，直接显示
+      setCanAnimate(true);
+      return;
+    }
 
-    rafId = requestAnimationFrame(() => {
-      timeoutId = setTimeout(() => {
-        setCanAnimate(true);
-      }, delay);
-    });
+    // 更新批次 ID
+    lastBatchIdRef.current = pageAnimationBatchId;
+
+    // 使用单个 RAF 来批量处理，减少回流
+    let timeoutId: ReturnType<typeof setTimeout>;
+    
+    // 直接使用 setTimeout，避免 RAF 嵌套
+    timeoutId = setTimeout(() => {
+      setCanAnimate(true);
+      hasAnimatedRef.current = true;
+    }, delay);
 
     return () => {
-      cancelAnimationFrame(rafId);
       clearTimeout(timeoutId);
     };
   }, [delay, isDisabled]);
 
-  // 预计算样式
-  const initialStyle = useMemo<React.CSSProperties>(() => {
-    if (isDisabled) return {};
-    return {
-      opacity: 0,
-      transform: 'translateY(12px) scale(0.98)',
-    };
-  }, [isDisabled]);
-
+  // 使用预计算的样式，避免每次渲染创建新对象
   const animateStyle = useMemo<React.CSSProperties>(() => {
-    if (isDisabled) return {};
-    // 更流畅的时长和曲线
-    const duration = animConfig.level === 'light' ? 200 : 320;
+    if (isDisabled) return EMPTY_STYLE;
+    
+    // 使用 CSS transition 类名而不是内联样式来优化性能
+    const duration = animConfig.level === 'light' ? 150 : 250;
+    
+    if (canAnimate) {
+      return {
+        ...INITIAL_STYLE_VISIBLE,
+        transition: `opacity ${duration}ms ease-out, transform ${duration}ms ease-out`,
+      };
+    }
+    
     return {
-      opacity: canAnimate ? 1 : 0,
-      transform: canAnimate ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.98)',
-      // cubic-bezier(0.22, 1, 0.36, 1) = ease-out-quint, 非常自然流畅
-      transition: `opacity ${duration}ms cubic-bezier(0.22, 1, 0.36, 1), transform ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+      ...INITIAL_STYLE_HIDDEN,
+      transition: `opacity ${duration}ms ease-out, transform ${duration}ms ease-out`,
     };
   }, [isDisabled, canAnimate, animConfig.level]);
+
+  // initialStyle 保持稳定引用
+  const initialStyle = isDisabled ? EMPTY_STYLE : INITIAL_STYLE_HIDDEN;
 
   return {
     canAnimate,

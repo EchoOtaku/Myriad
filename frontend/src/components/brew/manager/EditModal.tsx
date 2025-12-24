@@ -128,6 +128,8 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
       const base64 = event.target?.result as string;
       setCustomIcon(base64);
       setIconPreview(base64);
+      // 图标变化时清除主题色，让系统重新提取
+      setThemeColor('');
       setError(null);
     };
     reader.onerror = () => {
@@ -139,11 +141,15 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   const handleClearIcon = () => {
     setCustomIcon('');
     setIconPreview(null);
+    // 清除图标时也清除主题色
+    setThemeColor('');
   };
 
   const handleRestoreIcon = () => {
     setCustomIcon(null);
     setIconPreview(source.icon);
+    // 恢复原始图标时恢复原始主题色
+    setThemeColor(source.theme_color || '#f97316');
   };
 
   // 生成 AI 风格标签
@@ -199,7 +205,8 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
         update_interval: isLink ? 0 : updateInterval,
         enabled: finalEnabled,
         ...(customIcon !== null && { icon: customIcon }),
-        theme_color: themeColor,
+        // themeColor 为空时传 null，让后端知道需要重新提取
+        theme_color: themeColor || null,
         source_type: finalSourceType,
       });
       onClose();

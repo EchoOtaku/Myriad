@@ -1433,6 +1433,19 @@ export interface TranslationKeys {
     shortcutSource: string;
     shortcutOther: string;
     
+    // 快捷键描述
+    shortcutDescNextArticle: string;
+    shortcutDescPrevArticle: string;
+    shortcutDescOpenReader: string;
+    shortcutDescCloseReader: string;
+    shortcutDescFocusSearch: string;
+    shortcutDescToggleRead: string;
+    shortcutDescToggleStar: string;
+    shortcutDescMarkAllRead: string;
+    shortcutDescRefreshSource: string;
+    shortcutDescAddSource: string;
+    shortcutDescShowHelp: string;
+    
     // 提示
     tipJustUpdated: string;
     tipUnreadCount: string;
@@ -1461,6 +1474,17 @@ export interface TranslationKeys {
     errorExportFailed: string;
     errorSaveFailed: string;
     errorGenerateTagsFailed: string;
+    errorInvalidFormat: string;
+    
+    // 导入/导出
+    exportBrewpack: string;
+    importBrewpack: string;
+    exportSuccess: string;
+    importSuccess: string;
+    importStepReading: string;
+    importStepUnzipping: string;
+    importStepParsing: string;
+    importStepImporting: string;
     
     // 空状态
     emptyNoSources: string;

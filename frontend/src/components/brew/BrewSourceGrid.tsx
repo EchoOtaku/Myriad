@@ -187,7 +187,10 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
   const hasUnread = source.unread_count > 0;
   const recentItems = source.recent_items || [];
   // 如果正在调整尺寸，使用预览尺寸；否则使用实际尺寸
-  const size: CardSize = previewSize || source.card_size || 'mini';
+  // 纯链接类型强制使用 tiny 尺寸
+  const size: CardSize = source.source_type === 'link' 
+    ? 'tiny' 
+    : (previewSize || source.card_size || 'mini');
 
   // 图标加载后提取颜色
   const handleIconLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -215,10 +218,19 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
     }
   }, [source.id, onRefreshSource]);
 
-  // 点击卡片处理 - 缓存回调
+  // 点击卡片处理 - 链接类型直接跳转（非编辑模式），其他类型进入文章列表
   const handleCardClick = useCallback(() => {
+    // 纯链接类型且非编辑模式：直接在新窗口打开链接
+    if (source.source_type === 'link' && !isEditMode) {
+      const targetUrl = source.site_url || source.url;
+      if (targetUrl) {
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+    // 其他情况：调用 onSourceClick（编辑模式下为选中切换，非编辑模式为进入文章列表）
     onSourceClick(source);
-  }, [source, onSourceClick]);
+  }, [source, onSourceClick, isEditMode]);
 
   // 鼠标事件 - 缓存回调
   const handleMouseEnter = useCallback(() => setIsHovered(true), []);
@@ -278,22 +290,21 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
   // 是否显示拖拽手柄（编辑模式 + 自由排序模式下显示）
   const showDragHandle = isEditMode && sortMode === 'custom';
 
-  // 计算卡片样式 - 合并入场动画与交互状态
+  // 计算卡片样式 - 简化以提升 WebKit 性能
+  // 只计算必要的样式，避免每次渲染创建复杂对象
   const cardStyle = useMemo<React.CSSProperties>(() => {
-    // 基础样式（gridRow）
+    // 基础样式
     const base: React.CSSProperties = {
       gridRow: `span ${rowSpan}`,
     };
 
-    // 拖拽状态优先级最高
+    // 拖拽状态 - 使用简单的 transform
     if (isDragging) {
       return {
         ...base,
-        transform: 'scale(1.03) rotate(0.5deg)',
-        opacity: 0.95,
+        transform: 'scale(1.02)',
+        opacity: 0.9,
         zIndex: 100,
-        boxShadow: `0 24px 48px rgba(0,0,0,0.18), 0 12px 24px rgba(0,0,0,0.12), 0 0 0 2px ${color}80`,
-        transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)',
       };
     }
 
@@ -301,11 +312,9 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
     if (isDragOver) {
       return {
         ...base,
-        transform: 'scale(0.97)',
+        transform: 'scale(0.98)',
         opacity: 0.85,
         zIndex: 50,
-        boxShadow: `inset 0 0 0 2px ${color}, 0 0 24px ${color}30`,
-        transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)',
       };
     }
 
@@ -314,7 +323,7 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
       return {
         ...base,
         ...animateStyle,
-        boxShadow: `inset 0 0 0 2px ${color}, 0 0 0 1px ${color}40`,
+        boxShadow: `inset 0 0 0 2px ${color}`,
       };
     }
 
@@ -325,12 +334,12 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
     };
   }, [rowSpan, isDragging, isDragOver, isSelected, color, animateStyle]);
 
-  // 悬停过渡类名 - 入场动画完成后才启用悬停效果
+  // 悬停过渡类名 - 简化，仅在非拖拽状态启用
   const hoverClasses = useMemo(() => {
-    if (!enableHover || isDragging || isDragOver || !canAnimate) return '';
-    // 使用更微妙的位移和缩放替代大阴影，减少闪现感
-    return 'hover:-translate-y-0.5 hover:scale-[1.008] transition-all duration-300 ease-out';
-  }, [enableHover, isDragging, isDragOver, canAnimate]);
+    if (!enableHover || isDragging || isDragOver) return '';
+    // WebKit 优化：移除 scale，只使用 translate，减少 GPU 负担
+    return 'hover:-translate-y-px';
+  }, [enableHover, isDragging, isDragOver]);
 
   // 尺寸相关的样式类
   const sizeClasses = useMemo(() => {
@@ -343,28 +352,29 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
     };
   }, [size]);
 
-  // 内容过渡动画类 - 始终启用
-  const contentTransition = 'transition-all duration-350 ease-[cubic-bezier(0.16,1,0.3,1)]';
+  // WebKit 性能优化：移除内容区 transition，只在必要时使用
+  // transition-all 在 Safari 上会导致严重性能问题
+  const contentTransition = '';
 
-  // ===== 统一卡片结构 - 通过 CSS 控制不同尺寸的显示 =====
+  // ===== 统一卡片结构 - WebKit 性能优化版本 =====
   return (
     <div
       ref={setRef}
       onClick={handleCardClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`group relative ${sizeClasses.rounded} overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl cursor-pointer will-change-transform ${isDeleting ? 'opacity-50 pointer-events-none' : ''} ${hoverClasses}`}
+      className={`group relative ${sizeClasses.rounded} overflow-hidden bg-white/90 dark:bg-neutral-900/90 cursor-pointer ${isDeleting ? 'opacity-50 pointer-events-none' : ''} ${hoverClasses}`}
       style={cardStyle}
     >
 
       {/* 拖拽手柄 - 编辑模式 + 自由排序模式 */}
       {showDragHandle && (
         <div
-          className={`absolute left-0 right-0 top-0 ${size === 'tiny' ? 'h-6' : size === 'mini' ? 'h-8' : 'h-10'} flex items-center justify-center cursor-grab active:cursor-grabbing z-10 opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out touch-none`}
+          className={`absolute left-0 right-0 top-0 ${size === 'tiny' ? 'h-6' : size === 'mini' ? 'h-8' : 'h-10'} flex items-center justify-center cursor-grab active:cursor-grabbing z-10 opacity-0 group-hover:opacity-100 touch-none`}
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
         >
-          <div className="flex items-center gap-[3px] px-2.5 py-1 rounded-full bg-black/[0.04] dark:bg-white/[0.08] backdrop-blur-sm">
+          <div className="flex items-center gap-[3px] px-2.5 py-1 rounded-full bg-black/5 dark:bg-white/10">
             <div className={`${size === 'full' ? 'w-[5px] h-[5px]' : 'w-[3px] h-[3px]'} rounded-full bg-gray-400/80`} />
             <div className={`${size === 'full' ? 'w-[5px] h-[5px]' : 'w-[3px] h-[3px]'} rounded-full bg-gray-400/80`} />
             <div className={`${size === 'full' ? 'w-[5px] h-[5px]' : 'w-[3px] h-[3px]'} rounded-full bg-gray-400/80`} />
@@ -372,25 +382,29 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
         </div>
       )}
 
-      {/* 背景光效 - 使用 opacity 过渡避免闪现 */}
+      {/* 背景光效 - 简化，移除 transition */}
       <div
-        className={`absolute inset-0 transition-opacity duration-300 ease-out ${isHovered ? 'opacity-[0.18]' : 'opacity-[0.08]'}`}
+        className={`absolute inset-0 ${isHovered ? 'opacity-[0.12]' : 'opacity-[0.06]'}`}
         style={{ background: `linear-gradient(135deg, ${color}, transparent 65%)` }}
       />
 
-      {/* 装饰光效 - 右上 (mini/full) - 固定尺寸避免闪现 */}
-      <div
-        className={`absolute -right-4 -top-4 w-16 h-16 rounded-full blur-2xl transition-opacity duration-300 ease-out ${
-          hasUnread ? (isHovered ? 'opacity-50' : 'opacity-30') : (isHovered ? 'opacity-30' : 'opacity-15')
-        } ${size === 'tiny' ? '!opacity-0' : ''}`}
-        style={{ background: `linear-gradient(135deg, ${color}, transparent 70%)` }}
-      />
+      {/* 装饰光效 - 右上 (mini/full) - 简化 */}
+      {size !== 'tiny' && (
+        <div
+          className={`absolute -right-4 -top-4 w-16 h-16 rounded-full blur-2xl ${
+            hasUnread ? 'opacity-20' : 'opacity-10'
+          }`}
+          style={{ background: `linear-gradient(135deg, ${color}, transparent 70%)` }}
+        />
+      )}
 
-      {/* 装饰光效 - 左下 (full only) - 固定尺寸避免闪现 */}
-      <div
-        className={`absolute -left-6 -bottom-6 w-16 h-16 rounded-full blur-xl transition-opacity duration-300 ease-out ${isHovered ? 'opacity-20' : 'opacity-10'} ${size !== 'full' ? '!opacity-0' : ''}`}
-        style={{ background: `radial-gradient(circle, ${color}, transparent 60%)` }}
-      />
+      {/* 装饰光效 - 左下 (full only) - 简化 */}
+      {size === 'full' && (
+        <div
+          className="absolute -left-6 -bottom-6 w-16 h-16 rounded-full blur-xl opacity-10"
+          style={{ background: `radial-gradient(circle, ${color}, transparent 60%)` }}
+        />
+      )}
 
       {/* 主内容区域 */}
       <div className={`absolute inset-0 ${sizeClasses.padding} flex flex-col ${contentTransition}`}>
@@ -456,16 +470,19 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
                   </span>
                 );
               })()}
-              <span className={`${size === 'full' ? 'text-[13px]' : 'text-[11px]'} leading-none`}>
-                {hasUnread ? (
-                  <>
-                    <span style={{ color }} className="font-medium">{source.unread_count}</span>
-                    <span className="text-gray-400 dark:text-gray-500">/{t.brew.articlesCount.replace('{count}', String(source.item_count))}</span>
-                  </>
-                ) : (
-                  <span className="text-gray-400 dark:text-gray-500">{t.brew.articlesCount.replace('{count}', String(source.item_count))}</span>
-                )}
-              </span>
+              {/* 纯链接类型不显示篇数信息 */}
+              {source.source_type !== 'link' && (
+                <span className={`${size === 'full' ? 'text-[13px]' : 'text-[11px]'} leading-none`}>
+                  {hasUnread ? (
+                    <>
+                      <span style={{ color }} className="font-medium">{source.unread_count}</span>
+                      <span className="text-gray-400 dark:text-gray-500">/{t.brew.articlesCount.replace('{count}', String(source.item_count))}</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-500">{t.brew.articlesCount.replace('{count}', String(source.item_count))}</span>
+                  )}
+                </span>
+              )}
             </div>
           </div>
 
@@ -634,8 +651,8 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
         </div>
       </div>
 
-      {/* 编辑模式 - 右下角拉伸条 */}
-      {isEditMode && (
+      {/* 编辑模式 - 右下角拉伸条（链接类型不显示，固定 tiny 尺寸） */}
+      {isEditMode && source.source_type !== 'link' && (
         <div
           className={`absolute bottom-0 right-0 ${size === 'tiny' ? 'w-10 h-10 p-1.5' : size === 'mini' ? 'w-12 h-12 p-2' : 'w-14 h-14 p-2.5'} cursor-se-resize z-50 flex items-end justify-end touch-none group/resize`}
           onMouseDown={handleResizeStart}
@@ -648,14 +665,16 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
         </div>
       )}
 
-      {/* 边框 */}
+      {/* 边框 - 简化 */}
       <div className={`absolute inset-0 ${sizeClasses.rounded} ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none`} />
 
-      {/* 悬浮高光边框 - 使用内边框替代外部阴影 */}
-      <div
-        className={`absolute inset-0 ${sizeClasses.rounded} pointer-events-none transition-opacity duration-200 ease-out ${isHovered ? 'opacity-100' : 'opacity-0'}`}
-        style={{ boxShadow: `inset 0 0 0 1.5px ${color}50` }}
-      />
+      {/* 悬浮高光边框 - WebKit 优化：移除 transition */}
+      {isHovered && (
+        <div
+          className={`absolute inset-0 ${sizeClasses.rounded} pointer-events-none`}
+          style={{ boxShadow: `inset 0 0 0 1px ${color}40` }}
+        />
+      )}
     </div>
   );
 }), (prevProps, nextProps) => {
@@ -1165,6 +1184,24 @@ export default function BrewSourceGrid({
     }
   }, [filteredSources, onRefreshSource]);
 
+  // 全部订阅标记已读
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const handleMarkAllSourcesRead = useCallback(async () => {
+    if (!isAuthenticated) return;
+    
+    setIsMarkingAllRead(true);
+    try {
+      // 按当前分类过滤
+      await brewApi.markAllRead({ category: category || undefined });
+      // 触发刷新
+      onSourcesChange?.();
+    } catch (err) {
+      console.error('Failed to mark all sources read:', err);
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  }, [isAuthenticated, category, onSourcesChange]);
+
   // Resize 状态
   const [resizingSource, setResizingSource] = useState<{
     sourceId: number;
@@ -1320,6 +1357,7 @@ export default function BrewSourceGrid({
           onSelectAll={handleSelectAll}
           onBatchDelete={handleBatchDelete}
           onBatchRefresh={handleBatchRefresh}
+          onMarkAllSourcesRead={handleMarkAllSourcesRead}
           onEnterEditMode={handleEnterEditMode}
           onExitEditMode={handleExitEditMode}
           isEditMode={isEditMode}
@@ -1331,6 +1369,7 @@ export default function BrewSourceGrid({
           onSortModeChange={handleSortModeChange}
           isSubCategory={!!category}
           isAdmin={isAdmin}
+          isAuthenticated={isAuthenticated}
         />
 
         <div className="flex flex-col items-center justify-center py-20 text-gray-500 dark:text-gray-400">
@@ -1361,6 +1400,7 @@ export default function BrewSourceGrid({
         onSelectAll={handleSelectAll}
         onBatchDelete={handleBatchDelete}
         onBatchRefresh={handleBatchRefresh}
+        onMarkAllSourcesRead={handleMarkAllSourcesRead}
         onEnterEditMode={handleEnterEditMode}
         onExitEditMode={handleExitEditMode}
         isEditMode={isEditMode}
@@ -1372,6 +1412,7 @@ export default function BrewSourceGrid({
         onSortModeChange={handleSortModeChange}
         isSubCategory={!!category}
         isAdmin={isAdmin}
+        isAuthenticated={isAuthenticated}
       />
 
       {/* 空搜索结果 */}

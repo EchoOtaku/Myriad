@@ -1432,6 +1432,19 @@ export const jaJP: TranslationKeys = {
     shortcutSource: '購読元',
     shortcutOther: 'その他',
     
+    // ショートカットの説明
+    shortcutDescNextArticle: '次の記事',
+    shortcutDescPrevArticle: '前の記事',
+    shortcutDescOpenReader: 'リーダーを開く/閉じる',
+    shortcutDescCloseReader: 'リーダーを閉じる',
+    shortcutDescFocusSearch: '検索ボックスにフォーカス',
+    shortcutDescToggleRead: '既読/未読を切り替え',
+    shortcutDescToggleStar: 'お気に入りを切り替え',
+    shortcutDescMarkAllRead: 'すべて既読にする',
+    shortcutDescRefreshSource: '現在の購読元を更新',
+    shortcutDescAddSource: '新しい購読元を追加',
+    shortcutDescShowHelp: 'ショートカットヘルプを表示',
+    
     // ヒント
     tipJustUpdated: '更新されました',
     tipUnreadCount: '{count} 件未読',
@@ -1460,6 +1473,17 @@ export const jaJP: TranslationKeys = {
     errorExportFailed: 'エクスポートに失敗しました',
     errorSaveFailed: '保存に失敗しました',
     errorGenerateTagsFailed: 'スタイルタグの生成に失敗しました',
+    errorInvalidFormat: '無効なインポートファイル形式',
+    
+    // インポート/エクスポート
+    exportBrewpack: '購読をエクスポート',
+    importBrewpack: '購読をインポート',
+    exportSuccess: '{count} 件のソースをエクスポートしました',
+    importSuccess: 'インポート: {imported} 件、スキップ: {skipped} 件',
+    importStepReading: 'ファイルを読み込み中...',
+    importStepUnzipping: '解凍中...',
+    importStepParsing: '解析中...',
+    importStepImporting: 'インポート中: {name}',
     
     // 空の状態
     emptyNoSources: '購読元がありません',

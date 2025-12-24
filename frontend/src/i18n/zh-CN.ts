@@ -1432,6 +1432,19 @@ export const zhCN: TranslationKeys = {
     shortcutSource: '订阅源',
     shortcutOther: '其他',
     
+    // 快捷键描述
+    shortcutDescNextArticle: '下一篇文章',
+    shortcutDescPrevArticle: '上一篇文章',
+    shortcutDescOpenReader: '打开/关闭阅读器',
+    shortcutDescCloseReader: '关闭阅读器',
+    shortcutDescFocusSearch: '聚焦搜索框',
+    shortcutDescToggleRead: '切换已读/未读',
+    shortcutDescToggleStar: '切换收藏',
+    shortcutDescMarkAllRead: '全部标记已读',
+    shortcutDescRefreshSource: '刷新当前订阅源',
+    shortcutDescAddSource: '添加新订阅源',
+    shortcutDescShowHelp: '显示快捷键帮助',
+    
     // 提示
     tipJustUpdated: '刚刚更新',
     tipUnreadCount: '{count} 条未读',
@@ -1460,6 +1473,17 @@ export const zhCN: TranslationKeys = {
     errorExportFailed: '导出失败',
     errorSaveFailed: '保存失败',
     errorGenerateTagsFailed: '生成风格标签失败',
+    errorInvalidFormat: '无效的导入文件格式',
+    
+    // 导入导出
+    exportBrewpack: '导出订阅包',
+    importBrewpack: '导入订阅包',
+    exportSuccess: '已导出 {count} 个订阅源',
+    importSuccess: '导入成功：{imported} 个，跳过：{skipped} 个',
+    importStepReading: '读取文件...',
+    importStepUnzipping: '解压文件...',
+    importStepParsing: '解析配置...',
+    importStepImporting: '导入: {name}',
     
     // 空状态
     emptyNoSources: '暂无订阅源',

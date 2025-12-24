@@ -13,6 +13,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import JSZip from 'jszip';
 import {
   Search,
   Square,
@@ -202,6 +203,7 @@ interface ControlIslandProps {
   onSelectAll?: () => void;
   onBatchDelete?: () => void;
   onBatchRefresh?: () => void;
+  onMarkAllSourcesRead?: () => void;  // 全部订阅标记已读
   onEnterEditMode?: () => void;
   onExitEditMode?: () => void;
   isEditMode?: boolean;
@@ -263,6 +265,7 @@ export default function ControlIsland({
   onSelectAll,
   onBatchDelete,
   onBatchRefresh,
+  onMarkAllSourcesRead,
   onEnterEditMode,
   onExitEditMode,
   isEditMode = false,
@@ -344,6 +347,13 @@ export default function ControlIsland({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const iconInputRef = useRef<HTMLInputElement>(null);
   const sortDropdownRef = useRef<HTMLDivElement>(null);
+  const brewExportInputRef = useRef<HTMLInputElement>(null);
+  
+  // 导入/导出状态
+  const [importExportLoading, setImportExportLoading] = useState(false);
+  const [importExportError, setImportExportError] = useState<string | null>(null);
+  const [importExportSuccess, setImportExportSuccess] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<{ step: string; current: number; total: number } | null>(null);
 
   // 排序菜单状态
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -468,19 +478,20 @@ export default function ControlIsland({
       // RSSHub 启用 AI 增强时使用 brewlia，否则使用原值
       const finalSourceType = (sourceType === 'rsshub' && enableBrewliaForRsshub) ? 'brewlia' : sourceType;
       
+      // 图标优先级：自定义上传 > 探测获取
+      const finalIcon = customIcon || discovered?.icon || undefined;
+      
       // 调用 API，传递 feedType 和 rsshub_route
       await brewApi.addSource({
         url: sourceType === 'rsshub' ? rsshubFullUrl : url.trim(),
         name: name || undefined,
         category: category || undefined,
+        icon: finalIcon,
         source_type: finalSourceType,
         feed_type: sourceType === 'rsshub' ? 'rsshub' : (feedType === 'notion' ? 'notion' : undefined),
         rsshub_route: sourceType === 'rsshub' && rsshubConfig ? rsshubConfig.routePath : undefined,
         extra_config: feedType === 'notion' ? { token: notionToken.trim() } : undefined,
       });
-      
-      // 如果提供了自定义图标，更新
-      // 注意：这需要源已创建后更新
       
       setSuccess(t.brew.addSuccess);
       setTimeout(() => {
@@ -572,6 +583,214 @@ export default function ControlIsland({
       setError(t.brew.errorExportFailed);
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Brew 专用导出格式 - 包含完整订阅信息
+  interface BrewExportManifest {
+    version: string;
+    exported_at: string;
+    sources: Array<{
+      url: string;
+      name: string;
+      category: string | null;
+      icon_file: string | null;  // 图标文件名（在 icons/ 文件夹中）
+      icon_url: string | null;   // 外部图标 URL（非本地上传）
+      source_type: SourceType;
+      feed_type: FeedType;
+      theme_color: string | null;
+      update_interval: number;
+      card_size: string | null;
+      rsshub_route: string | null;
+      ai_style_tags: string[] | null;
+    }>;
+  }
+
+  // 判断是否为 base64 图片数据
+  const isBase64Image = (str: string | null): boolean => {
+    if (!str) return false;
+    return str.startsWith('data:image/');
+  };
+
+  // 从 base64 提取 MIME 类型和扩展名
+  const getBase64Info = (base64: string): { mime: string; ext: string } => {
+    const match = base64.match(/^data:(image\/\w+);base64,/);
+    if (match) {
+      const mime = match[1];
+      const ext = mime.split('/')[1] || 'png';
+      return { mime, ext };
+    }
+    return { mime: 'image/png', ext: 'png' };
+  };
+
+  // 导出 Brew 格式 (ZIP)
+  const handleBrewExport = async () => {
+    setImportExportLoading(true);
+    setImportExportError(null);
+    try {
+      const zip = new JSZip();
+      const iconsFolder = zip.folder('icons');
+      
+      const manifestSources: BrewExportManifest['sources'] = [];
+      
+      for (let i = 0; i < sources.length; i++) {
+        const s = sources[i];
+        let iconFile: string | null = null;
+        let iconUrl: string | null = null;
+        
+        if (s.icon) {
+          if (isBase64Image(s.icon)) {
+            // Base64 图片 - 保存到 icons 文件夹
+            const { ext } = getBase64Info(s.icon);
+            iconFile = `icon_${i}.${ext}`;
+            const base64Data = s.icon.split(',')[1];
+            iconsFolder?.file(iconFile, base64Data, { base64: true });
+          } else {
+            // 外部 URL
+            iconUrl = s.icon;
+          }
+        }
+        
+        manifestSources.push({
+          url: s.url,
+          name: s.name,
+          category: s.category,
+          icon_file: iconFile,
+          icon_url: iconUrl,
+          source_type: s.source_type,
+          feed_type: s.feed_type,
+          theme_color: s.theme_color,
+          update_interval: s.update_interval,
+          card_size: s.card_size,
+          rsshub_route: s.rsshub_route,
+          ai_style_tags: s.ai_style_tags,
+        });
+      }
+      
+      const manifest: BrewExportManifest = {
+        version: '1.0',
+        exported_at: new Date().toISOString(),
+        sources: manifestSources,
+      };
+      
+      zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+      
+      // 生成 ZIP 文件
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `brew-export-${new Date().toISOString().slice(0, 10)}.brewpack`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setImportExportSuccess(t.brew.exportSuccess?.replace('{count}', String(sources.length)) || `已导出 ${sources.length} 个订阅源`);
+      setTimeout(() => setImportExportSuccess(null), 3000);
+    } catch (err) {
+      setImportExportError(t.brew.errorExportFailed);
+    } finally {
+      setImportExportLoading(false);
+    }
+  };
+
+  // 导入 Brew 格式 (ZIP)
+  const handleBrewImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setImportExportLoading(true);
+    setImportExportError(null);
+    setImportExportSuccess(null);
+    setImportProgress({ step: t.brew.importStepReading || '读取文件...', current: 0, total: 0 });
+    
+    try {
+      // 步骤1: 解压 ZIP
+      setImportProgress({ step: t.brew.importStepUnzipping || '解压文件...', current: 0, total: 0 });
+      const zip = await JSZip.loadAsync(file);
+      
+      // 步骤2: 读取 manifest.json
+      setImportProgress({ step: t.brew.importStepParsing || '解析配置...', current: 0, total: 0 });
+      const manifestFile = zip.file('manifest.json');
+      if (!manifestFile) {
+        throw new Error(t.brew.errorInvalidFormat || '无效的导入文件格式：缺少 manifest.json');
+      }
+      
+      const manifestContent = await manifestFile.async('string');
+      const manifest = JSON.parse(manifestContent) as BrewExportManifest;
+      
+      if (!manifest.version || !manifest.sources || !Array.isArray(manifest.sources)) {
+        throw new Error(t.brew.errorInvalidFormat || '无效的导入文件格式');
+      }
+      
+      const total = manifest.sources.length;
+      let imported = 0;
+      let skipped = 0;
+      
+      // 步骤3: 逐个导入订阅源
+      for (let i = 0; i < manifest.sources.length; i++) {
+        const source = manifest.sources[i];
+        setImportProgress({ 
+          step: t.brew.importStepImporting?.replace('{name}', source.name) || `导入: ${source.name}`, 
+          current: i + 1, 
+          total 
+        });
+        
+        try {
+          // 检查是否已存在相同 URL 的订阅
+          const exists = sources.some(s => s.url === source.url);
+          if (exists) {
+            skipped++;
+            continue;
+          }
+          
+          // 处理图标
+          let icon: string | undefined;
+          if (source.icon_file) {
+            // 从 ZIP 中读取图标文件
+            const iconFile = zip.file(`icons/${source.icon_file}`);
+            if (iconFile) {
+              const iconData = await iconFile.async('base64');
+              const ext = source.icon_file.split('.').pop() || 'png';
+              const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
+              icon = `data:${mimeType};base64,${iconData}`;
+            }
+          } else if (source.icon_url) {
+            icon = source.icon_url;
+          }
+          
+          await brewApi.addSource({
+            url: source.url,
+            name: source.name,
+            category: source.category || undefined,
+            icon: icon,
+            source_type: source.source_type,
+            feed_type: source.feed_type,
+          });
+          imported++;
+        } catch {
+          skipped++;
+        }
+      }
+      
+      setImportProgress(null);
+      setImportExportSuccess(
+        (t.brew.importSuccess || '导入成功：{imported} 个，跳过：{skipped} 个')
+          .replace('{imported}', String(imported))
+          .replace('{skipped}', String(skipped))
+      );
+      setTimeout(() => setImportExportSuccess(null), 3000);
+      onSourcesChange?.();
+    } catch (err) {
+      setImportProgress(null);
+      setImportExportError(err instanceof Error ? err.message : (t.brew.errorImportFailed || '导入失败'));
+    } finally {
+      setImportExportLoading(false);
+      // 重置 input
+      if (brewExportInputRef.current) {
+        brewExportInputRef.current.value = '';
+      }
     }
   };
 
@@ -705,6 +924,17 @@ export default function ControlIsland({
               >
                 <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
+              {isAuthenticated && (
+                <button
+                  onClick={onMarkAllSourcesRead}
+                  disabled={!onMarkAllSourcesRead}
+                  className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+                  title={t.brew.markAllAsRead}
+                  aria-label={t.brew.markAllAsRead}
+                >
+                  <CheckCircle className="w-5 h-5" />
+                </button>
+              )}
               <button
                 onClick={handleClose}
                 className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700/60 rounded-xl transition-colors"
@@ -1096,6 +1326,107 @@ export default function ControlIsland({
               <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
             
+            {/* 全部已读按钮 */}
+            {isAuthenticated && (
+              <button
+                onClick={onMarkAllSourcesRead}
+                disabled={!onMarkAllSourcesRead}
+                className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+                title={t.brew.markAllAsRead}
+                aria-label={t.brew.markAllAsRead}
+              >
+                <CheckCircle className="w-5 h-5" />
+              </button>
+            )}
+            
+            {/* 分隔线 */}
+            <div className="w-px h-6 bg-gray-200 dark:bg-neutral-700 mx-1" />
+            
+            {/* 导出按钮 */}
+            <button
+              onClick={handleBrewExport}
+              disabled={importExportLoading || sources.length === 0}
+              className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+              title={t.brew.exportBrewpack || '导出订阅包'}
+              aria-label={t.brew.exportBrewpack || '导出订阅包'}
+            >
+              <Download className={`w-5 h-5 ${importExportLoading ? 'animate-pulse' : ''}`} />
+            </button>
+            
+            {/* 导入按钮 */}
+            <label 
+              className={`p-2.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors ${importExportLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              title={t.brew.importBrewpack || '导入订阅包'}
+              aria-label={t.brew.importBrewpack || '导入订阅包'}
+            >
+              <Upload className={`w-5 h-5 ${importExportLoading ? 'animate-pulse' : ''}`} />
+              <input
+                ref={brewExportInputRef}
+                type="file"
+                accept=".brewpack,.zip"
+                onChange={handleBrewImportFile}
+                className="hidden"
+                disabled={importExportLoading}
+                aria-label={t.brew.importBrewpack || '导入订阅包'}
+              />
+            </label>
+            
+            {/* 导入进度显示 */}
+            <AnimatePresence>
+              {importProgress && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, x: -10 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, x: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50"
+                >
+                  <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
+                  <span className="truncate max-w-[10rem]">{importProgress.step}</span>
+                  {importProgress.total > 0 && (
+                    <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40">
+                      {importProgress.current}/{importProgress.total}
+                    </span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            {/* 导入/导出反馈提示 */}
+            <AnimatePresence>
+              {(importExportSuccess || importExportError) && !importProgress && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, x: -10 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, x: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium ${
+                    importExportSuccess 
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50'
+                      : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200/50 dark:border-red-800/50'
+                  }`}
+                >
+                  {importExportSuccess ? (
+                    <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  )}
+                  <span className="truncate max-w-[12rem]">{importExportSuccess || importExportError}</span>
+                  <button
+                    onClick={() => {
+                      setImportExportSuccess(null);
+                      setImportExportError(null);
+                    }}
+                    className="p-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors flex-shrink-0"
+                    title={t.brew.close}
+                    aria-label={t.brew.close}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
             {/* 退出按钮 */}
             <button
               onClick={handleClose}
@@ -1141,7 +1472,7 @@ export default function ControlIsland({
                             className="flex items-center justify-between py-1 px-0.5"
                           >
                             <span className="text-xs text-gray-600 dark:text-gray-400 truncate mr-2">
-                              {shortcut.description}
+                              {t.brew[shortcut.descriptionKey as keyof typeof t.brew] || shortcut.descriptionKey}
                             </span>
                             <kbd className="min-w-[18px] px-1.5 py-0.5 bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 rounded text-[10px] text-gray-500 dark:text-gray-400 font-mono text-center shadow-sm flex-shrink-0">
                               {shortcut.key.split(' / ')[0]}
