@@ -66,7 +66,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
 
       {/* 开关和平台选择 */}
       <SwitchItem
-        key="music_enabled"
+        itemKey="music_enabled"
         label={t.config.enableMusicPlayer}
         description={t.config.musicPlayerDesc}
         value={musicEnabled}
@@ -75,7 +75,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
       />
 
       <ProviderItem
-        key="music_source"
+        itemKey="music_source"
         label={t.config.musicPlatform}
         value={musicSource}
         onChange={(v) => updateValue('music_source', v)}
@@ -96,7 +96,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
 
       {/* 歌单 ID */}
       <InputItem
-        key="music_playlist_id"
+        itemKey="music_playlist_id"
         label={t.config.playlistId}
         required
         value={playlistId}
@@ -117,7 +117,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
       {/* 缓存管理 */}
       <SettingGroup title={t.config.cacheManagement}>
         <ButtonItem
-          key="clear_cache"
+          itemKey="clear_cache"
           description={t.config.clearMusicCacheDesc}
           buttonText={t.config.clearMusicCacheBtn}
           buttonIcon="🗑️"

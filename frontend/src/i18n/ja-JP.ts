@@ -76,6 +76,9 @@ export const jaJP: TranslationKeys = {
     currentTabComprehensive: '現在表示中：総合レポート - クリックで切替',
     expandFilters: 'クリックでフィルターを展開',
     switchTab: 'クリックでタブを切替',
+    // Brew
+    brew: 'Brew',
+    brewReading: 'Brew リーダー',
     // Tapp
     tapp: 'アプリ',
     tappStore: 'Tapp ストア',
@@ -1333,6 +1336,7 @@ export const jaJP: TranslationKeys = {
     categories: 'カテゴリ',
     friendLinks: '相互リンク',
     me: '自分',
+    expandMenu: 'Brew メニューを展開',
     
     // 時間関連
     justNow: 'たった今',

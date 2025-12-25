@@ -76,6 +76,9 @@ export const enUS: TranslationKeys = {
     currentTabComprehensive: 'Current Tab: Comprehensive Report - Click to Expand',
     expandFilters: 'Click to expand filters',
     switchTab: 'Click to switch tab',
+    // Brew
+    brew: 'Brew',
+    brewReading: 'Brew Reader',
     // Tapp
     tapp: 'Apps',
     tappStore: 'Tapp Store',
@@ -1330,6 +1333,7 @@ export const enUS: TranslationKeys = {
     categories: 'Categories',
     friendLinks: 'Friend Links',
     me: 'Me',
+    expandMenu: 'Expand Brew Menu',
     
     // Time related
     justNow: 'Just now',

@@ -22,7 +22,7 @@ export interface ButtonItemProps extends Omit<ButtonSettingConfig, 'type'> {
 }
 
 export const ButtonItem = React.memo<ButtonItemProps>(({
-  key: itemKey,
+  itemKey,
   label,
   description,
   hint,

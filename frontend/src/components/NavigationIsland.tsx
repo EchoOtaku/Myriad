@@ -642,8 +642,8 @@ export function NavigationIsland() {
               <div className="nav-group nav-group-spaced" data-group="brew">
                 <button
                   className={`nav-item ${location.pathname === '/brew' ? 'active' : ''}`}
-                  title="Brew 阅读"
-                  aria-label="Brew 阅读"
+                  title={t.nav.brewReading}
+                  aria-label={t.nav.brewReading}
                   onClick={() => handleNavToPage('/brew')}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -76,7 +76,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       {/* 站点 URL 配置 */}
       <SettingGroup title={`🔗 ${t.config.siteUrlConfig}`}>
         <InputItem
-          key="base_url"
+          itemKey="base_url"
           label={t.config.baseUrl}
           value={getFieldValue('base_url')}
           onChange={(v) => updateValue('base_url', v)}
@@ -91,6 +91,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         {siteMetadataFields.map((field) => (
           <InputItem
             key={field.key}
+            itemKey={field.key}
             label={getFieldLabel(field.key, field.label)}
             required={field.required}
             value={field.value}
@@ -109,7 +110,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         description={t.config.siteFooterDesc}
       >
         <InputItem
-          key="site_icp"
+          itemKey="site_icp"
           label={t.config.siteIcp}
           value={getFieldValue('site_icp')}
           onChange={(v) => updateValue('site_icp', v)}
@@ -118,7 +119,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           layout="vertical"
         />
         <InputItem
-          key="site_gongan"
+          itemKey="site_gongan"
           label={t.config.siteGongan}
           value={getFieldValue('site_gongan')}
           onChange={(v) => updateValue('site_gongan', v)}
@@ -132,7 +133,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           <p className="setting-hint">{t.config.cloudSponsorsHint}</p>
           <div className="cloud-sponsors-toggles">
             <CheckboxItem
-              key="sponsor_cloudflare"
+              itemKey="sponsor_cloudflare"
               label=""
               checkboxLabel={t.config.cloudflare}
               value={getFieldValue('cloud_sponsors').includes('cloudflare')}
@@ -146,7 +147,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               layout="horizontal"
             />
             <CheckboxItem
-              key="sponsor_edgeone"
+              itemKey="sponsor_edgeone"
               label=""
               checkboxLabel={t.config.edgeone}
               value={getFieldValue('cloud_sponsors').includes('edgeone')}
@@ -160,7 +161,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               layout="horizontal"
             />
             <CheckboxItem
-              key="sponsor_upyun"
+              itemKey="sponsor_upyun"
               label=""
               checkboxLabel={t.config.upyun}
               value={getFieldValue('cloud_sponsors').includes('upyun')}
@@ -182,6 +183,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         {backgroundFields.map((field) => (
           <InputItem
             key={field.key}
+            itemKey={field.key}
             label={getFieldLabel(field.key, field.label)}
             required={field.required}
             value={field.value}
@@ -200,7 +202,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       >
         {/* 微动效果 */}
         <CheckboxItem
-          key="evocative_parallax"
+          itemKey="evocative_parallax"
           label={t.config.fieldEvocativeParallax}
           checkboxLabel={t.config.fieldEvocativeParallaxHint}
           value={getFieldValue('evocative_parallax') === 'true'}
@@ -210,7 +212,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
 
         {/* 动态模糊 */}
         <CheckboxItem
-          key="evocative_dynamic_blur"
+          itemKey="evocative_dynamic_blur"
           label={t.config.fieldEvocativeDynamicBlur}
           checkboxLabel={t.config.fieldEvocativeDynamicBlurHint}
           value={getFieldValue('evocative_dynamic_blur') === 'true'}
@@ -220,7 +222,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
 
         {/* 涟漪效果 */}
         <CheckboxItem
-          key="evocative_ripple"
+          itemKey="evocative_ripple"
           label={t.config.fieldEvocativeRipple}
           checkboxLabel={t.config.fieldEvocativeRippleHint}
           value={getFieldValue('evocative_ripple') === 'true'}
@@ -230,7 +232,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
 
         {/* 动效帧率 */}
         <SelectItem
-          key="evocative_fps"
+          itemKey="evocative_fps"
           label={t.config.fieldEvocativeFps}
           value={getFieldValue('evocative_fps') || '30'}
           onChange={(v) => updateValue('evocative_fps', v)}
@@ -244,7 +246,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
 
         {/* 涟漪画质 */}
         <SelectItem
-          key="evocative_ripple_quality"
+          itemKey="evocative_ripple_quality"
           label={t.config.fieldEvocativeRippleQuality}
           value={getFieldValue('evocative_ripple_quality') || '0.85'}
           onChange={(v) => updateValue('evocative_ripple_quality', v)}

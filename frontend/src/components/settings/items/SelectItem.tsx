@@ -9,7 +9,7 @@ import './SettingItem.css';
 export interface SelectItemProps<T = string> extends Omit<SelectSettingConfig<T>, 'type'> {}
 
 function SelectItemComponent<T extends string = string>({
-  key: itemKey,
+  itemKey,
   label,
   description,
   hint,
@@ -30,7 +30,7 @@ function SelectItemComponent<T extends string = string>({
     }
   }, [onChange, disabled, loading]);
 
-  const id = `setting-select-${itemKey}`;
+  const id = `setting-select-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
     <div 

@@ -147,7 +147,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
       {/* AI Provider 选择 */}
       <ProviderItem
-        key="ai_provider"
+        itemKey="ai_provider"
         label={t.config.aiProvider}
         value={currentProvider}
         onChange={(v) => updateValue('provider', v)}
@@ -160,6 +160,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       {providerFields.map((field) => (
         <InputItem
           key={field.key}
+          itemKey={field.key}
           label={field.label}
           required={field.required}
           value={field.value}
@@ -185,7 +186,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
       {/* 图片生成 Provider 选择 */}
       <ProviderItem
-        key="image_provider"
+        itemKey="image_provider"
         label={t.config.imageGenService}
         value={currentImageProvider}
         onChange={(v) => updateValue('ai_image_provider', v)}
@@ -197,7 +198,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       {currentImageProvider === 'pollinations' && (
         <>
           <SelectItem
-            key="ai_image_model"
+            itemKey="ai_image_model"
             label={t.config.aiModel}
             value={getFieldValue('ai_image_model', 'flux-anime')}
             onChange={(v) => updateValue('ai_image_model', v)}
@@ -206,7 +207,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           />
           <div className="config-compact-group">
             <NumberItem
-              key="ai_image_width_poll"
+              itemKey="ai_image_width_poll"
               label={t.config.width}
               value={parseInt(getFieldValue('ai_image_width', '512'), 10)}
               onChange={(v) => updateValue('ai_image_width', String(v))}
@@ -216,7 +217,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               layout="vertical"
             />
             <NumberItem
-              key="ai_image_height_poll"
+              itemKey="ai_image_height_poll"
               label={t.config.height}
               value={parseInt(getFieldValue('ai_image_height', '768'), 10)}
               onChange={(v) => updateValue('ai_image_height', String(v))}
@@ -233,7 +234,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       {currentImageProvider === 'imaginepro' && (
         <>
           <InputItem
-            key="imaginepro_api_key"
+            itemKey="imaginepro_api_key"
             label="API Key"
             required
             value={getFieldValue('imaginepro_api_key')}
@@ -245,7 +246,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           />
           <div className="config-compact-group">
             <NumberItem
-              key="ai_image_width_mj"
+              itemKey="ai_image_width_mj"
               label={t.config.width}
               value={parseInt(getFieldValue('ai_image_width', '1024'), 10)}
               onChange={(v) => updateValue('ai_image_width', String(v))}
@@ -255,7 +256,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               layout="vertical"
             />
             <NumberItem
-              key="ai_image_height_mj"
+              itemKey="ai_image_height_mj"
               label={t.config.height}
               value={parseInt(getFieldValue('ai_image_height', '1536'), 10)}
               onChange={(v) => updateValue('ai_image_height', String(v))}
@@ -274,7 +275,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         description={t.config.speechServiceDesc}
       >
         <InputItem
-          key="tencent_secret_id"
+          itemKey="tencent_secret_id"
           label={t.config.tencentSecretId}
           value={getFieldValue('tencent_secret_id')}
           onChange={(v) => updateValue('tencent_secret_id', v)}
@@ -285,7 +286,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         />
 
         <InputItem
-          key="tencent_secret_key"
+          itemKey="tencent_secret_key"
           label={t.config.tencentSecretKey}
           value={getFieldValue('tencent_secret_key')}
           onChange={(v) => updateValue('tencent_secret_key', v)}
@@ -296,7 +297,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         />
 
         <SelectItem
-          key="tencent_region"
+          itemKey="tencent_region"
           label={t.config.tencentRegion}
           value={getFieldValue('tencent_region', 'ap-guangzhou')}
           onChange={(v) => updateValue('tencent_region', v)}
@@ -305,7 +306,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         />
 
         <ButtonItem
-          key="speech_test"
+          itemKey="speech_test"
           label=""
           buttonText={`🔊 ${t.config.speechTestAvailability}`}
           onClick={handleSpeechTest}

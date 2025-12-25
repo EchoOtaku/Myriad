@@ -77,6 +77,9 @@ export interface TranslationKeys {
     currentTabComprehensive: string;
     expandFilters: string;
     switchTab: string;
+    // Brew
+    brew: string;
+    brewReading: string;
     // Tapp
     tapp: string;
     tappStore: string;
@@ -1334,6 +1337,7 @@ export interface TranslationKeys {
     categories: string;
     friendLinks: string;
     me: string;
+    expandMenu: string;
     
     // 时间相关
     justNow: string;

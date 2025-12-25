@@ -72,8 +72,8 @@ export const SettingGroup: React.FC<SettingGroupProps> = ({
       
       {(!collapsible || isExpanded) && (
         <div className="setting-group-content">
-          {items?.map(({ key: itemKey, ...itemProps }, index) => (
-            <SettingItem key={`${itemKey}-${index}`} {...itemProps} />
+          {items?.map((itemProps, index) => (
+            <SettingItem key={`${itemProps.itemKey || 'item'}-${index}`} {...itemProps} />
           ))}
           {children}
         </div>

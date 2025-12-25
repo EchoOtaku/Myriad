@@ -23,6 +23,7 @@ import BrewReader from '../components/brew/BrewReader';
 import ControlIsland from '../components/brew/manager/ControlIsland';
 import { useBrewKeyboard } from '../hooks/useBrewKeyboard';
 import { useSecondaryNav, type SecondaryNavItem } from '../contexts/NavigationContext';
+import { useI18n } from '../contexts/I18nContext';
 import { useBrewScheduler, useBrewAnimationConfig } from '../hooks/animation/pages/brew';
 import { useAuth } from '../contexts/AuthContext';
 import type { BrewSource, BrewItem, BrewStats } from '../types/brew';
@@ -52,16 +53,25 @@ const NavIcons = {
   ),
 };
 
-// 预置分类（用户在管理中设置订阅源属于哪个分类）
-const PRESET_CATEGORIES = {
-  friends: '友情链接',
-  mine: '我',
+// 预置分类 ID（用于前端逻辑判断）
+const PRESET_CATEGORY_IDS = {
+  friends: 'friends',
+  mine: 'mine',
 } as const;
 
-// 需要合并展示文章的特殊分类（不显示网站卡片）
-const MERGED_FEED_CATEGORIES: (keyof typeof PRESET_CATEGORIES)[] = ['mine'];
+type PresetCategoryId = typeof PRESET_CATEGORY_IDS[keyof typeof PRESET_CATEGORY_IDS];
 
-type CategoryKey = keyof typeof PRESET_CATEGORIES | 'all';
+// 预置分类的数据库存储值（后端使用的固定值，不要改动）
+// 这些值与数据库中存储的分类名称一致
+const PRESET_CATEGORY_DB_VALUES: Record<PresetCategoryId, string> = {
+  friends: '友情链接',
+  mine: '我',
+};
+
+// 需要合并展示文章的特殊分类（不显示网站卡片）
+const MERGED_FEED_CATEGORIES: PresetCategoryId[] = ['mine'];
+
+type CategoryKey = PresetCategoryId | 'all';
 
 // 视图模式
 // - sources: 显示网站卡片网格
@@ -74,6 +84,16 @@ export default function Brew() {
   // 初始化动画调度器
   useBrewScheduler();
   const animConfig = useBrewAnimationConfig();
+  const { t } = useI18n();
+
+  // 获取预置分类的显示名称（国际化）
+  const getCategoryName = useCallback((categoryId: PresetCategoryId): string => {
+    switch (categoryId) {
+      case 'friends': return t.brew.friendLinks;
+      case 'mine': return t.brew.me;
+      default: return categoryId;
+    }
+  }, [t]);
 
   // 获取登录状态和管理员状态
   // - isAuthenticated: 用于已读状态等普通用户功能
@@ -125,27 +145,27 @@ export default function Brew() {
     { 
       id: 'all', 
       icon: NavIcons.all, 
-      label: '全部', 
-      title: '全部订阅源', 
-      ariaLabel: '显示全部订阅源',
+      label: t.brew.all, 
+      title: t.brew.all + t.brew.sources, 
+      ariaLabel: t.brew.all + t.brew.sources,
     },
     { 
       id: 'friends', 
       icon: NavIcons.friends, 
-      label: '友链', 
-      title: '友情链接', 
-      ariaLabel: '显示友情链接分类',
+      label: t.brew.friendLinks, 
+      title: t.brew.friendLinks, 
+      ariaLabel: t.brew.friendLinks,
     },
-    { id: 'mine', icon: NavIcons.mine, label: '我', title: '我写的', ariaLabel: '显示我写的内容' },
-    { id: 'starred', icon: NavIcons.starred, label: '收藏', title: '收藏文章', ariaLabel: '显示收藏文章' },
-  ], []);
+    { id: 'mine', icon: NavIcons.mine, label: t.brew.me, title: t.brew.me, ariaLabel: t.brew.me },
+    { id: 'starred', icon: NavIcons.starred, label: t.brew.starred, title: t.brew.starred, ariaLabel: t.brew.starred },
+  ], [t]);
 
   // 使用二级导航 Hook
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
     routePath: '/brew',
     items: navItems,
     defaultActiveId: 'all',
-    expandHint: '展开 Brew 菜单',
+    expandHint: t.brew.expandMenu,
   });
 
   // 监听展开事件（来自导航岛的自动展开请求）
@@ -280,8 +300,8 @@ export default function Brew() {
       loadItems(true, undefined, viewMode);
     } else if (viewMode === 'category-feed' && selectedCategory !== 'all') {
       // 分类合并文章视图：加载该分类下所有文章
-      const categoryName = PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES];
-      loadItems(true, undefined, viewMode, categoryName);
+      const categoryDbValue = PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId];
+      loadItems(true, undefined, viewMode, categoryDbValue);
     }
   }, [viewMode, selectedSource, selectedCategory, loadItems]);
 
@@ -421,7 +441,7 @@ export default function Brew() {
     try {
       // 分类合并文章视图时，按分类标记已读
       const categoryFilter = viewMode === 'category-feed' && selectedCategory !== 'all'
-        ? PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES]
+        ? PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
         : undefined;
       
       const marked = await brewApi.markAllRead({
@@ -517,7 +537,7 @@ export default function Brew() {
       setPage(pageRef.current);
       // 分类合并文章视图需要传递分类筛选
       const categoryFilter = viewMode === 'category-feed' && selectedCategory !== 'all'
-        ? PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES]
+        ? PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
         : undefined;
       loadItems(false, selectedSource?.id, viewMode, categoryFilter);
     }
@@ -604,7 +624,7 @@ export default function Brew() {
         {viewMode === 'sources' && (
           <BrewSourceGrid
             sources={sources}
-            category={selectedCategory === 'all' ? undefined : PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES]}
+            category={selectedCategory === 'all' ? undefined : PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]}
             onSourceClick={handleSourceClick}
             onRefreshSource={handleRefreshSource}
             onSourceUpdate={handleSourceUpdate}
@@ -713,12 +733,12 @@ export default function Brew() {
               isAdmin={isAdmin}
               isAuthenticated={isAuthenticated}
               categoryFeedMode={{
-                categoryName: PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES],
-                categoryLabel: selectedCategory === 'mine' ? '我写的' : PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES],
+                categoryName: PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId],
+                categoryLabel: getCategoryName(selectedCategory as PresetCategoryId),
                 total,
                 unreadCount: sources
                   .filter(s => {
-                    const targetCat = PRESET_CATEGORIES[selectedCategory as keyof typeof PRESET_CATEGORIES];
+                    const targetCat = PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId];
                     if (!s.category) return false;
                     return s.category.split(',').map(c => c.trim()).includes(targetCat);
                   })

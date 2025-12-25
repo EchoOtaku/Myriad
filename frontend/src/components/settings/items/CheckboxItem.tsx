@@ -9,7 +9,7 @@ import './SettingItem.css';
 export interface CheckboxItemProps extends Omit<CheckboxSettingConfig, 'type'> {}
 
 export const CheckboxItem = React.memo<CheckboxItemProps>(({
-  key: itemKey,
+  itemKey,
   label,
   description,
   hint,
@@ -28,7 +28,7 @@ export const CheckboxItem = React.memo<CheckboxItemProps>(({
     }
   }, [onChange, disabled, loading]);
 
-  const id = `setting-checkbox-${itemKey}`;
+  const id = `setting-checkbox-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
     <div 

@@ -76,6 +76,9 @@ export const zhCN: TranslationKeys = {
     currentTabComprehensive: '当前查看：综合报告 - 点击展开切换',
     expandFilters: '点击展开筛选',
     switchTab: '点击切换标签',
+    // Brew
+    brew: 'Brew',
+    brewReading: 'Brew 阅读',
     // Tapp
     tapp: '应用',
     tappStore: 'Tapp 应用商店',
@@ -1333,6 +1336,7 @@ export const zhCN: TranslationKeys = {
     categories: '分类',
     friendLinks: '友情链接',
     me: '我',
+    expandMenu: '展开 Brew 菜单',
     
     // 时间相关
     justNow: '刚刚',

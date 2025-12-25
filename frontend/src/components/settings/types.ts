@@ -42,8 +42,8 @@ export interface SettingOption<T = string> {
 
 /** 基础设置项配置 */
 export interface BaseSettingItemConfig {
-  /** 唯一标识 */
-  key: string;
+  /** 唯一标识（用于生成 id 和 name，注意：不要与 React 的 key 混淆） */
+  itemKey?: string;
   /** 显示标签 */
   label: string;
   /** 描述说明（显示在标签下方） */

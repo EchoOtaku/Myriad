@@ -9,7 +9,7 @@ import './SettingItem.css';
 export interface InputItemProps extends Omit<InputSettingConfig, 'type'> {}
 
 export const InputItem = React.memo<InputItemProps>(({
-  key: itemKey,
+  itemKey,
   label,
   description,
   hint,
@@ -68,7 +68,9 @@ export const InputItem = React.memo<InputItemProps>(({
     }
   }, [value]);
 
-  const id = `setting-input-${itemKey}`;
+  const id = `setting-input-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
+  // 生成稳定的 name 属性，防止密码管理器识别
+  const inputName = `myriad-setting-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
 
   const inputClassName = `field-input ${error ? 'has-error' : ''}`;
 
@@ -91,7 +93,7 @@ export const InputItem = React.memo<InputItemProps>(({
           {multiline ? (
             <textarea
               id={id}
-              name={`setting-${itemKey}-${Date.now()}`}
+              name={inputName}
               value={value}
               onChange={handleChange}
               onFocus={handleFocus}
@@ -107,7 +109,7 @@ export const InputItem = React.memo<InputItemProps>(({
           ) : (
             <input
               id={id}
-              name={`setting-${itemKey}-${Date.now()}`}
+              name={inputName}
               type={inputType}
               value={value}
               onChange={handleChange}

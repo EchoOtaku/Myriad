@@ -35,6 +35,9 @@ import type { TranslationKeys } from '../../i18n';
 import EditModal from './manager/EditModal';
 import ControlIsland, { type SortMode } from './manager/ControlIsland';
 
+// 预置分类的数据库存储值（与后端保持一致）
+const PRESET_CATEGORY_DB_VALUES = ['友情链接', '我'];
+
 // API URL
 const API_URL = import.meta.env.PUBLIC_API_URL || '';
 
@@ -903,12 +906,11 @@ export default function BrewSourceGrid({
       case 'category':
         // 按分类排序（同分类内按名称排序）
         // 预置分类（友情链接、我）在排序时被忽略，取主分类进行排序
-        const presetCats = ['友情链接', '我'];
         const getMainCategory = (cat: string | null): string => {
           if (!cat) return '';
           const cats = cat.split(',').map(c => c.trim()).filter(Boolean);
           // 过滤掉预置分类，取第一个非预置分类
-          const mainCat = cats.find(c => !presetCats.includes(c));
+          const mainCat = cats.find(c => !PRESET_CATEGORY_DB_VALUES.includes(c));
           return mainCat || cats[0] || '';
         };
         return result.sort((a, b) => {
@@ -938,12 +940,11 @@ export default function BrewSourceGrid({
   }, [filteredSources, sortMode, customOrder, randomSeed]);
 
   // 分类排序时的分类标题生成
-  const presetCatsForRender = ['友情链接', '我'];
   const getMainCategoryForRender = (cat: string | null): string => {
-    if (!cat) return '未分类';
+    if (!cat) return t.brew.uncategorized;
     const cats = cat.split(',').map(c => c.trim()).filter(Boolean);
-    const mainCat = cats.find(c => !presetCatsForRender.includes(c));
-    return mainCat || '未分类';
+    const mainCat = cats.find(c => !PRESET_CATEGORY_DB_VALUES.includes(c));
+    return mainCat || t.brew.uncategorized;
   };
 
   // 切换排序模式时的处理 - 带 FLIP 动画

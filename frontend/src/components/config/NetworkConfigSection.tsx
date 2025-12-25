@@ -64,7 +64,7 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
 
       {/* 代理开关 */}
       <SwitchItem
-        key="proxy_enabled"
+        itemKey="proxy_enabled"
         label={t.config.enableProxy || '启用网络代理'}
         description={t.config.enableProxyHint || '开启后将使用代理访问外部API'}
         value={isProxyEnabled}
@@ -76,7 +76,7 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
       {isProxyEnabled && (
         <>
           <InputItem
-            key="proxy_url"
+            itemKey="proxy_url"
             label={t.config.proxyUrl || '代理地址'}
             value={getFieldValue('proxy_url')}
             onChange={(v) => updateValue('proxy_url', v)}
@@ -86,7 +86,7 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           />
 
           <InputItem
-            key="proxy_bypass"
+            itemKey="proxy_bypass"
             label={t.config.proxyBypass || '代理绕过列表'}
             value={getFieldValue('proxy_bypass')}
             onChange={(v) => updateValue('proxy_bypass', v)}
@@ -103,7 +103,7 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
         description={t.config.apiMirrorConfigHint || '使用第三方 API 镜像服务，可替代代理配置'}
       >
         <InputItem
-          key="gemini_base_url"
+          itemKey="gemini_base_url"
           label={t.config.geminiBaseUrl || 'Gemini API 基础地址'}
           value={getFieldValue('gemini_base_url')}
           onChange={(v) => updateValue('gemini_base_url', v)}
@@ -113,7 +113,7 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
         />
 
         <InputItem
-          key="github_api_base_url"
+          itemKey="github_api_base_url"
           label={t.config.githubApiBaseUrl || 'GitHub API 基础地址'}
           value={getFieldValue('github_api_base_url')}
           onChange={(v) => updateValue('github_api_base_url', v)}

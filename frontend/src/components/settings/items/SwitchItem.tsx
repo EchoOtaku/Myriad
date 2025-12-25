@@ -9,7 +9,7 @@ import './SettingItem.css';
 export interface SwitchItemProps extends Omit<SwitchSettingConfig, 'type'> {}
 
 export const SwitchItem = React.memo<SwitchItemProps>(({
-  key: itemKey,
+  itemKey,
   label,
   description,
   hint,
@@ -27,7 +27,7 @@ export const SwitchItem = React.memo<SwitchItemProps>(({
     }
   }, [onChange, disabled, loading]);
 
-  const id = `setting-switch-${itemKey}`;
+  const id = `setting-switch-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
     <div 

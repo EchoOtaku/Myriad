@@ -97,7 +97,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 
       {/* GitHub Client ID */}
       <InputItem
-        key="github_client_id"
+        itemKey="github_client_id"
         label={t.config.githubClientId}
         required
         value={getFieldValue('github_client_id')}
@@ -108,7 +108,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 
       {/* GitHub Client Secret */}
       <InputItem
-        key="github_client_secret"
+        itemKey="github_client_secret"
         label={t.config.githubClientSecret}
         required
         value={getFieldValue('github_client_secret')}

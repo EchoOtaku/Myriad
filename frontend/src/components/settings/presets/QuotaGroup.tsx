@@ -33,6 +33,7 @@ export const QuotaGroup: React.FC<QuotaGroupProps> = ({
         {quotas.map((quota) => (
           <NumberItem
             key={quota.key}
+            itemKey={quota.key}
             label={quota.label}
             hint={quota.hint}
             value={values[quota.key] ?? 0}

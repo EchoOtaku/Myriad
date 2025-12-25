@@ -9,7 +9,7 @@ import './SettingItem.css';
 export interface NumberItemProps extends Omit<NumberSettingConfig, 'type'> {}
 
 export const NumberItem = React.memo<NumberItemProps>(({
-  key: itemKey,
+  itemKey,
   label,
   description,
   hint,
@@ -34,7 +34,8 @@ export const NumberItem = React.memo<NumberItemProps>(({
     }
   }, [onChange, disabled, loading]);
 
-  const id = `setting-number-${itemKey}`;
+  const id = `setting-number-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
+  const inputName = `myriad-number-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
     <div 
@@ -55,7 +56,7 @@ export const NumberItem = React.memo<NumberItemProps>(({
           <div className="number-input-wrapper">
             <input
               id={id}
-              name={`setting-number-${itemKey}-${Date.now()}`}
+              name={inputName}
               type="number"
               value={value}
               onChange={handleChange}

@@ -44,6 +44,7 @@ export const PermissionGroup: React.FC<PermissionGroupProps> = ({
         {permissions.map((permission) => (
           <SwitchItem
             key={permission.key}
+            itemKey={permission.key}
             label={renderPermissionLabel(permission) as string}
             description={permission.hint}
             value={values[permission.key] ?? false}
