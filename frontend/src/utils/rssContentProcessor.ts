@@ -43,6 +43,31 @@ const DEFAULT_OPTIONS: ProcessOptions = {
   removeEmptyTags: true,
 };
 
+// API URL for image proxy
+const API_URL = typeof window !== 'undefined' 
+  ? (import.meta.env?.PUBLIC_API_URL || '') 
+  : '';
+
+/**
+ * 获取代理后的图片 URL
+ * 外部图片通过代理访问，避免 CORS 问题
+ */
+function getProxiedImageUrl(src: string): string {
+  // 已经是 data URL，直接返回
+  if (src.startsWith('data:')) return src;
+  
+  // 已经是本地 API 路径，直接返回
+  if (src.startsWith('/api/') || src.startsWith(`${API_URL}/api/`)) return src;
+  
+  // 外部 URL，使用图片代理
+  if (src.startsWith('http://') || src.startsWith('https://')) {
+    return `${API_URL}/api/proxy/image?url=${encodeURIComponent(src)}`;
+  }
+  
+  // 其他情况（如相对路径），直接返回
+  return src;
+}
+
 /**
  * 需要移除的 URL 跟踪参数
  */
@@ -170,6 +195,9 @@ function processImages(html: string, options: ProcessOptions): string {
         // 忽略无效 URL
       }
     }
+    
+    // 通过代理访问外部图片（避免 CORS 问题）
+    src = getProxiedImageUrl(src);
     
     // 构建新属性
     const newAttrs: string[] = [

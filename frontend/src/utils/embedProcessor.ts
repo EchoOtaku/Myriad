@@ -72,6 +72,26 @@ function extractNeteaseSongId(iframeSrc: string): string | null {
 }
 
 /**
+ * 从网易云音乐链接提取歌曲 ID
+ * 支持格式：
+ * - https://music.163.com/song?id=33911781
+ * - https://music.163.com/#/song?id=33911781
+ * - https://y.music.163.com/m/song?id=33911781
+ * - https://music.163.com/song/33911781
+ */
+function extractNeteaseSongIdFromUrl(url: string): string | null {
+  // 处理 ?id=xxx 格式
+  const queryMatch = url.match(/music\.163\.com\/(?:#\/)?(?:m\/)?song\?.*?id=(\d+)/);
+  if (queryMatch) return queryMatch[1];
+  
+  // 处理 /song/xxx 格式
+  const pathMatch = url.match(/music\.163\.com\/(?:#\/)?(?:m\/)?song\/(\d+)/);
+  if (pathMatch) return pathMatch[1];
+  
+  return null;
+}
+
+/**
  * 从 Steam 链接提取 AppID
  * 支持格式：
  * - https://store.steampowered.com/app/1234567
@@ -394,6 +414,18 @@ export function processEmbeds(content: string, isDark: boolean): string {
       return generateNeteaseMusicCard(songId, isDark);
     }
     return match; // 无法解析则保留原样
+  });
+
+  // 1.1 处理网易云音乐链接（<a> 标签形式）
+  // 匹配: <a href="https://music.163.com/song?id=xxx">...</a>
+  // 支持多种格式：/song?id=xxx, /#/song?id=xxx, /m/song?id=xxx, /song/xxx
+  const neteaseLinkRegex = /<a[^>]*href=["'](https?:\/\/(?:y\.)?music\.163\.com\/(?:#\/)?(?:m\/)?song(?:\?[^"']*id=\d+|\/\d+)[^"']*)["'][^>]*>[\s\S]*?<\/a>/gi;
+  result = result.replace(neteaseLinkRegex, (match, url) => {
+    const songId = extractNeteaseSongIdFromUrl(url);
+    if (songId) {
+      return generateNeteaseMusicCard(songId, isDark);
+    }
+    return match;
   });
   
   // 2. 处理 Steam 链接（不在已有链接标签内的纯 URL）
