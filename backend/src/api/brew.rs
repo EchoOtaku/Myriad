@@ -643,6 +643,15 @@ async fn update_source(
             if let Some(ref extra_config) = req.extra_config {
                 active.extra_config = Set(Some(extra_config.clone()));
             }
+            // 处理 AI 风格标签（用户自定义或 AI 生成）
+            if let Some(ref tags) = req.ai_style_tags {
+                let tags_json = serde_json::to_value(tags).unwrap_or(serde_json::Value::Null);
+                active.ai_style_tags = Set(if tags.is_empty() {
+                    None
+                } else {
+                    Some(tags_json)
+                });
+            }
             active.updated_at = Set(Utc::now().into());
 
             match active.update(&db).await {

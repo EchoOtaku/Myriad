@@ -499,6 +499,14 @@ export const jaJP: TranslationKeys = {
     dualLayerAnalysis: '二層インテリジェント分析',
     showPersonality: 'あなたの個性を一か所に',
     platformProfile: 'プラットフォームプロファイル + AI総合分析',
+    // Brew リーディング
+    brewReading: 'Brew リーディング',
+    brewDesc: 'RSS購読管理',
+    brewFeature: 'マルチソース、AI補助',
+    // Tapp アプリ
+    tappApps: 'Tapp アプリ',
+    tappDesc: '拡張アプリ',
+    tappFeature: 'ウィジェット、ツール、拡張',
   },
   
   // タイトルスタイルセレクター
@@ -1814,6 +1822,11 @@ export const jaJP: TranslationKeys = {
     generating: '生成中...',
     styleTagsDesc: 'AIがソースの内容に基づいてスタイルタグを生成します',
     noTagsHint: '上のボタンをクリックしてタグを生成',
+    customTag: 'カスタムタグ',
+    customTagDesc: '純粋なリンクにカスタムタグを追加、カードの右側に表示（最大3つ）',
+    tagInputPlaceholder: 'タグ名を入力...',
+    addTag: '追加',
+    noCustomTagHint: 'タグはまだ追加されていません',
     saveChanges: '変更を保存',
     
     // RSSHubConfig - Error messages

@@ -14,10 +14,10 @@ import { useBrewAnimationConfig, getBrewTransition, brewAnimationPresets } from 
 import { subscribeToTheme, getIsDarkMode } from '../../utils/themeSubscriber';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
-  Clock,
-  User,
-  Calendar,
-} from 'lucide-react';
+  LuClock as Clock,
+  LuUser as User,
+  LuCalendar as Calendar,
+} from '@lib/icons';
 import type { BrewItem, SourceType } from '../../types/brew';
 import * as brewliaApi from '../../services/brewliaApi';
 import * as brewApi from '../../services/brewApi';
@@ -381,13 +381,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     
     let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`;
     
-    console.debug('[BrewReader] processedContent:', {
-      showAnnotations,
-      annotationsCount: annotations.length,
-      commentsCount: comments.length,
-      rawContentLength: content.length,
-    });
-    
     // 0. 首先处理 RSS 内容格式（清理危险标签、适配各类 HTML 标签样式）
     content = processRssContent(content, {
       isDark,
@@ -402,9 +395,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     
     // 2. 处理 AI 注释高亮
     if (showAnnotations && annotations.length > 0) {
-      console.debug('[BrewReader] Calling highlightAnnotations with', annotations);
       content = brewliaApi.highlightAnnotations(content, annotations);
-      console.debug('[BrewReader] Result contains mark tags:', content.includes('<mark'));
     }
     
     // 3. 处理用户评论高亮
@@ -840,8 +831,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     try {
       // 使用新 API，通过 item.id 获取注释
       const response = await brewliaApi.getAnnotations(item.id);
-      console.debug('[BrewReader] getAnnotations response:', response);
-      console.debug('[BrewReader] annotations array:', response.annotations);
       
       if (response.success) {
         setAnnotations(response.annotations);
@@ -1177,7 +1166,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     
     getSpeechStatus()
       .then(status => {
-        console.log('[TTS] Speech status:', status);
         setCloudTtsAvailable(status.available && status.tts_enabled);
         if (!status.available || !status.tts_enabled) {
           setCloudTtsError(status.error || t.brew.cloudTtsUnavailableError);
@@ -1192,7 +1180,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     // 获取音色列表
     getVoiceList()
       .then(response => {
-        console.log('[TTS] Voice list:', response.voices.length, 'voices');
         setVoiceList(response.voices);
       })
       .catch((err) => {
@@ -1273,7 +1260,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           setShowToast(t.brew.checkingCloudTts);
           try {
             const status = await getSpeechStatus();
-            console.log('[TTS] Speech status (on switch):', status);
             if (!status.available || !status.tts_enabled) {
               setCloudTtsAvailable(false);
               setCloudTtsError(status.error || t.brew.cloudTtsUnavailable);
@@ -1327,7 +1313,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               // 不调用 load，等点击播放时才加载
             } else {
               // 没有完整缓存，回退到系统TTS
-              console.log('[TTS] No complete cloud cache, falling back to system TTS');
               setTtsEngine('system');
               saveTTSSettings({ engine: 'system' });
               if (podcastPlayerRef.current) {
@@ -1579,7 +1564,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               setCloudTtsLoading(false);
             } else {
               // 没有完整缓存，使用系统 TTS
-              console.log('[TTS] No complete cloud cache for loadPodcast, using system TTS');
               setTtsEngine('system');
               saveTTSSettings({ engine: 'system' });
               

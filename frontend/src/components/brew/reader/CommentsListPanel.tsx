@@ -6,14 +6,14 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
-  Reply,
-  Trash2,
-  Send,
-} from 'lucide-react';
+  LuX as X,
+  LuMessageSquare as MessageSquare,
+  LuChevronDown as ChevronDown,
+  LuChevronUp as ChevronUp,
+  LuReply as Reply,
+  LuTrash2 as Trash2,
+  LuSend as Send,
+} from '@lib/icons';
 import type { CommentItem } from '../../../services/brewApi';
 import type { ThemeConfig } from './types';
 import {

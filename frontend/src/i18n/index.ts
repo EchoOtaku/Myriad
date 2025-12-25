@@ -500,6 +500,14 @@ export interface TranslationKeys {
     dualLayerAnalysis: string;
     showPersonality: string;
     platformProfile: string;
+    // Brew 阅读
+    brewReading: string;
+    brewDesc: string;
+    brewFeature: string;
+    // Tapp 应用
+    tappApps: string;
+    tappDesc: string;
+    tappFeature: string;
   };
   
   // 标题样式选择器
@@ -1814,6 +1822,11 @@ export interface TranslationKeys {
     generating: string;
     styleTagsDesc: string;
     noTagsHint: string;
+    customTag: string;
+    customTagDesc: string;
+    tagInputPlaceholder: string;
+    addTag: string;
+    noCustomTagHint: string;
     saveChanges: string;
     
     // RSSHubConfig - Error messages

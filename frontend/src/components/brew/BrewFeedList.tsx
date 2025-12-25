@@ -10,7 +10,7 @@
  */
 
 import { useRef, useCallback, useState, memo, useMemo, useEffect } from 'react';
-import { Star, ExternalLink, FileText, Sparkles, Mic } from 'lucide-react';
+import { LuStar as Star, LuExternalLink as ExternalLink, LuFileText as FileText, LuSparkles as Sparkles, LuMic as Mic } from '@lib/icons';
 import type { BrewItem } from '../../types/brew';
 import { useBrewCardStagger } from '../../hooks/animation/pages/brew';
 import { useI18n } from '../../contexts/I18nContext';

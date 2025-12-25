@@ -5,12 +5,12 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  MessageSquare,
-  Palette,
-  Minus,
-  Plus,
-  AlignJustify,
-} from 'lucide-react';
+  LuMessageSquare as MessageSquare,
+  LuPalette as Palette,
+  LuMinus as Minus,
+  LuPlus as Plus,
+  LuAlignJustify as AlignJustify,
+} from '@lib/icons';
 import type { ReaderRightPanelProps } from './types';
 import { THEMES } from './constants';
 import type { CommentItem } from '../../../services/brewApi';

@@ -149,6 +149,8 @@ pub struct UpdateSourceRequest {
     pub feed_type: Option<String>,
     /// 额外配置（用于 Notion token 等）
     pub extra_config: Option<serde_json::Value>,
+    /// AI 风格标签（用户自定义或 AI 生成）
+    pub ai_style_tags: Option<Vec<String>>,
 }
 
 /// 订阅源响应（包含额外信息）

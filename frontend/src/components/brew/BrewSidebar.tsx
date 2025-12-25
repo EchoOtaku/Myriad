@@ -10,20 +10,20 @@
 
 import { useState, useMemo, useCallback, memo } from 'react';
 import {
-  Rss,
-  Star,
-  Inbox,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  RefreshCw,
-  Trash2,
-  MoreHorizontal,
-  Folder,
-  Globe,
-  FileText,
-  Keyboard,
-} from 'lucide-react';
+  LuRss as Rss,
+  LuStar as Star,
+  LuInbox as Inbox,
+  LuChevronLeft as ChevronLeft,
+  LuChevronRight as ChevronRight,
+  LuPlus as Plus,
+  LuRefreshCw as RefreshCw,
+  LuTrash2 as Trash2,
+  LuMoreHorizontal as MoreHorizontal,
+  LuFolder as Folder,
+  LuGlobe as Globe,
+  LuFileText as FileText,
+  LuKeyboard as Keyboard,
+} from '@lib/icons';
 import type { BrewSource, BrewStats } from '../../types/brew';
 import { useI18n } from '../../contexts/I18nContext';
 

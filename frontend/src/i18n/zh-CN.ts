@@ -499,6 +499,14 @@ export const zhCN: TranslationKeys = {
     dualLayerAnalysis: '双层智能分析',
     showPersonality: '展示个性，在一个地方',
     platformProfile: '平台画像 + AI综合分析',
+    // Brew 阅读
+    brewReading: 'Brew 阅读',
+    brewDesc: 'RSS 订阅管理',
+    brewFeature: '多源聚合，AI 辅助',
+    // Tapp 应用
+    tappApps: 'Tapp 应用',
+    tappDesc: '扩展应用',
+    tappFeature: '小组件、工具、扩展',
   },
   
   // 标题样式选择器
@@ -1804,6 +1812,11 @@ export const zhCN: TranslationKeys = {
     generating: '生成中...',
     styleTagsDesc: 'AI 会根据订阅源内容生成风格标签',
     noTagsHint: '点击上方按钮生成标签',
+    customTag: '自定义标签',
+    customTagDesc: '为纯链接添加自定义标签，显示在卡片右侧（最多3个）',
+    tagInputPlaceholder: '输入标签名称...',
+    addTag: '添加',
+    noCustomTagHint: '还没有添加标签',
     saveChanges: '保存更改',
     
     // RSSHubConfig - Error messages

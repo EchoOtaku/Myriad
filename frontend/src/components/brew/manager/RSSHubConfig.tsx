@@ -6,24 +6,24 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Server,
-  Plus,
-  Trash2,
-  Check,
-  AlertCircle,
-  RefreshCw,
-  ChevronDown,
-  Globe,
-  Key,
-  Edit3,
-  X,
-  ExternalLink,
-  Zap,
-  Search,
-  Activity,
-  Clock,
-  BarChart3,
-} from 'lucide-react';
+  LuServer as Server,
+  LuPlus as Plus,
+  LuTrash2 as Trash2,
+  LuCheck as Check,
+  LuAlertCircle as AlertCircle,
+  LuRefreshCw as RefreshCw,
+  LuChevronDown as ChevronDown,
+  LuGlobe as Globe,
+  LuKey as Key,
+  LuEdit3 as Edit3,
+  LuX as X,
+  LuExternalLink as ExternalLink,
+  LuZap as Zap,
+  LuSearch as Search,
+  LuActivity as Activity,
+  LuClock as Clock,
+  LuBarChart3 as BarChart3,
+} from '@lib/icons';
 import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew';
 import { getCSRFToken, getCSRFHeaderName } from '../../../utils/csrf';
 import { useI18n } from '../../../contexts/I18nContext';

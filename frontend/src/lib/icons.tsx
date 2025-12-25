@@ -1,11 +1,12 @@
 /**
  * 统一图标导出
- * 从 react-icons 精确导入需要的图标，保持包体积最小化
+ * 从 react-icons 和 lucide-react 精确导入需要的图标，保持包体积最小化
  * 
  * ⚠️ 重要：不要使用 import * as 语法，否则会导入整个图标库
  */
 
 import type { IconType } from 'react-icons';
+import type { LucideIcon } from 'lucide-react';
 
 // ============================================================
 // Simple Icons (Si*) - 品牌图标
@@ -91,6 +92,7 @@ import {
   SiNeteasecloudmusic,
   SiBilibili,
   SiMaildotru,
+  SiCloudflare,
 } from 'react-icons/si';
 
 // 导出 Simple Icons
@@ -175,6 +177,7 @@ export {
   SiNeteasecloudmusic,
   SiBilibili,
   SiMaildotru,
+  SiCloudflare,
 };
 
 // ============================================================
@@ -448,6 +451,202 @@ import { FaGrip } from 'react-icons/fa6';
 export { FaGrip };
 
 // ============================================================
+// Lucide Icons (Lu*) - 用于 Brew 阅读器等现代 UI
+// ============================================================
+import {
+  // 导航 & 方向
+  ChevronLeft as LuChevronLeft,
+  ChevronRight as LuChevronRight,
+  ChevronDown as LuChevronDown,
+  ChevronUp as LuChevronUp,
+  ArrowRight as LuArrowRight,
+  ArrowUpDown as LuArrowUpDown,
+  
+  // 操作
+  Plus as LuPlus,
+  Minus as LuMinus,
+  X as LuX,
+  Check as LuCheck,
+  Edit3 as LuEdit3,
+  Trash2 as LuTrash2,
+  RefreshCw as LuRefreshCw,
+  Download as LuDownload,
+  Upload as LuUpload,
+  Search as LuSearch,
+  Send as LuSend,
+  Copy as LuCopy,
+  Reply as LuReply,
+  Play as LuPlay,
+  Pause as LuPause,
+  Square as LuSquare,
+  SkipBack as LuSkipBack,
+  SkipForward as LuSkipForward,
+  
+  // 选择 & 复选框
+  CheckSquare as LuCheckSquare,
+  MinusSquare as LuMinusSquare,
+  CheckCircle as LuCheckCircle,
+  
+  // 状态 & 反馈
+  Loader2 as LuLoader2,
+  AlertCircle as LuAlertCircle,
+  Eye as LuEye,
+  EyeOff as LuEyeOff,
+  
+  // 内容 & 媒体
+  Star as LuStar,
+  FileText as LuFileText,
+  Folder as LuFolder,
+  FolderOpen as LuFolderOpen,
+  MessageSquare as LuMessageSquare,
+  Mic as LuMic,
+  Volume2 as LuVolume2,
+  
+  // RSS & 链接
+  Rss as LuRss,
+  Link as LuLink,
+  ExternalLink as LuExternalLink,
+  Globe as LuGlobe,
+  
+  // 时间 & 用户
+  Clock as LuClock,
+  Calendar as LuCalendar,
+  User as LuUser,
+  
+  // 布局 & 视图
+  List as LuList,
+  Inbox as LuInbox,
+  GripVertical as LuGripVertical,
+  AlignJustify as LuAlignJustify,
+  MoreHorizontal as LuMoreHorizontal,
+  
+  // AI & 特效
+  Sparkles as LuSparkles,
+  Zap as LuZap,
+  
+  // 设置 & 工具
+  Settings as LuSettings,
+  Palette as LuPalette,
+  Tag as LuTag,
+  Key as LuKey,
+  Keyboard as LuKeyboard,
+  Type as LuType,
+  
+  // 服务器 & 监控
+  Server as LuServer,
+  Cloud as LuCloud,
+  Monitor as LuMonitor,
+  Activity as LuActivity,
+  BarChart3 as LuBarChart3,
+  
+  // 排序
+  Shuffle as LuShuffle,
+  SortAsc as LuSortAsc,
+  
+  // 图片相关
+  ZoomIn as LuZoomIn,
+  ZoomOut as LuZoomOut,
+  RotateCw as LuRotateCw,
+} from 'lucide-react';
+
+// 导出 Lucide Icons
+export {
+  // 导航 & 方向
+  LuChevronLeft,
+  LuChevronRight,
+  LuChevronDown,
+  LuChevronUp,
+  LuArrowRight,
+  LuArrowUpDown,
+  
+  // 操作
+  LuPlus,
+  LuMinus,
+  LuX,
+  LuCheck,
+  LuEdit3,
+  LuTrash2,
+  LuRefreshCw,
+  LuDownload,
+  LuUpload,
+  LuSearch,
+  LuSend,
+  LuCopy,
+  LuReply,
+  LuPlay,
+  LuPause,
+  LuSquare,
+  LuSkipBack,
+  LuSkipForward,
+  
+  // 选择 & 复选框
+  LuCheckSquare,
+  LuMinusSquare,
+  LuCheckCircle,
+  
+  // 状态 & 反馈
+  LuLoader2,
+  LuAlertCircle,
+  LuEye,
+  LuEyeOff,
+  
+  // 内容 & 媒体
+  LuStar,
+  LuFileText,
+  LuFolder,
+  LuFolderOpen,
+  LuMessageSquare,
+  LuMic,
+  LuVolume2,
+  
+  // RSS & 链接
+  LuRss,
+  LuLink,
+  LuExternalLink,
+  LuGlobe,
+  
+  // 时间 & 用户
+  LuClock,
+  LuCalendar,
+  LuUser,
+  
+  // 布局 & 视图
+  LuList,
+  LuInbox,
+  LuGripVertical,
+  LuAlignJustify,
+  LuMoreHorizontal,
+  
+  // AI & 特效
+  LuSparkles,
+  LuZap,
+  
+  // 设置 & 工具
+  LuSettings,
+  LuPalette,
+  LuTag,
+  LuKey,
+  LuKeyboard,
+  LuType,
+  
+  // 服务器 & 监控
+  LuServer,
+  LuCloud,
+  LuMonitor,
+  LuActivity,
+  LuBarChart3,
+  
+  // 排序
+  LuShuffle,
+  LuSortAsc,
+  
+  // 图片相关
+  LuZoomIn,
+  LuZoomOut,
+  LuRotateCw,
+};
+
+// ============================================================
 // 别名
 // ============================================================
 export const FaXTwitter = SiX;
@@ -630,4 +829,4 @@ export function getIconByName(name: string): IconType | null {
 }
 
 // 导出类型
-export type { IconType };
+export type { IconType, LucideIcon };

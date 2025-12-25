@@ -256,6 +256,8 @@ export interface UpdateSourceRequest {
     /** RSSHub 配置 */
     rsshub?: RSSHubConfig;
   };
+  /** AI 风格标签（用户自定义或 AI 生成） */
+  ai_style_tags?: string[];
 }
 
 // 创建分类请求

@@ -499,6 +499,14 @@ export const enUS: TranslationKeys = {
     dualLayerAnalysis: 'Dual-layer Smart Analysis',
     showPersonality: 'Show your personality, in one place',
     platformProfile: 'Platform Profile + AI Comprehensive Analysis',
+    // Brew Reading
+    brewReading: 'Brew Reading',
+    brewDesc: 'RSS Subscription',
+    brewFeature: 'Multi-source, AI Assist',
+    // Tapp Apps
+    tappApps: 'Tapp Apps',
+    tappDesc: 'Extensions',
+    tappFeature: 'Widgets, Tools, Extensions',
   },
   
   // Title Style Selector
@@ -1801,6 +1809,11 @@ export const enUS: TranslationKeys = {
     generating: 'Generating...',
     styleTagsDesc: 'AI will generate style tags based on source content',
     noTagsHint: 'Click button above to generate tags',
+    customTag: 'Custom Tag',
+    customTagDesc: 'Add custom tags for pure links, displayed on the right side of the card (max 3)',
+    tagInputPlaceholder: 'Enter tag name...',
+    addTag: 'Add',
+    noCustomTagHint: 'No tags added yet',
     saveChanges: 'Save Changes',
     
     // RSSHubConfig - Error messages

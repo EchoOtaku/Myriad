@@ -21,12 +21,16 @@ import { startPage, pauseScheduler, resumeScheduler, isPageVisible } from './ind
 import { cleanupHome } from './pages/home';
 import { cleanupLibrary } from './pages/library';
 import { cleanupReports } from './pages/reports';
+import { cleanupBrew } from './pages/brew';
+import { cleanupTapp } from './pages/tapp';
 
 // 路径到页面 ID 的映射
 const pathToPageId: Record<string, string> = {
   '/': 'home',
   '/library': 'library',
   '/reports': 'reports',
+  '/brew': 'brew',
+  '/tapp': 'tapp',
   '/config': 'config',
   '/data-management': 'data-management',
   '/login': 'login',
@@ -39,6 +43,8 @@ const pageCleanupMap: Record<string, () => void> = {
   'home': cleanupHome,
   'library': cleanupLibrary,
   'reports': cleanupReports,
+  'brew': cleanupBrew,
+  'tapp': cleanupTapp,
 };
 
 /**

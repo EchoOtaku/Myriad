@@ -21,54 +21,42 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { startPage } from '../core';
 import { Feature, hasFeature } from '../pageFeatures';
 
 // 支持的简单页面
 type SimplePageId = 'config' | 'login' | 'setup' | 'data-management' | 'details';
 
 // ==================== 页面初始化 ====================
+// 注意：startPage 由 useRouteScheduler 统一调用
+// 这些简单页面的 Scheduler 保留为占位符，保持 API 一致性
 
-export function useSimplePageScheduler(pageId: SimplePageId): void {
-  useEffect(() => {
-    startPage(pageId);
-    // 简单页面无需页面级清理，但保持一致性
-  }, [pageId]);
+export function useSimplePageScheduler(_pageId: SimplePageId): void {
+  // startPage 由 useRouteScheduler 统一调用
 }
 
 // Config 专用
 export function useConfigScheduler(): void {
-  useEffect(() => { 
-    startPage('config'); 
-  }, []);
+  // startPage('config') 由 useRouteScheduler 统一调用
 }
 
 // Login 专用
 export function useLoginScheduler(): void {
-  useEffect(() => { 
-    startPage('login'); 
-  }, []);
+  // startPage('login') 由 useRouteScheduler 统一调用
 }
 
 // Setup 专用
 export function useSetupScheduler(): void {
-  useEffect(() => { 
-    startPage('setup'); 
-  }, []);
+  // startPage('setup') 由 useRouteScheduler 统一调用
 }
 
 // DataManagement 专用
 export function useDataManagementScheduler(): void {
-  useEffect(() => { 
-    startPage('data-management'); 
-  }, []);
+  // startPage('data-management') 由 useRouteScheduler 统一调用
 }
 
 // Details 专用
 export function useDetailsScheduler(): void {
-  useEffect(() => { 
-    startPage('details'); 
-  }, []);
+  // startPage('details') 由 useRouteScheduler 统一调用
 }
 
 // ==================== Timeout Hooks ====================

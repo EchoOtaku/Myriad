@@ -13,6 +13,7 @@ import { GlowBackground } from './shared/GlowBackground';
 import { useLoopAnimation } from '../../hooks/animation';
 import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home';
 import { useI18n } from '../../contexts/I18nContext';
+import { SiAppstore } from '@lib/icons';
 
 // Navigation guide type definition
 interface NavigationGuide {
@@ -68,6 +69,24 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
       path: '/reports',
       color: '#06b6d4',
     },
+    {
+      title: t.widgets.brewReading,
+      description: t.widgets.brewDesc,
+      features: [
+        t.widgets.brewFeature,
+      ],
+      path: '/brew',
+      color: '#f97316',
+    },
+    {
+      title: t.widgets.tappApps,
+      description: t.widgets.tappDesc,
+      features: [
+        t.widgets.tappFeature,
+      ],
+      path: '/tapp',
+      color: '#10b981',
+    },
   ], [t]);
 
   // 动态问候语
@@ -116,20 +135,32 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   // 判断是否为2x2布局
   const is2x2 = config.size === '2x2';
 
-  // 渲染导航图标 - 使用 useCallback 避免重复创建
+  // 渲染导航图标 - 使用 useCallback 避免重复创建，与导航岛图标保持一致
   const renderNavIcon = useCallback((guide: NavigationGuide) => {
+    const iconClass = "w-5 h-5";
     if (guide.path === '/library') {
       return (
-        <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       );
     }
-    return (
-      <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-      </svg>
-    );
+    if (guide.path === '/reports') {
+      return (
+        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+        </svg>
+      );
+    }
+    if (guide.path === '/brew') {
+      return (
+        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" />
+        </svg>
+      );
+    }
+    // Tapp 应用 - 直接使用 SiAppstore 组件
+    return <SiAppstore className={iconClass} />;
   }, []);
 
   // 2x2 布局 - 简化版，只显示问候语，保持左上角布局
@@ -269,14 +300,13 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                 className="relative h-full w-full rounded-lg bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden p-4"
                 style={{ padding: `${16 * scale}px` }}
               >
-                {/* 顶部：图标 + 标题 */}
                 <div 
                   className="relative flex items-start gap-3 mb-3"
                   style={{ gap: `${12 * scale}px`, marginBottom: `${12 * scale}px` }}
                 >
                   <motion.div
-                    className="w-10 h-10 flex-shrink-0 text-gray-700 dark:text-white/60"
-                    style={{ width: `${40 * scale}px`, height: `${40 * scale}px` }}
+                    className="w-6 h-6 flex-shrink-0 flex items-center justify-center text-gray-700 dark:text-white/60"
+                    style={{ width: `${24 * scale}px`, height: `${24 * scale}px` }}
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     transition={{ duration: 0.4, delay: 0.1 }}

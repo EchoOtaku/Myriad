@@ -7,19 +7,19 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X,
-  Rss,
-  RefreshCw,
-  Check,
-  AlertCircle,
-  Upload,
-  Trash2,
-  ChevronDown,
-  Edit3,
-  Palette,
-  Sparkles,
-  Tag,
-} from 'lucide-react';
+  LuX as X,
+  LuRss as Rss,
+  LuRefreshCw as RefreshCw,
+  LuCheck as Check,
+  LuAlertCircle as AlertCircle,
+  LuUpload as Upload,
+  LuTrash2 as Trash2,
+  LuChevronDown as ChevronDown,
+  LuEdit3 as Edit3,
+  LuPalette as Palette,
+  LuSparkles as Sparkles,
+  LuTag as Tag,
+} from '@lib/icons';
 import type { BrewSource, SourceType, RSSHubConfig } from '../../../types/brew';
 import { generateStyleTags } from '../../../services/brewApi';
 import RSSHubConfigComponent from './RSSHubConfig';
@@ -41,6 +41,7 @@ export interface EditModalProps {
     icon?: string;
     theme_color?: string | null;
     source_type?: SourceType;
+    ai_style_tags?: string[];
   }) => Promise<void>;
 }
 
@@ -66,6 +67,8 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   // AI 风格标签状态
   const [styleTags, setStyleTags] = useState<string[]>(source.ai_style_tags || []);
   const [generatingTags, setGeneratingTags] = useState(false);
+  // 用户手动输入标签状态
+  const [newTagInput, setNewTagInput] = useState('');
 
   // 判断原始订阅类型（基于 feed_type 和 source_type）
   // feed_type 表示实际的订阅协议：rss/atom/json_feed/notion/rsshub
@@ -173,6 +176,23 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
     setStyleTags(prev => prev.filter(tag => tag !== tagToRemove));
   };
 
+  // 添加用户自定义标签
+  const handleAddTag = () => {
+    const trimmedTag = newTagInput.trim();
+    if (trimmedTag && !styleTags.includes(trimmedTag) && styleTags.length < 3) {
+      setStyleTags(prev => [...prev, trimmedTag]);
+      setNewTagInput('');
+    }
+  };
+
+  // 回车添加标签
+  const handleTagInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddTag();
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -208,6 +228,8 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
         // themeColor 为空时传 null，让后端知道需要重新提取
         theme_color: themeColor || null,
         source_type: finalSourceType,
+        // 传递标签（纯链接和 Brewlia 模式都支持）
+        ai_style_tags: styleTags,
       });
       onClose();
     } catch (err) {
@@ -664,6 +686,65 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
               ) : (
                 <div className="text-xs text-gray-400 dark:text-gray-500 italic">
                   {t.brew.noTagsHint}
+                </div>
+              )}
+            </div>
+            )}
+
+            {/* 自定义标签 - 纯链接类型显示（用户手动输入） */}
+            {isLink && (
+            <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200/50 dark:border-orange-700/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Tag className="w-4 h-4 text-orange-500" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.brew.customTag}</span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                {t.brew.customTagDesc}
+              </p>
+              {/* 标签输入框 */}
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={newTagInput}
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyDown={handleTagInputKeyDown}
+                  placeholder={t.brew.tagInputPlaceholder}
+                  maxLength={10}
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                  disabled={styleTags.length >= 3}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddTag}
+                  disabled={!newTagInput.trim() || styleTags.length >= 3}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t.brew.addTag}
+                </button>
+              </div>
+              {/* 已有标签展示 */}
+              {styleTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {styleTags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-orange-100 dark:bg-orange-800/40 text-orange-700 dark:text-orange-300"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTag(tag)}
+                        className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-orange-200 dark:hover:bg-orange-700 transition-colors"
+                        title={t.brew.deleteTag}
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 dark:text-gray-500 italic">
+                  {t.brew.noCustomTagHint}
                 </div>
               )}
             </div>

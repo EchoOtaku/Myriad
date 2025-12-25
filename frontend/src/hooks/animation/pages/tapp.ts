@@ -30,7 +30,7 @@
  */
 
 import { useEffect, useRef, useCallback, useReducer } from 'react';
-import { startPage, isPageVisible } from '../core';
+import { isPageVisible } from '../core';
 import { coordinator } from '../coordinator';
 import { AnimationPriority, AnimationState } from '../types';
 
@@ -42,9 +42,13 @@ let staggerIdCounter = 0;
 
 // ==================== 页面初始化 ====================
 
+/**
+ * Tapp 页调度器初始化
+ * 
+ * 注意：startPage('tapp') 由 useRouteScheduler 统一调用
+ */
 export function useTappScheduler(): void {
   useEffect(() => {
-    startPage(PAGE_ID);
     return () => {
       // 页面卸载时重置计数器
       staggerIdCounter = 0;

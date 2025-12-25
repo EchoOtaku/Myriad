@@ -17,13 +17,13 @@
 
 import React, { useState, forwardRef, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { 
-  RefreshCw, 
-  ExternalLink, 
-  Rss, 
-  Search,
-  Edit3,
-  Sparkles,
-} from 'lucide-react';
+  LuRefreshCw as RefreshCw, 
+  LuExternalLink as ExternalLink, 
+  LuRss as Rss, 
+  LuSearch as Search,
+  LuEdit3 as Edit3,
+  LuSparkles as Sparkles,
+} from '@lib/icons';
 import type { BrewSource, CardSize, SourceType } from '../../types/brew';
 import * as brewApi from '../../services/brewApi';
 import { extractColorsFromLoadedImage } from '../../utils/colorExtractor';
@@ -205,8 +205,8 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
       if (palette.primary && palette.primary !== DEFAULT_THEME_COLOR && palette.primary !== '#6b7280') {
         onThemeColorExtracted?.(source.id, palette.primary);
       }
-    } catch (err) {
-      console.debug('[BrewSourceGrid] Failed to extract icon color:', err);
+    } catch {
+      // 图标颜色提取失败，忽略
     }
   }, [source.id, source.theme_color, source.icon, onThemeColorExtracted]);
 
@@ -489,9 +489,9 @@ const SourceCard = memo(forwardRef<HTMLDivElement, SourceCardProps>(({
             </div>
           </div>
 
-          {/* AI 风格标签 - 非编辑模式显示在右侧 */}
-          {!isEditMode && size !== 'tiny' && source.ai_style_tags && source.ai_style_tags.length > 0 && (
-            <div className="flex items-center gap-1 flex-shrink-0">
+          {/* AI 风格标签 - 非编辑模式显示在右侧（最多显示2个） */}
+          {!isEditMode && source.ai_style_tags && source.ai_style_tags.length > 0 && (
+            <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
               {source.ai_style_tags.slice(0, 2).map((tag, idx) => (
                 <span
                   key={idx}
@@ -1110,9 +1110,8 @@ export default function BrewSourceGrid({
       if (onSourceUpdate) {
         onSourceUpdate(updatedSource);
       }
-      console.debug('[BrewSourceGrid] Theme color saved:', sourceId, color);
-    } catch (err) {
-      console.error('Failed to save theme color:', err);
+    } catch {
+      // 保存主题色失败，静默处理
     }
   }, [onSourceUpdate]);
 
@@ -1321,6 +1320,7 @@ export default function BrewSourceGrid({
     update_interval?: number;
     enabled?: boolean;
     icon?: string;
+    ai_style_tags?: string[];
   }) => {
     // 如果更新了图标，同时清除主题色，让图标加载时重新提取
     const updateData = data.icon !== undefined 

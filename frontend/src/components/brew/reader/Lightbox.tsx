@@ -5,7 +5,7 @@
 
 import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ZoomIn, ZoomOut, RotateCw, Download } from 'lucide-react';
+import { LuX as X, LuZoomIn as ZoomIn, LuZoomOut as ZoomOut, LuRotateCw as RotateCw, LuDownload as Download } from '@lib/icons';
 import { useState } from 'react';
 
 interface LightboxProps {

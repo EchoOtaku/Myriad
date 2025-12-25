@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { startPage, onVisibility, isPageVisible } from '../core';
+import { onVisibility, isPageVisible } from '../core';
 import { Feature, hasFeature } from '../pageFeatures';
 
 const PAGE_ID = 'home';
@@ -35,10 +35,11 @@ const PAGE_ID = 'home';
 /**
  * 首页调度器初始化
  * 在 Home.tsx 顶层调用
+ * 
+ * 注意：startPage('home') 由 useRouteScheduler 统一调用
  */
 export function useHomeScheduler(): void {
   useEffect(() => {
-    startPage(PAGE_ID);
     return () => cleanupHome();
   }, []);
 }

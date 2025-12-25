@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchJson } from '../utils/apiHelper';
 import { API_URL } from '../config';
-import { SiCloudflare } from 'react-icons/si';
+import { SiCloudflare } from '@lib/icons';
 import './SiteFooter.css';
 
 // Myriad 版本号 - 从 package.json 读取

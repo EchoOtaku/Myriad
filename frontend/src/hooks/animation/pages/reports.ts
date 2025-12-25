@@ -29,16 +29,20 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { startPage, onVisibility, isPageVisible } from '../core';
+import { onVisibility, isPageVisible } from '../core';
 import { Feature, hasFeature } from '../pageFeatures';
 
 const PAGE_ID = 'reports';
 
 // ==================== 页面初始化 ====================
 
+/**
+ * 报告页调度器初始化
+ * 
+ * 注意：startPage('reports') 由 useRouteScheduler 统一调用
+ */
 export function useReportsScheduler(): void {
   useEffect(() => {
-    startPage(PAGE_ID);
     return () => cleanupReports();
   }, []);
 }

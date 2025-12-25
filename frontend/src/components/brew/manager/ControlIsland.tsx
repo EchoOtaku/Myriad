@@ -15,42 +15,43 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import JSZip from 'jszip';
 import {
-  Search,
-  Square,
-  CheckSquare,
-  MinusSquare,
-  Trash2,
-  X,
-  Keyboard,
-  Plus,
-  Link,
-  Loader2,
-  Check,
-  AlertCircle,
-  Rss,
-  Upload,
-  Download,
-  FileText,
-  FolderOpen,
-  RefreshCw,
-  Edit3,
-  ExternalLink,
-  ChevronLeft,
-  CheckCircle,
-  ChevronDown,
-  Star,
-  ArrowUpDown,
-  Clock,
-  GripVertical,
-  Shuffle,
-  SortAsc,
-  Sparkles,
-} from 'lucide-react';
+  LuSearch as Search,
+  LuSquare as Square,
+  LuCheckSquare as CheckSquare,
+  LuMinusSquare as MinusSquare,
+  LuTrash2 as Trash2,
+  LuX as X,
+  LuKeyboard as Keyboard,
+  LuPlus as Plus,
+  LuLink as Link,
+  LuLoader2 as Loader2,
+  LuCheck as Check,
+  LuAlertCircle as AlertCircle,
+  LuRss as Rss,
+  LuUpload as Upload,
+  LuDownload as Download,
+  LuFileText as FileText,
+  LuFolderOpen as FolderOpen,
+  LuRefreshCw as RefreshCw,
+  LuEdit3 as Edit3,
+  LuExternalLink as ExternalLink,
+  LuChevronLeft as ChevronLeft,
+  LuCheckCircle as CheckCircle,
+  LuChevronDown as ChevronDown,
+  LuStar as Star,
+  LuArrowUpDown as ArrowUpDown,
+  LuClock as Clock,
+  LuGripVertical as GripVertical,
+  LuShuffle as Shuffle,
+  LuSortAsc as SortAsc,
+  LuSparkles as Sparkles,
+} from '@lib/icons';
 import type { BrewSource, SourceType, FeedType, RSSHubConfig } from '../../../types/brew';
 import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard';
 import * as brewApi from '../../../services/brewApi';
 import RSSHubConfigComponent from './RSSHubConfig';
 import { useI18n } from '../../../contexts/I18nContext';
+import { useBrewAnimationConfig } from '../../../hooks/animation/pages/brew';
 
 // Notion 品牌图标
 const NotionIcon = ({ className }: { className?: string }) => (
@@ -283,6 +284,8 @@ export default function ControlIsland({
   isAuthenticated = false,  // 默认游客模式
 }: ControlIslandProps) {
   const { t } = useI18n();
+  const animConfig = useBrewAnimationConfig();
+  const enableAnimations = animConfig.level !== 'none';
   
   // 根据模式确定初始状态
   const getInitialMode = (): ControlMode => {

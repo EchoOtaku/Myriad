@@ -30,7 +30,6 @@
  */
 
 import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
-import { startPage } from '../core';
 import { useAnimationLevel, type AnimationConfig } from '../../useAnimationLevel';
 
 const PAGE_ID = 'brew';
@@ -55,12 +54,15 @@ let pageAnimationBatchId = 0;
 /**
  * Brew 页面调度器初始化 Hook
  * 在页面组件最顶层调用一次
+ * 
+ * 注意：startPage('brew') 由 useRouteScheduler 统一调用
+ * 这里只负责 Brew 特有的初始化逻辑（如动画批次 ID）
  */
 export function useBrewScheduler(): void {
   useEffect(() => {
     // 每次页面挂载时增加批次 ID，让所有卡片知道这是新的一批动画
+    // 注意：startPage 已由 useRouteScheduler 调用，这里不再重复
     pageAnimationBatchId++;
-    startPage(PAGE_ID);
   }, []);
 }
 
@@ -292,4 +294,17 @@ export function getBrewTransition(
     duration: durations[type],
     ease: [0.16, 1, 0.3, 1], // spring-like easing
   };
+}
+
+// ==================== 页面清理 ====================
+
+/**
+ * 清理 Brew 页面资源
+ * 在路由离开时调用，重置动画批次状态
+ */
+export function cleanupBrew(): void {
+  // 重置动画批次，下次进入页面时重新触发入场动画
+  // 注意：不重置 pageAnimationBatchId，让它持续递增
+  // 这样每次进入页面都是新的批次，卡片会重新动画
+  ANIM_CONFIG_CACHE.clear();
 }

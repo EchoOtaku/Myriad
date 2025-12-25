@@ -28,16 +28,20 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { startPage, isPageVisible } from '../core';
+import { isPageVisible } from '../core';
 import { Feature, hasFeature } from '../pageFeatures';
 
 const PAGE_ID = 'library';
 
 // ==================== 页面初始化 ====================
 
+/**
+ * 资料库调度器初始化
+ * 
+ * 注意：startPage('library') 由 useRouteScheduler 统一调用
+ */
 export function useLibraryScheduler(): void {
   useEffect(() => {
-    startPage(PAGE_ID);
     return () => cleanupLibrary();
   }, []);
 }

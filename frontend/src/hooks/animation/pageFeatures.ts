@@ -63,6 +63,9 @@ export const PAGE_FEATURES: Record<string, number> = {
   // 报告页：最复杂 - 轮播定时器(Interval)、背景动画(RAF)、DOM优化(DOMBatch)、可见性暂停
   'reports': Feature.Visibility | Feature.Interval | Feature.RAF | Feature.DOMBatch,
   
+  // Brew 阅读页：文章列表无限滚动(Intersection)、可见性感知暂停轮询、卡片交错动画(Timeout)
+  'brew': Feature.Visibility | Feature.Intersection | Feature.Timeout | Feature.Idle,
+  
   // 配置页：防抖保存(Timeout)
   'config': Feature.Timeout,
   

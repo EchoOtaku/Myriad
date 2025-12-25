@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Copy, MessageSquare, Check } from 'lucide-react';
+import { LuSend as Send, LuCopy as Copy, LuMessageSquare as MessageSquare, LuCheck as Check } from '@lib/icons';
 import * as brewliaApi from '../../../services/brewliaApi';
 import type { AnnotationItem, AnnotationType } from '../../../services/brewliaApi';
 import type { CommentItem } from '../../../services/brewApi';
