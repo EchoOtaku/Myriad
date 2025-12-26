@@ -828,5 +828,23 @@ export function getIconByName(name: string): IconType | null {
   return iconMap[name] || null;
 }
 
+// ============================================================
+// 自定义 SVG 图标组件
+// ============================================================
+
+/**
+ * RSSHub 品牌图标
+ * 官方设计：地球 + 网状图案，代表全球化的 RSS 聚合
+ * Simple Icons 中没有此图标，使用自定义 SVG
+ */
+export const RSSHubIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+  </svg>
+);
+
+// 为了兼容性，导出 NotionIcon 别名（使用 SiNotion）
+export const NotionIcon = SiNotion;
+
 // 导出类型
 export type { IconType, LucideIcon };

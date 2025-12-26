@@ -174,7 +174,7 @@ function removeEmptyTags(html: string): string {
  * 处理图片标签
  */
 function processImages(html: string, options: ProcessOptions): string {
-  // 处理 <img> 标签
+  // 处理 <img> 标签 - 只处理 src，样式由渲染层处理
   let result = html.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // 提取 src
     const srcMatch = attrs.match(/src\s*=\s*["']([^"']+)["']/i);
@@ -199,10 +199,10 @@ function processImages(html: string, options: ProcessOptions): string {
     // 通过代理访问外部图片（避免 CORS 问题）
     src = getProxiedImageUrl(src);
     
-    // 构建新属性
+    // 构建新属性 - 只保留必要属性，样式由渲染层添加
     const newAttrs: string[] = [
       `src="${src}"`,
-      'class="rss-content-image rounded-xl max-w-full h-auto my-4 mx-auto block"',
+      'data-rss-image="true"',
     ];
     
     // 懒加载
@@ -310,16 +310,15 @@ function processIframes(html: string): string {
  */
 function processBlockquotes(html: string, isDark: boolean): string {
   const bgClass = isDark ? 'bg-white/5' : 'bg-black/[0.03]';
-  const borderClass = isDark ? 'border-white/10' : 'border-black/10';
   
   return html.replace(/<blockquote([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replace(
         /class\s*=\s*["']([^"']*)["']/i,
-        `class="$1 rss-content-blockquote ${bgClass} border-l-4 ${borderClass} rounded-r-xl px-4 py-3 my-4 italic"`
+        `class="$1 rss-content-blockquote ${bgClass} rounded-xl px-4 py-3 my-4 italic"`
       );
     }
-    return `<blockquote${attrs} class="rss-content-blockquote ${bgClass} border-l-4 ${borderClass} rounded-r-xl px-4 py-3 my-4 italic">`;
+    return `<blockquote${attrs} class="rss-content-blockquote ${bgClass} rounded-xl px-4 py-3 my-4 italic">`;
   });
 }
 
@@ -388,9 +387,7 @@ function processTables(html: string, isDark: boolean): string {
 /**
  * 处理描述列表
  */
-function processDescriptionLists(html: string, isDark: boolean): string {
-  const borderClass = isDark ? 'border-white/10' : 'border-black/10';
-  
+function processDescriptionLists(html: string): string {
   let result = html;
   
   result = result.replace(/<dl([^>]*)>/gi, (match, attrs) => {
@@ -409,9 +406,9 @@ function processDescriptionLists(html: string, isDark: boolean): string {
   
   result = result.replace(/<dd([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, `class="$1 rss-content-dd ml-4 pl-4 border-l-2 ${borderClass} mt-1"`);
+      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-dd ml-4 pl-4 mt-1"');
     }
-    return `<dd${attrs} class="rss-content-dd ml-4 pl-4 border-l-2 ${borderClass} mt-1">`;
+    return `<dd${attrs} class="rss-content-dd ml-4 pl-4 mt-1">`;
   });
   
   return result;
@@ -584,22 +581,31 @@ function processSemanticTags(html: string): string {
 
 /**
  * 处理行内格式标签
+ * 注意：正则必须精确匹配标签名，避免匹配到其他标签
+ * 例如 <s> 不能匹配 <strong>、<span>；<u> 不能匹配 <ul>
  */
 function processInlineFormatting(html: string): string {
   let result = html;
   
-  // 删除线
-  result = result.replace(/<(del|s|strike)([^>]*)>/gi, '<$1$2 class="rss-content-del line-through opacity-60">');
+  // 删除线 - 分别处理每个标签
+  // <del> 标签：完整标签名，不会有歧义
+  result = result.replace(/<del(\s[^>]*)?>/gi, '<del$1 class="rss-content-del line-through opacity-60">');
+  // <strike> 标签：完整标签名
+  result = result.replace(/<strike(\s[^>]*)?>/gi, '<strike$1 class="rss-content-del line-through opacity-60">');
+  // <s> 标签：必须后面是 > 或空格+属性，不能是字母（排除 strong, span, section, small, sub, sup, svg, style 等）
+  result = result.replace(/<s(\s[^>]*)?>(?![a-zA-Z])/gi, '<s$1 class="rss-content-del line-through opacity-60">');
   
-  // 插入/下划线
-  result = result.replace(/<(ins|u)([^>]*)>/gi, '<$1$2 class="rss-content-ins underline">');
+  // 插入标签 - <ins> 不会有歧义
+  result = result.replace(/<ins(\s[^>]*)?>/gi, '<ins$1 class="rss-content-ins underline">');
+  // 下划线 <u> 标签：必须后面是 > 或空格+属性，不能是字母（排除 ul 等）
+  result = result.replace(/<u(\s[^>]*)?>(?![a-zA-Z])/gi, '<u$1 class="rss-content-ins underline">');
   
-  // 小号文本
-  result = result.replace(/<small([^>]*)>/gi, '<small$1 class="rss-content-small text-[0.85em] opacity-80">');
+  // 小号文本 - <small> 不会有歧义
+  result = result.replace(/<small(\s[^>]*)?>/gi, '<small$1 class="rss-content-small text-[0.85em] opacity-80">');
   
-  // 上标/下标
-  result = result.replace(/<sup([^>]*)>/gi, '<sup$1 class="rss-content-sup text-[0.75em]">');
-  result = result.replace(/<sub([^>]*)>/gi, '<sub$1 class="rss-content-sub text-[0.75em]">');
+  // 上标/下标 - <sup> 和 <sub> 不会有歧义
+  result = result.replace(/<sup(\s[^>]*)?>/gi, '<sup$1 class="rss-content-sup text-[0.75em]">');
+  result = result.replace(/<sub(\s[^>]*)?>/gi, '<sub$1 class="rss-content-sub text-[0.75em]">');
   
   return result;
 }
@@ -769,7 +775,7 @@ export function processRssContent(html: string, options: Partial<ProcessOptions>
   result = processSemanticTags(result);
   result = processFigures(result);
   result = processDetails(result, opts.isDark || false);
-  result = processDescriptionLists(result, opts.isDark || false);
+  result = processDescriptionLists(result);
   result = processTables(result, opts.isDark || false);
   
   // 4. 媒体处理

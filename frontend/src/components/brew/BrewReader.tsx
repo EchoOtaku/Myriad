@@ -11,7 +11,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBrewAnimationConfig, getBrewTransition, brewAnimationPresets } from '../../hooks/animation/pages/brew';
-import { subscribeToTheme, getIsDarkMode } from '../../utils/themeSubscriber';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
   LuClock as Clock,
@@ -21,10 +20,8 @@ import {
 import type { BrewItem, SourceType } from '../../types/brew';
 import * as brewliaApi from '../../services/brewliaApi';
 import * as brewApi from '../../services/brewApi';
-import type { AnnotationItem, AnnotationType, PodcastDialogue } from '../../services/brewliaApi';
-import type { CommentItem, CreateCommentRequest } from '../../services/brewApi';
-import { PodcastPlayer } from '../../services/brewliaApi';
-import { CloudPodcastPlayer, getTTSSettings, saveTTSSettings, getSpeechStatus, getVoiceList, getArticleCacheInfo, clearArticleVoiceCache, type TTSEngine, type VoiceInfo, type TTSSettings, type ArticleCacheResponse, type VoiceCacheInfo } from '../../services/speechApi';
+import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi';
+import type { CommentItem } from '../../services/brewApi';
 import { processEmbeds, playNeteaseSong, loadEmbedData } from '../../utils/embedProcessor';
 import { processRssContent } from '../../utils/rssContentProcessor';
 import { useI18n } from '../../contexts/I18nContext';
@@ -51,6 +48,10 @@ import {
   STYLE_SCROLL_SMOOTH,
   STYLE_MAX_HEIGHT_320,
   STYLE_MAX_HEIGHT_60VH,
+  useReaderSettings,
+  useAnnotations,
+  useComments,
+  usePodcast,
 } from './reader';
 import type { ThemeKey, LayoutKey } from './reader';
 
@@ -92,76 +93,6 @@ const FONT_OPTIONS = READER_FONT_OPTIONS;
 const THEMES = READER_THEMES;
 const LAYOUT_OPTIONS = READER_LAYOUT_OPTIONS;
 
-// 根据应用主题状态获取阅读器主题
-const getReaderTheme = (): ThemeKey => {
-  return getIsDarkMode() ? 'dark' : 'light';
-};
-
-// 从 localStorage 读取设置
-const getStoredSettings = () => {
-  try {
-    const stored = localStorage.getItem('brew-reader-settings');
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  return null;
-};
-
-// 保存设置到 localStorage
-const saveSettings = (settings: object) => {
-  try {
-    localStorage.setItem('brew-reader-settings', JSON.stringify(settings));
-  } catch {}
-};
-
-/**
- * 检测完整的云端缓存
- * 支持两种场景:
- * 1. 单音色缓存: 一个音色包含所有对话索引
- * 2. 双音色缓存: host音色包含偶数索引, guest音色包含奇数索引
- * 
- * @returns 如果有完整缓存，返回 { hostVoiceId, guestVoiceId, voiceName }; 否则返回 null
- */
-const findCompleteCacheVoices = (
-  cache: ArticleCacheResponse,
-  dialogueCount: number
-): { hostVoiceId: number; guestVoiceId: number; voiceName: string } | null => {
-  if (!cache.voices.length || dialogueCount <= 0) return null;
-
-  // 场景1: 单音色包含所有对话
-  const singleVoice = cache.voices.find(v => v.file_count >= dialogueCount);
-  if (singleVoice) {
-    return {
-      hostVoiceId: singleVoice.voice_id,
-      guestVoiceId: singleVoice.voice_id,
-      voiceName: singleVoice.voice_name || singleVoice.voice_id.toString(),
-    };
-  }
-
-  // 场景2: 双音色 (host = 偶数索引, guest = 奇数索引)
-  // 查找 host 音色 (role === 'host' 表示只有偶数索引)
-  const hostVoice = cache.voices.find(v => v.role === 'host');
-  // 查找 guest 音色 (role === 'guest' 表示只有奇数索引)
-  const guestVoice = cache.voices.find(v => v.role === 'guest');
-
-  if (hostVoice && guestVoice) {
-    // 计算预期的 host 和 guest 文件数量
-    const expectedHostCount = Math.ceil(dialogueCount / 2); // 偶数索引: 0, 2, 4, ...
-    const expectedGuestCount = Math.floor(dialogueCount / 2); // 奇数索引: 1, 3, 5, ...
-    
-    if (hostVoice.file_count >= expectedHostCount && guestVoice.file_count >= expectedGuestCount) {
-      const hostName = hostVoice.voice_name || hostVoice.voice_id.toString();
-      const guestName = guestVoice.voice_name || guestVoice.voice_id.toString();
-      return {
-        hostVoiceId: hostVoice.voice_id,
-        guestVoiceId: guestVoice.voice_id,
-        voiceName: hostName === guestName ? hostName : `${hostName} + ${guestName}`,
-      };
-    }
-  }
-
-  return null;
-};
-
 export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType }: BrewReaderProps) {
   const { t } = useI18n();
   const contentRef = useRef<HTMLDivElement>(null);
@@ -178,76 +109,27 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   const [contentReady, setContentReady] = useState(!enableAnimations);
   
-  // Brewlia AI 注释状态
+  // Brewlia AI 功能标识
   const isBrewlia = sourceType === 'brewlia';
-  const [annotations, setAnnotations] = useState<AnnotationItem[]>([]);
-  const [annotationsLoading, setAnnotationsLoading] = useState(false);
-  const [annotationsError, setAnnotationsError] = useState<string | null>(null);
-  const [showAnnotations, setShowAnnotations] = useState(false);
-  const [selectedAnnotation, setSelectedAnnotation] = useState<AnnotationItem | null>(null);
-  const [showBrewliaPanel, setShowBrewliaPanel] = useState(false); // 左侧控制面板
-  const [hoveredAnnotation, setHoveredAnnotation] = useState<AnnotationItem | null>(null); // hover 的注释
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 }); // tooltip 位置
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // hover 防抖
-  const annotationsLoadingRef = useRef(false); // 请求锁，防止 StrictMode 双重请求
-  const commentsLoadingRef = useRef(false); // 评论请求锁
   
-  // Brewlia AI 播客状态
-  const [podcastDialogues, setPodcastDialogues] = useState<PodcastDialogue[]>([]);
-  const [podcastLoading, setPodcastLoading] = useState(false);
-  const [podcastError, setPodcastError] = useState<string | null>(null);
-  const [showPodcastPlayer, setShowPodcastPlayer] = useState(false);
-  const [podcastState, setPodcastState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
-  const [podcastCurrentIndex, setPodcastCurrentIndex] = useState(0);
-  const [podcastLanguage, setPodcastLanguage] = useState<string>('zh-CN');
-  const podcastPlayerRef = useRef<PodcastPlayer | null>(null);
+  // 阅读设置 - 使用自定义 hook
+  const {
+    fontSize,
+    lineHeight,
+    fontFamily,
+    theme,
+    layout,
+    currentTheme,
+    currentFont,
+    currentLayout,
+    isDark,
+    adjustFontSize,
+    adjustLineHeight,
+    cycleTheme,
+    cycleFont,
+    cycleLayout,
+  } = useReaderSettings();
   
-  // TTS 引擎设置
-  const [ttsEngine, setTtsEngine] = useState<TTSEngine>(() => getTTSSettings().engine);
-  const [cloudTtsAvailable, setCloudTtsAvailable] = useState<boolean | null>(null); // null = 未检测
-  const cloudPodcastPlayerRef = useRef<CloudPodcastPlayer | null>(null);
-  const [cloudTtsLoading, setCloudTtsLoading] = useState(false); // 云端TTS加载状态
-  const [cloudTtsLoadProgress, setCloudTtsLoadProgress] = useState({ loaded: 0, total: 0 });
-  
-  // TTS 音色设置
-  const [voiceList, setVoiceList] = useState<VoiceInfo[]>([]);
-  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
-  const [hostVoiceId, setHostVoiceId] = useState<number | undefined>(() => getTTSSettings().hostVoiceId);
-  const [guestVoiceId, setGuestVoiceId] = useState<number | undefined>(() => getTTSSettings().guestVoiceId);
-  
-  // 文章缓存管理
-  const [articleCache, setArticleCache] = useState<ArticleCacheResponse | null>(null);
-  const [articleCacheLoading, setArticleCacheLoading] = useState(false);
-  const [clearingVoiceId, setClearingVoiceId] = useState<number | null>(null);
-  
-  // 用户评论（批注）状态
-  const [comments, setComments] = useState<CommentItem[]>([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [hasComments, setHasComments] = useState(false);
-  const [showCommentPopup, setShowCommentPopup] = useState(false);
-  const [commentPopupPosition, setCommentPopupPosition] = useState({ x: 0, y: 0 });
-  const [selectedText, setSelectedText] = useState('');
-  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number; contextBefore: string; contextAfter: string } | null>(null);
-  const [commentInput, setCommentInput] = useState('');
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
-  const [showCommentsPanel, setShowCommentsPanel] = useState(false);
-  // 回复状态
-  const [replyingTo, setReplyingTo] = useState<CommentItem | null>(null);
-  const [replyInput, setReplyInput] = useState('');
-  const [replySubmitting, setReplySubmitting] = useState(false);
-  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
-  const [commentReplies, setCommentReplies] = useState<Record<number, CommentItem[]>>({});
-  // 评论 tooltip 状态
-  const [commentTooltip, setCommentTooltip] = useState<{ comment: CommentItem; x: number; y: number } | null>(null);
-  
-  // 阅读设置状态 - 默认使用衬线字体
-  const storedSettings = getStoredSettings();
-  const [fontSize, setFontSize] = useState(storedSettings?.fontSize ?? 18);
-  const [lineHeight, setLineHeight] = useState(storedSettings?.lineHeight ?? 1.8);
-  const [fontFamily, setFontFamily] = useState(storedSettings?.fontFamily ?? 'serif');
-  // 主题优先跟随系统外观，不使用本地存储
-  const [theme, setTheme] = useState<ThemeKey>('light'); // 初始值，会被 useEffect 覆盖
-  const [layout, setLayout] = useState<LayoutKey>(storedSettings?.layout ?? 'narrow');
   const [readingProgress, setReadingProgress] = useState(0);
   const [showToast, setShowToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Toast 定时器，防止泄漏
@@ -267,14 +149,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
 
-  // 获取当前主题配置 - useMemo 缓存
-  const currentTheme = useMemo(() => THEMES[theme], [theme]);
-  const currentFont = useMemo(() => FONT_OPTIONS.find(f => f.id === fontFamily) || FONT_OPTIONS[0], [fontFamily]);
-  const currentLayout = useMemo(() => LAYOUT_OPTIONS.find(l => l.id === layout) || LAYOUT_OPTIONS[0], [layout]);
-  
-  // 判断是否为暗色主题 - useMemo 缓存
-  const isDark = useMemo(() => theme === 'dark' || theme === 'night', [theme]);
-  
   // 统一的 Toast 显示函数，自动管理定时器防止泄漏
   const showToastMessage = useCallback((message: string, duration = 2000) => {
     // 清除之前的定时器
@@ -297,79 +171,127 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     };
   }, []);
   
+  // Brewlia AI 注释 - 使用自定义 hook
+  const {
+    annotations,
+    annotationsLoading,
+    annotationsError,
+    showAnnotations,
+    selectedAnnotation,
+    showBrewliaPanel,
+    hoveredAnnotation,
+    tooltipPosition,
+    setShowAnnotations,
+    setSelectedAnnotation,
+    setShowBrewliaPanel,
+    setHoveredAnnotation,
+    setTooltipPosition,
+    loadAnnotations,
+    regenerateAnnotations,
+    toggleAnnotations,
+    scrollToAnnotation,
+    hoverTimeoutRef,
+  } = useAnnotations({
+    itemId: item.id,
+    isBrewlia,
+    showToastMessage,
+    t,
+  });
+  
+  // 用户评论 - 使用自定义 hook
+  const {
+    comments,
+    commentsLoading,
+    hasComments,
+    showCommentPopup,
+    commentPopupPosition,
+    selectedText,
+    selectionRange,
+    commentInput,
+    commentSubmitting,
+    showCommentsPanel,
+    replyingTo,
+    replyInput,
+    replySubmitting,
+    expandedComments,
+    commentReplies,
+    commentTooltip,
+    setComments,
+    setShowCommentPopup,
+    setCommentPopupPosition,
+    setSelectedText,
+    setSelectionRange,
+    setCommentInput,
+    setShowCommentsPanel,
+    setReplyingTo,
+    setReplyInput,
+    setCommentTooltip,
+    loadComments,
+    submitComment,
+    deleteComment,
+    toggleReplies,
+    submitReply,
+    highlightComments,
+    commentsLoadingRef,
+  } = useComments({
+    itemId: item.id,
+    isAuthenticated,
+    showToastMessage,
+    t,
+  });
+  
+  // Brewlia AI 播客 - 使用自定义 hook
+  const {
+    podcastDialogues,
+    podcastLoading,
+    podcastError,
+    showPodcastPlayer,
+    podcastState,
+    podcastCurrentIndex,
+    ttsEngine,
+    cloudTtsAvailable,
+    cloudTtsError,
+    cloudTtsLoading,
+    cloudTtsLoadProgress,
+    voiceList,
+    showVoiceSettings,
+    hostVoiceId,
+    guestVoiceId,
+    articleCache,
+    articleCacheLoading,
+    clearingVoiceId,
+    groupedVoices,
+    setShowPodcastPlayer,
+    setShowVoiceSettings,
+    loadPodcast,
+    regeneratePodcast,
+    handleTtsEngineChange,
+    handleVoiceChange,
+    handleOpenSettings,
+    handleSwitchToVoice,
+    handleClearVoiceCache,
+    reloadCloudTTS,
+    handlePodcastPlay,
+    handlePodcastPause,
+    handlePodcastStop,
+    handlePodcastPrev,
+    handlePodcastNext,
+    handlePodcastSeek,
+    podcastListRef,
+  } = usePodcast({
+    itemId: item.id,
+    sourceId: item.source_id,
+    isBrewlia,
+    showToastMessage,
+    t,
+  });
+  
   // 侧边栏按钮样式 - useMemo 缓存
   const sideButtonClass = useMemo(() => 
     `p-2.5 rounded-xl transition-all duration-200 ${currentTheme.secondary} hover:${currentTheme.text} ${
       isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'
     }`,
   [currentTheme.secondary, currentTheme.text, isDark]);
-
-  // 用户评论高亮函数 - 适配主题（豁免嵌入卡片）
-  const highlightComments = useCallback((html: string, commentList: CommentItem[]): string => {
-    if (!commentList.length) return html;
-
-    // 1. 先提取并保存所有需要豁免的嵌入卡片
-    const exemptElements: { placeholder: string; content: string }[] = [];
-    let result = html;
-
-    // 匹配所有带有 data-embed-exempt="true" 的元素
-    const exemptRegex = /<[^>]*data-embed-exempt="true"[^>]*>[\s\S]*?<\/[^>]+>/gi;
-    result = result.replace(exemptRegex, (match) => {
-      const placeholder = `___EXEMPT_EMBED_${exemptElements.length}___`;
-      exemptElements.push({ placeholder, content: match });
-      return placeholder;
-    });
-
-    // 2. 按照 selected_text 长度降序排序，先处理长文本避免被短文本打断
-    const sortedComments = [...commentList].sort((a, b) => b.selected_text.length - a.selected_text.length);
-
-    // 根据主题选择默认高亮颜色
-    const defaultColors: Record<ThemeKey, string> = {
-      light: '#fef08a',   // 浅黄色
-      sepia: '#f5d78e',   // 琥珀色
-      dark: '#854d0e',    // 深琥珀色
-      night: '#1e3a5f',   // 深蓝色
-    };
-    const defaultColor = defaultColors[theme] || '#fef08a';
-
-    // 根据主题选择边框颜色
-    const borderColors: Record<ThemeKey, string> = {
-      light: '#eab308',   // 黄色
-      sepia: '#ca8a04',   // 琥珀色
-      dark: '#fbbf24',    // 亮琥珀色
-      night: '#3b82f6',   // 蓝色
-    };
-    const borderColor = borderColors[theme] || '#eab308';
-
-    // 安全：验证颜色格式，防止 CSS 注入
-    const isValidColor = (color: string): boolean => {
-      return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(color);
-    };
-
-    // 3. 对非豁免内容进行高亮处理
-    for (const comment of sortedComments) {
-      // 跳过没有选中文本的回复
-      if (!comment.selected_text) continue;
-
-      const escapedText = comment.selected_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(?<!<[^>]*)${escapedText}(?![^<]*>)`, 'g');
-
-      // 使用安全的颜色值
-      const bgColor = (comment.color && isValidColor(comment.color)) ? comment.color : defaultColor;
-      const underlineColor = (comment.color && isValidColor(comment.color)) ? comment.color : borderColor;
-
-      result = result.replace(regex, (match) =>
-        `<mark class="user-comment-highlight" data-comment-id="${comment.id}" style="background-color: ${bgColor}40; cursor: pointer; border-radius: 2px; padding: 0 2px; border-bottom: 2px solid ${underlineColor};">${match}</mark>`
-      );
-    }
-
-    // 4. 还原豁免的嵌入卡片
-    for (const { placeholder, content } of exemptElements) {
-      result = result.replace(placeholder, content);
-    }
-
-    return result;
-  }, [theme]);
 
   // 处理文章内容（带注释、评论高亮和嵌入内容）
   // WebKit 优化：使用状态 + useEffect 异步处理，避免阻塞首次渲染
@@ -400,11 +322,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     
     // 3. 处理用户评论高亮
     if (comments.length > 0) {
-      content = highlightComments(content, comments);
+      content = highlightComments(content, comments, theme);
     }
     
     setProcessedContent(content);
-  }, [contentReady, item.content, item.summary, item.link, showAnnotations, annotations, comments, highlightComments, isDark, t.brew.noContent]);
+  }, [contentReady, item.content, item.summary, item.link, showAnnotations, annotations, comments, highlightComments, isDark, theme, t.brew.noContent]);
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   // 这避免了同时执行动画 + 大量 DOM 渲染导致的卡顿
@@ -434,18 +356,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     };
   }, [setImmersiveMode]);
 
-  // 保存设置（主题不保存，每次跟随系统）
-  useEffect(() => {
-    saveSettings({ fontSize, lineHeight, fontFamily, layout });
-  }, [fontSize, lineHeight, fontFamily, layout]);
-
-  // 监听应用主题变化，并在初始化时设置
-  useEffect(() => {
-    return subscribeToTheme((isDark) => {
-      setTheme(isDark ? 'dark' : 'light');
-    });
-  }, []);
-
   // 格式化日期 - useMemo 缓存
   const formattedDate = useMemo(() => {
     if (!item.published_at) return '';
@@ -472,12 +382,35 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       images.forEach((img) => {
         // 跳过嵌入卡片内的图片（它们有自己的样式）
         if (img.closest('.brew-embed-card')) {
-          img.loading = 'lazy';
           return;
         }
 
-        img.loading = 'lazy';
-        img.classList.add('rounded-xl', 'max-w-full', 'h-auto', 'my-6', 'mx-auto', 'block');
+        // 跳过已处理的图片
+        if (img.dataset.sizeProcessed) return;
+        img.dataset.sizeProcessed = 'true';
+        
+        // 添加基础样式
+        img.classList.add('rounded-xl', 'h-auto', 'my-4', 'mx-auto', 'block');
+        
+        // 检测正方形图片并限制宽度
+        const handleImageLoad = () => {
+          const ratio = img.naturalWidth / img.naturalHeight;
+          const isSquare = ratio >= 0.8 && ratio <= 1.25;
+          const isSmall = img.naturalWidth <= 200 && img.naturalHeight <= 200;
+          
+          if (isSquare || isSmall) {
+            // 正方形或小图限制宽度到 35%
+            img.style.maxWidth = '35%';
+          } else {
+            img.style.maxWidth = '100%';
+          }
+        };
+        
+        if (img.complete && img.naturalWidth > 0) {
+          handleImageLoad();
+        } else {
+          img.addEventListener('load', handleImageLoad, { once: true });
+        }
       });
 
       const links = contentRef.current.querySelectorAll('a');
@@ -486,9 +419,43 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         link.rel = 'noopener noreferrer';
       });
 
+      // 处理代码块：添加样式和复制按钮
       const codeBlocks = contentRef.current.querySelectorAll('pre');
       codeBlocks.forEach((pre) => {
-        pre.classList.add('rounded-xl', 'p-4', 'overflow-x-auto', 'text-sm', 'my-4');
+        // 跳过已处理的代码块
+        if (pre.parentElement?.classList.contains('code-block-wrapper')) return;
+        
+        // 创建包装容器
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block-wrapper relative group my-5';
+        
+        // 将 pre 移入 wrapper
+        pre.parentNode?.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+        
+        // 添加复制按钮 - 代码块背景始终是深色的，所以按钮用浅色样式
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm';
+        copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`;
+        copyBtn.title = '复制代码';
+        
+        copyBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const code = pre.textContent || '';
+          try {
+            await navigator.clipboard.writeText(code);
+            // 显示成功状态
+            copyBtn.innerHTML = `<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
+            setTimeout(() => {
+              copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`;
+            }, 2000);
+          } catch (err) {
+            console.error('复制失败:', err);
+          }
+        });
+        
+        wrapper.appendChild(copyBtn);
       });
 
       // 解析标题生成目录
@@ -692,40 +659,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
   };
 
-  // 字体大小调整 - useCallback 缓存
-  const adjustFontSize = useCallback((delta: number) => {
-    setFontSize((prev: number) => Math.max(14, Math.min(28, prev + delta)));
-  }, []);
-
-  // 行高调整 - useCallback 缓存
-  const adjustLineHeight = useCallback((delta: number) => {
-    setLineHeight((prev: number) => Math.max(1.4, Math.min(2.4, +(prev + delta).toFixed(1))));
-  }, []);
-
-  // 切换主题 - useCallback 缓存
-  const cycleTheme = useCallback(() => {
-    setTheme(prev => {
-      const currentIndex = THEME_ORDER.indexOf(prev);
-      return THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length];
-    });
-  }, []);
-
-  // 切换字体 - useCallback 缓存
-  const cycleFont = useCallback(() => {
-    setFontFamily((prev: string) => {
-      const currentIndex = FONT_OPTIONS.findIndex(f => f.id === prev);
-      return FONT_OPTIONS[(currentIndex + 1) % FONT_OPTIONS.length].id;
-    });
-  }, []);
-
-  // 切换布局宽度 - useCallback 缓存
-  const cycleLayout = useCallback(() => {
-    setLayout(prev => {
-      const currentIndex = LAYOUT_OPTIONS.findIndex(l => l.id === prev);
-      return LAYOUT_OPTIONS[(currentIndex + 1) % LAYOUT_OPTIONS.length].id;
-    });
-  }, []);
-
   // 跳转到指定标题 - useCallback 缓存
   const scrollToHeading = useCallback((id: string) => {
     const heading = document.getElementById(id);
@@ -813,43 +746,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Brewlia AI 注释功能
-  const loadAnnotations = useCallback(async () => {
-    // 使用 ref 作为请求锁，防止 StrictMode 双重请求
-    if (!isBrewlia || annotationsLoadingRef.current) return;
-    
-    // 如果已有注释，直接显示
-    if (annotations.length > 0) {
-      setShowAnnotations(true);
-      return;
-    }
-    
-    annotationsLoadingRef.current = true;
-    setAnnotationsLoading(true);
-    setAnnotationsError(null);
-    
-    try {
-      // 使用新 API，通过 item.id 获取注释
-      const response = await brewliaApi.getAnnotations(item.id);
-      
-      if (response.success) {
-        setAnnotations(response.annotations);
-        // 默认显示注释
-        setShowAnnotations(true);
-        const cacheHint = response.from_cache ? t.brew.fromCache : '';
-        showToastMessage(`${t.brew.foundAnnotations.replace('{count}', String(response.annotations.length))}${cacheHint}`);
-      } else {
-        setAnnotationsError(response.error || t.brew.fetchAnnotationFailed);
-      }
-    } catch (err) {
-      console.error('Failed to load annotations:', err);
-      setAnnotationsError(err instanceof Error ? err.message : t.brew.fetchAnnotationFailed);
-    } finally {
-      setAnnotationsLoading(false);
-      annotationsLoadingRef.current = false;
-    }
-  }, [isBrewlia, annotations.length, item.id, showToastMessage]);
-
   // Brewlia 订阅自动加载注释
   useEffect(() => {
     if (isBrewlia && annotations.length === 0 && !annotationsLoading) {
@@ -861,27 +757,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
   }, [isBrewlia]); // 只在初始化时触发一次
 
-  // 加载用户评论
-  const loadComments = useCallback(async () => {
-    // 使用 ref 作为请求锁，防止 StrictMode 双重请求
-    if (!isAuthenticated || commentsLoadingRef.current) return;
-    
-    commentsLoadingRef.current = true;
-    setCommentsLoading(true);
-    try {
-      const response = await brewApi.getComments(item.id);
-      if (response.success && response.comments) {
-        setComments(response.comments);
-        setHasComments(response.comments.length > 0);
-      }
-    } catch (err) {
-      console.error('Failed to load comments:', err);
-    } finally {
-      setCommentsLoading(false);
-      commentsLoadingRef.current = false;
-    }
-  }, [isAuthenticated, item.id]);
-
   // 登录用户自动加载评论
   useEffect(() => {
     if (isAuthenticated && comments.length === 0 && !commentsLoading) {
@@ -891,132 +766,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated]); // 只在初始化时触发一次
-
-  // 提交评论
-  const submitComment = useCallback(async () => {
-    if (!isAuthenticated || !selectedText || !commentInput.trim() || commentSubmitting) return;
-    
-    setCommentSubmitting(true);
-    try {
-      const request: CreateCommentRequest = {
-        selected_text: selectedText,
-        comment: commentInput.trim(),
-        start_offset: selectionRange?.start ?? 0,
-        end_offset: selectionRange?.end ?? 0,
-        context_before: selectionRange?.contextBefore ?? '',
-        context_after: selectionRange?.contextAfter ?? '',
-        color: '#fef08a', // 默认黄色高亮
-        is_public: false,
-      };
-      
-      const response = await brewApi.createComment(item.id, request);
-      if (response.success && response.comment) {
-        setComments(prev => [...prev, response.comment!]);
-        setHasComments(true);
-        showToastMessage(t.brew.commentAdded);
-        
-        // 清理状态
-        setShowCommentPopup(false);
-        setSelectedText('');
-        setSelectionRange(null);
-        setCommentInput('');
-      }
-    } catch (err) {
-      console.error('Failed to submit comment:', err);
-      showToastMessage(t.brew.addCommentFailed);
-    } finally {
-      setCommentSubmitting(false);
-    }
-  }, [isAuthenticated, selectedText, commentInput, commentSubmitting, selectionRange, item.id, showToastMessage]);
-
-  // 删除评论
-  const deleteComment = useCallback(async (commentId: number) => {
-    try {
-      const response = await brewApi.deleteComment(commentId);
-      if (response.success) {
-        setComments(prev => prev.filter(c => c.id !== commentId));
-        setHasComments(comments.length > 1);
-        showToastMessage(t.brew.commentDeleted);
-      }
-    } catch (err) {
-      console.error('Failed to delete comment:', err);
-    }
-  }, [comments.length, showToastMessage]);
-
-  // 加载评论的回复
-  const loadReplies = useCallback(async (commentId: number) => {
-    try {
-      const response = await brewApi.getCommentReplies(commentId);
-      if (response.success) {
-        setCommentReplies(prev => ({
-          ...prev,
-          [commentId]: response.replies
-        }));
-      }
-    } catch (err) {
-      console.error('Failed to load replies:', err);
-    }
-  }, []);
-
-  // 展开/收起回复
-  const toggleReplies = useCallback(async (commentId: number) => {
-    const isExpanded = expandedComments.has(commentId);
-    if (isExpanded) {
-      setExpandedComments(prev => {
-        const next = new Set(prev);
-        next.delete(commentId);
-        return next;
-      });
-    } else {
-      setExpandedComments(prev => new Set(prev).add(commentId));
-      // 加载回复
-      if (!commentReplies[commentId]) {
-        await loadReplies(commentId);
-      }
-    }
-  }, [expandedComments, commentReplies, loadReplies]);
-
-  // 提交回复
-  const submitReply = useCallback(async () => {
-    if (!isAuthenticated || !replyingTo || !replyInput.trim() || replySubmitting) return;
-    
-    setReplySubmitting(true);
-    try {
-      // 确定顶级评论的 id（如果回复的是子评论，需要找到其顶级父评论）
-      const topLevelCommentId = replyingTo.parent_id || replyingTo.id;
-      
-      // 使用顶级评论 id 作为 parent_id，让所有回复都扁平化挂在同一个顶级评论下
-      const response = await brewApi.createReply(item.id, topLevelCommentId, replyInput.trim());
-      
-      if (response.success && response.comment) {
-        // 添加到顶级评论的回复列表
-        setCommentReplies(prev => ({
-          ...prev,
-          [topLevelCommentId]: [...(prev[topLevelCommentId] || []), response.comment]
-        }));
-        // 更新顶级评论的回复数量
-        setComments(prev => prev.map(c => 
-          c.id === topLevelCommentId 
-            ? { ...c, reply_count: (c.reply_count || 0) + 1 }
-            : c
-        ));
-        // 展开回复
-        setExpandedComments(prev => new Set(prev).add(topLevelCommentId));
-        
-        showToastMessage(t.brew.replyAdded);
-        setReplyingTo(null);
-        setReplyInput('');
-      } else {
-        console.error('[Reply] Failed:', response.error);
-        showToastMessage(response.error || t.brew.addReplyFailed);
-      }
-    } catch (err) {
-      console.error('Failed to submit reply:', err);
-      showToastMessage(t.brew.addReplyFailed);
-    } finally {
-      setReplySubmitting(false);
-    }
-  }, [isAuthenticated, replyingTo, replyInput, replySubmitting, item.id, showToastMessage]);
 
   // 处理文本选择
   const handleTextSelection = useCallback(() => {
@@ -1130,729 +879,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showCommentPopup]);
 
-  // 重新生成注释
-  const regenerateAnnotations = useCallback(async () => {
-    if (!isBrewlia || annotationsLoading) return;
-    
-    setAnnotationsLoading(true);
-    setAnnotationsError(null);
-    
-    try {
-      const response = await brewliaApi.regenerateAnnotations(item.id);
-      
-      if (response.success) {
-        setAnnotations(response.annotations);
-        setShowAnnotations(true);
-        showToastMessage(t.brew.regeneratedAnnotations.replace('{count}', String(response.annotations.length)));
-      } else {
-        setAnnotationsError(response.error || t.brew.regenerateFailed);
-      }
-    } catch (err) {
-      console.error('Failed to regenerate annotations:', err);
-      setAnnotationsError(err instanceof Error ? err.message : t.brew.regenerateFailed);
-    } finally {
-      setAnnotationsLoading(false);
-    }
-  }, [isBrewlia, annotationsLoading, item.id, showToastMessage, t]);
-
-  // ==================== 播客功能 ====================
-  
-  // 云端 TTS 错误信息
-  const [cloudTtsError, setCloudTtsError] = useState<string | null>(null);
-  
-  // 检测云端 TTS 是否可用 & 获取音色列表
-  useEffect(() => {
-    if (!isBrewlia) return;
-    
-    getSpeechStatus()
-      .then(status => {
-        setCloudTtsAvailable(status.available && status.tts_enabled);
-        if (!status.available || !status.tts_enabled) {
-          setCloudTtsError(status.error || t.brew.cloudTtsUnavailableError);
-        }
-      })
-      .catch((err) => {
-        console.error('[TTS] Failed to get speech status:', err);
-        setCloudTtsAvailable(false);
-        setCloudTtsError(err instanceof Error ? err.message : t.brew.cannotConnectVoiceService);
-      });
-    
-    // 获取音色列表
-    getVoiceList()
-      .then(response => {
-        setVoiceList(response.voices);
-      })
-      .catch((err) => {
-        console.error('[TTS] Failed to get voice list:', err);
-      });
-  }, [isBrewlia, t]);
-  
-  // 初始化系统播客播放器
-  useEffect(() => {
-    if (!isBrewlia) return;
-    
-    const player = new PodcastPlayer();
-    player.setCallbacks({
-      onProgress: (index, total) => {
-        setPodcastCurrentIndex(index);
-      },
-      onEnd: () => {
-        setPodcastState('stopped');
-        setPodcastCurrentIndex(0);
-      },
-      onStateChange: (state) => {
-        setPodcastState(state);
-      },
-    });
-    podcastPlayerRef.current = player;
-    
-    return () => {
-      player.destroy();
-      podcastPlayerRef.current = null;
-    };
-  }, [isBrewlia]);
-
-  // 初始化云端播客播放器
-  useEffect(() => {
-    if (!isBrewlia) return;
-    
-    const player = new CloudPodcastPlayer();
-    player.setOnProgress((index, total) => {
-      setPodcastCurrentIndex(index);
-    });
-    player.setOnEnd(() => {
-      setPodcastState('stopped');
-      setPodcastCurrentIndex(0);
-    });
-    player.setOnLoadProgress((loaded, total) => {
-      setCloudTtsLoadProgress({ loaded, total });
-    });
-    cloudPodcastPlayerRef.current = player;
-    
-    return () => {
-      player.destroy();
-      cloudPodcastPlayerRef.current = null;
-    };
-  }, [isBrewlia]);
-
-  // 切换 TTS 引擎
-  const handleTtsEngineChange = useCallback(async (engine: TTSEngine) => {
-    // 如果切换到相同引擎，忽略
-    if (engine === ttsEngine) return;
-    
-    // 停止当前播放
-    if (podcastState !== 'stopped') {
-      podcastPlayerRef.current?.stop();
-      cloudPodcastPlayerRef.current?.stop();
-      setPodcastState('stopped');
-      setPodcastCurrentIndex(0);
-    }
-    
-    setTtsEngine(engine);
-    saveTTSSettings({ engine });
-    
-    // 如果已经有播客对话，需要重新加载对应引擎的音频
-    if (podcastDialogues.length > 0) {
-      if (engine === 'cloud') {
-        // 检查云端TTS状态
-        if (cloudTtsAvailable === null) {
-          // 还在检测中，先尝试获取状态
-          setShowToast(t.brew.checkingCloudTts);
-          try {
-            const status = await getSpeechStatus();
-            if (!status.available || !status.tts_enabled) {
-              setCloudTtsAvailable(false);
-              setCloudTtsError(status.error || t.brew.cloudTtsUnavailable);
-              const errorMsg = status.error || t.brew.cloudTtsUnavailableCheck;
-              console.error('[TTS] Cloud TTS unavailable:', errorMsg);
-              showToastMessage(errorMsg, 5000);
-              setTtsEngine('system');
-              saveTTSSettings({ engine: 'system' });
-              return;
-            }
-            setCloudTtsAvailable(true);
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : t.brew.cannotConnectSpeech;
-            console.error('[TTS] Failed to get speech status:', errMsg, err);
-            setCloudTtsAvailable(false);
-            setCloudTtsError(errMsg);
-            showToastMessage(`${t.brew.cloudTtsUnavailable}: ${errMsg}`, 5000);
-            setTtsEngine('system');
-            saveTTSSettings({ engine: 'system' });
-            return;
-          }
-        } else if (!cloudTtsAvailable) {
-          // 已知不可用
-          const errorMsg = cloudTtsError || t.brew.cloudTtsUnavailableCheck;
-          console.error('[TTS] Cloud TTS unavailable (cached):', errorMsg);
-          showToastMessage(errorMsg, 5000);
-          setTtsEngine('system');
-          saveTTSSettings({ engine: 'system' });
-          return;
-        }
-        
-        // 切换到云端 TTS - 优先使用缓存，没有缓存则回退到系统TTS
-        if (cloudPodcastPlayerRef.current?.hasAudio()) {
-          // 已有音频在播放器中，直接使用
-          setShowToast(t.brew.switchedToCloudTts);
-        } else {
-          // 没有加载音频，检查是否有完整的缓存
-          setShowToast(t.brew.checkingCloudCache);
-          try {
-            const cache = await getArticleCacheInfo(item.source_id, item.id);
-            // 检查完整缓存（支持单音色和双音色场景）
-            const completeCache = findCompleteCacheVoices(cache, podcastDialogues.length);
-            
-            if (completeCache) {
-              // 有完整缓存，更新音色设置并标记为云端模式
-              // 但不立即加载，等用户点击播放时才加载（此时会命中缓存）
-              setHostVoiceId(completeCache.hostVoiceId);
-              setGuestVoiceId(completeCache.guestVoiceId);
-              saveTTSSettings({ hostVoiceId: completeCache.hostVoiceId, guestVoiceId: completeCache.guestVoiceId });
-              setShowToast(`${t.brew.switchedToCloudTts}（${t.brew.cached}: ${completeCache.voiceName}）`);
-              // 不调用 load，等点击播放时才加载
-            } else {
-              // 没有完整缓存，回退到系统TTS
-              setTtsEngine('system');
-              saveTTSSettings({ engine: 'system' });
-              if (podcastPlayerRef.current) {
-                podcastPlayerRef.current.load(podcastDialogues, podcastLanguage);
-                const voices = await PodcastPlayer.getAvailableVoices();
-                const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, podcastLanguage);
-                if (voiceA && voiceB) {
-                  podcastPlayerRef.current.setVoices(voiceA, voiceB);
-                }
-              }
-              if (cache.voices.length > 0) {
-                setShowToast(t.brew.cloudCacheIncomplete);
-              } else {
-                setShowToast(t.brew.noCloudCache);
-              }
-            }
-          } catch (err) {
-            console.error('[TTS] Failed to check cache:', err);
-            // 检查缓存失败，回退到系统TTS
-            setTtsEngine('system');
-            saveTTSSettings({ engine: 'system' });
-            if (podcastPlayerRef.current) {
-              podcastPlayerRef.current.load(podcastDialogues, podcastLanguage);
-              const voices = await PodcastPlayer.getAvailableVoices();
-              const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, podcastLanguage);
-              if (voiceA && voiceB) {
-                podcastPlayerRef.current.setVoices(voiceA, voiceB);
-              }
-            }
-            setShowToast(t.brew.checkCacheFailed);
-          }
-        }
-      } else {
-        // 切换到系统 TTS - 确保系统播放器已加载
-        if (podcastPlayerRef.current) {
-          podcastPlayerRef.current.load(podcastDialogues, podcastLanguage);
-          const voices = await PodcastPlayer.getAvailableVoices();
-          const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, podcastLanguage);
-          if (voiceA && voiceB) {
-            podcastPlayerRef.current.setVoices(voiceA, voiceB);
-          }
-        }
-        showToastMessage(t.brew.switchedToSystemTts);
-      }
-    } else {
-      showToastMessage(engine === 'cloud' ? t.brew.switchedToCloudTts : t.brew.switchedToSystemTts);
-    }
-  }, [podcastState, ttsEngine, podcastDialogues, podcastLanguage, cloudTtsAvailable, showToastMessage]);
-
-  // 音色选择处理 - 只保存设置，不自动加载
-  // 用户可以为不同文章设置不同音色，手动点击"重新加载 TTS"时才生成
-  const handleVoiceChange = useCallback((role: 'host' | 'guest', voiceId: number) => {
-    const newVoiceId = voiceId === 0 ? undefined : voiceId;
-    
-    if (role === 'host') {
-      setHostVoiceId(newVoiceId);
-      saveTTSSettings({ hostVoiceId: newVoiceId });
-    } else {
-      setGuestVoiceId(newVoiceId);
-      saveTTSSettings({ guestVoiceId: newVoiceId });
-    }
-    
-    showToastMessage(t.brew.voiceSettingSaved);
-  }, [showToastMessage]);
-
-  // 加载文章缓存信息
-  const loadArticleCache = useCallback(async () => {
-    if (articleCacheLoading) return;
-    setArticleCacheLoading(true);
-    try {
-      const cache = await getArticleCacheInfo(item.source_id, item.id);
-      setArticleCache(cache);
-    } catch (error) {
-      console.error('[ArticleCache] Failed to load:', error);
-    } finally {
-      setArticleCacheLoading(false);
-    }
-  }, [item.source_id, item.id, articleCacheLoading]);
-
-  // 切换使用已缓存的音色
-  const handleSwitchToVoice = useCallback(async (voiceId: number, role: string) => {
-    // 设置对应角色的音色
-    if (role === 'host') {
-      setHostVoiceId(voiceId);
-      saveTTSSettings({ hostVoiceId: voiceId });
-    } else if (role === 'guest') {
-      setGuestVoiceId(voiceId);
-      saveTTSSettings({ guestVoiceId: voiceId });
-    }
-    
-    // 关闭设置面板
-    setShowVoiceSettings(false);
-    
-    // 检查该音色的缓存是否完整
-    const voiceCache = articleCache?.voices.find(v => v.voice_id === voiceId);
-    const voiceName = voiceCache?.voice_name || voiceId.toString();
-    
-    if (!voiceCache || voiceCache.file_count < podcastDialogues.length) {
-      // 缓存不完整，只更新设置，不加载
-      showToastMessage(`${voiceName} ${t.brew.reload}`);
-      return;
-    }
-    
-    // 缓存完整，加载（会命中缓存）
-    if (podcastDialogues.length > 0 && cloudPodcastPlayerRef.current) {
-      cloudPodcastPlayerRef.current.stop();
-      setPodcastState('stopped');
-      setPodcastCurrentIndex(0);
-      
-      setCloudTtsLoading(true);
-      showToastMessage(`${voiceName}...`);
-      
-      try {
-        // 获取新的音色设置
-        const newHostVoiceId = role === 'host' ? voiceId : hostVoiceId;
-        const newGuestVoiceId = role === 'guest' ? voiceId : guestVoiceId;
-        
-        const result = await cloudPodcastPlayerRef.current.load(
-          podcastDialogues,
-          { sourceId: item.source_id, articleId: item.id, hostVoiceId: newHostVoiceId, guestVoiceId: newGuestVoiceId }
-        );
-        
-        if (result) {
-          if (result.cacheHits === result.total) {
-            showToastMessage(`${voiceName}（${t.brew.cached}）`);
-          } else {
-            // 缓存不完整（理论上不应该发生，因为上面已经检查过了）
-            showToastMessage(`${voiceName} (${result.cacheHits}/${result.generated})`);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to switch voice:', err);
-        showToastMessage(t.brew.switchFailed);
-      } finally {
-        setCloudTtsLoading(false);
-      }
-    } else {
-      showToastMessage(`${voiceName}`);
-    }
-  }, [podcastDialogues, item.source_id, item.id, hostVoiceId, guestVoiceId, articleCache, showToastMessage]);
-
-  // 清除特定音色缓存
-  const handleClearVoiceCache = useCallback(async (voiceId: number) => {
-    if (clearingVoiceId !== null) return;
-    setClearingVoiceId(voiceId);
-    try {
-      const result = await clearArticleVoiceCache(item.source_id, item.id, voiceId);
-      if (result.success) {
-        const voiceName = articleCache?.voices.find(v => v.voice_id === voiceId)?.voice_name || voiceId.toString();
-        showToastMessage(`${voiceName}`);
-        // 重新加载文章缓存
-        await loadArticleCache();
-      }
-    } catch (error) {
-      console.error('[ArticleCache] Failed to clear voice cache:', error);
-      showToastMessage(t.brew.clearFailed);
-    } finally {
-      setClearingVoiceId(null);
-    }
-  }, [item.source_id, item.id, clearingVoiceId, articleCache, loadArticleCache, showToastMessage]);
-
-  // 打开设置面板时加载文章缓存
-  const handleOpenSettings = useCallback(() => {
-    setShowVoiceSettings(!showVoiceSettings);
-    if (!showVoiceSettings && ttsEngine === 'cloud') {
-      loadArticleCache();
-    }
-  }, [showVoiceSettings, ttsEngine, loadArticleCache]);
-
-  // 获取分组后的音色列表（按性别预分组，避免渲染时重复 filter）
-  // 创建音色 ID -> 名称的映射，避免渲染时重复 .find()
-  const voiceNameById = useMemo(() => {
-    const map = new Map<number, string>();
-    voiceList.forEach(v => map.set(v.id, v.name));
-    return map;
-  }, [voiceList]);
-
-  const groupedVoices = useMemo(() => {
-    const ultra: VoiceInfo[] = [];
-    const llm: VoiceInfo[] = [];
-    const premium: VoiceInfo[] = [];
-    
-    voiceList.forEach(voice => {
-      if (voice.voice_type === 'ultra_natural') {
-        ultra.push(voice);
-      } else if (voice.voice_type === 'llm') {
-        llm.push(voice);
-      } else {
-        premium.push(voice);
-      }
-    });
-    
-    // 预分组男女音色，避免在渲染中多次 filter
-    const isMale = (v: VoiceInfo) => v.gender === '男' || v.gender === '男童';
-    const isFemale = (v: VoiceInfo) => v.gender === '女' || v.gender === '女童';
-    
-    return { 
-      ultra, llm, premium,
-      ultraMale: ultra.filter(isMale),
-      ultraFemale: ultra.filter(isFemale),
-      llmMale: llm.filter(isMale),
-      llmFemale: llm.filter(isFemale),
-      premiumMale: premium.filter(v => v.gender === '男'),
-      premiumFemale: premium.filter(v => v.gender === '女'),
-    };
-  }, [voiceList]);
-
-  // 加载播客脚本
-  const loadPodcast = useCallback(async () => {
-    if (!isBrewlia || podcastLoading || cloudTtsLoading) return;
-    
-    setPodcastLoading(true);
-    setPodcastError(null);
-    
-    try {
-      const response = await brewliaApi.getPodcastScript(item.id);
-      
-      if (response.success) {
-        setPodcastDialogues(response.dialogues);
-        setPodcastLanguage(response.language || 'zh-CN');
-        setShowPodcastPlayer(true);
-        
-        // 优先检查云端缓存（无论当前设置是什么引擎）
-        // 有完整缓存就用云端，没有才用系统 TTS
-        if (cloudTtsAvailable) {
-          try {
-            const cache = await getArticleCacheInfo(item.source_id, item.id);
-            // 检查完整缓存（支持单音色和双音色场景）
-            const completeCache = findCompleteCacheVoices(cache, response.dialogues.length);
-            
-            if (completeCache) {
-              // 有完整缓存，切换到云端引擎并加载
-              setTtsEngine('cloud');
-              saveTTSSettings({ engine: 'cloud' });
-              
-              setCloudTtsLoading(true);
-              setCloudTtsLoadProgress({ loaded: 0, total: response.dialogues.length });
-              setShowToast(t.brew.loadingCloudCache);
-              
-              // 使用缓存的音色
-              setHostVoiceId(completeCache.hostVoiceId);
-              setGuestVoiceId(completeCache.guestVoiceId);
-              saveTTSSettings({ hostVoiceId: completeCache.hostVoiceId, guestVoiceId: completeCache.guestVoiceId });
-              
-              const result = await cloudPodcastPlayerRef.current?.load(response.dialogues, { sourceId: item.source_id, articleId: item.id, hostVoiceId: completeCache.hostVoiceId, guestVoiceId: completeCache.guestVoiceId });
-              if (result) {
-                setShowToast(`${t.brew.cached}: ${completeCache.voiceName}`);
-              }
-              setCloudTtsLoading(false);
-            } else {
-              // 没有完整缓存，使用系统 TTS
-              setTtsEngine('system');
-              saveTTSSettings({ engine: 'system' });
-              
-              if (podcastPlayerRef.current) {
-                podcastPlayerRef.current.load(response.dialogues, response.language);
-                const voices = await PodcastPlayer.getAvailableVoices();
-                const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, response.language || 'zh-CN');
-                if (voiceA && voiceB) {
-                  podcastPlayerRef.current.setVoices(voiceA, voiceB);
-                }
-              }
-              if (cache.voices.length > 0) {
-                setShowToast(t.brew.cloudCacheIncomplete);
-              } else {
-                setShowToast(`${response.dialogues.length}`);
-              }
-            }
-          } catch (cacheErr) {
-            console.error('[TTS] Failed to check cache in loadPodcast:', cacheErr);
-            // 检查缓存失败，使用系统 TTS
-            setTtsEngine('system');
-            saveTTSSettings({ engine: 'system' });
-            
-            if (podcastPlayerRef.current) {
-              podcastPlayerRef.current.load(response.dialogues, response.language);
-              const voices = await PodcastPlayer.getAvailableVoices();
-              const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, response.language || 'zh-CN');
-              if (voiceA && voiceB) {
-                podcastPlayerRef.current.setVoices(voiceA, voiceB);
-              }
-            }
-            setShowToast(`${response.dialogues.length}`);
-          }
-        } else {
-          // 云端 TTS 不可用，使用系统 TTS
-          setTtsEngine('system');
-          if (podcastPlayerRef.current) {
-            podcastPlayerRef.current.load(response.dialogues, response.language);
-            
-            // 自动选择语音
-            const voices = await PodcastPlayer.getAvailableVoices();
-            const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, response.language || 'zh-CN');
-            if (voiceA && voiceB) {
-              podcastPlayerRef.current.setVoices(voiceA, voiceB);
-            }
-          }
-          showToastMessage(`${response.dialogues.length}`, 3000);
-        }
-      } else {
-        setPodcastError(response.error || t.brew.generateFailed);
-      }
-    } catch (err) {
-      console.error('Failed to load podcast:', err);
-      setPodcastError(err instanceof Error ? err.message : t.brew.generatePodcastFailed);
-    } finally {
-      setPodcastLoading(false);
-    }
-  }, [isBrewlia, podcastLoading, cloudTtsLoading, item.id, ttsEngine, cloudTtsAvailable, hostVoiceId, guestVoiceId, showToastMessage]);
-
-  // 强制重新生成播客稿
-  const regeneratePodcast = useCallback(async () => {
-    if (!isBrewlia || podcastLoading || cloudTtsLoading) return;
-    
-    // 停止当前播放
-    podcastPlayerRef.current?.stop();
-    cloudPodcastPlayerRef.current?.stop();
-    setPodcastState('stopped');
-    setPodcastCurrentIndex(0);
-    
-    setPodcastLoading(true);
-    setPodcastError(null);
-    showToastMessage(t.brew.regeneratingScript);
-    
-    try {
-      const response = await brewliaApi.regeneratePodcastScript(item.id);
-      
-      if (response.success) {
-        setPodcastDialogues(response.dialogues);
-        setPodcastLanguage(response.language || 'zh-CN');
-        setShowPodcastPlayer(true);
-        
-        // 重新生成播客稿后，后端会清理所有 TTS 缓存
-        // 所以直接使用系统 TTS，避免触发云端生成
-        setTtsEngine('system');
-        saveTTSSettings({ engine: 'system' });
-        
-        if (podcastPlayerRef.current) {
-          podcastPlayerRef.current.load(response.dialogues, response.language);
-          const voices = await PodcastPlayer.getAvailableVoices();
-          const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(voices, response.language || 'zh-CN');
-          if (voiceA && voiceB) {
-            podcastPlayerRef.current.setVoices(voiceA, voiceB);
-          }
-        }
-        showToastMessage(t.brew.switchedToSystemTts, 3000);
-      } else {
-        setPodcastError(response.error || t.brew.regenerateFailed);
-        showToastMessage(response.error || t.brew.regenerateFailed, 3000);
-      }
-    } catch (err) {
-      console.error('Failed to regenerate podcast:', err);
-      const errMsg = err instanceof Error ? err.message : t.brew.generatePodcastFailed;
-      setPodcastError(errMsg);
-      showToastMessage(errMsg, 3000);
-    } finally {
-      setPodcastLoading(false);
-    }
-  }, [isBrewlia, podcastLoading, cloudTtsLoading, item.id, item.source_id, ttsEngine, cloudTtsAvailable, hostVoiceId, guestVoiceId, showToastMessage]);
-
-  // 重新加载云端 TTS（使用当前播客稿，强制重新生成）
-  const reloadCloudTTS = useCallback(async () => {
-    if (!podcastDialogues.length || !cloudTtsAvailable || cloudTtsLoading) return;
-    
-    // 停止当前播放
-    cloudPodcastPlayerRef.current?.stop();
-    setPodcastState('stopped');
-    setPodcastCurrentIndex(0);
-    
-    setCloudTtsLoading(true);
-    setCloudTtsLoadProgress({ loaded: 0, total: podcastDialogues.length });
-    showToastMessage(t.brew.regeneratingCloudVoice);
-    
-    try {
-      // forceRegenerate: true 强制使用当前音色生成，不使用其他音色缓存
-      const result = await cloudPodcastPlayerRef.current?.load(podcastDialogues, { sourceId: item.source_id, articleId: item.id, hostVoiceId, guestVoiceId, forceRegenerate: true });
-      if (result) {
-        if (result.generated > 0) {
-          showToastMessage(`${result.generated}`);
-        } else {
-          showToastMessage(t.brew.cached);
-        }
-      }
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : t.brew.loadFailed;
-      console.error('Failed to reload cloud TTS:', errMsg, err);
-      showToastMessage(`${t.brew.cloudTtsUnavailable}: ${errMsg}`, 3000);
-    } finally {
-      setCloudTtsLoading(false);
-    }
-  }, [podcastDialogues, cloudTtsAvailable, cloudTtsLoading, item.source_id, item.id, hostVoiceId, guestVoiceId, showToastMessage]);
-
-  // 获取当前活动的播放器
-  const getActivePlayer = useCallback(() => {
-    if (ttsEngine === 'cloud' && cloudTtsAvailable && cloudPodcastPlayerRef.current) {
-      return cloudPodcastPlayerRef.current;
-    }
-    return podcastPlayerRef.current;
-  }, [ttsEngine, cloudTtsAvailable]);
-
-  // 播客播放控制
-  const handlePodcastPlay = useCallback(async () => {
-    const player = getActivePlayer();
-    if (player) {
-      if ('play' in player && typeof player.play === 'function') {
-        await player.play();
-        setPodcastState('playing');
-      }
-    }
-  }, [getActivePlayer]);
-
-  const handlePodcastPause = useCallback(() => {
-    const player = getActivePlayer();
-    if (player) {
-      player.pause();
-      setPodcastState('paused');
-    }
-  }, [getActivePlayer]);
-
-  const handlePodcastStop = useCallback(() => {
-    const player = getActivePlayer();
-    if (player) {
-      player.stop();
-      setPodcastState('stopped');
-      setPodcastCurrentIndex(0);
-    }
-  }, [getActivePlayer]);
-
-  const handlePodcastPrev = useCallback(async () => {
-    if (podcastCurrentIndex <= 0) return;
-    const newIndex = podcastCurrentIndex - 1;
-    const player = getActivePlayer();
-    if (player) {
-      if (ttsEngine === 'cloud') {
-        await player.seekTo(newIndex);
-        if (podcastState === 'playing') {
-          await (player as CloudPodcastPlayer).play();
-        }
-      } else {
-        (player as PodcastPlayer).seekTo(newIndex, podcastState === 'playing');
-      }
-    }
-  }, [podcastCurrentIndex, podcastState, getActivePlayer, ttsEngine]);
-
-  const handlePodcastNext = useCallback(async () => {
-    if (podcastCurrentIndex >= podcastDialogues.length - 1) return;
-    const newIndex = podcastCurrentIndex + 1;
-    const player = getActivePlayer();
-    if (player) {
-      if (ttsEngine === 'cloud') {
-        await player.seekTo(newIndex);
-        if (podcastState === 'playing') {
-          await (player as CloudPodcastPlayer).play();
-        }
-      } else {
-        (player as PodcastPlayer).seekTo(newIndex, podcastState === 'playing');
-      }
-    }
-  }, [podcastCurrentIndex, podcastDialogues.length, podcastState, getActivePlayer, ttsEngine]);
-
-  // 点击片段跳转并播放
-  const handlePodcastSeek = useCallback(async (index: number) => {
-    const player = getActivePlayer();
-    if (player) {
-      if (ttsEngine === 'cloud') {
-        await player.seekTo(index);
-        await (player as CloudPodcastPlayer).play();
-        setPodcastState('playing');
-      } else {
-        (player as PodcastPlayer).seekTo(index, true);
-      }
-    }
-  }, [getActivePlayer, ttsEngine]);
-
-  // 自动滚动到当前播放的对话
-  const podcastListRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!showPodcastPlayer || podcastDialogues.length === 0) return;
-    
-    const container = podcastListRef.current;
-    if (!container) return;
-    
-    // 延迟滚动，避免与状态更新冲突
-    const timer = setTimeout(() => {
-      const currentElement = container.querySelector(`[data-podcast-index="${podcastCurrentIndex}"]`) as HTMLElement;
-      if (currentElement) {
-        // 手动计算滚动位置
-        const containerRect = container.getBoundingClientRect();
-        const elementRect = currentElement.getBoundingClientRect();
-        
-        // 检查元素是否在可视区域内
-        const isAbove = elementRect.top < containerRect.top;
-        const isBelow = elementRect.bottom > containerRect.bottom;
-        
-        if (isAbove || isBelow) {
-          // 计算目标滚动位置（使元素居中显示）
-          const scrollTop = container.scrollTop + elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
-          container.scrollTo({
-            top: scrollTop,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 50);
-    
-    return () => clearTimeout(timer);
-  }, [podcastCurrentIndex, showPodcastPlayer, podcastDialogues.length]);
-
-  // 切换注释显示
-  const toggleAnnotations = useCallback(() => {
-    if (annotations.length === 0) {
-      loadAnnotations();
-    } else {
-      setShowAnnotations(prev => !prev);
-    }
-  }, [annotations.length, loadAnnotations]);
-
-  // 跳转到注释位置
-  const scrollToAnnotation = useCallback((annotation: AnnotationItem) => {
-    const annotationId = annotation.id || `${annotation.type}-${annotations.indexOf(annotation) + 1}`;
-    const mark = contentRef.current?.querySelector(`mark[data-annotation-id="${annotationId}"]`);
-    
-    if (mark && articleRef.current) {
-      const articleRect = articleRef.current.getBoundingClientRect();
-      const markRect = mark.getBoundingClientRect();
-      const scrollTop = articleRef.current.scrollTop + markRect.top - articleRect.top - 150;
-      
-      articleRef.current.scrollTo({
-        top: scrollTop,
-        behavior: 'smooth'
-      });
-      
-      // 高亮闪烁效果
-      mark.classList.add('brewlia-highlight-flash');
-      setTimeout(() => mark.classList.remove('brewlia-highlight-flash'), 1500);
-      
-      // 关闭面板
-      setShowBrewliaPanel(false);
-    }
-  }, [annotations]);
+  // 包装 scrollToAnnotation 以传入 refs
+  const handleScrollToAnnotation = useCallback((annotation: AnnotationItem) => {
+    scrollToAnnotation(annotation, contentRef, articleRef);
+  }, [scrollToAnnotation]);
 
   // 监听注释 hover 事件（优化稳定性）
   useEffect(() => {
@@ -2152,7 +1182,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             annotationsError={annotationsError}
             selectedAnnotation={selectedAnnotation}
             setSelectedAnnotation={setSelectedAnnotation}
-            scrollToAnnotation={scrollToAnnotation}
+            scrollToAnnotation={handleScrollToAnnotation}
             podcastDialogues={podcastDialogues}
             podcastLoading={podcastLoading}
             cloudTtsLoading={cloudTtsLoading}
@@ -2262,7 +1292,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               
               /* 段落 */
               prose-p:my-[1em]
-              prose-strong:font-semibold
+              
+              /* 加粗文本 - 明确样式防止被覆盖 */
+              prose-strong:font-bold prose-strong:no-underline
+              [&_strong]:font-bold [&_strong]:no-underline [&_strong]:not-italic
+              [&_b]:font-bold [&_b]:no-underline [&_b]:not-italic
+              
+              /* 删除线 - 仅对 del/s/strike 应用 */
+              [&_del]:line-through [&_del]:opacity-60
+              [&_s]:line-through [&_s]:opacity-60
+              [&_strike]:line-through [&_strike]:opacity-60
               
               /* 链接 - 简洁下划线 + 防溢出 */
               prose-a:font-normal prose-a:underline prose-a:underline-offset-2
@@ -2284,13 +1323,15 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               prose-code:text-[0.9em] prose-code:font-normal
               prose-code:before:content-none prose-code:after:content-none
               
-              /* 代码块 - 干净无边框 */
-              prose-pre:rounded-2xl prose-pre:px-5 prose-pre:py-4 prose-pre:my-5
+              /* 代码块 - 干净圆角 + 相对定位（支持复制按钮） */
+              prose-pre:rounded-2xl prose-pre:px-5 prose-pre:py-4
               prose-pre:overflow-x-auto prose-pre:text-[0.875em]
-              prose-pre:leading-relaxed
+              prose-pre:leading-relaxed prose-pre:relative
               /* 代码块内的code不要额外样式 */
               [&_pre_code]:p-0 [&_pre_code]:bg-transparent [&_pre_code]:rounded-none
               [&_pre_code]:text-inherit
+              /* 代码块容器（有复制按钮时）*/
+              [&_.code-block-wrapper]:my-5
               
               /* 图片 - 自然圆角 */
               prose-img:rounded-2xl prose-img:mx-auto prose-img:my-5
@@ -2557,9 +1598,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-callout-content]:flex-1 [&_.notion-callout-content]:min-w-0
                 
                 /* Notion Quote */
-                [&_.notion-quote]:border-l-4 [&_.notion-quote]:border-white/20
                 [&_.notion-quote]:pl-4 [&_.notion-quote]:py-1 [&_.notion-quote]:my-4
-                [&_.notion-quote]:bg-transparent
+                [&_.notion-quote]:bg-white/[0.04] [&_.notion-quote]:rounded-xl
                 
                 /* Notion Todo */
                 [&_.notion-todo]:flex [&_.notion-todo]:items-start [&_.notion-todo]:gap-2 [&_.notion-todo]:my-1
@@ -2783,9 +1823,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-callout-content]:flex-1 [&_.notion-callout-content]:min-w-0
                 
                 /* Notion Quote */
-                [&_.notion-quote]:border-l-4 [&_.notion-quote]:border-black/20
                 [&_.notion-quote]:pl-4 [&_.notion-quote]:py-1 [&_.notion-quote]:my-4
-                [&_.notion-quote]:bg-transparent
+                [&_.notion-quote]:bg-black/[0.04] [&_.notion-quote]:rounded-xl
                 
                 /* Notion Todo */
                 [&_.notion-todo]:flex [&_.notion-todo]:items-start [&_.notion-todo]:gap-2 [&_.notion-todo]:my-1
@@ -3059,7 +2098,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         annotationsError={annotationsError}
         selectedAnnotation={selectedAnnotation}
         setSelectedAnnotation={setSelectedAnnotation}
-        scrollToAnnotation={scrollToAnnotation}
+        scrollToAnnotation={handleScrollToAnnotation}
         podcastDialogues={podcastDialogues}
         podcastLoading={podcastLoading}
         cloudTtsLoading={cloudTtsLoading}

@@ -159,7 +159,7 @@ function extractGithubRepo(url: string): { owner: string; repo: string } | null 
  */
 function generateNeteaseMusicCard(songId: string, isDark: boolean): string {
   return `
-    <div class="brew-embed-card brew-netease-music brew-embed-exempt not-prose inline-block my-4 group cursor-pointer"
+    <div class="brew-embed-card brew-netease-music brew-embed-exempt not-prose block group cursor-pointer"
          data-embed-type="netease-music"
          data-song-id="${songId}"
          data-embed-exempt="true"
@@ -202,7 +202,7 @@ function generateSteamGameCard(appId: string, isDark: boolean): string {
   const headerImg = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`;
 
   return `
-    <div class="brew-embed-card brew-steam-game brew-embed-exempt not-prose block my-6 group"
+    <div class="brew-embed-card brew-steam-game brew-embed-exempt not-prose block group"
          data-embed-type="steam-game"
          data-app-id="${appId}"
          data-embed-exempt="true"
@@ -238,7 +238,7 @@ function generateSteamGameCard(appId: string, isDark: boolean): string {
 /**
  * 生成 Bilibili 官方嵌入 iframe
  * 使用 B站官方播放器，响应式容器
- * 使用 my-6 作为默认margin（大尺寸嵌入）
+ * margin 由 BrewReader 统一控制
  */
 function generateBilibiliIframe(videoId: { type: 'bv' | 'av'; id: string }): string {
   // 构建官方播放器 URL
@@ -247,7 +247,7 @@ function generateBilibiliIframe(videoId: { type: 'bv' | 'av'; id: string }): str
     : `//player.bilibili.com/player.html?aid=${videoId.id}&autoplay=0`;
 
   return `
-    <div class="brew-bilibili-embed brew-embed-exempt not-prose my-6"
+    <div class="brew-embed-card brew-bilibili-embed brew-embed-exempt not-prose block"
          data-video-id="${videoId.id}"
          data-video-type="${videoId.type}"
          data-embed-exempt="true">
@@ -275,124 +275,131 @@ function generateBilibiliVideoCard(videoId: { type: 'bv' | 'av'; id: string }, i
     ? `https://www.bilibili.com/video/${videoId.id}`
     : `https://www.bilibili.com/video/av${videoId.id}`;
   
+  // 使用与其他卡片一致的结构：外层 div 作为 brew-embed-card
   return `
-    <a href="${videoUrl}" target="_blank" rel="noopener noreferrer"
-       class="brew-embed-card brew-bilibili-video not-prose inline-block my-4 group no-underline"
-       data-embed-type="bilibili-video" 
-       data-video-id="${videoId.id}"
-       data-video-type="${videoId.type}"
-       style="width: 240px; height: 150px;">
-      <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
-        <div class="block w-full h-full relative">
-          <!-- 视频占位封面 -->
-          <div class="w-full h-full bg-gradient-to-br from-[#00A1D6] to-[#0086B3] flex items-center justify-center">
-            <svg class="w-16 h-16 text-white/80" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          </div>
-          
-          <!-- 播放按钮遮罩 -->
-          <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <div class="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-              <svg class="w-7 h-7 text-[#00A1D6] ml-1" fill="currentColor" viewBox="0 0 24 24">
+    <div class="brew-embed-card brew-bilibili-video brew-embed-exempt not-prose block group"
+         data-embed-type="bilibili-video" 
+         data-video-id="${videoId.id}"
+         data-video-type="${videoId.type}"
+         data-embed-exempt="true"
+         style="width: 240px; height: 150px;">
+      <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="block no-underline h-full">
+        <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
+          <div class="block w-full h-full relative">
+            <!-- 视频占位封面 -->
+            <div class="w-full h-full bg-gradient-to-br from-[#00A1D6] to-[#0086B3] flex items-center justify-center">
+              <svg class="w-16 h-16 text-white/80" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>
             </div>
-          </div>
-          
-          <!-- 底部信息栏 - 与资料库视频卡片一致 -->
-          <div class="absolute bottom-3 left-3 right-3">
-            <div class="inline-flex items-start max-w-full">
-              <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
-                <h3 class="font-bold text-gray-900 dark:text-white text-sm line-clamp-1 leading-snug">
-                  ${videoId.type.toUpperCase()}: ${videoId.id}
-                </h3>
-                <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                  点击查看视频
-                </p>
+            
+            <!-- 播放按钮遮罩 -->
+            <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div class="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                <svg class="w-7 h-7 text-[#00A1D6] ml-1" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </div>
+            </div>
+            
+            <!-- 底部信息栏 - 与资料库视频卡片一致 -->
+            <div class="absolute bottom-3 left-3 right-3">
+              <div class="inline-flex items-start max-w-full">
+                <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
+                  <h3 class="font-bold text-gray-900 dark:text-white text-sm line-clamp-1 leading-snug">
+                    ${videoId.type.toUpperCase()}: ${videoId.id}
+                  </h3>
+                  <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                    点击查看视频
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </a>
+      </a>
+    </div>
   `;
 }
 
 /**
  * 生成 GitHub 仓库卡片 HTML - 简洁风格
  * 显示仓库基本信息，与阅读器风格统一
- * 使用 my-6 作为默认margin（中等尺寸卡片）
+ * margin 由 BrewReader 统一控制
  */
 function generateGithubRepoCard(repo: { owner: string; repo: string }, isDark: boolean): string {
   const repoUrl = `https://github.com/${repo.owner}/${repo.repo}`;
   const ownerAvatar = `https://github.com/${repo.owner}.png?size=32`;
 
+  // 使用与 Steam 卡片一致的结构：外层 div 作为 brew-embed-card，内部包含可视样式和链接
   return `
-    <a href="${repoUrl}"
-       target="_blank"
-       rel="noopener noreferrer"
-       class="brew-embed-card brew-github-repo brew-embed-exempt not-prose block my-6 no-underline group"
-       data-embed-type="github-repo"
-       data-owner="${repo.owner}"
-       data-repo="${repo.repo}"
-       data-embed-exempt="true">
-      <div class="relative max-w-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5">
+    <div class="brew-embed-card brew-github-repo brew-embed-exempt not-prose block group"
+         data-embed-type="github-repo"
+         data-owner="${repo.owner}"
+         data-repo="${repo.repo}"
+         data-embed-exempt="true"
+         style="max-width: 28rem;">
+      <a href="${repoUrl}"
+         target="_blank"
+         rel="noopener noreferrer"
+         class="block no-underline">
+        <div class="relative w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5">
 
-        <!-- GitHub 图标 -->
-        <div class="absolute top-4 right-4">
-          <svg viewBox="0 0 24 24" class="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 dark:group-hover:text-gray-500 transition-colors">
-            <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-          </svg>
-        </div>
-
-        <!-- 所有者信息 -->
-        <div class="flex items-center gap-2 mb-2">
-          <img src="${ownerAvatar}"
-               alt="${repo.owner}"
-               class="w-5 h-5 rounded-full"
-               loading="lazy"/>
-          <span class="brew-embed-owner text-sm text-gray-500 dark:text-gray-400">
-            ${repo.owner}
-          </span>
-        </div>
-
-        <!-- 仓库名称 -->
-        <h3 class="brew-embed-title text-base font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-          ${repo.repo}
-        </h3>
-
-        <!-- 仓库描述 -->
-        <p class="brew-embed-desc text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-          加载中...
-        </p>
-
-        <!-- 统计信息 -->
-        <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-          <!-- Stars -->
-          <span class="brew-embed-stars flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/>
+          <!-- GitHub 图标 -->
+          <div class="absolute top-4 right-4">
+            <svg viewBox="0 0 24 24" class="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 dark:group-hover:text-gray-500 transition-colors">
+              <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
             </svg>
-            <span>-</span>
-          </span>
+          </div>
 
-          <!-- Forks -->
-          <span class="brew-embed-forks flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/>
-            </svg>
-            <span>-</span>
-          </span>
+          <!-- 所有者信息 -->
+          <div class="flex items-center gap-2 mb-2">
+            <img src="${ownerAvatar}"
+                 alt="${repo.owner}"
+                 class="w-5 h-5 rounded-full"
+                 loading="lazy"/>
+            <span class="brew-embed-owner text-sm text-gray-500 dark:text-gray-400">
+              ${repo.owner}
+            </span>
+          </div>
 
-          <!-- 编程语言 -->
-          <span class="brew-embed-lang flex items-center gap-1">
-            <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>
-            <span>-</span>
-          </span>
+          <!-- 仓库名称 -->
+          <h3 class="brew-embed-title text-base font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+            ${repo.repo}
+          </h3>
+
+          <!-- 仓库描述 -->
+          <p class="brew-embed-desc text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+            加载中...
+          </p>
+
+          <!-- 统计信息 -->
+          <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <!-- Stars -->
+            <span class="brew-embed-stars flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/>
+              </svg>
+              <span>-</span>
+            </span>
+
+            <!-- Forks -->
+            <span class="brew-embed-forks flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/>
+              </svg>
+              <span>-</span>
+            </span>
+
+            <!-- 编程语言 -->
+            <span class="brew-embed-lang flex items-center gap-1">
+              <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>
+              <span>-</span>
+            </span>
+          </div>
         </div>
-      </div>
-    </a>
+      </a>
+    </div>
   `;
 }
 

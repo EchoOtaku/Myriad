@@ -34,6 +34,24 @@ export {
   STYLE_MAX_HEIGHT_60VH,
 } from './constants';
 
+// Hooks 导出
+export {
+  useReaderSettings,
+  useAnnotations,
+  useComments,
+  usePodcast,
+} from './hooks';
+export type {
+  UseReaderSettingsReturn,
+  UseAnnotationsOptions,
+  UseAnnotationsReturn,
+  UseCommentsOptions,
+  UseCommentsReturn,
+  SelectionRange,
+  UsePodcastOptions,
+  UsePodcastReturn,
+} from './hooks';
+
 // 组件导出
 export { MobileReaderBar } from './MobileReaderBar';
 export { default as ReaderLeftPanel } from './ReaderLeftPanel';
