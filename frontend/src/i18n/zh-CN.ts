@@ -31,8 +31,6 @@ export const zhCN: TranslationKeys = {
     required: '必填',
     networkError: '网络错误',
     unknownError: '未知错误',
-    details: '详情页',
-    detailsPlaceholder: '详情页内容将在这里显示',
   },
   
   // 导航
@@ -1817,6 +1815,8 @@ export const zhCN: TranslationKeys = {
     tagInputPlaceholder: '输入标签名称...',
     addTag: '添加',
     noCustomTagHint: '还没有添加标签',
+    adminOnlyVisible: '仅管理员可见',
+    adminOnlyVisibleHint: '开启后，非管理员用户将无法看到此订阅源',
     saveChanges: '保存更改',
     
     // RSSHubConfig - Error messages

@@ -120,6 +120,8 @@ export interface BrewSource {
   ai_style_tags: string[] | null;
   /** RSSHub 路由路径（仅当 feed_type = rsshub 时有值） */
   rsshub_route: string | null;
+  /** 仅管理员可见 */
+  admin_only: boolean;
   created_at: number;
   // 最新文章预览（最多3篇）
   recent_items?: BrewItemPreview[];
@@ -230,6 +232,8 @@ export interface AddSourceRequest {
     filter?: unknown;
     sort?: unknown;
   };
+  /** 仅管理员可见 */
+  admin_only?: boolean;
 }
 
 // 更新订阅源请求
@@ -258,6 +262,8 @@ export interface UpdateSourceRequest {
   };
   /** AI 风格标签（用户自定义或 AI 生成） */
   ai_style_tags?: string[];
+  /** 仅管理员可见 */
+  admin_only?: boolean;
 }
 
 // 创建分类请求

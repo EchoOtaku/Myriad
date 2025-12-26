@@ -52,9 +52,6 @@ export const routeComponents = {
   // DataManagement - 数据管理
   dataManagement: lazyWithPreload(() => import('../views/DataManagement')),
   
-  // Details - 详情页
-  details: lazyWithPreload(() => import('../views/Details')),
-  
   // Setup - 设置向导
   setup: lazyWithPreload(() => import('../views/Setup')),
   

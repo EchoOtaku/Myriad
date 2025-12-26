@@ -19,6 +19,7 @@ import {
   LuPalette as Palette,
   LuSparkles as Sparkles,
   LuTag as Tag,
+  LuEyeOff as EyeOff,
 } from '@lib/icons';
 import type { BrewSource, SourceType, RSSHubConfig } from '../../../types/brew';
 import { generateStyleTags } from '../../../services/brewApi';
@@ -42,6 +43,7 @@ export interface EditModalProps {
     theme_color?: string | null;
     source_type?: SourceType;
     ai_style_tags?: string[];
+    admin_only?: boolean;
   }) => Promise<void>;
 }
 
@@ -69,6 +71,8 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   const [generatingTags, setGeneratingTags] = useState(false);
   // 用户手动输入标签状态
   const [newTagInput, setNewTagInput] = useState('');
+  // 仅管理员可见
+  const [adminOnly, setAdminOnly] = useState(source.admin_only || false);
 
   // 判断原始订阅类型（基于 feed_type 和 source_type）
   // feed_type 表示实际的订阅协议：rss/atom/json_feed/notion/rsshub
@@ -230,6 +234,8 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
         source_type: finalSourceType,
         // 传递标签（纯链接和 Brewlia 模式都支持）
         ai_style_tags: styleTags,
+        // 传递仅管理员可见选项
+        admin_only: adminOnly,
       });
       onClose();
     } catch (err) {
@@ -757,6 +763,32 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                 {error}
               </div>
             )}
+
+            {/* 仅管理员可见 */}
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-neutral-800/50 border border-gray-200/50 dark:border-neutral-700/50">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <EyeOff className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.brew.adminOnlyVisible}</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.brew.adminOnlyVisibleHint}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAdminOnly(!adminOnly)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    adminOnly ? 'bg-orange-500' : 'bg-gray-300 dark:bg-neutral-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                      adminOnly ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </label>
+            </div>
           </div>
         </div>
 

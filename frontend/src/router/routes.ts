@@ -58,11 +58,6 @@ export const routes: RouteConfig[] = [
     title: '登录 - Myriad',
   },
   {
-    path: '/details',
-    component: () => import('../views/Details.tsx'),
-    title: '详情 - Myriad',
-  },
-  {
     path: '/setup',
     component: () => import('../views/Setup.tsx'),
     title: '初始化设置 - Myriad',

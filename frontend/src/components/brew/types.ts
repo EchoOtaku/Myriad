@@ -207,6 +207,7 @@ export interface BrewExportManifest {
     card_size: string | null;
     rsshub_route: string | null;
     ai_style_tags: string[] | null;
+    admin_only: boolean;
   }>;
 }
 

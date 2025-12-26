@@ -24,7 +24,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { Feature, hasFeature } from '../pageFeatures';
 
 // 支持的简单页面
-type SimplePageId = 'config' | 'login' | 'setup' | 'data-management' | 'details';
+type SimplePageId = 'config' | 'login' | 'setup' | 'data-management';
 
 // ==================== 页面初始化 ====================
 // 注意：startPage 由 useRouteScheduler 统一调用
@@ -52,11 +52,6 @@ export function useSetupScheduler(): void {
 // DataManagement 专用
 export function useDataManagementScheduler(): void {
   // startPage('data-management') 由 useRouteScheduler 统一调用
-}
-
-// Details 专用
-export function useDetailsScheduler(): void {
-  // startPage('details') 由 useRouteScheduler 统一调用
 }
 
 // ==================== Timeout Hooks ====================

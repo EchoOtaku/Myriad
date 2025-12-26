@@ -1209,6 +1209,12 @@ fn get_expected_schema() -> Vec<TableDef> {
                     default_value: None,
                 },
                 ColumnDef {
+                    name: "admin_only".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
                     name: "created_at".into(),
                     data_type: "timestamp with time zone".into(),
                     is_nullable: false,
@@ -2227,6 +2233,7 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 ai_style_tags JSONB,
                 extra_config JSONB,
                 rsshub_route TEXT,
+                admin_only BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

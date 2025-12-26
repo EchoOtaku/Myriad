@@ -24,7 +24,7 @@ import {
   LuShuffle as Shuffle,
   LuSortAsc as SortAsc,
 } from '@lib/icons';
-import type { BrewSource, SourceType, FeedType } from '../../../types/brew';
+import type { BrewSource, SourceType, FeedType, CardSize } from '../../../types/brew';
 import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard';
 import * as brewApi from '../../../services/brewApi';
 import { useI18n } from '../../../contexts/I18nContext';
@@ -170,6 +170,7 @@ interface BrewExportManifest {
     card_size: string | null;
     rsshub_route: string | null;
     ai_style_tags: string[] | null;
+    admin_only: boolean;
   }>;
 }
 
@@ -438,6 +439,7 @@ export default function ControlIsland({
           card_size: s.card_size,
           rsshub_route: s.rsshub_route,
           ai_style_tags: s.ai_style_tags,
+          admin_only: s.admin_only,
         });
       }
       
@@ -527,14 +529,28 @@ export default function ControlIsland({
             icon = source.icon_url;
           }
           
-          await brewApi.addSource({
+          const newSource = await brewApi.addSource({
             url: source.url,
             name: source.name,
             category: source.category || undefined,
             icon: icon,
             source_type: source.source_type,
             feed_type: source.feed_type,
+            update_interval: source.update_interval,
+            rsshub_route: source.rsshub_route || undefined,
+            admin_only: source.admin_only,
           });
+          
+          // 更新额外字段（theme_color, card_size, ai_style_tags）
+          const hasExtraFields = source.theme_color || source.card_size || source.ai_style_tags;
+          if (hasExtraFields && newSource?.id) {
+            await brewApi.updateSource(newSource.id, {
+              theme_color: source.theme_color || undefined,
+              card_size: source.card_size as CardSize || undefined,
+              ai_style_tags: source.ai_style_tags || undefined,
+            });
+          }
+          
           imported++;
         } catch {
           skipped++;

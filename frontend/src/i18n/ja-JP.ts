@@ -31,8 +31,6 @@ export const jaJP: TranslationKeys = {
     required: '必須',
     networkError: 'ネットワークエラー',
     unknownError: '不明なエラー',
-    details: '詳細ページ',
-    detailsPlaceholder: '詳細内容はここに表示されます',
   },
   
   // ナビゲーション
@@ -1827,6 +1825,8 @@ export const jaJP: TranslationKeys = {
     tagInputPlaceholder: 'タグ名を入力...',
     addTag: '追加',
     noCustomTagHint: 'タグはまだ追加されていません',
+    adminOnlyVisible: '管理者のみ表示',
+    adminOnlyVisibleHint: '有効にすると、管理者以外のユーザーはこのソースを見ることができません',
     saveChanges: '変更を保存',
     
     // RSSHubConfig - Error messages

@@ -32,8 +32,6 @@ export interface TranslationKeys {
     required: string;
     networkError: string;
     unknownError: string;
-    details: string;
-    detailsPlaceholder: string;
   };
   
   // 导航
@@ -1827,6 +1825,8 @@ export interface TranslationKeys {
     tagInputPlaceholder: string;
     addTag: string;
     noCustomTagHint: string;
+    adminOnlyVisible: string;
+    adminOnlyVisibleHint: string;
     saveChanges: string;
     
     // RSSHubConfig - Error messages

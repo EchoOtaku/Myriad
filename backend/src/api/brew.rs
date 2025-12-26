@@ -126,19 +126,23 @@ struct SourceWithRecentItems {
 
 /// 获取订阅源列表（带最新文章预览）
 /// 游客可访问（只读），但不会计算已读状态以节约计算
+/// 非管理员用户看不到 admin_only=true 的订阅源
 async fn list_sources(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    // 获取可选用户 ID（游客为 None）
-    let user_id = get_optional_user_id_from_headers(&headers);
+    // 获取用户 ID 和管理员状态
+    let (user_id, is_admin) = get_user_and_admin_status(&headers);
 
-    // 获取所有订阅源（游客看到所有源）
-    let sources = match brew_sources::Entity::find()
-        .order_by_asc(brew_sources::Column::Name)
-        .all(&db)
-        .await
-    {
+    // 获取订阅源（非管理员过滤掉 admin_only=true 的源）
+    let mut query = brew_sources::Entity::find()
+        .order_by_asc(brew_sources::Column::Name);
+    
+    if !is_admin {
+        query = query.filter(brew_sources::Column::AdminOnly.eq(false));
+    }
+    
+    let sources = match query.all(&db).await {
         Ok(s) => s,
         Err(e) => {
             return (
@@ -265,6 +269,8 @@ struct AddSourceRequest {
     rsshub_route: Option<String>,
     /// 额外配置（用于 Notion token 等敏感信息）
     extra_config: Option<serde_json::Value>,
+    /// 仅管理员可见
+    admin_only: Option<bool>,
 }
 
 async fn add_source(
@@ -485,6 +491,7 @@ async fn add_source(
         unread_count: Set(0),
         extra_config: Set(extra_config),
         rsshub_route: Set(rsshub_route),
+        admin_only: Set(req.admin_only.unwrap_or(false)),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
         ..Default::default()
@@ -651,6 +658,10 @@ async fn update_source(
                 } else {
                     Some(tags_json)
                 });
+            }
+            // 处理仅管理员可见选项
+            if let Some(admin_only) = req.admin_only {
+                active.admin_only = Set(admin_only);
             }
             active.updated_at = Set(Utc::now().into());
 
@@ -2081,6 +2092,18 @@ fn get_optional_user_id_from_headers(headers: &axum::http::HeaderMap) -> Option<
     verify_jwt_token(headers)
         .ok()
         .and_then(|claims| claims.sub.parse::<i32>().ok())
+}
+
+/// 检查请求头中的用户是否为管理员
+/// 返回 (Option<user_id>, is_admin)
+fn get_user_and_admin_status(headers: &axum::http::HeaderMap) -> (Option<i32>, bool) {
+    match verify_jwt_token(headers) {
+        Ok(claims) => {
+            let user_id = claims.sub.parse::<i32>().ok();
+            (user_id, claims.is_admin)
+        }
+        Err(_) => (None, false),
+    }
 }
 
 /// 从请求头获取管理员用户 ID（用于管理功能）

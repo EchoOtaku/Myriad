@@ -31,8 +31,6 @@ export const enUS: TranslationKeys = {
     required: 'Required',
     networkError: 'Network error',
     unknownError: 'Unknown error',
-    details: 'Details',
-    detailsPlaceholder: 'Details content will be displayed here',
   },
   
   // Navigation
@@ -1814,6 +1812,8 @@ export const enUS: TranslationKeys = {
     tagInputPlaceholder: 'Enter tag name...',
     addTag: 'Add',
     noCustomTagHint: 'No tags added yet',
+    adminOnlyVisible: 'Admin Only',
+    adminOnlyVisibleHint: 'When enabled, non-admin users will not see this source',
     saveChanges: 'Save Changes',
     
     // RSSHubConfig - Error messages

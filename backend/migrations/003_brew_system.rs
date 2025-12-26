@@ -107,6 +107,13 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(BrewSources::ExtraConfig).json())
                     // RSSHub 路由路径（仅当 feed_type = rsshub 时使用）
                     .col(ColumnDef::new(BrewSources::RsshubRoute).text())
+                    // 仅管理员可见
+                    .col(
+                        ColumnDef::new(BrewSources::AdminOnly)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     // 创建时间
                     .col(
                         ColumnDef::new(BrewSources::CreatedAt)
@@ -927,6 +934,7 @@ enum BrewSources {
     AiStyleTags,
     ExtraConfig,
     RsshubRoute,
+    AdminOnly,
     CreatedAt,
     UpdatedAt,
 }

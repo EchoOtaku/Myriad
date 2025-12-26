@@ -67,6 +67,9 @@ pub struct Model {
     /// 仅当 feed_type = rsshub 时使用
     #[sea_orm(column_type = "Text", nullable)]
     pub rsshub_route: Option<String>,
+    /// 仅管理员可见（非管理员用户无法看到此订阅源）
+    #[sea_orm(default_value = false)]
+    pub admin_only: bool,
     /// 创建时间
     pub created_at: DateTimeWithTimeZone,
     /// 更新时间
@@ -151,6 +154,8 @@ pub struct UpdateSourceRequest {
     pub extra_config: Option<serde_json::Value>,
     /// AI 风格标签（用户自定义或 AI 生成）
     pub ai_style_tags: Option<Vec<String>>,
+    /// 仅管理员可见
+    pub admin_only: Option<bool>,
 }
 
 /// 订阅源响应（包含额外信息）
@@ -184,6 +189,8 @@ pub struct SourceResponse {
     pub has_extra_config: bool,
     /// RSSHub 路由路径
     pub rsshub_route: Option<String>,
+    /// 仅管理员可见
+    pub admin_only: bool,
     pub created_at: i64,
 }
 
@@ -230,6 +237,7 @@ impl From<Model> for SourceResponse {
             }),
             has_extra_config: m.extra_config.is_some(),
             rsshub_route: m.rsshub_route,
+            admin_only: m.admin_only,
             created_at: m.created_at.timestamp_millis(),
         }
     }
