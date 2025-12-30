@@ -257,8 +257,7 @@ impl TappSchedulerEngine {
                     if let Some(cron_str) = config.cron {
                         if let Ok(schedule) = cron::Schedule::from_str(&cron_str) {
                             let mut count = 0i64;
-                            let mut iter = schedule.after(&next_run);
-                            while let Some(next) = iter.next() {
+                            for next in schedule.after(&next_run) {
                                 if next >= now {
                                     break;
                                 }
@@ -935,7 +934,7 @@ impl TappSchedulerEngine {
             "read": false,
         });
 
-        let key = format!("_pending_notifications");
+        let key = "_pending_notifications".to_string();
 
         // 读取现有通知
         let existing = tapp_storage::Entity::find()
@@ -1089,6 +1088,7 @@ impl TappSchedulerEngine {
     }
 
     /// 注册新任务
+    #[allow(clippy::too_many_arguments)]
     pub async fn register_task(
         &self,
         user_id: i32,

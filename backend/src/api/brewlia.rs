@@ -28,6 +28,7 @@ use crate::services::ai_service::AiService;
 // ==================== 权限验证辅助函数 ====================
 
 /// 验证是否是管理员（用于生成/编辑操作）
+#[allow(clippy::result_large_err)]
 fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
     match verify_jwt_token(headers) {
         Ok(claims) => {
@@ -598,19 +599,19 @@ fn clean_trailing_incomplete(json_str: &str) -> String {
         let trimmed = fixed.trim_end();
 
         // 移除尾部逗号
-        if trimmed.ends_with(',') {
-            fixed = trimmed[..trimmed.len() - 1].to_string();
+        if let Some(stripped) = trimmed.strip_suffix(',') {
+            fixed = stripped.to_string();
             continue;
         }
 
         // 移除不完整的键值对（以冒号结尾）
-        if trimmed.ends_with(':') {
+        if let Some(stripped) = trimmed.strip_suffix(':') {
             // 找到这个键的开始位置并删除整个键
-            if let Some(quote_pos) = trimmed[..trimmed.len() - 1].rfind('"') {
+            if let Some(quote_pos) = stripped.rfind('"') {
                 fixed = trimmed[..quote_pos].trim_end().to_string();
                 // 如果以逗号结尾，也删除
-                if fixed.ends_with(',') {
-                    fixed = fixed[..fixed.len() - 1].to_string();
+                if let Some(s) = fixed.strip_suffix(',') {
+                    fixed = s.to_string();
                 }
                 continue;
             }
@@ -770,9 +771,9 @@ fn extract_language_field(json_str: &str) -> Option<String> {
     let colon = rest.find(':')?;
     let after_colon = rest[colon + 1..].trim_start();
 
-    if after_colon.starts_with('"') {
-        let end = after_colon[1..].find('"')?;
-        Some(format!("\"{}\"", &after_colon[1..1 + end]))
+    if let Some(stripped) = after_colon.strip_prefix('"') {
+        let end = stripped.find('"')?;
+        Some(format!("\"{}\"", &stripped[..end]))
     } else if after_colon.starts_with("null") {
         Some("null".to_string())
     } else {
@@ -880,7 +881,7 @@ async fn get_podcast_script(
         Ok(response) => match parse_podcast_script(&response) {
             Ok((dialogues, language)) => {
                 // 估算时长：平均每个字符 0.15 秒（中文），0.06 秒（英文）
-                let is_chinese = language.as_deref().map_or(false, |l| l.starts_with("zh"));
+                let is_chinese = language.as_deref().is_some_and(|l| l.starts_with("zh"));
                 let char_count: usize = dialogues.iter().map(|d| d.text.len()).sum();
                 let estimated_duration = if is_chinese {
                     (char_count as f32 * 0.15) as i32
@@ -1267,6 +1268,10 @@ async fn generate_style_tags(
     // 构建文章摘要
     let mut articles_summary = String::new();
     for (i, item) in items.iter().enumerate() {
+        // 预编译正则表达式（避免在循环中重复编译）
+        static HTML_TAG_RE: once_cell::sync::Lazy<regex::Regex> =
+            once_cell::sync::Lazy::new(|| regex::Regex::new(r"<[^>]+>").unwrap());
+
         let content = item
             .content
             .as_ref()
@@ -1280,10 +1285,7 @@ async fn generate_style_tags(
                     .replace("</p>", " ")
                     .replace("</div>", " ");
                 // 使用正则表达式清理 HTML 标签
-                let re = regex::Regex::new(r"<[^>]+>").ok();
-                let cleaned = re.map_or(cleaned.clone(), |r| {
-                    r.replace_all(&cleaned, " ").to_string()
-                });
+                let cleaned = HTML_TAG_RE.replace_all(&cleaned, " ").to_string();
                 cleaned.chars().take(100).collect::<String>()
             })
             .unwrap_or_default();

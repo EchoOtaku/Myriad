@@ -1921,7 +1921,7 @@ async fn get_recent_tapps(
 
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let admin_id = get_admin_user_id(&db).await?;
-    let limit = query.limit.min(50).max(1) as u64; // 限制在 1-50 之间
+    let limit = query.limit.clamp(1, 50) as u64; // 限制在 1-50 之间
 
     // 获取用户活动记录
     let activities = tapp_user_activities::Entity::find()

@@ -228,12 +228,14 @@ impl TappApiService {
         inject_context.insert("user.isAdmin".to_string(), json!(context.is_admin));
 
         // 检查是否需要注入地理位置
-        let needs_geo = api_def.inject.as_ref().map_or(false, |inject| {
-            inject.values().any(|v| v.contains("{{geo."))
-        }) || api_def
-            .endpoint
+        let needs_geo = api_def
+            .inject
             .as_ref()
-            .map_or(false, |e| e.contains("{{geo."));
+            .is_some_and(|inject| inject.values().any(|v| v.contains("{{geo.")))
+            || api_def
+                .endpoint
+                .as_ref()
+                .is_some_and(|e| e.contains("{{geo."));
 
         if needs_geo {
             let geo = Self::get_geo_info(context.client_ip.as_deref()).await;
@@ -246,7 +248,7 @@ impl TappApiService {
 
         // 检查是否需要注入密钥
         if let Some(inject) = &api_def.inject {
-            for (_, template) in inject {
+            for template in inject.values() {
                 if template.contains("{{secrets.") {
                     Self::inject_secrets(&mut inject_context).await?;
                     break;

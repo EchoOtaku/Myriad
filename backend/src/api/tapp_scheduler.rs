@@ -520,7 +520,7 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
     });
     if sender
         .send(Message::Text(
-            serde_json::to_string(&welcome).unwrap().into(),
+            serde_json::to_string(&welcome).unwrap(),
         ))
         .await
         .is_err()
@@ -552,7 +552,7 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
 
                         if should_send {
                             let msg = serde_json::to_string(&task_msg).unwrap_or_default();
-                            if sender.send(Message::Text(msg.into())).await.is_err() {
+                            if sender.send(Message::Text(msg)).await.is_err() {
                                 break;
                             }
                         }
@@ -574,7 +574,7 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
                             if msg.get("type").and_then(|t| t.as_str()) == Some("ping") {
                                 let pong = json!({ "type": "pong" });
                                 let _ = sender.send(Message::Text(
-                                    serde_json::to_string(&pong).unwrap().into()
+                                    serde_json::to_string(&pong).unwrap()
                                 )).await;
                             } else if msg.get("type").and_then(|t| t.as_str()) == Some("task:complete") {
                                 // 任务完成报告

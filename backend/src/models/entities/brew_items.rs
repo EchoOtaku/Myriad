@@ -117,6 +117,7 @@ pub struct ItemResponse {
 
 impl ItemResponse {
     /// 带 AI 状态的构造方法
+    #[allow(clippy::too_many_arguments)]
     pub fn from_model_with_ai(
         m: Model,
         source_name: Option<String>,

@@ -91,6 +91,7 @@ pub struct Enclosure {
 
 /// 解析错误
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum ParseError {
     FetchError(String),
     ParseError(String),
@@ -320,7 +321,7 @@ impl FeedParser {
                 Ok(Event::Start(ref e)) => {
                     let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     // 处理带命名空间的标签名（如 content:encoded -> encoded）
-                    let simple_tag = tag_name.split(':').last().unwrap_or(&tag_name).to_string();
+                    let simple_tag = tag_name.split(':').next_back().unwrap_or(&tag_name).to_string();
                     current_tag = tag_name.clone();
                     text_buffer.clear(); // 新标签开始，清空缓冲区
 
@@ -403,7 +404,7 @@ impl FeedParser {
                 Ok(Event::End(ref e)) => {
                     let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     // 处理带命名空间的标签名
-                    let simple_tag = tag_name.split(':').last().unwrap_or(&tag_name);
+                    let simple_tag = tag_name.split(':').next_back().unwrap_or(&tag_name);
 
                     // 在标签结束时处理累积的文本
                     let text = text_buffer.clone();
@@ -973,7 +974,8 @@ fn extract_item_html_content(xml: &str, guid: &str, tag: &str) -> Option<String>
         let item_xml = &xml[search_pos..search_pos + item_end_pos + 7];
 
         // 检查这个 item 是否包含我们要找的 guid
-        if item_xml.contains(&guid) || item_xml.contains(&guid_escaped) {
+        let guid_escaped_str: &str = &guid_escaped;
+        if item_xml.contains(guid) || item_xml.contains(guid_escaped_str) {
             // 从 item 中提取指定标签的内容
             let tag_start = format!("<{}", tag);
             let tag_end = format!("</{}>", tag);
@@ -999,9 +1001,9 @@ fn extract_item_html_content(xml: &str, guid: &str, tag: &str) -> Option<String>
         }
 
         // 继续搜索下一个 item
-        search_pos = search_pos + item_end_pos + 7;
+        search_pos += item_end_pos + 7;
         if let Some(next_item) = xml[search_pos..].find("<item") {
-            search_pos = search_pos + next_item;
+            search_pos += next_item;
         } else {
             break;
         }
@@ -1024,7 +1026,8 @@ fn extract_entry_html_content(xml: &str, entry_id: &str, tag: &str) -> Option<St
         let entry_end_pos = xml[search_pos..].find("</entry>")?;
         let entry_xml = &xml[search_pos..search_pos + entry_end_pos + 8];
 
-        if entry_xml.contains(&entry_id) || entry_xml.contains(&id_escaped) {
+        let id_escaped_str: &str = &id_escaped;
+        if entry_xml.contains(entry_id) || entry_xml.contains(id_escaped_str) {
             let tag_start = format!("<{}", tag);
             let tag_end = format!("</{}>", tag);
 
@@ -1046,9 +1049,9 @@ fn extract_entry_html_content(xml: &str, entry_id: &str, tag: &str) -> Option<St
             return None;
         }
 
-        search_pos = search_pos + entry_end_pos + 8;
+        search_pos += entry_end_pos + 8;
         if let Some(next_entry) = xml[search_pos..].find("<entry") {
-            search_pos = search_pos + next_entry;
+            search_pos += next_entry;
         } else {
             break;
         }
@@ -1262,7 +1265,7 @@ fn detect_content_format(content: &str) -> ContentFormat {
         let l = line.trim();
 
         // 标题语法: # ## ### 等
-        if l.starts_with('#') && l.chars().skip_while(|c| *c == '#').next() == Some(' ') {
+        if l.starts_with('#') && l.chars().skip_while(|c| *c == '#').find(|&c| c != '#') == Some(' ') {
             md_score += 3;
         }
 

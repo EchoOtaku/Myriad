@@ -29,6 +29,7 @@ const BREW_DATA_DIR: &str = "data/brew";
 const TTS_SUBDIR: &str = "tts";
 
 /// 验证管理员身份
+#[allow(clippy::result_large_err)]
 fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
     match verify_jwt_token(headers) {
         Ok(claims) => {

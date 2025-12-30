@@ -441,6 +441,7 @@ impl RsshubService {
     }
 
     /// 更新实例
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_instance(
         &self,
         id: i32,

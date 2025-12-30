@@ -388,7 +388,7 @@ async fn add_source(
                         name,
                         None,
                         None,
-                        Some(format!("https://notion.so")),
+                        Some("https://notion.so".to_string()),
                         brew_sources::FeedType::Notion,
                         extra_config,
                     )
@@ -2525,7 +2525,7 @@ async fn update_comment(
             if let Some(color) = req.color {
                 // 验证 color 格式（仅允许十六进制颜色）
                 let color_regex = regex::Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$").ok();
-                if color_regex.map_or(false, |r| r.is_match(&color)) {
+                if color_regex.is_some_and(|r| r.is_match(&color)) {
                     active.color = Set(Some(color));
                 }
             }

@@ -267,15 +267,19 @@ impl NotionService {
 
         // 提取图标
         let icon = data["icon"].as_object().and_then(|obj| {
-            if let Some(emoji) = obj.get("emoji").and_then(|e| e.as_str()) {
-                Some(emoji.to_string())
-            } else if let Some(url) = obj.get("external").and_then(|e| e["url"].as_str()) {
-                Some(url.to_string())
-            } else if let Some(url) = obj.get("file").and_then(|f| f["url"].as_str()) {
-                Some(url.to_string())
-            } else {
-                None
-            }
+            obj.get("emoji")
+                .and_then(|e| e.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    obj.get("external")
+                        .and_then(|e| e["url"].as_str())
+                        .map(|s| s.to_string())
+                })
+                .or_else(|| {
+                    obj.get("file")
+                        .and_then(|f| f["url"].as_str())
+                        .map(|s| s.to_string())
+                })
         });
 
         Ok(DatabaseInfo {
@@ -1487,7 +1491,7 @@ impl NotionService {
     /// 从 Vimeo URL 提取视频 ID
     fn extract_vimeo_id(url: &str) -> String {
         url.split('/')
-            .last()
+            .next_back()
             .unwrap_or("")
             .split('?')
             .next()
@@ -1794,7 +1798,7 @@ fn extract_notion_id_from_url(url: &str) -> Option<String> {
         // 移除可能的页面标题前缀（格式：Title-xxxxx）
         let id_part = if part.contains('-') {
             // 找最后一个部分（可能是 ID）
-            part.split('-').last().unwrap_or(part)
+            part.split('-').next_back().unwrap_or(part)
         } else {
             part
         };
