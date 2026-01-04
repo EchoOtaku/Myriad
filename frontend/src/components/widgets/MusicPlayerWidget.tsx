@@ -1019,7 +1019,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode, isPreview }: MusicP
                   isPlaying={isPlaying}
                   themeColor={themeColor}
                   scale={scale * 1.35} // 放大封面
-                  className="relative z-10 shadow-xl"
+                  className="relative z-10 shadow-xl rounded-md"
                   style={{}} 
                   anim={anim}
                 />
