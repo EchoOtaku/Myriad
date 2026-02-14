@@ -212,8 +212,9 @@ fn is_csrf_exempt(path: &str) -> bool {
         || path.starts_with("/health")
         || path.starts_with("/api/proxy/") // 图片代理等公开接口
         || path.starts_with("/api/ai/") // AI 推荐等公开接口
-                                        // 注意: /api/tapps/ 和 /api/tapp/ 不在豁免列表
-                                        // 已登录用户需要 CSRF 保护，游客通过上面的 session 检查自动跳过
+        || path.starts_with("/api/agent/") // Agent API - 已有 JWT 认证保护
+                                           // 注意: /api/tapps/ 和 /api/tapp/ 不在豁免列表
+                                           // 已登录用户需要 CSRF 保护，游客通过上面的 session 检查自动跳过
 }
 
 /// 生成并返回 CSRF Token 的接口

@@ -29,6 +29,7 @@ use crate::models::entities::{
 };
 use crate::services::brew_parser::FeedParser;
 use crate::services::brew_scheduler::get_brew_scheduler;
+use crate::services::data_paths::paths;
 use crate::services::icon_service::IconService;
 use crate::services::rsshub_service::RsshubService;
 
@@ -101,7 +102,7 @@ pub fn create_brew_routes() -> Router<DatabaseConnection> {
                     header::CACHE_CONTROL,
                     header::HeaderValue::from_static("public, max-age=86400, immutable"),
                 ))
-                .service(ServeDir::new("data/brew/icons")),
+                .service(ServeDir::new(&paths().brew_icons)),
         )
         // 图片缓存服务（Notion 临时 URL 等）
         .nest_service(
@@ -111,7 +112,7 @@ pub fn create_brew_routes() -> Router<DatabaseConnection> {
                     header::CACHE_CONTROL,
                     header::HeaderValue::from_static("public, max-age=604800, immutable"),
                 ))
-                .service(ServeDir::new("cache/images")),
+                .service(ServeDir::new(&paths().cache_images)),
         )
 }
 

@@ -28,3 +28,7 @@ pub mod brew_podcasts;
 pub mod brew_sources;
 pub mod brew_user_states;
 pub mod rsshub_instances;
+
+// Agent 任务系统实体
+pub mod agent_tasks;
+pub mod agent_task_presets;

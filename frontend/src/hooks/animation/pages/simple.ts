@@ -54,6 +54,11 @@ export function useDataManagementScheduler(): void {
   // startPage('data-management') 由 useRouteScheduler 统一调用
 }
 
+// Details 专用
+export function useDetailsScheduler(): void {
+  // startPage('details') 由 useRouteScheduler 统一调用
+}
+
 // ==================== Timeout Hooks ====================
 
 /**

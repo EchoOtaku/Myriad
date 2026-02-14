@@ -1,0 +1,444 @@
+//! 系统操作能力定义
+
+use crate::services::agent::types::*;
+use serde_json::json;
+
+use super::super::CapabilityRegistry;
+
+pub fn register(registry: &mut CapabilityRegistry) {
+    // 数据转换
+    registry.register(Capability {
+        id: "data.transform".to_string(),
+        name: "数据转换".to_string(),
+        description: "对数据进行过滤、排序、聚合等操作".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Query, IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "input": { "type": "object" },
+                "pipeline": { "type": "array" }
+            },
+            "required": ["input", "pipeline"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "data": { "type": "array" },
+                "count": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec![],
+        requires_ai: false,
+        estimated_duration_ms: Some(200),
+        ..Default::default()
+    });
+
+    // 创建定时任务
+    registry.register(Capability {
+        id: "scheduler.create".to_string(),
+        name: "创建定时任务".to_string(),
+        description: "创建定时执行的监控任务".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Monitor, IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "cronExpression": { "type": "string" },
+                "action": { "type": "object" },
+                "conditions": { "type": "array" }
+            },
+            "required": ["name", "cronExpression", "action"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "taskId": { "type": "string" },
+                "nextRun": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["scheduler:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(300),
+        ..Default::default()
+    });
+
+    // 定时任务列表
+    registry.register(Capability {
+        id: "scheduler.list".to_string(),
+        name: "定时任务列表".to_string(),
+        description: "获取所有定时任务列表".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "tappId": { "type": "string" },
+                "enabled": { "type": "boolean" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "tasks": { "type": "array" },
+                "total": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["scheduler:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(200),
+        ..Default::default()
+    });
+
+    // 立即执行任务
+    registry.register(Capability {
+        id: "scheduler.trigger".to_string(),
+        name: "立即执行任务".to_string(),
+        description: "立即触发执行指定的定时任务".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Update],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "taskId": { "type": "string" }
+            },
+            "required": ["taskId"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "success": { "type": "boolean" },
+                "executionId": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["scheduler:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(1000),
+        ..Default::default()
+    });
+
+    // 系统监控
+    registry.register(Capability {
+        id: "system.metrics".to_string(),
+        name: "系统监控".to_string(),
+        description: "获取系统运行状态和指标".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Query, IntentAction::Monitor],
+        input_schema: json!({
+            "type": "object",
+            "properties": {}
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "memory": { "type": "object" },
+                "tasks": { "type": "object" },
+                "alerts": { "type": "array" }
+            }
+        }),
+        required_permissions: vec!["system:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 缓存状态
+    registry.register(Capability {
+        id: "cache.status".to_string(),
+        name: "缓存状态".to_string(),
+        description: "获取各平台缓存状态".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "caches": { "type": "array" },
+                "totalSize": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["cache:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 清除缓存
+    registry.register(Capability {
+        id: "cache.clear".to_string(),
+        name: "清除缓存".to_string(),
+        description: "清除指定平台的缓存数据".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Delete],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" }
+            },
+            "required": ["platform"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "success": { "type": "boolean" },
+                "clearedSize": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["cache:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(500),
+        ..Default::default()
+    });
+
+    // 图片缓存
+    registry.register(Capability {
+        id: "image.cache".to_string(),
+        name: "图片缓存".to_string(),
+        description: "缓存外部图片到本地".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "url": { "type": "string" }
+            },
+            "required": ["url"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "localPath": { "type": "string" },
+                "cached": { "type": "boolean" }
+            }
+        }),
+        required_permissions: vec!["cache:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // 获取配置
+    registry.register(Capability {
+        id: "config.get".to_string(),
+        name: "获取配置".to_string(),
+        description: "获取系统配置信息".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "section": { "type": "string", "enum": ["platforms", "ai", "ui", "all"] }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "config": { "type": "object" }
+            }
+        }),
+        required_permissions: vec!["config:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 系统设置状态
+    registry.register(Capability {
+        id: "setup.status".to_string(),
+        name: "系统设置状态".to_string(),
+        description: "检查系统初始化和设置状态".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {}
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "isSetupRequired": { "type": "boolean" },
+                "hasDatabase": { "type": "boolean" },
+                "hasAdminUser": { "type": "boolean" },
+                "missingConfigs": { "type": "array" }
+            }
+        }),
+        required_permissions: vec!["system:admin".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 认证状态
+    registry.register(Capability {
+        id: "auth.status".to_string(),
+        name: "认证状态".to_string(),
+        description: "检查用户认证和权限状态".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {}
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "isAuthenticated": { "type": "boolean" },
+                "user": { "type": "object" },
+                "linkedPlatforms": { "type": "array" }
+            }
+        }),
+        required_permissions: vec!["auth:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(50),
+        ..Default::default()
+    });
+
+    // 存储数据
+    registry.register(Capability {
+        id: "storage.set".to_string(),
+        name: "存储数据".to_string(),
+        description: "保存数据到 Tapp 存储".to_string(),
+        category: CapabilityCategory::DataWrite,
+        supported_actions: vec![IntentAction::Create, IntentAction::Update],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "key": { "type": "string" },
+                "value": { "type": "any" },
+                "tappId": { "type": "string" }
+            },
+            "required": ["key", "value"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "success": { "type": "boolean" }
+            }
+        }),
+        required_permissions: vec!["storage:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 数据导出
+    registry.register(Capability {
+        id: "export.data".to_string(),
+        name: "数据导出".to_string(),
+        description: "导出平台数据为指定格式".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" },
+                "format": { "type": "string", "enum": ["json", "csv", "markdown"] },
+                "dateRange": { "type": "object" }
+            },
+            "required": ["platform", "format"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "content": { "type": "string" },
+                "filename": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["export:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(2000),
+        ..Default::default()
+    });
+
+    // 后台任务提交
+    registry.register(Capability {
+        id: "task.submit".to_string(),
+        name: "提交后台任务".to_string(),
+        description: "提交平台数据处理任务".to_string(),
+        category: CapabilityCategory::SystemOp,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" },
+                "taskType": { "type": "string", "enum": ["fetch", "process", "analyze"] }
+            },
+            "required": ["platform"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "taskId": { "type": "string" },
+                "status": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["task:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 任务状态查询
+    registry.register(Capability {
+        id: "task.status".to_string(),
+        name: "任务状态查询".to_string(),
+        description: "查询后台任务状态和进度".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "taskId": { "type": "string" },
+                "platform": { "type": "string" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "taskId": { "type": "string" },
+                "status": { "type": "string" },
+                "progress": { "type": "number" },
+                "error": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["task:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
+    // 语音服务
+    registry.register(Capability {
+        id: "speech.tts".to_string(),
+        name: "文字转语音".to_string(),
+        description: "将文字内容转换为语音".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "text": { "type": "string" },
+                "voice": { "type": "string" },
+                "speed": { "type": "number", "default": 1.0 }
+            },
+            "required": ["text"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "audioUrl": { "type": "string" },
+                "duration": { "type": "number" }
+            }
+        }),
+        required_permissions: vec!["speech:tts".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(5000),
+        ..Default::default()
+    });
+}

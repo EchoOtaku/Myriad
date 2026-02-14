@@ -121,9 +121,29 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
-  // 跳过非 HTTP(S) 请求
+  // 跳过非 HTTP(S) 请求（包括 blob: 和 data: URL）
   if (!url.protocol.startsWith('http')) {
     return
+  }
+
+  // 跳过 blob: URL（由浏览器直接处理）
+  if (request.url.startsWith('blob:')) {
+    return;
+  }
+
+  // 跳过 blob: URL（由浏览器直接处理）
+  if (request.url.startsWith('blob:')) {
+    return;
+  }
+
+  // 跳过 blob: URL（由浏览器直接处理）
+  if (request.url.startsWith('blob:')) {
+    return;
+  }
+
+  // 跳过 blob: URL（由浏览器直接处理）
+  if (request.url.startsWith('blob:')) {
+    return;
   }
 
   // API 请求 - 网络优先策略

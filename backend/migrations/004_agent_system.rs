@@ -1,0 +1,440 @@
+use sea_orm_migration::prelude::*;
+
+/// Agent 系统数据库结构
+///
+/// AI Agent 自然语言任务编排系统：
+/// - 任务状态持久化与恢复
+/// - 动态步骤保存
+/// - 执行上下文管理
+/// - 会话历史记录
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // ==================== 1. AGENT_TASKS 表 ====================
+        // 存储 Agent 任务状态
+        manager
+            .create_table(
+                Table::create()
+                    .table(AgentTasks::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AgentTasks::Id)
+                            .string_len(64)
+                            .not_null()
+                            .primary_key(),
+                    )
+                    // 所属用户
+                    .col(ColumnDef::new(AgentTasks::UserId).integer().not_null())
+                    // 关联的方案 ID
+                    .col(ColumnDef::new(AgentTasks::RecipeId).string_len(64).not_null())
+                    // 任务名称
+                    .col(ColumnDef::new(AgentTasks::Name).string_len(255))
+                    // 任务状态: pending, running, paused, waiting_for_input, completed, failed, cancelled
+                    .col(
+                        ColumnDef::new(AgentTasks::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("pending"),
+                    )
+                    // 当前步骤索引
+                    .col(
+                        ColumnDef::new(AgentTasks::CurrentStep)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    // 总步骤数
+                    .col(
+                        ColumnDef::new(AgentTasks::TotalSteps)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    // 步骤执行结果 (JSON)
+                    .col(ColumnDef::new(AgentTasks::StepResults).json().not_null())
+                    // 执行上下文 (JSON) - 包含动态步骤、变量等
+                    .col(ColumnDef::new(AgentTasks::ExecutionContext).json())
+                    // 待回答问题 (JSON)
+                    .col(ColumnDef::new(AgentTasks::PendingQuestion).json())
+                    // 进度百分比
+                    .col(
+                        ColumnDef::new(AgentTasks::Progress)
+                            .small_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    // 错误信息
+                    .col(ColumnDef::new(AgentTasks::Error).text())
+                    // 原始用户请求
+                    .col(ColumnDef::new(AgentTasks::OriginalRequest).text())
+                    // 会话 ID（用于多轮对话）
+                    .col(ColumnDef::new(AgentTasks::SessionId).string_len(64))
+                    // 开始时间
+                    .col(
+                        ColumnDef::new(AgentTasks::StartedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    // 完成时间
+                    .col(ColumnDef::new(AgentTasks::CompletedAt).timestamp_with_time_zone())
+                    // 更新时间
+                    .col(
+                        ColumnDef::new(AgentTasks::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建用户索引
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_tasks_user_id")
+                    .table(AgentTasks::Table)
+                    .col(AgentTasks::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建状态索引
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_tasks_status")
+                    .table(AgentTasks::Table)
+                    .col(AgentTasks::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建会话索引
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_tasks_session_id")
+                    .table(AgentTasks::Table)
+                    .col(AgentTasks::SessionId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建更新时间索引（用于清理过期任务）
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_tasks_updated_at")
+                    .table(AgentTasks::Table)
+                    .col(AgentTasks::UpdatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        // ==================== 2. AGENT_SESSIONS 表 ====================
+        // 存储 Agent 会话（多轮对话）
+        manager
+            .create_table(
+                Table::create()
+                    .table(AgentSessions::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AgentSessions::Id)
+                            .string_len(64)
+                            .not_null()
+                            .primary_key(),
+                    )
+                    // 所属用户
+                    .col(ColumnDef::new(AgentSessions::UserId).integer().not_null())
+                    // 会话标题（自动生成或用户设置）
+                    .col(ColumnDef::new(AgentSessions::Title).string_len(255))
+                    // 会话上下文 (JSON) - 包含偏好、历史摘要等
+                    .col(ColumnDef::new(AgentSessions::Context).json())
+                    // 消息数量
+                    .col(
+                        ColumnDef::new(AgentSessions::MessageCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    // 是否归档
+                    .col(
+                        ColumnDef::new(AgentSessions::Archived)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    // 创建时间
+                    .col(
+                        ColumnDef::new(AgentSessions::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    // 最后活跃时间
+                    .col(
+                        ColumnDef::new(AgentSessions::LastActiveAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建用户会话索引
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_sessions_user_id")
+                    .table(AgentSessions::Table)
+                    .col(AgentSessions::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // ==================== 3. AGENT_MESSAGES 表 ====================
+        // 存储会话消息历史
+        manager
+            .create_table(
+                Table::create()
+                    .table(AgentMessages::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AgentMessages::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    // 所属会话
+                    .col(
+                        ColumnDef::new(AgentMessages::SessionId)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    // 关联任务（可选）
+                    .col(ColumnDef::new(AgentMessages::TaskId).string_len(64))
+                    // 消息角色: user, assistant, system
+                    .col(
+                        ColumnDef::new(AgentMessages::Role)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    // 消息内容
+                    .col(ColumnDef::new(AgentMessages::Content).text().not_null())
+                    // 消息元数据 (JSON) - 包含 data, suggestions 等
+                    .col(ColumnDef::new(AgentMessages::Metadata).json())
+                    // 创建时间
+                    .col(
+                        ColumnDef::new(AgentMessages::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建会话消息索引
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_messages_session_id")
+                    .table(AgentMessages::Table)
+                    .col(AgentMessages::SessionId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // ==================== 4. AGENT_TASK_PRESETS 表 ====================
+        // 存储任务预设（收藏的任务 + 历史任务 + 对话记录）
+        // 合并了 Session 系统：支持「重新运行」和「继续对话」两种模式
+        manager
+            .create_table(
+                Table::create()
+                    .table(AgentTaskPresets::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AgentTaskPresets::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    // 所属用户
+                    .col(ColumnDef::new(AgentTaskPresets::UserId).integer().not_null())
+                    // 原始用户输入
+                    .col(ColumnDef::new(AgentTaskPresets::Input).text().not_null())
+                    // 预设类型: favorite(收藏), history(历史)
+                    .col(
+                        ColumnDef::new(AgentTaskPresets::PresetType)
+                            .string_len(16)
+                            .not_null()
+                            .default("history"),
+                    )
+                    // 解析后的步骤 (JSON) - 包含能力ID和参数
+                    .col(ColumnDef::new(AgentTaskPresets::ParsedSteps).json())
+                    // 解析后的意图摘要
+                    .col(ColumnDef::new(AgentTaskPresets::IntentSummary).string_len(255))
+                    // 对话标题（用于继续对话时显示）
+                    .col(ColumnDef::new(AgentTaskPresets::Title).string_len(255))
+                    // 完整对话记录 (JSON) - [{role, content, metadata, created_at}]
+                    // 支持「继续对话」模式恢复上下文
+                    .col(ColumnDef::new(AgentTaskPresets::ConversationData).json())
+                    // 最后使用时间
+                    .col(
+                        ColumnDef::new(AgentTaskPresets::LastUsedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    // 使用次数
+                    .col(
+                        ColumnDef::new(AgentTaskPresets::UseCount)
+                            .integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    // 创建时间
+                    .col(
+                        ColumnDef::new(AgentTaskPresets::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建用户+类型索引（用于查询收藏/历史）
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_task_presets_user_type")
+                    .table(AgentTaskPresets::Table)
+                    .col(AgentTaskPresets::UserId)
+                    .col(AgentTaskPresets::PresetType)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建用户+输入唯一索引（防止重复）
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_task_presets_user_input")
+                    .table(AgentTaskPresets::Table)
+                    .col(AgentTaskPresets::UserId)
+                    .col(AgentTaskPresets::Input)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建最后使用时间索引（用于排序和清理）
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_task_presets_last_used")
+                    .table(AgentTaskPresets::Table)
+                    .col(AgentTaskPresets::LastUsedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(AgentTaskPresets::Table).to_owned())
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(AgentMessages::Table).to_owned())
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(AgentSessions::Table).to_owned())
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(AgentTasks::Table).to_owned())
+            .await?;
+
+        Ok(())
+    }
+}
+
+// ==================== 表定义 ====================
+
+#[derive(Iden)]
+pub enum AgentTasks {
+    Table,
+    Id,
+    UserId,
+    RecipeId,
+    Name,
+    Status,
+    CurrentStep,
+    TotalSteps,
+    StepResults,
+    ExecutionContext,
+    PendingQuestion,
+    Progress,
+    Error,
+    OriginalRequest,
+    SessionId,
+    StartedAt,
+    CompletedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+pub enum AgentSessions {
+    Table,
+    Id,
+    UserId,
+    Title,
+    Context,
+    MessageCount,
+    Archived,
+    CreatedAt,
+    LastActiveAt,
+}
+
+#[derive(Iden)]
+pub enum AgentMessages {
+    Table,
+    Id,
+    SessionId,
+    TaskId,
+    Role,
+    Content,
+    Metadata,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+pub enum AgentTaskPresets {
+    Table,
+    Id,
+    UserId,
+    Input,
+    PresetType,
+    ParsedSteps,
+    IntentSummary,
+    Title,
+    ConversationData,
+    LastUsedAt,
+    UseCount,
+    CreatedAt,
+}

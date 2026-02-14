@@ -10,6 +10,9 @@ mod tapp_system;
 #[path = "003_brew_system.rs"]
 mod brew_system;
 
+#[path = "004_agent_system.rs"]
+mod agent_system;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -19,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(initial_schema::Migration),
             Box::new(tapp_system::Migration),
             Box::new(brew_system::Migration),
+            Box::new(agent_system::Migration),
         ]
     }
 }

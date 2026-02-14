@@ -140,6 +140,71 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
           pending.reject(new Error(message.payload?.error || 'Unknown error'));
         }
       }
+    } else if (message.type === 'AGENT_FILL_DATA') {
+      // 🤖 Agent 数据填充请求
+      const data = message.data;
+      if (data && typeof data === 'object') {
+        eventListeners.get('agentFill')?.forEach((cb) => { try { cb(data); } catch (e) {} });
+        // 自动填充表单字段
+        Object.entries(data).forEach(([key, value]) => {
+          const el = document.querySelector(\`[name="\${key}"]\`) || 
+                     document.querySelector(\`#\${key}\`) ||
+                     document.querySelector(\`[data-field="\${key}"]\`);
+          if (el) {
+            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+              el.value = String(value);
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (el instanceof HTMLSelectElement) {
+              el.value = String(value);
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+              el.textContent = String(value);
+            }
+          }
+        });
+      }
+    } else if (message.type === 'AGENT_READ_DATA') {
+      // 🤖 Agent 数据读取请求
+      const fields = message.fields;
+      const result = {};
+      
+      // 收集表单数据
+      const forms = document.querySelectorAll('form');
+      forms.forEach(form => {
+        const formData = new FormData(form);
+        formData.forEach((value, key) => {
+          if (!fields || fields.includes(key)) {
+            result[key] = value;
+          }
+        });
+      });
+      
+      // 收集指定字段
+      if (fields && Array.isArray(fields)) {
+        fields.forEach(field => {
+          if (result[field] === undefined) {
+            const el = document.querySelector(\`[name="\${field}"]\`) || 
+                       document.querySelector(\`#\${field}\`) ||
+                       document.querySelector(\`[data-field="\${field}"]\`);
+            if (el) {
+              if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+                result[field] = el.value;
+              } else {
+                result[field] = el.textContent;
+              }
+            }
+          }
+        });
+      }
+      
+      // 回复数据给父窗口
+      window.parent.postMessage({
+        type: 'AGENT_READ_DATA_RESPONSE',
+        data: result,
+        source: '${id}',
+        _sessionToken: _SESSION_TOKEN,
+      }, '*');
     } else if (message.type === 'event') {
       const listeners = eventListeners.get(message.action);
       listeners?.forEach((cb) => { try { cb(message.payload); } catch (e) {} });
@@ -335,6 +400,25 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       register: (c) => sendRequest('shortcut', 'register', [c]),
       unregister: (id) => sendRequest('shortcut', 'unregister', [id]),
       list: () => sendRequest('shortcut', 'list', []),
+    },
+
+    // 🤖 Agent 交互 API - 允许 Tapp 与 Agent 进行数据交互
+    agent: {
+      // 监听 Agent 填充数据事件
+      onFill: (cb) => addEventListener('agentFill', cb),
+      // 向 Agent 报告表单数据
+      reportData: (data) => {
+        window.parent.postMessage({
+          type: 'AGENT_TAPP_DATA',
+          data: data,
+          source: '${id}',
+          _sessionToken: _SESSION_TOKEN,
+        }, '*');
+      },
+      // 请求 Agent 执行操作
+      requestAction: (action, params) => {
+        return sendRequest('agent', 'action', [action, params]);
+      },
     },
 
     event: {

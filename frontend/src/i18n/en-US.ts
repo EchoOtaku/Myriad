@@ -77,6 +77,9 @@ export const enUS: TranslationKeys = {
     // Brew
     brew: 'Brew',
     brewReading: 'Brew Reader',
+    // Agent
+    agent: 'AI Assistant',
+    aiAssistant: 'AI Assistant',
     // Tapp
     tapp: 'Apps',
     tappStore: 'Tapp Store',

@@ -12,6 +12,7 @@ use axum::{
 use serde_json::json;
 
 use crate::middleware::auth::verify_jwt_token;
+use crate::services::data_paths::paths;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,9 +22,6 @@ use tokio::fs;
 use crate::services::tencent_speech_service::{
     AsrRequest, TencentSpeechError, TencentSpeechService, TtsRequest,
 };
-
-/// Brew 数据目录根路径
-const BREW_DATA_DIR: &str = "data/brew";
 
 /// TTS 子目录名
 const TTS_SUBDIR: &str = "tts";
@@ -156,9 +154,10 @@ pub struct BatchTtsDialogue {
 }
 
 /// 获取文章 TTS 目录路径
-/// 结构: data/brew/{source_id}/{article_id}/tts/
+/// 结构: {brew}/{source_id}/{article_id}/tts/
 fn get_article_tts_dir(source_id: i32, article_id: i32) -> PathBuf {
-    PathBuf::from(BREW_DATA_DIR)
+    paths()
+        .brew
         .join(source_id.to_string())
         .join(article_id.to_string())
         .join(TTS_SUBDIR)
@@ -261,9 +260,7 @@ const STANDALONE_TTS_SUBDIR: &str = "standalone_tts";
 
 /// 获取独立 TTS 目录路径
 fn get_standalone_tts_dir(text_hash: &str) -> PathBuf {
-    PathBuf::from(BREW_DATA_DIR)
-        .join(STANDALONE_TTS_SUBDIR)
-        .join(text_hash)
+    paths().brew.join(STANDALONE_TTS_SUBDIR).join(text_hash)
 }
 
 /// 获取独立 TTS 文件路径

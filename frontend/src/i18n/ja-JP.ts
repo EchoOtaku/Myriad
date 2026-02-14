@@ -77,6 +77,9 @@ export const jaJP: TranslationKeys = {
     // Brew
     brew: 'Brew',
     brewReading: 'Brew リーダー',
+    // Agent
+    agent: 'AIアシスタント',
+    aiAssistant: 'AIアシスタント',
     // Tapp
     tapp: 'アプリ',
     tappStore: 'Tapp ストア',

@@ -2,32 +2,25 @@
  * Brew 文章阅读器组件
  * 全屏沉浸式阅读体验，两侧悬浮控制栏
  *
+ *
  * 性能优化：
  * - useMemo 缓存主题配置和样式计算
  * - useCallback 缓存所有回调函数
  * - 动画统一接入调度器，根据设备性能自适应
  */
 
-import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi'
-import type { BrewItem, SourceType } from '../../types/brew'
-import {
-  LuCalendar as Calendar,
-  LuClock as Clock,
-  LuUser as User,
-} from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
-import { useNavigation } from '../../contexts/NavigationContext'
-import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation/pages/brew'
-import * as brewliaApi from '../../services/brewliaApi'
-import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
-import { processRssContent } from '../../utils/rssContentProcessor'
+import * as brewApi from '../../services/brewApi';
+import * as brewliaApi from '../../services/brewliaApi';
+
+import { AnimatePresence, motion } from 'framer-motion';
+import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi';
 import {
   AnnotationTooltip,
   CommentInputPopup,
-  CommentsListPanel,
   CommentTooltip,
+  CommentsListPanel,
+  DATE_FORMAT_FULL,
+  DATE_FORMAT_SHORT,
   Lightbox,
   MobileReaderBar,
   FONT_OPTIONS as READER_FONT_OPTIONS,
@@ -35,14 +28,37 @@ import {
   THEMES as READER_THEMES,
   ReaderLeftPanel,
   ReaderRightPanel,
+  STYLE_MAX_HEIGHT_320,
+  STYLE_MAX_HEIGHT_60VH,
   STYLE_READER_CONTAINER,
   STYLE_SCROLL_SMOOTH,
+  THEME_ORDER,
   TRANSITION_FAST,
+  TRANSITION_NORMAL,
+  TRANSITION_PANEL,
+  TRANSITION_SLOW,
   useAnnotations,
   useComments,
   usePodcast,
   useReaderSettings,
-} from './reader'
+} from './reader';
+import type { BrewItem, SourceType } from '../../types/brew';
+import {
+  LuCalendar as Calendar,
+  LuClock as Clock,
+  LuUser as User,
+} from '@lib/icons';
+import type { LayoutKey, ThemeKey } from './reader';
+import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation/pages/brew';
+import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import type { CommentItem } from '../../services/brewApi';
+import { processRssContent } from '../../utils/rssContentProcessor';
+import { useI18n } from '../../contexts/I18nContext';
+import { useNavigation } from '../../contexts/NavigationContext';
+import { usePageContentOptional } from '../../contexts/PageContentContext';
+import { useReadingListOptional } from '../../contexts/ReadingListContext';
 
 // API URL
 const API_URL = import.meta.env.PUBLIC_API_URL || ''
@@ -69,6 +85,8 @@ interface BrewReaderProps {
   isAuthenticated?: boolean // 是否已登录（游客隐藏收藏按钮）
   isAdmin?: boolean // 是否为管理员（游客/普通用户隐藏重新生成按钮）
   sourceType?: SourceType // 来源类型（brewlia 时显示 AI 功能）
+  // 阅读列表导航回调（从 Brew.tsx 传入）
+  onNavigateToArticle?: (articleId: number) => void;
 }
 
 // 目录项类型
@@ -83,24 +101,67 @@ const FONT_OPTIONS = READER_FONT_OPTIONS
 const THEMES = READER_THEMES
 const LAYOUT_OPTIONS = READER_LAYOUT_OPTIONS
 
-export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType }: BrewReaderProps) {
-  const { t } = useI18n()
-  const contentRef = useRef<HTMLDivElement>(null)
-  const articleRef = useRef<HTMLElement>(null)
+export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType, onNavigateToArticle }: BrewReaderProps) {
+  const { t } = useI18n();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
+
+  // 阅读列表上下文 - 用于顺序阅读导航
+  const readingList = useReadingListOptional();
+  const positionInfo = readingList?.getPositionInfo(item.id);
 
   // 沉浸模式 - 进入阅读器时隐藏导航栏和控制面板
-  const { setImmersiveMode } = useNavigation()
+  const { setImmersiveMode } = useNavigation();
+
+  // 页面内容上下文 - 用于 Agent 访问当前阅读的文章
+  const { setPageContent, clearPageContent } = usePageContentOptional() || {};
+
+  // 设置当前阅读的文章内容到全局上下文
+  useEffect(() => {
+    if (setPageContent && item) {
+      // 获取文章内容：优先使用 content，其次 summary
+      const articleContent = item.content || item.summary || '';
+
+      setPageContent({
+        type: 'brew_article',
+        title: item.title,
+        content: articleContent,
+        sourceUrl: item.link,
+        author: item.author || undefined,
+        publishedAt: item.published_at ? new Date(item.published_at).toISOString() : undefined,
+        metadata: {
+          sourceId: item.source_id,
+          sourceName: item.source_name,
+          sourceType: sourceType,
+          isBrewlia: sourceType === 'brewlia',
+        },
+      });
+
+      console.log('[BrewReader] Page content set:', {
+        title: item.title,
+        hasContent: !!articleContent,
+        contentLength: articleContent?.length || 0,
+      });
+    }
+
+    // 清理：离开阅读器时清除内容
+    return () => {
+      if (clearPageContent) {
+        clearPageContent();
+      }
+    };
+  }, [item, sourceType, setPageContent, clearPageContent]);
 
   // 动画配置 - 根据设备性能自适应
-  const animConfig = useBrewAnimationConfig()
-  const readerTransition = useMemo(() => getBrewTransition(animConfig, 'reader'), [animConfig])
-  const enableAnimations = animConfig.level !== 'none'
+  const animConfig = useBrewAnimationConfig();
+  const readerTransition = useMemo(() => getBrewTransition(animConfig, 'reader'), [animConfig]);
+  const enableAnimations = animConfig.level !== 'none';
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
-  const [contentReady, setContentReady] = useState(!enableAnimations)
+  const [contentReady, setContentReady] = useState(!enableAnimations);
 
   // Brewlia AI 功能标识
-  const isBrewlia = sourceType === 'brewlia'
+  const isBrewlia = sourceType === 'brewlia';
 
   // 阅读设置 - 使用自定义 hook
   const {
@@ -118,26 +179,26 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     cycleTheme,
     cycleFont,
     cycleLayout,
-  } = useReaderSettings()
+  } = useReaderSettings();
 
-  const [readingProgress, setReadingProgress] = useState(0)
-  const [showToast, setShowToast] = useState<string | null>(null)
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null) // Toast 定时器，防止泄漏
-  const [showPanels, setShowPanels] = useState(true)
-  const [showMobileControls, setShowMobileControls] = useState(false) // 移动端控制条展开状态
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null) // 灯箱图片
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastMouseMoveRef = useRef<number>(0)
-  const isScrollingRef = useRef(false)
-  const cooldownRef = useRef(false) // 冷却期，防止刚隐藏就显示
-  const lastScrollTopRef = useRef(0) // 上次滚动位置，用于判断滚动方向
-  const isHoveringControlsRef = useRef(false) // 鼠标是否在控制栏区域
-  const [toc, setToc] = useState<TocItem[]>([])
-  const [showToc, setShowToc] = useState(false)
-  const [activeHeadingId, setActiveHeadingId] = useState<string>('')
-  const [headingHistory, setHeadingHistory] = useState<string[]>([]) // 标题访问历史
-  const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isLongPressRef = useRef(false)
+  const [readingProgress, setReadingProgress] = useState(0);
+  const [showToast, setShowToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Toast 定时器，防止泄漏
+  const [showPanels, setShowPanels] = useState(true);
+  const [showMobileControls, setShowMobileControls] = useState(false); // 移动端控制条展开状态
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null); // 灯箱图片
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastMouseMoveRef = useRef<number>(0);
+  const isScrollingRef = useRef(false);
+  const cooldownRef = useRef(false); // 冷却期，防止刚隐藏就显示
+  const lastScrollTopRef = useRef(0); // 上次滚动位置，用于判断滚动方向
+  const isHoveringControlsRef = useRef(false); // 鼠标是否在控制栏区域
+  const [toc, setToc] = useState<TocItem[]>([]);
+  const [showToc, setShowToc] = useState(false);
+  const [activeHeadingId, setActiveHeadingId] = useState<string>('');
+  const [headingHistory, setHeadingHistory] = useState<string[]>([]); // 标题访问历史
+  const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef(false);
 
   // 统一的 Toast 显示函数，自动管理定时器防止泄漏
   const showToastMessage = useCallback((message: string, duration = 2000) => {
@@ -158,8 +219,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current)
       }
-    }
-  }, [])
+    };
+  }, []);
 
   // Brewlia AI 注释 - 使用自定义 hook
   const {
@@ -186,7 +247,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     isBrewlia,
     showToastMessage,
     t,
-  })
+  });
 
   // 用户评论 - 使用自定义 hook
   const {
@@ -228,7 +289,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     isAuthenticated,
     showToastMessage,
     t,
-  })
+  });
 
   // Brewlia AI 播客 - 使用自定义 hook
   const {
@@ -274,7 +335,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     isBrewlia,
     showToastMessage,
     t,
-  })
+  });
 
   // 侧边栏按钮样式 - useMemo 缓存
   const sideButtonClass = useMemo(() =>
@@ -284,14 +345,36 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 处理文章内容（带注释、评论高亮和嵌入内容）
   // WebKit 优化：使用状态 + useEffect 异步处理，避免阻塞首次渲染
-  const [processedContent, setProcessedContent] = useState<string>('')
+  const [processedContent, setProcessedContent] = useState<string>('');
 
   useEffect(() => {
     // 如果内容还没准备好，不处理
-    if (!contentReady)
-      return
+    if (!contentReady) return;
 
-    let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`
+    // 🔴 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
+    if (item.fromWebSearch && !item.content) {
+      const hasSummary = item.summary && item.summary.trim().length > 20;
+      if (hasSummary) {
+        // 将摘要转换为段落格式，让阅读器样式能够控制
+        const paragraphs = item.summary!.split(/\n\n|\n/).filter(p => p.trim());
+        const summaryHtml = paragraphs.map(p => `<p>${p.trim()}</p>`).join('\n');
+
+        setProcessedContent(`<div class="web-search-summary">
+          ${summaryHtml}
+          <p class="web-search-note">以上内容由 AI 根据网络搜索结果生成</p>
+        </div>`);
+        return;
+      } else {
+        // 没有摘要时显示提示
+        setProcessedContent(`<div class="web-search-summary">
+          <p class="opacity-60">暂无内容摘要</p>
+        </div>`);
+        return;
+      }
+    }
+
+    // 🔴 优先使用 item 自带的内容
+    let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`;
 
     // 0. 首先处理 RSS 内容格式（清理危险标签、适配各类 HTML 标签样式）
     content = processRssContent(content, {
@@ -300,10 +383,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       removeTrackingParams: true,
       removeEmptyTags: true,
       baseUrl: item.link || undefined,
-    })
+    });
 
     // 1. 处理嵌入内容（iframe、特定链接转卡片）
-    content = processEmbeds(content, isDark)
+    content = processEmbeds(content, isDark);
 
     // 2. 处理 AI 注释高亮
     if (showAnnotations && annotations.length > 0) {
@@ -315,8 +398,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       content = highlightComments(content, comments, theme)
     }
 
-    setProcessedContent(content)
-  }, [contentReady, item.content, item.summary, item.link, showAnnotations, annotations, comments, highlightComments, isDark, theme, t.brew.noContent])
+    setProcessedContent(content);
+  }, [contentReady, item.content, item.summary, item.link, item.fromWebSearch, showAnnotations, annotations, comments, highlightComments, isDark, theme, t.brew.noContent]);
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   // 这避免了同时执行动画 + 大量 DOM 渲染导致的卡顿
@@ -331,12 +414,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     const delay = (readerTransition.duration * 1000) + 50
     const timer = setTimeout(() => {
       requestAnimationFrame(() => {
-        setContentReady(true)
-      })
-    }, delay)
+        setContentReady(true);
+      });
+    }, delay);
 
-    return () => clearTimeout(timer)
-  }, [enableAnimations, readerTransition.duration])
+    return () => clearTimeout(timer);
+  }, [enableAnimations, readerTransition.duration]);
 
   // 沉浸模式控制 - 进入阅读器时隐藏导航岛和控制面板
   useEffect(() => {
@@ -377,25 +460,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         }
 
         // 跳过已处理的图片
-        if (img.dataset.sizeProcessed)
-          return
-        img.dataset.sizeProcessed = 'true'
+        if (img.dataset.sizeProcessed) return;
+        img.dataset.sizeProcessed = 'true';
 
         // 添加基础样式
-        img.classList.add('rounded-xl', 'h-auto', 'my-4', 'mx-auto', 'block')
+        img.classList.add('rounded-xl', 'h-auto', 'my-4', 'mx-auto', 'block');
 
         // 检测正方形图片并限制宽度
         const handleImageLoad = () => {
-          const ratio = img.naturalWidth / img.naturalHeight
-          const isSquare = ratio >= 0.8 && ratio <= 1.25
-          const isSmall = img.naturalWidth <= 200 && img.naturalHeight <= 200
+          const ratio = img.naturalWidth / img.naturalHeight;
+          const isSquare = ratio >= 0.8 && ratio <= 1.25;
+          const isSmall = img.naturalWidth <= 200 && img.naturalHeight <= 200;
 
           if (isSquare || isSmall) {
             // 正方形或小图限制宽度到 35%
             img.style.maxWidth = '35%'
-          }
-          else {
-            img.style.maxWidth = '100%'
           }
         }
 
@@ -417,22 +496,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       const codeBlocks = contentRef.current.querySelectorAll('pre')
       codeBlocks.forEach((pre) => {
         // 跳过已处理的代码块
-        if (pre.parentElement?.classList.contains('code-block-wrapper'))
-          return
+        if (pre.parentElement?.classList.contains('code-block-wrapper')) return;
 
         // 创建包装容器
-        const wrapper = document.createElement('div')
-        wrapper.className = 'code-block-wrapper relative group my-5'
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block-wrapper relative group my-5';
 
         // 将 pre 移入 wrapper
-        pre.parentNode?.insertBefore(wrapper, pre)
-        wrapper.appendChild(pre)
+        pre.parentNode?.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
 
         // 添加复制按钮 - 代码块背景始终是深色的，所以按钮用浅色样式
-        const copyBtn = document.createElement('button')
-        copyBtn.className = 'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm'
-        copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`
-        copyBtn.title = '复制代码'
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm';
+        copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`;
+        copyBtn.title = '复制代码';
 
         copyBtn.addEventListener('click', async (e) => {
           e.preventDefault()
@@ -449,29 +527,29 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           catch (err) {
             console.error('复制失败:', err)
           }
-        })
+        });
 
-        wrapper.appendChild(copyBtn)
-      })
+        wrapper.appendChild(copyBtn);
+      });
 
       // 解析标题生成目录
-      const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6')
-      const tocItems: TocItem[] = []
+      const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      const tocItems: TocItem[] = [];
 
       headings.forEach((heading, index) => {
-        const level = Number.parseInt(heading.tagName[1])
-        const text = heading.textContent?.trim() || ''
-        const id = `heading-${index}-${text.slice(0, 20).replace(/\s+/g, '-').toLowerCase()}`
+        const level = parseInt(heading.tagName[1]);
+        const text = heading.textContent?.trim() || '';
+        const id = `heading-${index}-${text.slice(0, 20).replace(/\s+/g, '-').toLowerCase()}`;
 
         // 为标题添加 id
-        heading.id = id
+        heading.id = id;
 
         if (text) {
           tocItems.push({ id, text, level })
         }
-      })
+      });
 
-      setToc(tocItems)
+      setToc(tocItems);
 
       // 自动加载嵌入卡片数据（网易云音乐封面、歌名等）
       // 延迟执行以确保 DOM 已完全渲染
@@ -481,16 +559,15 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             console.error('[BrewReader] 加载嵌入数据失败:', err)
           })
         }
-      }, 100)
+      }, 100);
 
-      return () => clearTimeout(loadTimer)
+      return () => clearTimeout(loadTimer);
     }
   }, [processedContent]) // 依赖 processedContent 确保嵌入卡片已渲染
 
   // 处理评论高亮和嵌入卡片的点击和悬停事件
   useEffect(() => {
-    if (!contentRef.current)
-      return
+    if (!contentRef.current) return;
 
     const handleContentClick = async (e: Event) => {
       const target = e.target as HTMLElement
@@ -499,7 +576,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       if (target.tagName === 'IMG') {
         const img = target as HTMLImageElement
         // 检查图片是否在嵌入卡片内（brew-embed-card, brew-embed-exempt, brew-bilibili-embed 等）
-        const isInEmbedCard = img.closest('.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video')
+        const isInEmbedCard = img.closest('.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video');
 
         if (img.src && !isInEmbedCard) {
           e.preventDefault()
@@ -536,13 +613,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       }
 
       // 检查是否点击了高亮文本
-      const highlight = target.closest('.user-comment-highlight')
+      const highlight = target.closest('.user-comment-highlight');
 
       if (highlight) {
-        e.preventDefault()
-        e.stopPropagation()
+        e.preventDefault();
+        e.stopPropagation();
 
-        const commentId = highlight.getAttribute('data-comment-id')
+        const commentId = highlight.getAttribute('data-comment-id');
         if (commentId) {
           // 隐藏 tooltip
           setCommentTooltip(null)
@@ -557,12 +634,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           }, 100)
         }
       }
-    }
+    };
 
     // 处理悬停显示 tooltip
     const handleMouseOver = (e: Event) => {
-      const target = e.target as HTMLElement
-      const highlight = target.closest('.user-comment-highlight') as HTMLElement
+      const target = e.target as HTMLElement;
+      const highlight = target.closest('.user-comment-highlight') as HTMLElement;
 
       if (highlight) {
         const commentId = highlight.getAttribute('data-comment-id')
@@ -578,21 +655,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           }
         }
       }
-    }
+    };
 
     const handleMouseOut = (e: Event) => {
-      const relatedTarget = (e as MouseEvent).relatedTarget as HTMLElement
+      const relatedTarget = (e as MouseEvent).relatedTarget as HTMLElement;
 
       // 如果移出的目标不是评论相关元素，隐藏 tooltip
       if (!relatedTarget?.closest('.user-comment-highlight')
         && !relatedTarget?.closest('.comment-tooltip')) {
         setCommentTooltip(null)
       }
-    }
+    };
 
-    contentRef.current.addEventListener('click', handleContentClick)
-    contentRef.current.addEventListener('mouseover', handleMouseOver)
-    contentRef.current.addEventListener('mouseout', handleMouseOut)
+    contentRef.current.addEventListener('click', handleContentClick);
+    contentRef.current.addEventListener('mouseover', handleMouseOver);
+    contentRef.current.addEventListener('mouseout', handleMouseOut);
 
     return () => {
       contentRef.current?.removeEventListener('click', handleContentClick)
@@ -614,7 +691,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       return
 
     const handleScrollForToc = () => {
-      let currentId = ''
+      let currentId = '';
 
       for (const heading of headings) {
         const rect = heading.getBoundingClientRect()
@@ -665,16 +742,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const scrollToHeading = useCallback((id: string) => {
     const heading = document.getElementById(id)
     if (heading && articleRef.current) {
-      const articleRect = articleRef.current.getBoundingClientRect()
-      const headingRect = heading.getBoundingClientRect()
-      const scrollTop = articleRef.current.scrollTop + headingRect.top - articleRect.top - 80
+      const articleRect = articleRef.current.getBoundingClientRect();
+      const headingRect = heading.getBoundingClientRect();
+      const scrollTop = articleRef.current.scrollTop + headingRect.top - articleRect.top - 80;
 
       articleRef.current.scrollTo({
         top: scrollTop,
-        behavior: 'smooth',
-      })
+        behavior: 'smooth'
+      });
 
-      setActiveHeadingId(id)
+      setActiveHeadingId(id);
     }
   }, [])
 
@@ -775,15 +852,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 处理文本选择
   const handleTextSelection = useCallback(() => {
-    if (!isAuthenticated)
-      return
+    if (!isAuthenticated) return;
 
-    const selection = window.getSelection()
+    const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
       return
     }
 
-    const text = selection.toString().trim()
+    const text = selection.toString().trim();
     if (!text || text.length < 2 || text.length > 500) {
       return
     }
@@ -795,14 +871,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
 
     // 获取选中文本的位置信息
-    const rect = range.getBoundingClientRect()
+    const rect = range.getBoundingClientRect();
 
     // 使用视口坐标（因为弹窗是 fixed 定位）
-    const x = rect.left + rect.width / 2
-    const y = rect.top
+    const x = rect.left + rect.width / 2;
+    const y = rect.top;
 
-    setSelectedText(text)
-    setCommentPopupPosition({ x, y }) // 视口坐标
+    setSelectedText(text);
+    setCommentPopupPosition({ x, y }); // 视口坐标
 
     // 获取上下文
     const fullText = contentRef.current?.textContent || ''
@@ -816,22 +892,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       })
     }
 
-    setShowCommentPopup(true)
-  }, [isAuthenticated])
+    setShowCommentPopup(true);
+  }, [isAuthenticated]);
 
   // 监听选择事件
   useEffect(() => {
-    if (!isAuthenticated)
-      return
+    if (!isAuthenticated) return;
 
-    let selectionTimer: ReturnType<typeof setTimeout> | null = null
+    let selectionTimer: ReturnType<typeof setTimeout> | null = null;
 
     const handleMouseUp = () => {
       // 延迟执行，等待选择完成
-      selectionTimer = setTimeout(handleTextSelection, 10)
-    }
+      selectionTimer = setTimeout(handleTextSelection, 10);
+    };
 
-    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
       if (selectionTimer)
@@ -851,7 +926,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         return
       }
 
-      const selection = window.getSelection()
+      const selection = window.getSelection();
       // 如果选中被清除（没有选中或选中为空），关闭弹窗
       if (!selection || selection.isCollapsed || !selection.toString().trim()) {
         setShowCommentPopup(false)
@@ -870,9 +945,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       // 如果点击的是评论弹窗内部或评论高亮，不关闭
-      if (target.closest('.comment-popup')
-        || target.closest('.user-comment-highlight')) {
-        return
+      if (target.closest('.comment-popup') ||
+          target.closest('.user-comment-highlight')) {
+        return;
       }
       if (showCommentPopup) {
         setShowCommentPopup(false)
@@ -882,7 +957,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         // 关闭弹窗时清除浏览器选中状态
         window.getSelection()?.removeAllRanges()
       }
-    }
+    };
 
     // 使用 click 而不是 mousedown，避免在文本选择时触发
     document.addEventListener('click', handleClickOutside)
@@ -896,13 +971,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 监听注释 hover 事件（优化稳定性）
   useEffect(() => {
-    if (!contentRef.current || !showAnnotations)
-      return
+    if (!contentRef.current || !showAnnotations) return;
 
     const handleMouseOver = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.brewlia-annotation') as HTMLElement
-      if (!target)
-        return
+      const target = (e.target as HTMLElement).closest('.brewlia-annotation') as HTMLElement;
+      if (!target) return;
 
       // 清除之前的延迟隐藏
       if (hoverTimeoutRef.current) {
@@ -910,21 +983,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         hoverTimeoutRef.current = null
       }
 
-      const term = decodeURIComponent(target.dataset.term || '')
-      const explanation = decodeURIComponent(target.dataset.explanation || '')
-      const type = target.dataset.type as AnnotationType || 'term'
+      const term = decodeURIComponent(target.dataset.term || '');
+      const explanation = decodeURIComponent(target.dataset.explanation || '');
+      const type = target.dataset.type as AnnotationType || 'term';
 
-      const rect = target.getBoundingClientRect()
+      const rect = target.getBoundingClientRect();
       setTooltipPosition({
         x: rect.left + rect.width / 2,
-        y: rect.top - 8,
-      })
-      setHoveredAnnotation({ term, explanation, type })
-    }
+        y: rect.top - 8
+      });
+      setHoveredAnnotation({ term, explanation, type });
+    };
 
     const handleMouseOut = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.brewlia-annotation')
-      const relatedTarget = (e.relatedTarget as HTMLElement)?.closest?.('.brewlia-annotation')
+      const target = (e.target as HTMLElement).closest('.brewlia-annotation');
+      const relatedTarget = (e.relatedTarget as HTMLElement)?.closest?.('.brewlia-annotation');
 
       // 如果移动到另一个注释，不隐藏
       if (target && !relatedTarget) {
@@ -933,11 +1006,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           setHoveredAnnotation(null)
         }, 150)
       }
-    }
+    };
 
-    const container = contentRef.current
-    container.addEventListener('mouseover', handleMouseOver)
-    container.addEventListener('mouseout', handleMouseOut)
+    const container = contentRef.current;
+    container.addEventListener('mouseover', handleMouseOver);
+    container.addEventListener('mouseout', handleMouseOut);
 
     return () => {
       container.removeEventListener('mouseover', handleMouseOver)
@@ -1002,8 +1075,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       lastScrollTopRef.current = currentScrollTop
 
       // 清除之前的定时器
-      if (scrollEndTimer)
-        clearTimeout(scrollEndTimer)
+      if (scrollEndTimer) clearTimeout(scrollEndTimer);
 
       // 向上滚动（往之前内容滑动）时显示控制栏
       if (isScrollingUp && currentScrollTop > 10) {
@@ -1038,24 +1110,24 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 鼠标移动时显示（节流处理 + 控制栏区域检测）
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const now = Date.now()
-      const windowWidth = window.innerWidth
+      const now = Date.now();
+      const windowWidth = window.innerWidth;
 
       // 根据当前布局计算内容区宽度
       // narrow: max-w-3xl = 768px, wide: max-w-4xl = 896px
-      const layoutMaxWidth = layout === 'wide' ? 896 : 768
-      const contentWidth = Math.min(layoutMaxWidth, windowWidth - 48) // 减去 px-6 左右内边距
-      const contentLeft = (windowWidth - contentWidth) / 2
-      const contentRight = contentLeft + contentWidth
+      const layoutMaxWidth = layout === 'wide' ? 896 : 768;
+      const contentWidth = Math.min(layoutMaxWidth, windowWidth - 48); // 减去 px-6 左右内边距
+      const contentLeft = (windowWidth - contentWidth) / 2;
+      const contentRight = contentLeft + contentWidth;
 
       // 控制栏区域：内容区两侧各 80px 范围内（控制栏宽度约 60px + margin）
-      const controlZoneWidth = 80
-      const isInLeftControlZone = e.clientX >= contentLeft - controlZoneWidth && e.clientX <= contentLeft
-      const isInRightControlZone = e.clientX >= contentRight && e.clientX <= contentRight + controlZoneWidth
-      const isInControlZone = isInLeftControlZone || isInRightControlZone
+      const controlZoneWidth = 80;
+      const isInLeftControlZone = e.clientX >= contentLeft - controlZoneWidth && e.clientX <= contentLeft;
+      const isInRightControlZone = e.clientX >= contentRight && e.clientX <= contentRight + controlZoneWidth;
+      const isInControlZone = isInLeftControlZone || isInRightControlZone;
 
       // 更新悬停状态
-      isHoveringControlsRef.current = isInControlZone
+      isHoveringControlsRef.current = isInControlZone;
 
       // 控制栏区域立即响应，其他区域节流
       if (isInControlZone) {
@@ -1159,13 +1231,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
       {/* 顶部淡出遮罩 */}
       <div
-        className="absolute top-0 left-0 right-0 h-24 pointer-events-none z-[5]"
+        className={`absolute top-0 left-0 right-0 h-24 pointer-events-none z-[5]`}
         style={maskGradientStyles.top}
       />
 
       {/* 底部淡入遮罩 */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-[5]"
+        className={`absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-[5]`}
         style={maskGradientStyles.bottom}
       />
 
@@ -1308,47 +1380,47 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               ref={contentRef}
               className={`
               prose prose-lg max-w-none ${currentTheme.text}
-              
+
               /* 标题 - 简洁无装饰 */
               prose-headings:font-semibold prose-headings:leading-snug
               prose-h1:text-[1.5em] prose-h1:mt-8 prose-h1:mb-4
               prose-h2:text-[1.25em] prose-h2:mt-7 prose-h2:mb-3
               prose-h3:text-[1.1em] prose-h3:mt-6 prose-h3:mb-2
               prose-h4:text-[1em] prose-h4:mt-5 prose-h4:mb-2 prose-h4:font-medium
-              
+
               /* 段落 */
               prose-p:my-[1em]
-              
+
               /* 加粗文本 - 明确样式防止被覆盖 */
               prose-strong:font-bold prose-strong:no-underline
               [&_strong]:font-bold [&_strong]:no-underline [&_strong]:not-italic
               [&_b]:font-bold [&_b]:no-underline [&_b]:not-italic
-              
+
               /* 删除线 - 仅对 del/s/strike 应用 */
               [&_del]:line-through [&_del]:opacity-60
               [&_s]:line-through [&_s]:opacity-60
               [&_strike]:line-through [&_strike]:opacity-60
-              
+
               /* 链接 - 简洁下划线 + 防溢出 */
               prose-a:font-normal prose-a:underline prose-a:underline-offset-2
               prose-a:decoration-1 prose-a:transition-colors
               prose-a:break-words [&_a]:overflow-wrap-anywhere
-              
+
               /* 列表 - 紧凑 */
               prose-ul:my-4 prose-ul:pl-5
               prose-ol:my-4 prose-ol:pl-5
               prose-li:my-1 prose-li:pl-0.5
-              
+
               /* 引用块 - 轻盈圆角 */
               prose-blockquote:not-italic prose-blockquote:font-normal
               prose-blockquote:border-0 prose-blockquote:rounded-2xl
               prose-blockquote:px-5 prose-blockquote:py-4 prose-blockquote:my-5
-              
+
               /* 行内代码 - 柔和 */
               prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-lg
               prose-code:text-[0.9em] prose-code:font-normal
               prose-code:before:content-none prose-code:after:content-none
-              
+
               /* 代码块 - 干净圆角 + 相对定位（支持复制按钮） */
               prose-pre:rounded-2xl prose-pre:px-5 prose-pre:py-4
               prose-pre:overflow-x-auto prose-pre:text-[0.875em]
@@ -1358,70 +1430,70 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_pre_code]:text-inherit
               /* 代码块容器（有复制按钮时）*/
               [&_.code-block-wrapper]:my-5
-              
+
               /* 图片 - 自然圆角 */
               prose-img:rounded-2xl prose-img:mx-auto prose-img:my-5
-              
+
               /* 分隔线 - 极简 */
               prose-hr:my-8 prose-hr:border-0 prose-hr:h-px
-              
+
               /* 表格 - 简约 */
               prose-table:my-5 prose-table:w-full prose-table:text-[0.9em]
               prose-thead:border-0
               prose-th:py-2.5 prose-th:px-3 prose-th:text-left prose-th:font-medium
               prose-td:py-2 prose-td:px-3
               [&_table]:rounded-xl [&_table]:overflow-hidden
-              
+
               /* KaTeX 数学公式 */
               [&_.katex]:text-[1.05em]
               [&_.katex-display]:my-5 [&_.katex-display]:py-4 [&_.katex-display]:px-4
               [&_.katex-display]:overflow-x-auto [&_.katex-display]:rounded-2xl
-              
+
               /* figure */
               prose-figure:my-6
               prose-figcaption:text-center prose-figcaption:text-[0.85em] prose-figcaption:mt-2
               prose-figcaption:opacity-60
-              
+
               /* details 折叠 */
               [&_details]:my-4 [&_details]:rounded-2xl [&_details]:overflow-hidden
               [&_summary]:cursor-pointer [&_summary]:py-3 [&_summary]:px-4
               [&_summary]:font-medium [&_summary]:select-none
               [&_details[open]_summary]:mb-2
-              
+
               /* kbd 按键 */
               [&_kbd]:px-1.5 [&_kbd]:py-0.5 [&_kbd]:rounded-lg
               [&_kbd]:text-[0.8em] [&_kbd]:font-mono
-              
+
               /* mark 高亮 */
               [&_mark]:px-1 [&_mark]:rounded-md [&_mark]:bg-transparent
-              
+
               /* 脚注 */
               prose-footnotes:text-[0.85em] prose-footnotes:mt-8 prose-footnotes:opacity-70
-              
+
               /* 嵌入卡片通用样式 */
               [&_.brew-embed-card]:my-6 [&_.brew-embed-card]:font-sans
               [&_.brew-embed-card]:text-base [&_.brew-embed-card]:leading-normal
               [&_.brew-embed-card_*]:no-underline
-              
+
               /* ====== RSS 内容适配样式 ====== */
-              
+
               /* RSS 图片 - 响应式 + 圆角 */
               [&_.rss-content-image]:rounded-xl [&_.rss-content-image]:max-w-full
               [&_.rss-content-image]:h-auto [&_.rss-content-image]:mx-auto
               [&_.rss-content-image]:block [&_.rss-content-image]:my-5
-              
+
               /* RSS 图片容器 figure */
               [&_.rss-content-figure]:my-6 [&_.rss-content-figure]:text-center
               [&_.rss-content-figcaption]:text-[0.85em] [&_.rss-content-figcaption]:mt-2
               [&_.rss-content-figcaption]:opacity-60
-              
+
               /* RSS 视频 */
               [&_.rss-content-video]:rounded-xl [&_.rss-content-video]:w-full
               [&_.rss-content-video]:my-5
-              
+
               /* RSS 音频 */
               [&_.rss-content-audio]:w-full [&_.rss-content-audio]:my-4
-              
+
               /* RSS iframe 包装 - 响应式容器 */
               [&_.rss-content-iframe-wrapper]:relative [&_.rss-content-iframe-wrapper]:w-full
               [&_.rss-content-iframe-wrapper]:my-5 [&_.rss-content-iframe-wrapper]:rounded-xl
@@ -1431,7 +1503,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.rss-content-iframe-wrapper_iframe]:absolute [&_.rss-content-iframe-wrapper_iframe]:inset-0
               [&_.rss-content-iframe-wrapper_iframe]:w-full [&_.rss-content-iframe-wrapper_iframe]:h-full
               [&_.rss-content-iframe-wrapper_iframe]:border-0
-              
+
               /* RSS 表格包装 - 横向滚动 */
               [&_.rss-content-table-wrapper]:overflow-x-auto [&_.rss-content-table-wrapper]:my-5
               [&_.rss-content-table-wrapper]:rounded-xl
@@ -1440,12 +1512,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.rss-content-th]:py-2 [&_.rss-content-th]:px-3
               [&_.rss-content-th]:text-left [&_.rss-content-th]:font-medium
               [&_.rss-content-td]:py-2 [&_.rss-content-td]:px-3
-              
+
               /* RSS 描述列表 */
               [&_.rss-content-dl]:my-4
               [&_.rss-content-dt]:font-semibold [&_.rss-content-dt]:mt-3
               [&_.rss-content-dd]:ml-4 [&_.rss-content-dd]:pl-4 [&_.rss-content-dd]:mt-1
-              
+
               /* RSS 折叠组件 */
               [&_.rss-content-details]:my-4 [&_.rss-content-details]:rounded-xl
               [&_.rss-content-details]:overflow-hidden
@@ -1453,133 +1525,157 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.rss-content-summary]:px-4 [&_.rss-content-summary]:font-medium
               [&_.rss-content-summary]:select-none [&_.rss-content-summary]:transition-colors
               [&_.rss-content-details[open]_.rss-content-summary]:border-b
-              
+
               /* RSS 链接 - 文字断行 */
               [&_.rss-content-link]:break-words [&_.rss-content-link]:underline
               [&_.rss-content-link]:underline-offset-2 [&_.rss-content-link]:decoration-1
-              
+
               /* RSS kbd 按键样式 */
               [&_.rss-content-kbd]:px-1.5 [&_.rss-content-kbd]:py-0.5
               [&_.rss-content-kbd]:rounded [&_.rss-content-kbd]:text-[0.85em]
               [&_.rss-content-kbd]:font-mono [&_.rss-content-kbd]:border
-              
+
               /* RSS mark 高亮 */
               [&_.rss-content-mark]:px-0.5 [&_.rss-content-mark]:rounded
-              
+
               /* RSS abbr 缩写 */
               [&_.rss-content-abbr]:border-b [&_.rss-content-abbr]:border-dashed
               [&_.rss-content-abbr]:cursor-help
-              
+
               /* RSS 分隔线 */
               [&_.rss-content-hr]:border-0 [&_.rss-content-hr]:h-px [&_.rss-content-hr]:my-8
-              
+
               /* RSS 删除线/插入 */
               [&_.rss-content-del]:line-through [&_.rss-content-del]:opacity-60
               [&_.rss-content-ins]:underline
-              
+
               /* RSS 小号文本 */
               [&_.rss-content-small]:text-[0.85em] [&_.rss-content-small]:opacity-80
-              
+
               /* RSS 上下标 */
               [&_.rss-content-sup]:text-[0.75em]
               [&_.rss-content-sub]:text-[0.75em]
-              
+
               /* RSS 时间戳 */
               [&_.rss-content-time]:tabular-nums
-              
+
               /* RSS 类别标签 */
               [&_.rss-content-category]:inline-block [&_.rss-content-category]:px-2
               [&_.rss-content-category]:py-0.5 [&_.rss-content-category]:text-xs
               [&_.rss-content-category]:rounded-full [&_.rss-content-category]:mr-1
-              
+
               /* RSS 语义标签 */
               [&_.rss-content-aside]:my-4 [&_.rss-content-aside]:p-4
               [&_.rss-content-aside]:rounded-xl [&_.rss-content-aside]:opacity-80
               [&_.rss-content-header]:mb-4
               [&_.rss-content-footer]:mt-4 [&_.rss-content-footer]:text-sm
               [&_.rss-content-footer]:opacity-70
-              
-              ${isDark
-      ? `
+
+              /* ====== 网络搜索摘要样式 - 浅色主题 ====== */
+              /* 摘要容器 - 不设置固定字体大小，继承阅读器设置 */
+              [&_.web-search-summary]:leading-[inherit]
+
+              /* 摘要段落 - 继承阅读器的行高和字体 */
+              [&_.web-search-summary_p]:mb-4 [&_.web-search-summary_p]:last:mb-0
+
+              /* 页脚区域 */
+              [&_.web-search-footer]:mt-8 [&_.web-search-footer]:pt-6
+              [&_.web-search-footer]:border-t [&_.web-search-footer]:border-black/10
+              [&_.web-search-footer]:flex [&_.web-search-footer]:items-center
+              [&_.web-search-footer]:justify-between [&_.web-search-footer]:gap-4
+
+              /* AI 生成说明 */
+              [&_.web-search-note]:text-sm [&_.web-search-note]:opacity-50
+              [&_.web-search-note]:m-0
+
+              /* 原文链接按钮 */
+              [&_.web-search-link]:inline-flex [&_.web-search-link]:items-center
+              [&_.web-search-link]:gap-1.5 [&_.web-search-link]:text-sm
+              [&_.web-search-link]:px-3 [&_.web-search-link]:py-1.5
+              [&_.web-search-link]:rounded-lg [&_.web-search-link]:no-underline
+              [&_.web-search-link]:bg-black/5 [&_.web-search-link]:hover:bg-black/10
+              [&_.web-search-link]:transition-colors
+
+              ${isDark ? `
                 /* === 暗色主题 === */
                 prose-invert
-                
+
                 /* 链接 */
                 prose-a:text-blue-400 prose-a:decoration-blue-400/40
                 hover:prose-a:text-blue-300 hover:prose-a:decoration-blue-300/60
-                
+
                 /* 引用块 */
                 prose-blockquote:bg-white/[0.03]
-                
+
                 /* 行内代码 */
                 prose-code:bg-white/[0.08] prose-code:text-amber-200/90
-                
+
                 /* 代码块 */
                 prose-pre:bg-white/[0.04]
-                
+
                 /* 分隔线 */
                 prose-hr:bg-white/[0.06]
-                
+
                 /* 表格 */
                 [&_table]:bg-white/[0.02]
                 [&_thead]:bg-white/[0.03]
                 [&_tbody_tr:nth-child(even)]:bg-white/[0.02]
-                
+
                 /* 数学公式 */
                 [&_.katex-display]:bg-white/[0.03]
-                
+
                 /* details */
                 [&_details]:bg-white/[0.03]
                 [&_summary:hover]:bg-white/[0.05]
-                
+
                 /* kbd */
                 [&_kbd]:bg-white/[0.08]
-                
+
                 /* mark */
                 [&_mark]:text-amber-200 [&_mark]:bg-amber-500/20
-                
+
                 /* ====== RSS 内容样式 - 暗色主题 ====== */
-                
+
                 /* RSS 引用块 */
                 [&_.rss-content-blockquote]:bg-white/[0.03] [&_.rss-content-blockquote]:border-white/10
-                
+
                 /* RSS 代码 */
                 [&_.rss-content-pre]:bg-white/[0.04]
                 [&_.rss-content-inline-code]:bg-white/[0.08]
-                
+
                 /* RSS 表格 */
                 [&_.rss-content-table]:border-white/10
                 [&_.rss-content-thead]:bg-white/[0.05]
                 [&_.rss-content-th]:border-white/10
                 [&_.rss-content-td]:border-white/10
                 [&_.rss-content-tr:nth-child(even)]:bg-white/[0.02]
-                
+
                 /* RSS 描述列表 */
                 [&_.rss-content-dd]:border-white/10
-                
+
                 /* RSS 折叠 */
                 [&_.rss-content-details]:bg-white/[0.03]
                 [&_.rss-content-summary]:hover:bg-white/[0.05]
                 [&_.rss-content-details[open]_.rss-content-summary]:border-white/10
-                
+
                 /* RSS kbd */
                 [&_.rss-content-kbd]:bg-white/[0.08] [&_.rss-content-kbd]:border-white/20
-                
+
                 /* RSS mark */
                 [&_.rss-content-mark]:bg-yellow-500/30
-                
+
                 /* RSS abbr */
                 [&_.rss-content-abbr]:border-white/30
-                
+
                 /* RSS 分隔线 */
                 [&_.rss-content-hr]:bg-white/10
-                
+
                 /* RSS 类别标签 */
                 [&_.rss-content-category]:bg-white/10
-                
+
                 /* RSS 侧边栏 */
                 [&_.rss-content-aside]:bg-white/[0.03]
-                
+
                 /* Brewlia 注释样式 - 暗色主题 */
                 [&_.brewlia-annotation]:cursor-help [&_.brewlia-annotation]:rounded [&_.brewlia-annotation]:px-0.5
                 [&_.brewlia-annotation]:transition-all [&_.brewlia-annotation]:duration-200
@@ -1591,9 +1687,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.brewlia-annotation[data-type="abbreviation"]]:text-pink-300 [&_.brewlia-annotation[data-type="abbreviation"]]:bg-pink-500/15 [&_.brewlia-annotation[data-type="abbreviation"]]:border-pink-400/50
                 [&_.brewlia-annotation:hover]:ring-2 [&_.brewlia-annotation:hover]:ring-current/30
                 [&_.brewlia-highlight-flash]:animate-pulse [&_.brewlia-highlight-flash]:ring-2 [&_.brewlia-highlight-flash]:ring-purple-400
-                
+
+                /* ====== 网络搜索摘要样式 - 暗色主题 ====== */
+                /* 页脚区域 - 暗色主题 */
+                [&_.web-search-footer]:border-white/10
+
+                /* 原文链接按钮 - 暗色主题 */
+                [&_.web-search-link]:bg-white/10 [&_.web-search-link]:hover:bg-white/15
+
                 /* ====== Notion 内容样式 - 暗色主题 ====== */
-                
+
                 /* Notion 颜色 - 文字 */
                 [&_.notion-gray]:text-gray-400
                 [&_.notion-brown]:text-amber-400
@@ -1604,7 +1707,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-purple]:text-purple-400
                 [&_.notion-pink]:text-pink-400
                 [&_.notion-red]:text-red-400
-                
+
                 /* Notion 颜色 - 背景 */
                 [&_.notion-bg-gray]:bg-gray-500/20 [&_.notion-bg-gray]:px-1 [&_.notion-bg-gray]:rounded
                 [&_.notion-bg-brown]:bg-amber-500/20 [&_.notion-bg-brown]:px-1 [&_.notion-bg-brown]:rounded
@@ -1615,7 +1718,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-bg-purple]:bg-purple-500/20 [&_.notion-bg-purple]:px-1 [&_.notion-bg-purple]:rounded
                 [&_.notion-bg-pink]:bg-pink-500/20 [&_.notion-bg-pink]:px-1 [&_.notion-bg-pink]:rounded
                 [&_.notion-bg-red]:bg-red-500/20 [&_.notion-bg-red]:px-1 [&_.notion-bg-red]:rounded
-                
+
                 /* Notion Callout */
                 [&_.notion-callout]:flex [&_.notion-callout]:items-start [&_.notion-callout]:gap-3
                 [&_.notion-callout]:p-4 [&_.notion-callout]:my-4 [&_.notion-callout]:rounded-xl
@@ -1623,11 +1726,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-callout-icon]:text-xl [&_.notion-callout-icon]:flex-shrink-0
                 [&_.notion-callout-icon]:w-6 [&_.notion-callout-icon]:h-6 [&_.notion-callout-icon]:object-contain
                 [&_.notion-callout-content]:flex-1 [&_.notion-callout-content]:min-w-0
-                
+
                 /* Notion Quote */
                 [&_.notion-quote]:pl-4 [&_.notion-quote]:py-1 [&_.notion-quote]:my-4
                 [&_.notion-quote]:bg-white/[0.04] [&_.notion-quote]:rounded-xl
-                
+
                 /* Notion Todo */
                 [&_.notion-todo]:flex [&_.notion-todo]:items-start [&_.notion-todo]:gap-2 [&_.notion-todo]:my-1
                 [&_.notion-checkbox]:w-5 [&_.notion-checkbox]:h-5 [&_.notion-checkbox]:flex-shrink-0
@@ -1637,18 +1740,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-checkbox.checked]:after:text-xs [&_.notion-checkbox.checked]:after:flex
                 [&_.notion-checkbox.checked]:after:items-center [&_.notion-checkbox.checked]:after:justify-center
                 [&_.notion-todo-text.checked]:line-through [&_.notion-todo-text.checked]:opacity-60
-                
+
                 /* Notion Toggle */
                 [&_.notion-toggle]:bg-white/[0.03] [&_.notion-toggle]:border [&_.notion-toggle]:border-white/10
                 [&_.notion-toggle]:rounded-xl [&_.notion-toggle]:my-3
                 [&_.notion-toggle_summary]:px-4 [&_.notion-toggle_summary]:py-3
-                
+
                 /* Notion Image */
                 [&_.notion-image]:my-6
                 [&_.notion-image_img]:rounded-xl [&_.notion-image_img]:w-full
                 [&_.notion-image_figcaption]:text-center [&_.notion-image_figcaption]:text-sm
                 [&_.notion-image_figcaption]:mt-2 [&_.notion-image_figcaption]:opacity-60
-                
+
                 /* Notion Video */
                 [&_.notion-video]:my-6
                 [&_.notion-video-embed]:relative [&_.notion-video-embed]:w-full
@@ -1656,11 +1759,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-video-embed_iframe]:absolute [&_.notion-video-embed_iframe]:inset-0
                 [&_.notion-video-embed_iframe]:w-full [&_.notion-video-embed_iframe]:h-full
                 [&_.notion-video_video]:w-full [&_.notion-video_video]:rounded-xl
-                
+
                 /* Notion Audio */
                 [&_.notion-audio]:my-4
                 [&_.notion-audio_audio]:w-full
-                
+
                 /* Notion Bookmark */
                 [&_.notion-bookmark]:flex [&_.notion-bookmark]:items-center [&_.notion-bookmark]:gap-3
                 [&_.notion-bookmark]:p-4 [&_.notion-bookmark]:my-4 [&_.notion-bookmark]:rounded-xl
@@ -1669,36 +1772,36 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-bookmark-icon]:text-lg
                 [&_.notion-bookmark-title]:font-medium [&_.notion-bookmark-title]:flex-1
                 [&_.notion-bookmark-url]:text-sm [&_.notion-bookmark-url]:opacity-50 [&_.notion-bookmark-url]:truncate [&_.notion-bookmark-url]:max-w-48
-                
+
                 /* Notion Link Preview */
                 [&_.notion-link-preview]:inline-flex [&_.notion-link-preview]:items-center [&_.notion-link-preview]:gap-1.5
                 [&_.notion-link-preview]:px-2 [&_.notion-link-preview]:py-0.5 [&_.notion-link-preview]:rounded-md
                 [&_.notion-link-preview]:bg-white/[0.06] [&_.notion-link-preview]:no-underline
                 [&_.notion-link-preview]:hover:bg-white/[0.1]
-                
+
                 /* Notion File */
                 [&_.notion-file]:inline-flex [&_.notion-file]:items-center [&_.notion-file]:gap-2
                 [&_.notion-file]:px-3 [&_.notion-file]:py-2 [&_.notion-file]:my-2 [&_.notion-file]:rounded-lg
                 [&_.notion-file]:bg-white/[0.04] [&_.notion-file]:border [&_.notion-file]:border-white/10
                 [&_.notion-file]:no-underline [&_.notion-file]:hover:bg-white/[0.08]
-                
+
                 /* Notion Embed */
                 [&_.notion-embed]:my-6
                 [&_.notion-embed-wrapper]:relative [&_.notion-embed-wrapper]:w-full
                 [&_.notion-embed-wrapper]:pb-[56.25%] [&_.notion-embed-wrapper]:rounded-xl [&_.notion-embed-wrapper]:overflow-hidden
                 [&_.notion-embed-wrapper_iframe]:absolute [&_.notion-embed-wrapper_iframe]:inset-0
                 [&_.notion-embed-wrapper_iframe]:w-full [&_.notion-embed-wrapper_iframe]:h-full
-                
+
                 /* Notion PDF */
                 [&_.notion-pdf]:my-6
                 [&_.notion-pdf-embed]:w-full [&_.notion-pdf-embed]:h-[600px] [&_.notion-pdf-embed]:rounded-xl
                 [&_.notion-pdf-embed]:border [&_.notion-pdf-embed]:border-white/10
-                
+
                 /* Notion Equation */
                 [&_.notion-equation]:my-4 [&_.notion-equation]:py-4 [&_.notion-equation]:px-6
                 [&_.notion-equation]:bg-white/[0.03] [&_.notion-equation]:rounded-xl
                 [&_.notion-equation]:overflow-x-auto [&_.notion-equation]:text-center
-                
+
                 /* Notion Table */
                 [&_.notion-table]:w-full [&_.notion-table]:my-4 [&_.notion-table]:border-collapse
                 [&_.notion-table]:rounded-xl [&_.notion-table]:overflow-hidden
@@ -1706,103 +1809,102 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-table_td]:border [&_.notion-table_td]:border-white/10
                 [&_.notion-table.has-header_tr:first-child]:bg-white/[0.05]
                 [&_.notion-table.has-header_tr:first-child_td]:font-medium
-                
+
                 /* Notion Columns */
                 [&_.notion-columns]:flex [&_.notion-columns]:gap-4 [&_.notion-columns]:my-4
                 [&_.notion-column]:flex-1 [&_.notion-column]:min-w-0
-                
+
                 /* Notion Page Link */
                 [&_.notion-page-link]:inline-flex [&_.notion-page-link]:items-center [&_.notion-page-link]:gap-1.5
                 [&_.notion-page-link]:px-2 [&_.notion-page-link]:py-1 [&_.notion-page-link]:rounded-md
                 [&_.notion-page-link]:bg-white/[0.04] [&_.notion-page-link]:no-underline
                 [&_.notion-page-link]:hover:bg-white/[0.08]
-                
+
                 /* Notion Code */
                 [&_.notion-code]:my-4
                 [&_.notion-code_pre]:rounded-xl [&_.notion-code_pre]:overflow-x-auto
                 [&_.notion-code_figcaption]:text-center [&_.notion-code_figcaption]:text-sm
                 [&_.notion-code_figcaption]:mt-2 [&_.notion-code_figcaption]:opacity-50
-                
-              `
-      : `
+
+              ` : `
                 /* === 浅色主题 === */
-                
+
                 /* 链接 */
                 prose-a:text-amber-700 prose-a:decoration-amber-600/30
                 hover:prose-a:text-amber-800 hover:prose-a:decoration-amber-700/50
-                
+
                 /* 引用块 */
                 prose-blockquote:bg-black/[0.02]
-                
+
                 /* 行内代码 */
                 prose-code:bg-black/[0.04] prose-code:text-amber-800
-                
+
                 /* 代码块 */
                 prose-pre:bg-[#282c34] prose-pre:text-[#abb2bf]
-                
+
                 /* 分隔线 */
                 prose-hr:bg-black/[0.06]
-                
+
                 /* 表格 */
                 [&_table]:bg-black/[0.01]
                 [&_thead]:bg-black/[0.02]
                 [&_tbody_tr:nth-child(even)]:bg-black/[0.015]
-                
+
                 /* 数学公式 */
                 [&_.katex-display]:bg-black/[0.02]
-                
+
                 /* details */
                 [&_details]:bg-black/[0.02]
                 [&_summary:hover]:bg-black/[0.04]
-                
+
                 /* kbd */
                 [&_kbd]:bg-black/[0.05]
-                
+
                 /* mark */
                 [&_mark]:text-amber-900 [&_mark]:bg-amber-400/30
-                
+
                 /* ====== RSS 内容样式 - 浅色主题 ====== */
-                
+
                 /* RSS 引用块 */
                 [&_.rss-content-blockquote]:bg-black/[0.02] [&_.rss-content-blockquote]:border-black/10
-                
+
                 /* RSS 代码 */
                 [&_.rss-content-pre]:bg-[#282c34] [&_.rss-content-pre]:text-[#abb2bf]
                 [&_.rss-content-inline-code]:bg-black/[0.04]
-                
+
                 /* RSS 表格 */
                 [&_.rss-content-table]:border-black/10
                 [&_.rss-content-thead]:bg-black/[0.03]
                 [&_.rss-content-th]:border-black/10
                 [&_.rss-content-td]:border-black/10
                 [&_.rss-content-tr:nth-child(even)]:bg-black/[0.015]
-                
+
                 /* RSS 描述列表 */
                 [&_.rss-content-dd]:border-black/10
-                
+
                 /* RSS 折叠 */
                 [&_.rss-content-details]:bg-black/[0.02]
                 [&_.rss-content-summary]:hover:bg-black/[0.04]
                 [&_.rss-content-details[open]_.rss-content-summary]:border-black/10
-                
+
                 /* RSS kbd */
                 [&_.rss-content-kbd]:bg-black/[0.05] [&_.rss-content-kbd]:border-black/10
-                
+
                 /* RSS mark */
                 [&_.rss-content-mark]:bg-yellow-200/60
-                
+
                 /* RSS abbr */
                 [&_.rss-content-abbr]:border-black/30
-                
+
                 /* RSS 分隔线 */
                 [&_.rss-content-hr]:bg-black/10
-                
+
                 /* RSS 类别标签 */
                 [&_.rss-content-category]:bg-black/5
-                
+
                 /* RSS 侧边栏 */
                 [&_.rss-content-aside]:bg-black/[0.02]
-                
+
                 /* Brewlia 注释样式 - 浅色主题 */
                 [&_.brewlia-annotation]:cursor-help [&_.brewlia-annotation]:rounded [&_.brewlia-annotation]:px-0.5
                 [&_.brewlia-annotation]:transition-all [&_.brewlia-annotation]:duration-200
@@ -1814,12 +1916,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.brewlia-annotation[data-type="abbreviation"]]:text-pink-700 [&_.brewlia-annotation[data-type="abbreviation"]]:bg-pink-100 [&_.brewlia-annotation[data-type="abbreviation"]]:border-pink-400
                 [&_.brewlia-annotation:hover]:ring-2 [&_.brewlia-annotation:hover]:ring-current/30
                 [&_.brewlia-highlight-flash]:animate-pulse [&_.brewlia-highlight-flash]:ring-2 [&_.brewlia-highlight-flash]:ring-purple-500
-                
+
                 /* figcaption */
                 prose-figcaption:text-current
-                
+
                 /* ====== Notion 内容样式 - 浅色主题 ====== */
-                
+
                 /* Notion 颜色 - 文字 */
                 [&_.notion-gray]:text-gray-500
                 [&_.notion-brown]:text-amber-700
@@ -1830,7 +1932,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-purple]:text-purple-600
                 [&_.notion-pink]:text-pink-600
                 [&_.notion-red]:text-red-600
-                
+
                 /* Notion 颜色 - 背景 */
                 [&_.notion-bg-gray]:bg-gray-100 [&_.notion-bg-gray]:px-1 [&_.notion-bg-gray]:rounded
                 [&_.notion-bg-brown]:bg-amber-100 [&_.notion-bg-brown]:px-1 [&_.notion-bg-brown]:rounded
@@ -1841,7 +1943,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-bg-purple]:bg-purple-100 [&_.notion-bg-purple]:px-1 [&_.notion-bg-purple]:rounded
                 [&_.notion-bg-pink]:bg-pink-100 [&_.notion-bg-pink]:px-1 [&_.notion-bg-pink]:rounded
                 [&_.notion-bg-red]:bg-red-100 [&_.notion-bg-red]:px-1 [&_.notion-bg-red]:rounded
-                
+
                 /* Notion Callout */
                 [&_.notion-callout]:flex [&_.notion-callout]:items-start [&_.notion-callout]:gap-3
                 [&_.notion-callout]:p-4 [&_.notion-callout]:my-4 [&_.notion-callout]:rounded-xl
@@ -1849,11 +1951,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-callout-icon]:text-xl [&_.notion-callout-icon]:flex-shrink-0
                 [&_.notion-callout-icon]:w-6 [&_.notion-callout-icon]:h-6 [&_.notion-callout-icon]:object-contain
                 [&_.notion-callout-content]:flex-1 [&_.notion-callout-content]:min-w-0
-                
+
                 /* Notion Quote */
                 [&_.notion-quote]:pl-4 [&_.notion-quote]:py-1 [&_.notion-quote]:my-4
                 [&_.notion-quote]:bg-black/[0.04] [&_.notion-quote]:rounded-xl
-                
+
                 /* Notion Todo */
                 [&_.notion-todo]:flex [&_.notion-todo]:items-start [&_.notion-todo]:gap-2 [&_.notion-todo]:my-1
                 [&_.notion-checkbox]:w-5 [&_.notion-checkbox]:h-5 [&_.notion-checkbox]:flex-shrink-0
@@ -1863,18 +1965,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-checkbox.checked]:after:text-xs [&_.notion-checkbox.checked]:after:flex
                 [&_.notion-checkbox.checked]:after:items-center [&_.notion-checkbox.checked]:after:justify-center
                 [&_.notion-todo-text.checked]:line-through [&_.notion-todo-text.checked]:opacity-60
-                
+
                 /* Notion Toggle */
                 [&_.notion-toggle]:bg-black/[0.02] [&_.notion-toggle]:border [&_.notion-toggle]:border-black/5
                 [&_.notion-toggle]:rounded-xl [&_.notion-toggle]:my-3
                 [&_.notion-toggle_summary]:px-4 [&_.notion-toggle_summary]:py-3
-                
+
                 /* Notion Image */
                 [&_.notion-image]:my-6
                 [&_.notion-image_img]:rounded-xl [&_.notion-image_img]:w-full
                 [&_.notion-image_figcaption]:text-center [&_.notion-image_figcaption]:text-sm
                 [&_.notion-image_figcaption]:mt-2 [&_.notion-image_figcaption]:opacity-60
-                
+
                 /* Notion Video */
                 [&_.notion-video]:my-6
                 [&_.notion-video-embed]:relative [&_.notion-video-embed]:w-full
@@ -1882,11 +1984,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-video-embed_iframe]:absolute [&_.notion-video-embed_iframe]:inset-0
                 [&_.notion-video-embed_iframe]:w-full [&_.notion-video-embed_iframe]:h-full
                 [&_.notion-video_video]:w-full [&_.notion-video_video]:rounded-xl
-                
+
                 /* Notion Audio */
                 [&_.notion-audio]:my-4
                 [&_.notion-audio_audio]:w-full
-                
+
                 /* Notion Bookmark */
                 [&_.notion-bookmark]:flex [&_.notion-bookmark]:items-center [&_.notion-bookmark]:gap-3
                 [&_.notion-bookmark]:p-4 [&_.notion-bookmark]:my-4 [&_.notion-bookmark]:rounded-xl
@@ -1895,36 +1997,36 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-bookmark-icon]:text-lg
                 [&_.notion-bookmark-title]:font-medium [&_.notion-bookmark-title]:flex-1
                 [&_.notion-bookmark-url]:text-sm [&_.notion-bookmark-url]:opacity-50 [&_.notion-bookmark-url]:truncate [&_.notion-bookmark-url]:max-w-48
-                
+
                 /* Notion Link Preview */
                 [&_.notion-link-preview]:inline-flex [&_.notion-link-preview]:items-center [&_.notion-link-preview]:gap-1.5
                 [&_.notion-link-preview]:px-2 [&_.notion-link-preview]:py-0.5 [&_.notion-link-preview]:rounded-md
                 [&_.notion-link-preview]:bg-black/[0.03] [&_.notion-link-preview]:no-underline
                 [&_.notion-link-preview]:hover:bg-black/[0.06]
-                
+
                 /* Notion File */
                 [&_.notion-file]:inline-flex [&_.notion-file]:items-center [&_.notion-file]:gap-2
                 [&_.notion-file]:px-3 [&_.notion-file]:py-2 [&_.notion-file]:my-2 [&_.notion-file]:rounded-lg
                 [&_.notion-file]:bg-black/[0.02] [&_.notion-file]:border [&_.notion-file]:border-black/5
                 [&_.notion-file]:no-underline [&_.notion-file]:hover:bg-black/[0.04]
-                
+
                 /* Notion Embed */
                 [&_.notion-embed]:my-6
                 [&_.notion-embed-wrapper]:relative [&_.notion-embed-wrapper]:w-full
                 [&_.notion-embed-wrapper]:pb-[56.25%] [&_.notion-embed-wrapper]:rounded-xl [&_.notion-embed-wrapper]:overflow-hidden
                 [&_.notion-embed-wrapper_iframe]:absolute [&_.notion-embed-wrapper_iframe]:inset-0
                 [&_.notion-embed-wrapper_iframe]:w-full [&_.notion-embed-wrapper_iframe]:h-full
-                
+
                 /* Notion PDF */
                 [&_.notion-pdf]:my-6
                 [&_.notion-pdf-embed]:w-full [&_.notion-pdf-embed]:h-[600px] [&_.notion-pdf-embed]:rounded-xl
                 [&_.notion-pdf-embed]:border [&_.notion-pdf-embed]:border-black/10
-                
+
                 /* Notion Equation */
                 [&_.notion-equation]:my-4 [&_.notion-equation]:py-4 [&_.notion-equation]:px-6
                 [&_.notion-equation]:bg-black/[0.02] [&_.notion-equation]:rounded-xl
                 [&_.notion-equation]:overflow-x-auto [&_.notion-equation]:text-center
-                
+
                 /* Notion Table */
                 [&_.notion-table]:w-full [&_.notion-table]:my-4 [&_.notion-table]:border-collapse
                 [&_.notion-table]:rounded-xl [&_.notion-table]:overflow-hidden
@@ -1932,17 +2034,17 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-table_td]:border [&_.notion-table_td]:border-black/10
                 [&_.notion-table.has-header_tr:first-child]:bg-black/[0.03]
                 [&_.notion-table.has-header_tr:first-child_td]:font-medium
-                
+
                 /* Notion Columns */
                 [&_.notion-columns]:flex [&_.notion-columns]:gap-4 [&_.notion-columns]:my-4
                 [&_.notion-column]:flex-1 [&_.notion-column]:min-w-0
-                
+
                 /* Notion Page Link */
                 [&_.notion-page-link]:inline-flex [&_.notion-page-link]:items-center [&_.notion-page-link]:gap-1.5
                 [&_.notion-page-link]:px-2 [&_.notion-page-link]:py-1 [&_.notion-page-link]:rounded-md
                 [&_.notion-page-link]:bg-black/[0.02] [&_.notion-page-link]:no-underline
                 [&_.notion-page-link]:hover:bg-black/[0.04]
-                
+
                 /* Notion Code */
                 [&_.notion-code]:my-4
                 [&_.notion-code_pre]:rounded-xl [&_.notion-code_pre]:overflow-x-auto
@@ -1973,19 +2075,95 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                   )}
             </div>
 
-            {/* 音频播放器 */}
-            {item.audio_url && (
-              <div
-                className={`mt-8 p-4 rounded-2xl ${currentTheme.surfaceSolid} border ${currentTheme.border}`}
-                onClick={e => e.stopPropagation()}
-              >
-                <p className={`text-sm ${currentTheme.secondary} mb-3`}>{t.brew.audioLabel}</p>
-                <audio src={item.audio_url} controls className="w-full" />
-              </div>
-            )}
+          {/* 音频播放器 */}
+          {item.audio_url && (
+            <div
+              className={`mt-8 p-4 rounded-2xl ${currentTheme.surfaceSolid} border ${currentTheme.border}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className={`text-sm ${currentTheme.secondary} mb-3`}>{t.brew.audioLabel}</p>
+              <audio src={item.audio_url} controls className="w-full" />
+            </div>
+          )}
 
-            {/* 底部留白 */}
-            <div className="h-20" />
+          {/* 阅读列表导航 - 上一篇/下一篇 */}
+          {positionInfo && onNavigateToArticle && (
+            <div
+              className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 列表信息 */}
+              <div className={`text-center mb-6 ${currentTheme.secondary}`}>
+                <span className="text-sm">
+                  {readingList?.currentList?.name} · {positionInfo.index + 1} / {positionInfo.total}
+                </span>
+              </div>
+
+              {/* 导航按钮 */}
+              <div className="flex gap-4">
+                {/* 上一篇 */}
+                <button
+                  onClick={() => {
+                    const prev = readingList?.getPrevious();
+                    if (prev) {
+                      readingList?.goToArticle(positionInfo.index - 1);
+                      onNavigateToArticle(prev.id);
+                    }
+                  }}
+                  disabled={!positionInfo.hasPrev}
+                  className={`
+                    flex-1 min-w-0 p-4 rounded-2xl text-left transition-all
+                    ${positionInfo.hasPrev
+                      ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
+                      : 'opacity-30 cursor-not-allowed'}
+                    border ${currentTheme.border}
+                  `}
+                >
+                  <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    上一篇
+                  </div>
+                  <div className={`${currentTheme.text} font-medium truncate`}>
+                    {readingList?.getPrevious()?.title || '没有了'}
+                  </div>
+                </button>
+
+                {/* 下一篇 */}
+                <button
+                  onClick={() => {
+                    const next = readingList?.getNext();
+                    if (next) {
+                      readingList?.goToArticle(positionInfo.index + 1);
+                      onNavigateToArticle(next.id);
+                    }
+                  }}
+                  disabled={!positionInfo.hasNext}
+                  className={`
+                    flex-1 min-w-0 p-4 rounded-2xl text-right transition-all
+                    ${positionInfo.hasNext
+                      ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
+                      : 'opacity-30 cursor-not-allowed'}
+                    border ${currentTheme.border}
+                  `}
+                >
+                  <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
+                    下一篇
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <div className={`${currentTheme.text} font-medium truncate`}>
+                    {readingList?.getNext()?.title || '没有了'}
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 底部留白 */}
+          <div className="h-20" />
           </div>
 
           {/* 右侧控制栏 - 设置与操作 */}

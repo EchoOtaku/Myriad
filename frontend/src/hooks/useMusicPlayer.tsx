@@ -8,9 +8,6 @@ import type {
   MusicSource,
   Song,
 } from '../utils/musicPlayer'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_URL } from '../config'
-import { extractColorsFromImage } from '../utils/colorExtractor'
 import {
   audioManager,
   filterPlaylist,
@@ -21,8 +18,12 @@ import {
   getQQPlaylist,
   throttle,
 } from '../utils/musicPlayer'
-import { loadResource } from '../utils/resourceLoader'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { API_URL } from '../config'
+import { extractColorsFromImage } from '../utils/colorExtractor'
 import { getPerformanceProfileSync } from './usePerformanceProfile'
+import { loadResource } from '../utils/resourceLoader'
 
 // 播放模式类型
 export type PlayMode = 'loop' | 'single' | 'shuffle'
@@ -759,7 +760,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   }, [selectSong])
 
   // 加载歌单
-  const loadPlaylist = useCallback(async (source: MusicSource, plistId: string) => {
+  const loadPlaylist = useCallback(async (source: MusicSource, plistId: string, autoPlay: boolean = false) => {
     loadResource.medium(`music-playlist-${plistId}`, async () => {
       try {
         setMusicErrorKey('')
@@ -777,7 +778,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               firstSongIndex = nonVipIndex
             }
           }
-          selectSong(songs[firstSongIndex], firstSongIndex)
+          selectSong(songs[firstSongIndex], firstSongIndex, autoPlay)
         }
       }
       catch (error) {
@@ -1590,13 +1591,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
   }, []) // 只在挂载时设置一次
 
-  // 监听 Tapp 加载歌单事件
+  // 监听 Tapp/Agent 加载歌单事件
   useEffect(() => {
     const handleLoadPlaylist = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (detail && detail.playlistId) {
         const source = (detail.source as MusicSource) || 'netease'
-        loadPlaylistRef.current(source, detail.playlistId)
+        const autoPlay = detail.autoPlay !== false // 默认自动播放
+        loadPlaylistRef.current(source, detail.playlistId, autoPlay)
       }
     }
 

@@ -77,6 +77,9 @@ export const zhCN: TranslationKeys = {
     // Brew
     brew: 'Brew',
     brewReading: 'Brew 阅读',
+    // Agent
+    agent: 'AI 助手',
+    aiAssistant: 'AI 助手',
     // Tapp
     tapp: '应用',
     tappStore: 'Tapp 应用商店',

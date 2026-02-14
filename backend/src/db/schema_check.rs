@@ -13,7 +13,7 @@ use std::collections::HashSet;
 ///
 /// 修改此版本号将触发下次启动时的 schema 比对和补全。
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
-const SCHEMA_VERSION: &str = "2025.12.21.5";
+const SCHEMA_VERSION: &str = "2026.01.12.1";
 
 /// 列定义
 #[derive(Debug, Clone)]
@@ -1744,6 +1744,80 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== agent_task_presets 表 ====================
+        TableDef {
+            name: "agent_task_presets".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "input".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "preset_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'history'".into()),
+                },
+                ColumnDef {
+                    name: "parsed_steps".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "intent_summary".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                // 对话标题（用于继续对话时显示）
+                ColumnDef {
+                    name: "title".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                // 完整对话记录 (JSON) - 支持「继续对话」模式
+                ColumnDef {
+                    name: "conversation_data".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "last_used_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "use_count".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("1".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+            ],
+        },
     ]
 }
 
@@ -2061,6 +2135,25 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "enabled".into(), "priority".into()],
             is_unique: false,
         },
+        // agent_task_presets 索引
+        IndexDef {
+            name: "idx_agent_task_presets_user_type".into(),
+            table: "agent_task_presets".into(),
+            columns: vec!["user_id".into(), "preset_type".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_agent_task_presets_user_input".into(),
+            table: "agent_task_presets".into(),
+            columns: vec!["user_id".into(), "input".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_agent_task_presets_last_used".into(),
+            table: "agent_task_presets".into(),
+            columns: vec!["last_used_at".into()],
+            is_unique: false,
+        },
     ]
 }
 
@@ -2080,9 +2173,9 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 position INTEGER,
                 context_hint TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_brew_annotations_item 
-                    FOREIGN KEY (item_id) 
-                    REFERENCES brew_items(id) 
+                CONSTRAINT fk_brew_annotations_item
+                    FOREIGN KEY (item_id)
+                    REFERENCES brew_items(id)
                     ON DELETE CASCADE
             )
             "#,
@@ -2099,9 +2192,9 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 dialogues JSONB NOT NULL,
                 estimated_duration INTEGER,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_brew_podcasts_item 
-                    FOREIGN KEY (item_id) 
-                    REFERENCES brew_items(id) 
+                CONSTRAINT fk_brew_podcasts_item
+                    FOREIGN KEY (item_id)
+                    REFERENCES brew_items(id)
                     ON DELETE CASCADE,
                 CONSTRAINT uq_brew_podcasts_item UNIQUE (item_id)
             )
@@ -2126,9 +2219,9 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 parent_id INTEGER,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_brew_comments_item 
-                    FOREIGN KEY (item_id) 
-                    REFERENCES brew_items(id) 
+                CONSTRAINT fk_brew_comments_item
+                    FOREIGN KEY (item_id)
+                    REFERENCES brew_items(id)
                     ON DELETE CASCADE,
                 CONSTRAINT fk_brew_comments_parent
                     FOREIGN KEY (parent_id)
@@ -2167,9 +2260,9 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 starred_at TIMESTAMPTZ,
                 notes TEXT,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_brew_user_states_item 
-                    FOREIGN KEY (item_id) 
-                    REFERENCES brew_items(id) 
+                CONSTRAINT fk_brew_user_states_item
+                    FOREIGN KEY (item_id)
+                    REFERENCES brew_items(id)
                     ON DELETE CASCADE
             )
             "#,
@@ -2197,9 +2290,9 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 word_count INTEGER,
                 reading_time INTEGER,
                 fulltext_fetched BOOLEAN NOT NULL DEFAULT FALSE,
-                CONSTRAINT fk_brew_items_source 
-                    FOREIGN KEY (source_id) 
-                    REFERENCES brew_sources(id) 
+                CONSTRAINT fk_brew_items_source
+                    FOREIGN KEY (source_id)
+                    REFERENCES brew_sources(id)
                     ON DELETE CASCADE
             )
             "#,
@@ -2262,6 +2355,25 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
             )
             "#,
         ),
+        // agent_task_presets 表（合并了 Session 系统）
+        (
+            "agent_task_presets",
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_task_presets (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                input TEXT NOT NULL,
+                preset_type VARCHAR(16) NOT NULL DEFAULT 'history',
+                parsed_steps JSONB,
+                intent_summary VARCHAR(255),
+                title VARCHAR(255),
+                conversation_data JSONB,
+                last_used_at TIMESTAMPTZ NOT NULL,
+                use_count INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        ),
     ]
 }
 
@@ -2281,6 +2393,7 @@ async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
         "brew_podcasts",
         "brew_comments",
         "rsshub_instances",
+        "agent_task_presets",
     ];
 
     for table_name in creation_order {
@@ -2312,8 +2425,8 @@ async fn get_table_columns(
 
     let sql = format!(
         r#"
-        SELECT column_name 
-        FROM information_schema.columns 
+        SELECT column_name
+        FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = '{}'
         "#,
         table_name
@@ -2339,8 +2452,8 @@ async fn get_table_columns(
 /// 从数据库获取所有表名
 async fn get_existing_tables(db: &DatabaseConnection) -> Result<HashSet<String>, DbErr> {
     let sql = r#"
-        SELECT table_name 
-        FROM information_schema.tables 
+        SELECT table_name
+        FROM information_schema.tables
         WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
     "#;
 
@@ -2364,8 +2477,8 @@ async fn get_existing_tables(db: &DatabaseConnection) -> Result<HashSet<String>,
 /// 从数据库获取现有索引
 async fn get_existing_indexes(db: &DatabaseConnection) -> Result<HashSet<String>, DbErr> {
     let sql = r#"
-        SELECT indexname 
-        FROM pg_indexes 
+        SELECT indexname
+        FROM pg_indexes
         WHERE schemaname = 'public'
     "#;
 

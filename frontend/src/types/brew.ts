@@ -153,6 +153,8 @@ export interface BrewItem {
   has_ai_annotations?: boolean
   /** 是否已生成 AI 播客 */
   has_ai_podcast?: boolean
+  /** 是否来自 AI 网络搜索（非数据库文章） */
+  fromWebSearch?: boolean;
 }
 
 // 分类

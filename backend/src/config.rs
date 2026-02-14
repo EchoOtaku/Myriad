@@ -301,7 +301,7 @@ impl Default for DynamicConfig {
         Self {
             ai_provider: "gemini".to_string(),
             gemini_api_key: None,
-            gemini_model: "gemini-2.0-flash-exp".to_string(),
+            gemini_model: "gemini-3-flash-preview".to_string(),
             openai_api_key: None,
             openai_model: "gpt-4".to_string(),
             openai_base_url: "https://api.openai.com/v1".to_string(),

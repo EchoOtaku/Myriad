@@ -9,9 +9,7 @@
  * - 窗口层级管理（点击置顶）
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
-import type { TappNotificationOptions } from '../runtime/sandbox/types'
-import type { TappInstance } from '../types'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import {
   FaExclamationTriangle,
   FaGripVertical,
@@ -22,22 +20,34 @@ import {
   FaTimes,
   FaTrash,
 } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type {
+  FrontendAction,
+  WindowTarget
+} from '../../services/agent'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
-import { useI18n } from '../../contexts/I18nContext'
 // 统一动画调度器
 import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation/core'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+// Agent 服务 - 前端操作处理器
+import {
+  registerActionHandler,
+  unregisterActionHandler,
+} from '../../services/agent'
+
+import type { TappCodeStructure } from '../examples/tapps/types'
+import { TappIcon } from './TappIcon'
+import type { TappInstance } from '../types'
+import type { TappNotificationOptions } from '../runtime/sandbox/types'
+import { TappPageSandbox } from '../runtime/TappPageSandbox'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
+import { getTappIconStyle } from '../utils/tappColors'
+import { getTappRuntime } from '../runtime'
 // API 配置
 import { getUIConfigDeduped } from '../../utils/requestDedup'
-import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
-import { TappPageSandbox } from '../runtime/TappPageSandbox'
-import { getTappIconStyle } from '../utils/tappColors'
-import { TappIcon } from './TappIcon'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { useAuth } from '../../contexts/AuthContext'
+import { useI18n } from '../../contexts/I18nContext'
 
 const API_URL = import.meta.env.PUBLIC_API_URL || ''
 
@@ -507,12 +517,18 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
               )
             : window.tapp && window.code
               ? (
-                  <TappPageSandbox
-                    tappInstance={window.tapp}
-                    code={window.code}
-                    onError={err => console.error('[TappWindow] Error:', err)}
-                    onNotification={onNotification}
-                  />
+          <div
+            data-window-id={window.windowId}
+            data-tapp-id={window.tappId}
+            className="w-full h-full"
+          >
+                    <TappPageSandbox
+                      tappInstance={window.tapp}
+                      code={window.code}
+                      onError={err => console.error('[TappWindow] Error:', err)}
+                      onNotification={onNotification}
+                    />
+          </div>
                 )
               : null}
       </div>
@@ -792,6 +808,131 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         : w,
     ))
   }, [])
+
+  // ===== Agent 操作处理器注册 =====
+  // 允许 Agent 通过 frontendAction 控制窗口
+  useEffect(() => {
+    // 解析窗口目标，找到对应的 windowId
+    const resolveWindowTarget = (target: WindowTarget): string | null => {
+      if (target.windowId) {
+        return target.windowId
+      }
+      if (target.tappId) {
+        const win = windows.find(w => w.tappId === target.tappId)
+        return win?.windowId || null
+      }
+      if (target.position === 'active') {
+        return activeWindowId
+      }
+      return null
+    }
+
+    // 处理 Agent 前端操作
+    const handleAgentAction = async (action: FrontendAction): Promise<boolean> => {
+      try {
+        switch (action.type) {
+          case 'open_window': {
+            const data = action.data as Record<string, unknown> | undefined
+            const tappId = data?.tapp_id as string | undefined
+            if (tappId) {
+              await openTappWindow(tappId)
+              return true
+            }
+            return false
+          }
+
+          case 'close_window': {
+            const target = action.target as WindowTarget | undefined
+            if (target) {
+              const windowId = resolveWindowTarget(target)
+              if (windowId) {
+                closeWindow(windowId)
+                return true
+              }
+            }
+            return false
+          }
+
+          case 'focus_window': {
+            const target = action.target as WindowTarget | undefined
+            if (target) {
+              const windowId = resolveWindowTarget(target)
+              if (windowId) {
+                focusWindow(windowId)
+                return true
+              }
+            }
+            return false
+          }
+
+          case 'fill_data': {
+            const target = action.target as WindowTarget | undefined
+            const data = action.data as Record<string, unknown> | undefined
+            if (target && data) {
+              const windowId = resolveWindowTarget(target)
+              if (windowId) {
+                // 向目标窗口的 iframe 发送填充数据消息
+                const targetWindow = windows.find(w => w.windowId === windowId)
+                if (targetWindow) {
+                  // 通过 data-window-id 找到包装容器，然后获取内部的 iframe
+                  const container = document.querySelector(
+                    `[data-window-id="${windowId}"]`
+                  )
+                  const iframe = container?.querySelector('iframe') as HTMLIFrameElement
+                  if (iframe?.contentWindow) {
+                    iframe.contentWindow.postMessage({
+                      type: 'AGENT_FILL_DATA',
+                      data: data,
+                    }, '*')
+                    return true
+                  }
+                }
+              }
+            }
+            return false
+          }
+
+          case 'read_data': {
+            // 读取数据通过 postMessage 请求 iframe 返回
+            const target = action.target as WindowTarget | undefined
+            const data = action.data as Record<string, unknown> | undefined
+            if (target) {
+              const windowId = resolveWindowTarget(target)
+              if (windowId) {
+                const container = document.querySelector(
+                  `[data-window-id="${windowId}"]`
+                )
+                const iframe = container?.querySelector('iframe') as HTMLIFrameElement
+                if (iframe?.contentWindow) {
+                  // 发送读取请求，iframe 应该响应
+                  iframe.contentWindow.postMessage({
+                    type: 'AGENT_READ_DATA',
+                    fields: data?.fields,
+                  }, '*')
+                  return true
+                }
+              }
+            }
+            return false
+          }
+
+          default:
+            console.warn('Unknown agent action:', action.type)
+            return false
+        }
+      } catch (error) {
+        console.error('Failed to execute agent action:', error)
+        return false
+      }
+    }
+
+    // 注册处理器
+    registerActionHandler(handleAgentAction)
+
+    return () => {
+      unregisterActionHandler(handleAgentAction)
+    }
+  }, [windows, activeWindowId, openTappWindow, closeWindow, focusWindow])
 
   // 保存方案到云端
   const saveToCloud = useCallback(async (schemes: WindowScheme[]) => {

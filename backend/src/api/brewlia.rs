@@ -24,6 +24,7 @@ use serde_json::json;
 use crate::middleware::auth::verify_jwt_token;
 use crate::models::entities::brew_annotations::{self, AnnotationType};
 use crate::services::ai_service::AiService;
+use crate::services::data_paths::paths;
 
 // ==================== 权限验证辅助函数 ====================
 
@@ -988,8 +989,9 @@ async fn regenerate_podcast_script(
     }
 
     // 清理 TTS 音频缓存目录
-    // 结构: data/brew/{source_id}/{article_id}/tts/
-    let tts_dir = std::path::PathBuf::from("data/brew")
+    // 结构: {brew}/{source_id}/{article_id}/tts/
+    let tts_dir = paths()
+        .brew
         .join(source_id.to_string())
         .join(item_id.to_string())
         .join("tts");

@@ -1,0 +1,384 @@
+//! AI 处理能力定义
+
+use crate::services::agent::types::*;
+use serde_json::json;
+
+use super::super::CapabilityRegistry;
+
+pub fn register(registry: &mut CapabilityRegistry) {
+    // AI 内容总结
+    registry.register(Capability {
+        id: "ai.summarize".to_string(),
+        name: "AI 内容总结".to_string(),
+        description: "使用 AI 对内容进行智能总结".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Summarize],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "content": { "type": "string" },
+                "items": { "type": "array" },
+                "style": { "type": "string", "enum": ["brief", "detailed", "bullet"] },
+                "maxLength": { "type": "integer" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "summary": { "type": "string" },
+                "keyPoints": { "type": "array" }
+            }
+        }),
+        required_permissions: vec!["ai:analyze".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // AI 数据分析
+    registry.register(Capability {
+        id: "ai.analyze".to_string(),
+        name: "AI 数据分析".to_string(),
+        description: "使用 AI 进行深度数据分析".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "data": { "type": "any" },
+                "analysisType": { "type": "string", "enum": ["trend", "sentiment", "categorize", "custom"] },
+                "instruction": { "type": "string" }
+            },
+            "required": ["data"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "analysis": { "type": "object" },
+                "insights": { "type": "array" },
+                "confidence": { "type": "number" }
+            }
+        }),
+        required_permissions: vec!["ai:analyze".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(5000),
+        ..Default::default()
+    });
+
+    // AI 推荐
+    registry.register(Capability {
+        id: "ai.recommend".to_string(),
+        name: "AI 推荐".to_string(),
+        description: "基于用户数据进行智能推荐".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Recommend],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "context": { "type": "object" },
+                "preferences": { "type": "object" },
+                "count": { "type": "integer", "default": 5 }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "recommendations": { "type": "array" },
+                "reasoning": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["ai:analyze".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(4000),
+        ..Default::default()
+    });
+
+    // AI 图片生成
+    registry.register(Capability {
+        id: "ai.image".to_string(),
+        name: "AI 图片生成".to_string(),
+        description: "使用 AI 生成图片".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "prompt": { "type": "string" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" },
+                "style": { "type": "string" }
+            },
+            "required": ["prompt"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "imageUrl": { "type": "string" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["ai:image".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(15000),
+        ..Default::default()
+    });
+
+    // AI 对话
+    registry.register(Capability {
+        id: "ai.chat".to_string(),
+        name: "AI 对话".to_string(),
+        description: "与 AI 进行自由对话".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string" },
+                "context": { "type": "array" },
+                "systemPrompt": { "type": "string" }
+            },
+            "required": ["message"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "reply": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["ai:chat".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // AI 联网搜索
+    registry.register(Capability {
+        id: "ai.webSearch".to_string(),
+        name: "AI 联网搜索".to_string(),
+        description: "通过 AI 联网搜索获取实时信息（如 RSS 源、API 文档等）".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![
+            IntentAction::Query,
+            IntentAction::Summarize,
+            IntentAction::Analyze,
+            IntentAction::Compare,
+        ],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string", "description": "搜索查询内容" },
+                "searchType": { 
+                    "type": "string", 
+                    "enum": ["rss_source", "api_docs", "general"],
+                    "default": "general",
+                    "description": "搜索类型：rss_source 搜索 RSS 源，api_docs 搜索 API 文档，general 通用搜索"
+                },
+                "resultFormat": { 
+                    "type": "string", 
+                    "enum": ["url", "json", "text"],
+                    "default": "json",
+                    "description": "结果格式：url 返回链接列表，json 返回结构化数据，text 返回纯文本"
+                },
+                "maxResults": { 
+                    "type": "integer", 
+                    "default": 5,
+                    "description": "最大返回结果数"
+                },
+                "source": { 
+                    "type": "string",
+                    "description": "搜索来源提示"
+                },
+                "searchPrompt": {
+                    "type": "string",
+                    "description": "自定义搜索提示词"
+                }
+            },
+            "required": ["query"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "results": { "type": "array", "description": "搜索结果列表" },
+                "source": { "type": "string", "description": "结果来源" },
+                "searchPrompt": { "type": "string", "description": "使用的搜索提示词" }
+            }
+        }),
+        required_permissions: vec!["ai:search".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(8000),
+        ..Default::default()
+    });
+
+    // AI 文章注释
+    registry.register(Capability {
+        id: "brewlia.annotate".to_string(),
+        name: "AI 文章注释".to_string(),
+        description: "为文章生成 AI 智能注释和解读".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "itemId": { "type": "integer" },
+                "regenerate": { "type": "boolean", "default": false }
+            },
+            "required": ["itemId"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "annotations": { "type": "array" },
+                "fromCache": { "type": "boolean" }
+            }
+        }),
+        required_permissions: vec!["ai:analyze".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(5000),
+        ..Default::default()
+    });
+
+    // AI 播客生成
+    registry.register(Capability {
+        id: "brewlia.podcast".to_string(),
+        name: "AI 播客生成".to_string(),
+        description: "将文章转换为对话式播客文稿".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "itemId": { "type": "integer" },
+                "style": { "type": "string", "enum": ["casual", "professional", "educational"] }
+            },
+            "required": ["itemId"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "script": { "type": "string" },
+                "duration": { "type": "number" }
+            }
+        }),
+        required_permissions: vec!["ai:generate".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(8000),
+        ..Default::default()
+    });
+
+    // 智能内容过滤
+    registry.register(Capability {
+        id: "smart.filter".to_string(),
+        name: "智能内容过滤".to_string(),
+        description: "对原始数据进行智能分类和过滤".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" },
+                "options": { "type": "object" }
+            },
+            "required": ["platform"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "filteredData": { "type": "object" },
+                "categories": { "type": "array" },
+                "unknownContent": { "type": "array" }
+            }
+        }),
+        required_permissions: vec!["filter:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(2000),
+        ..Default::default()
+    });
+
+    // 内容比较
+    registry.register(Capability {
+        id: "compare.content".to_string(),
+        name: "内容比较".to_string(),
+        description: "比较不同时间点的平台数据变化".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" },
+                "startDate": { "type": "string", "format": "date" },
+                "endDate": { "type": "string", "format": "date" }
+            },
+            "required": ["platform"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "changes": { "type": "array" },
+                "summary": { "type": "string" },
+                "statistics": { "type": "object" }
+            }
+        }),
+        required_permissions: vec!["compare:read".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // 提示词生成
+    registry.register(Capability {
+        id: "prompt.generate".to_string(),
+        name: "提示词生成".to_string(),
+        description: "为图片生成提供优化的提示词".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "title": { "type": "string" },
+                "summary": { "type": "string" },
+                "category": { "type": "string" }
+            },
+            "required": ["title", "summary"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "prompt": { "type": "string" },
+                "negativePrompt": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["prompt:write".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(500),
+        ..Default::default()
+    });
+
+    // 图标推荐
+    registry.register(Capability {
+        id: "icon.recommend".to_string(),
+        name: "图标推荐".to_string(),
+        description: "根据平台名称推荐合适的图标".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Recommend],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platformName": { "type": "string" }
+            },
+            "required": ["platformName"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "iconType": { "type": "string" },
+                "iconName": { "type": "string" },
+                "colorSuggestion": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["icon:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+}

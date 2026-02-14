@@ -1166,6 +1166,9 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // ============ Tapp 应用管理 API ============
             // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
             .nest("/api/tapps", api::tapps::create_tapp_routes())
+            // ============ Agent AI 任务编排 API ============
+            // 自然语言任务分解、执行和监控
+            .nest("/api/agent", api::agent::create_agent_routes())
             // ============ Brew 阅读 API ============
             // RSS/Atom 订阅管理、文章获取、阅读状态同步
             .nest("/api/brew", api::brew::create_brew_routes())
@@ -1412,6 +1415,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/proxy/client-geo", get(api::proxy::get_client_geo))
             // Hitokoto proxy route
             .route("/api/proxy/hitokoto", get(api::proxy::proxy_hitokoto))
+            // Web content fetch proxy (for reading list from web search)
+            .route("/api/proxy/fetch-content", get(api::proxy::fetch_web_content))
             // Music proxy routes
             .route(
                 "/api/proxy/music/netease/playlist/:id",
@@ -1640,7 +1645,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     start_server(config, app).await
 }
 
-/// Common server startup logic  
+/// Common server startup logic
 async fn start_server(config: AppConfig, app: Router) -> anyhow::Result<()> {
     let host = config
         .server_host

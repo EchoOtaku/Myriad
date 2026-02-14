@@ -61,3 +61,5 @@ out/
 # Claude AI
 /.claude/
 .claude/settings.local.json
+/backend/data/brew
+.env

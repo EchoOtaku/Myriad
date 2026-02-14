@@ -495,7 +495,7 @@ async fn get_ai_config() -> Result<AiConfig, (StatusCode, Json<Value>)> {
         if let Some(key) = &config.gemini_api_key {
             if !key.is_empty() {
                 let model = if config.gemini_model.is_empty() {
-                    "gemini-1.5-flash".to_string()
+                    "gemini-3-flash-preview".to_string()
                 } else {
                     config.gemini_model.clone()
                 };

@@ -31,6 +31,7 @@ use crate::middleware::auth::{auth_middleware, extract_optional_claims, Claims};
 use crate::models::entities::{
     tapp_storage, tapp_store_sources, tapp_user_activities, tapp_widgets, tapps,
 };
+use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
@@ -136,9 +137,6 @@ async fn verify_tapp_ownership(
 
     Ok(())
 }
-
-/// Tapp 数据存储目录
-const TAPP_DATA_DIR: &str = "data/tapps";
 
 /// API 响应
 #[derive(Debug, Serialize)]
@@ -880,7 +878,7 @@ async fn install_tapp(
     }
 
     // 创建存储目录
-    let user_dir = PathBuf::from(TAPP_DATA_DIR).join(user_id.to_string());
+    let user_dir = paths().tapp_user_dir(user_id);
     let tapp_dir = user_dir.join(&manifest.id);
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
         (
@@ -1120,7 +1118,7 @@ async fn install_tapp_file(
     }
 
     // 创建存储目录
-    let user_dir = PathBuf::from(TAPP_DATA_DIR).join(user_id.to_string());
+    let user_dir = paths().tapp_user_dir(user_id);
     let tapp_dir = user_dir.join(&manifest.id);
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
         (

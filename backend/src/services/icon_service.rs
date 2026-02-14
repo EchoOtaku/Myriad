@@ -1,8 +1,9 @@
 //! 图标下载与缓存服务
 //!
 //! 负责下载网站图标并存储到本地，避免直接引用外链。
-//! 图标以 source_id 命名存储在 data/brew/icons/ 目录下。
+//! 图标存储在 data/brew/icons/ 目录下（可通过 DATA_DIR 环境变量配置）。
 
+use super::data_paths::paths;
 use reqwest::Client;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -32,8 +33,8 @@ impl IconService {
             .build()
             .expect("Failed to create HTTP client");
 
-        // 使用相对于工作目录的 data/brew/icons 路径
-        let icons_dir = PathBuf::from("data/brew/icons");
+        // 使用统一的数据路径配置
+        let icons_dir = paths().brew_icons.clone();
 
         Self { client, icons_dir }
     }

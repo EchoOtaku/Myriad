@@ -78,6 +78,9 @@ export interface TranslationKeys {
     // Brew
     brew: string
     brewReading: string
+    // Agent
+    agent: string;
+    aiAssistant: string;
     // Tapp
     tapp: string
     tappStore: string

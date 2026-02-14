@@ -1,10 +1,13 @@
 // Service layer modules
+pub mod agent; // 🤖 AI Agent 自然语言任务编排系统
+pub mod ai; // 🤖 AI 服务工厂（统一创建 AI 分析器）
 pub mod ai_service; // 🤖 AI 服务（Gemini API 集成）
 pub mod analyzer;
 pub mod background_processor; // ✅ 后台任务处理系统（异步处理、任务队列）
 pub mod batch_saver; // ✅ 批量数据保存服务（分批异步写入）
 pub mod bilibili_utils; // ✅ Bilibili 工具函数（IP伪装、防封技术）
 pub mod config_service;
+pub mod data_paths; // 📁 数据路径配置（统一管理所有数据目录）
 pub mod content_databases; // ✅ 预置内容数据库（番剧/游戏/歌手）
 pub mod fetcher;
 pub mod http_client; // ✅ 统一 HTTP 客户端（代理支持）
