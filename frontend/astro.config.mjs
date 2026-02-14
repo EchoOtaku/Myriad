@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import react from '@astrojs/react'
-import tailwind from '@astrojs/tailwind'
 import { defineConfig } from 'astro/config'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import react from '@astrojs/react'
+import { readFileSync } from 'node:fs'
+import tailwindcss from '@tailwindcss/vite'
 import { visualizer } from 'rollup-plugin-visualizer'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -47,7 +47,7 @@ function spaFallbackPlugin() {
 
 // https://astro.build/config
 export default defineConfig({
-  integrations: [react(), tailwind()],
+  integrations: [react()],
   // 使用 hybrid 模式：默认静态预渲染，但允许特定页面动态渲染
   // 这样可以支持 /tapp/run/:id 等动态路由
   output: 'static',
@@ -65,6 +65,7 @@ export default defineConfig({
       __APP_VERSION__: JSON.stringify(APP_VERSION),
     },
     plugins: [
+      tailwindcss(), // Tailwind CSS v4 Vite plugin
       spaFallbackPlugin(), // 自定义 SPA 路由回退
       visualizer({
         filename: 'dist/stats.html',

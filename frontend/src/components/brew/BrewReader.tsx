@@ -1499,7 +1499,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.rss-content-iframe-wrapper]:my-5 [&_.rss-content-iframe-wrapper]:rounded-xl
               [&_.rss-content-iframe-wrapper]:overflow-hidden
               [&_.rss-content-iframe-wrapper.aspect-video]:pb-[56.25%]
-              [&_.rss-content-iframe-wrapper.aspect-\\[3\\/1\\]]:pb-[33.33%]
+              [&_.rss-content-iframe-wrapper.aspect-wide]:pb-[33.33%]
               [&_.rss-content-iframe-wrapper_iframe]:absolute [&_.rss-content-iframe-wrapper_iframe]:inset-0
               [&_.rss-content-iframe-wrapper_iframe]:w-full [&_.rss-content-iframe-wrapper_iframe]:h-full
               [&_.rss-content-iframe-wrapper_iframe]:border-0

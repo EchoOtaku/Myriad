@@ -63,3 +63,4 @@ out/
 .claude/settings.local.json
 /backend/data/brew
 .env
+/.astro

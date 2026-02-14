@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./src/**/*.{astro,html,js,jsx,md,mdx,svelte,ts,tsx,vue}'],
-  darkMode: 'class', // 使用 class 策略而不是 media
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -24,7 +23,6 @@ export default {
       },
       screens: {
         xs: '375px',
-        // 默认的 sm: 640px, md: 768px, lg: 1024px, xl: 1280px, 2xl: 1536px
       },
       spacing: {
         18: '4.5rem',
@@ -40,7 +38,4 @@ export default {
       },
     },
   },
-  plugins: [
-    require('@tailwindcss/typography'),
-  ],
 }

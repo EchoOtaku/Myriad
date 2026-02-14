@@ -376,7 +376,7 @@ function processIframes(html: string): string {
 
     // 音乐类嵌入使用不同比例
     if (src.includes('music.163.com') || src.includes('xiami.com') || src.includes('spotify.com')) {
-      aspectClass = 'aspect-[3/1]' // 音乐播放器更扁
+      aspectClass = 'aspect-wide' // 音乐播放器更扁 (3:1)
     }
 
     return `<div class="rss-content-iframe-wrapper ${aspectClass} my-4 rounded-xl overflow-hidden">
