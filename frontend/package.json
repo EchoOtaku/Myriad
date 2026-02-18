@@ -17,7 +17,7 @@
     "typecheck": "astro check",
     "eslint:debug": "eslint --debug .",
     "eslint:inspect": "npx @eslint/config-inspector",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "commitlint": {
     "extends": [
