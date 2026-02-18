@@ -12,7 +12,6 @@ LICENSE
 # Environment files
 .env
 .env.*
-!.env.docker
 
 # IDE
 .vscode/

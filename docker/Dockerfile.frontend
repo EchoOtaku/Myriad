@@ -1,5 +1,5 @@
 # Frontend Dockerfile - Multi-stage build
-ARG NODE_VERSION=20
+ARG NODE_VERSION=22
 ARG PNPM_VERSION=9.15.4
 ARG PACKAGE_MANAGER=pnpm
 FROM node:${NODE_VERSION}-alpine AS builder
@@ -8,6 +8,9 @@ WORKDIR /app
 
 # Copy package files
 COPY frontend/package.json frontend/pnpm-lock.yaml* frontend/package-lock.json* ./
+
+# Disable husky in Docker (no .git directory)
+ENV HUSKY=0
 
 # Install dependencies (use npm install if lock file doesn't exist)
 ARG PNPM_VERSION

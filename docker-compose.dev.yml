@@ -6,8 +6,6 @@
 #   停止: docker compose -f docker-compose.dev.yml down
 #   查看日志: docker compose -f docker-compose.dev.yml logs -f
 
-version: '3.8'
-
 services:
   # PostgreSQL Database for local development
   postgres:

@@ -65,8 +65,6 @@
 #      请通过 Web UI 的设置页面进行配置管理
 #
 
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
