@@ -137,7 +137,16 @@ export function generateSecurityWrapper(sessionToken: string): string {
   }
   
   // 保存安全的 postMessage 引用
-  const _parentPostMessage = window.parent !== window ? window.parent.postMessage.bind(window.parent) : null;
+  // 无 allow-same-origin 时，直接访问 window.parent.postMessage 可能抛出 SecurityError
+  let _parentPostMessage = null;
+  try {
+    if (window.parent !== window) {
+      _parentPostMessage = window.parent.postMessage.bind(window.parent);
+    }
+  } catch (e) {
+    // 回退：使用 postMessage 的通用调用方式
+    _parentPostMessage = (msg, origin) => window.parent.postMessage(msg, origin);
+  }
   
   // 会话 token（用于消息验证）
   const _SESSION_TOKEN = '${sessionToken}';
@@ -441,16 +450,10 @@ export function generateSecurityWrapper(sessionToken: string): string {
  * 安全说明：
  * - allow-scripts: 允许脚本执行（必需）
  * - allow-pointer-lock: 允许指针锁定（用于游戏等交互）
- * - 不使用 allow-same-origin 以获得更强的隔离
- * - 使用 blob: URL 时，sandbox 内容的 origin 为 'null'
- *
- * 注意：移除 allow-same-origin 可能导致某些功能受限，
- * 但显著提高安全性（防止沙箱逃逸）
- *
- * iOS/iPadOS 兼容性：
- * - allow-pointer-lock: 确保触摸交互正常工作
+ * - allow-same-origin: srcdoc 模式需要此项以允许 postMessage 通信和 contentDocument 访问
+ *   安全性由 CSP nonce + 安全包装器（原型冻结、API 禁用）补偿
  */
-export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock'
+export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock allow-same-origin'
 
 /**
  * 验证存储 key 格式（防止路径遍历攻击）

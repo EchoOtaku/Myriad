@@ -92,7 +92,6 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [hasEntered, setHasEntered] = useState(false) // 追踪入场动画是否完成
   const [notification, setNotification] = useState<{
     title?: string
     message: string
@@ -220,10 +219,11 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const canConfigure = tapp?.userRole === 'admin' || (tapp?.userRole === 'user' && tapp?.isTemporary === true)
   const iconStyle = tapp ? getTappIconStyle(tapp.manifest) : null
 
+
   // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同
   // 页面级动画由 App.tsx 的 FixedPageWrapper 提供（纯 opacity，不用 transform）
   return (
-    <div className="fixed inset-0 overflow-hidden">
+    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' }}>
       {/* 全屏模式工具栏 */}
       <AnimatePresence>
         {isFullscreen && isReady && tapp && (
@@ -570,37 +570,42 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
       </motion.div>
 
       {/* 🎯 沙箱容器 - 只渲染一次，通过 CSS 切换全屏/普通模式 */}
+      {/* 🎯 Safari 兼容：使用原生 div + CSS transition 代替 motion.div，避免 framer-motion 干扰布局 */}
       {tapp && code && (
-        <motion.div
-          key="sandbox-container"
-          className={`pointer-events-auto overflow-hidden ${
-            hasEntered ? 'transition-all duration-300 ease-out' : ''
-          } ${
-            isFullscreen
-              ? 'fixed inset-0 z-50 rounded-none'
-              : 'absolute z-40 left-4 right-4 bottom-6 rounded-b-xl'
+        <div
+          className={`pointer-events-auto overflow-hidden transition-all duration-300 ease-out ${
+            isFullscreen ? 'rounded-none' : 'rounded-b-xl'
           }`}
-          initial={noAnimation ? false : { opacity: 0, y: 35, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{
-            type: 'spring',
-            stiffness: 280,
-            damping: 26,
-          }}
-          onAnimationComplete={() => setHasEntered(true)}
-          style={{
-            // 🎯 iPadOS/WebKit 兼容性：使用 style 而非 Tailwind 的 calc()
-            top: isFullscreen ? 0 : 'calc(5rem + 44px)',
-            maxWidth: isFullscreen ? undefined : '72rem',
-            marginLeft: isFullscreen ? undefined : 'auto',
-            marginRight: isFullscreen ? undefined : 'auto',
+          style={isFullscreen ? {
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 50,
+          } : {
+            position: 'absolute',
+            top: 'calc(5rem + 44px)',
+            right: '1rem',
+            bottom: '1.5rem',
+            left: '1rem',
+            zIndex: 40,
+            maxWidth: '72rem',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            // 🎯 Safari: 强制 GPU 合成层，修复 fixed 容器内 iframe 不绘制的 WebKit bug
+            WebkitTransform: 'translateZ(0)',
+            transform: 'translateZ(0)',
           }}
         >
           <div
-            className="w-full h-full bg-gray-100 dark:bg-neutral-900"
+            className="bg-gray-100 dark:bg-neutral-900"
             style={{
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
             }}
           >
             <TappPageSandbox
@@ -611,7 +616,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
               safeInsets={safeInsets}
             />
           </div>
-        </motion.div>
+        </div>
       )}
 
       {/* Tapp 通知 Toast */}

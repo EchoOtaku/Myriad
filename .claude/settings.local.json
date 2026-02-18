@@ -53,7 +53,14 @@
       "Bash(docker stats:*)",
       "Bash(npm run:*)",
       "Bash(Select-String \"error ts\")",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(timeout 15 pnpm dev:*)",
+      "Bash(gtimeout:*)",
+      "Bash(ls:*)",
+      "Bash(pnpm add:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

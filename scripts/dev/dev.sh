@@ -2,364 +2,573 @@
 # ============================================
 # Myriad Development Script (Linux/macOS)
 # ============================================
-# Unified script for all development operations
-# Usage: ./dev.sh <command> [options]
+# Interactive development environment manager
+# Usage: ./dev.sh [command] or run without args for menu
 
 set -e
 
+# ==================== Colors & Styles ====================
+BOLD='\033[1m'
+DIM='\033[2m'
+
 # Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
 RED='\033[0;31m'
-GRAY='\033[0;37m'
-NC='\033[0m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[0;37m'
 
-# Get project root
+# Bright Colors
+BRIGHT_RED='\033[1;31m'
+BRIGHT_GREEN='\033[1;32m'
+BRIGHT_YELLOW='\033[1;33m'
+BRIGHT_CYAN='\033[1;36m'
+BRIGHT_WHITE='\033[1;37m'
+
+NC='\033[0m' # Reset
+
+# ==================== Project Config ====================
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+VERSION="1.0.0"
 
-# Helper functions
-print_header() {
-    echo ""
-    echo -e "${CYAN}================================${NC}"
-    echo -e "${CYAN}  $1${NC}"
-    echo -e "${CYAN}================================${NC}"
-    echo ""
+# ==================== Unicode Icons ====================
+ICON_CHECK="✔"
+ICON_CROSS="✖"
+ICON_ARROW="➜"
+ICON_ROCKET="🚀"
+ICON_STOP="⏹"
+ICON_REFRESH="↻"
+ICON_TRASH="🗑"
+ICON_INFO="ℹ"
+ICON_WARN="⚠"
+ICON_DB="🗄"
+ICON_RUST="🦀"
+ICON_NODE="⬢"
+ICON_HEART="❤"
+ICON_SPARKLE="✨"
+
+# ==================== Helper Functions ====================
+
+clear_screen() {
+    printf "\033[2J\033[H"
 }
 
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+hide_cursor() { printf "\033[?25l"; }
+show_cursor() { printf "\033[?25h"; }
+
+get_terminal_size() {
+    TERM_COLS=$(tput cols 2>/dev/null || echo 80)
 }
 
-print_info() {
-    echo -e "${YELLOW}→ $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
-
-# ====================
-# START Command
-# ====================
-start_services() {
-    local service="${1:-all}"
-    print_header "Starting Myriad Services"
+# Draw a box
+draw_box() {
+    local title="$1"
+    local width="${2:-60}"
+    local color="${3:-$CYAN}"
     
-    # Check if services are running
-    local backend_running=$(pgrep -f "myriad-backend|cargo run" || true)
-    local frontend_running=$(pgrep -f "astro dev|vite" || true)
+    echo -en "${color}╭"
+    printf '%*s' "$((width-2))" | tr ' ' "─"
+    echo -e "╮${NC}"
     
-    if [[ (-n "$backend_running" && ("$service" == "all" || "$service" == "backend")) || \
-          (-n "$frontend_running" && ("$service" == "all" || "$service" == "frontend")) ]]; then
-        echo -e "${YELLOW}⚠️  Warning: Some services are already running${NC}"
-        read -p "Stop and restart them? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            return
-        fi
-        stop_services "$service"
-        sleep 2
-    fi
-    
-    # Start Backend
-    if [[ "$service" == "all" || "$service" == "backend" ]]; then
-        print_info "Starting Backend..."
-        cd "$PROJECT_ROOT/backend"
+    if [[ -n "$title" ]]; then
+        local title_len=${#title}
+        local padding=$(( (width - title_len - 4) / 2 ))
+        echo -en "${color}│${NC}"
+        printf '%*s' "$padding" ""
+        echo -en "${BOLD}${BRIGHT_WHITE} ${title} ${NC}"
+        printf '%*s' "$((width - padding - title_len - 4))" ""
+        echo -e "${color}│${NC}"
         
-        # Start in new terminal
-        if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "echo '🦀 Myriad Backend'; cargo run; exec bash"
-        elif command -v konsole &> /dev/null; then
-            konsole -e bash -c "echo '🦀 Myriad Backend'; cargo run; exec bash" &
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            osascript -e 'tell application "Terminal" to do script "cd '"$PROJECT_ROOT/backend"' && echo \"🦀 Myriad Backend\" && cargo run"'
-        else
-            # Fallback: run in background
-            nohup cargo run > "$PROJECT_ROOT/backend.log" 2>&1 &
-            echo "Backend started in background. Logs: $PROJECT_ROOT/backend.log"
-        fi
-        
-        print_success "Backend starting"
-        sleep 2
+        echo -en "${color}├"
+        printf '%*s' "$((width-2))" | tr ' ' "─"
+        echo -e "┤${NC}"
     fi
+}
+
+draw_box_bottom() {
+    local width="${1:-60}"
+    local color="${2:-$CYAN}"
+    echo -en "${color}╰"
+    printf '%*s' "$((width-2))" | tr ' ' "─"
+    echo -e "╯${NC}"
+}
+
+draw_box_line() {
+    local text="$1"
+    local width="${2:-60}"
+    local color="${3:-$CYAN}"
     
-    # Start Frontend
-    if [[ "$service" == "all" || "$service" == "frontend" ]]; then
-        print_info "Starting Frontend..."
-        cd "$PROJECT_ROOT/frontend"
-        
-        # Start in new terminal
-        if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "echo '⚡ Myriad Frontend'; npm run dev; exec bash"
-        elif command -v konsole &> /dev/null; then
-            konsole -e bash -c "echo '⚡ Myriad Frontend'; npm run dev; exec bash" &
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            osascript -e 'tell application "Terminal" to do script "cd '"$PROJECT_ROOT/frontend"' && echo \"⚡ Myriad Frontend\" && npm run dev"'
-        else
-            # Fallback: run in background
-            nohup npm run dev > "$PROJECT_ROOT/frontend.log" 2>&1 &
-            echo "Frontend started in background. Logs: $PROJECT_ROOT/frontend.log"
-        fi
-        
-        print_success "Frontend starting"
-    fi
+    # Remove ANSI codes for length calculation
+    local clean_text=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local text_len=${#clean_text}
     
-    echo ""
-    print_success "Services Started!"
-    echo -e "\nURLs (wait ~10 seconds for startup):"
-    echo "  Frontend: http://localhost:4321"
-    echo "  Backend:  http://localhost:3000"
-    echo "  Health:   http://localhost:3000/health"
+    echo -en "${color}│${NC} ${text}"
+    local padding=$((width - text_len - 3))
+    [[ $padding -gt 0 ]] && printf '%*s' "$padding" ""
+    echo -e "${color}│${NC}"
+}
+
+# Progress bar
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width="${3:-40}"
+    local title="${4:-Progress}"
+    
+    local percent=$((current * 100 / total))
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+    
+    printf "\r${CYAN}${title}${NC} ["
+    [[ $filled -gt 0 ]] && printf "${GREEN}%*s${NC}" $filled | tr ' ' '█'
+    [[ $empty -gt 0 ]] && printf "${DIM}%*s${NC}" $empty | tr ' ' '░'
+    printf "] ${BRIGHT_WHITE}%3d%%${NC}" $percent
+}
+
+# Print styled messages
+print_success() { echo -e "${GREEN}${ICON_CHECK}${NC} $1"; }
+print_error() { echo -e "${RED}${ICON_CROSS}${NC} $1"; }
+print_info() { echo -e "${CYAN}${ICON_INFO}${NC} $1"; }
+print_warning() { echo -e "${YELLOW}${ICON_WARN}${NC} $1"; }
+print_step() { echo -e "${MAGENTA}${ICON_ARROW}${NC} $1"; }
+
+# ==================== Logo & Banner ====================
+
+show_logo() {
+    echo -e "${BRIGHT_CYAN}"
+    cat << 'EOF'
+    __  ___           _           __
+   /  |/  /_  _______(_)___ _____/ /
+  / /|_/ / / / / ___/ / __ `/ __  / 
+ / /  / / /_/ / /  / / /_/ / /_/ /  
+/_/  /_/\__, /_/  /_/\__,_/\__,_/   
+       /____/                        
+EOF
+    echo -e "${NC}"
+    echo -e "${DIM}${ICON_SPARKLE} Multi-platform Personal Information Aggregation ${ICON_SPARKLE}${NC}"
     echo ""
 }
 
-# ====================
-# STOP Command
-# ====================
-stop_services() {
-    local service="${1:-all}"
-    print_header "Stopping Myriad Services"
-    
-    local stopped_count=0
-    
-    # Stop Backend
-    if [[ "$service" == "all" || "$service" == "backend" ]]; then
-        print_info "Stopping backend services..."
-        pkill -f "myriad-backend" && ((stopped_count++)) || true
-        pkill -f "cargo run" && ((stopped_count++)) || true
-        print_success "Backend stopped"
-    fi
-    
-    # Stop Frontend
-    if [[ "$service" == "all" || "$service" == "frontend" ]]; then
-        print_info "Stopping frontend services..."
-        pkill -f "astro dev" && ((stopped_count++)) || true
-        pkill -f "vite" && ((stopped_count++)) || true
-        pkill -f "npm run dev" && ((stopped_count++)) || true
-        print_success "Frontend stopped"
-    fi
-    
-    echo ""
-    if [[ $stopped_count -gt 0 ]]; then
-        print_success "Stopped $stopped_count process(es)"
+show_mini_logo() {
+    echo -e "${BRIGHT_CYAN}${BOLD}◆ Myriad${NC} ${DIM}v${VERSION}${NC}"
+}
+
+# ==================== Status Functions ====================
+
+get_service_status() {
+    local service=$1
+    case $service in
+        backend)
+            pgrep -f "myriad-backend|cargo run" > /dev/null 2>&1
+            ;;
+        frontend)
+            pgrep -f "astro dev|vite|pnpm run dev" > /dev/null 2>&1
+            ;;
+        database)
+            docker ps --filter "name=myriad-postgres" --format "{{.Names}}" 2>/dev/null | grep -q "myriad-postgres"
+            ;;
+    esac
+}
+
+get_status_text() {
+    if $1; then
+        echo -e "${GREEN}${ICON_CHECK} Running${NC}"
     else
-        echo -e "${GRAY}No services were running${NC}"
+        echo -e "${RED}${ICON_CROSS} Stopped${NC}"
     fi
+}
+
+show_status_dashboard() {
+    local width=50
+    
+    echo ""
+    draw_box "Service Status" $width "$BRIGHT_CYAN"
+    
+    # Database
+    local db_status=false
+    get_service_status database && db_status=true
+    draw_box_line "${ICON_DB} Database (PostgreSQL)    $(get_status_text $db_status)" $width "$BRIGHT_CYAN"
+    
+    # Backend
+    local backend_status=false
+    get_service_status backend && backend_status=true
+    draw_box_line "${ICON_RUST} Backend (Rust/Axum)      $(get_status_text $backend_status)" $width "$BRIGHT_CYAN"
+    
+    # Frontend
+    local frontend_status=false
+    get_service_status frontend && frontend_status=true
+    draw_box_line "${ICON_NODE} Frontend (Astro/React)   $(get_status_text $frontend_status)" $width "$BRIGHT_CYAN"
+    
+    draw_box_line "" $width "$BRIGHT_CYAN"
+    
+    if $backend_status || $frontend_status; then
+        $backend_status && draw_box_line "${DIM}API:      http://localhost:3000${NC}" $width "$BRIGHT_CYAN"
+        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:4321${NC}" $width "$BRIGHT_CYAN"
+    fi
+    
+    draw_box_bottom $width "$BRIGHT_CYAN"
     echo ""
 }
 
-# ====================
-# RESTART Command
-# ====================
-restart_services() {
-    local service="${1:-all}"
-    print_header "Restarting Myriad Services"
-    stop_services "$service"
+# ==================== Service Control ====================
+
+start_database() {
+    print_step "Starting PostgreSQL database..."
+    
+    if get_service_status database; then
+        print_warning "Database is already running"
+        return 0
+    fi
+    
+    cd "$PROJECT_ROOT"
+    if [[ -f "docker-compose.dev.yml" ]]; then
+        docker compose -f docker-compose.dev.yml up -d 2>/dev/null
+        sleep 3
+        if get_service_status database; then
+            print_success "Database started"
+        else
+            print_error "Failed to start database"
+            return 1
+        fi
+    else
+        print_error "docker-compose.dev.yml not found"
+        return 1
+    fi
+}
+
+stop_database() {
+    print_step "Stopping PostgreSQL database..."
+    cd "$PROJECT_ROOT"
+    if [[ -f "docker-compose.dev.yml" ]]; then
+        docker compose -f docker-compose.dev.yml down 2>/dev/null
+        print_success "Database stopped"
+    fi
+}
+
+start_backend() {
+    print_step "Starting Rust backend..."
+    
+    if get_service_status backend; then
+        print_warning "Backend is already running"
+        return 0
+    fi
+    
+    cd "$PROJECT_ROOT/backend"
+    
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        osascript -e 'tell application "Terminal" to do script "cd '"$PROJECT_ROOT/backend"' && echo \"🦀 Myriad Backend\" && source ~/.cargo/env 2>/dev/null; cargo run"' 2>/dev/null
+    else
+        if command -v gnome-terminal &> /dev/null; then
+            gnome-terminal -- bash -c "cd '$PROJECT_ROOT/backend' && echo '🦀 Myriad Backend' && cargo run; exec bash" 2>/dev/null
+        else
+            nohup cargo run > "$PROJECT_ROOT/backend.log" 2>&1 &
+            print_info "Backend running in background (logs: backend.log)"
+        fi
+    fi
+    
     sleep 2
-    start_services "$service"
+    print_success "Backend starting on http://localhost:3000"
 }
 
-# ====================
-# CLEAN Command
-# ====================
-clean_project() {
-    print_header "Myriad Clean Tool"
+stop_backend() {
+    print_step "Stopping backend..."
+    pkill -f "myriad-backend" 2>/dev/null || true
+    pkill -f "cargo run" 2>/dev/null || true
+    print_success "Backend stopped"
+}
+
+start_frontend() {
+    print_step "Starting Astro frontend..."
     
-    echo -e "${YELLOW}WARNING: This will delete:${NC}"
-    echo "  - Database data (drop all tables)"
-    echo "  - Backend build files (target/)"
-    echo "  - Frontend build files (frontend/dist/)"
-    echo "  - Cache files (backend/cache/)"
-    echo "  - Environment config (backend/.env)"
+    if get_service_status frontend; then
+        print_warning "Frontend is already running"
+        return 0
+    fi
+    
+    cd "$PROJECT_ROOT/frontend"
+    
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        osascript -e 'tell application "Terminal" to do script "cd '"$PROJECT_ROOT/frontend"' && echo \"⚡ Myriad Frontend\" && pnpm run dev"' 2>/dev/null
+    else
+        if command -v gnome-terminal &> /dev/null; then
+            gnome-terminal -- bash -c "cd '$PROJECT_ROOT/frontend' && echo '⚡ Myriad Frontend' && pnpm run dev; exec bash" 2>/dev/null
+        else
+            nohup pnpm run dev > "$PROJECT_ROOT/frontend.log" 2>&1 &
+            print_info "Frontend running in background (logs: frontend.log)"
+        fi
+    fi
+    
+    sleep 2
+    print_success "Frontend starting on http://localhost:4321"
+}
+
+stop_frontend() {
+    print_step "Stopping frontend..."
+    pkill -f "astro dev" 2>/dev/null || true
+    pkill -f "vite" 2>/dev/null || true
+    pkill -f "pnpm run dev" 2>/dev/null || true
+    print_success "Frontend stopped"
+}
+
+# ==================== Combined Actions ====================
+
+start_all() {
+    echo ""
+    echo -e "${BRIGHT_CYAN}${BOLD}${ICON_ROCKET} Starting All Services${NC}"
     echo ""
     
-    read -p "Type 'yes' to continue: " -r
-    if [[ ! $REPLY == "yes" ]]; then
-        print_info "Operation cancelled"
+    start_database
+    echo ""
+    sleep 2
+    start_backend
+    echo ""
+    sleep 1
+    start_frontend
+    
+    echo ""
+    echo -e "${GREEN}${BOLD}${ICON_CHECK} All services started!${NC}"
+    echo ""
+    echo -e "${DIM}URLs:${NC}"
+    echo -e "  ${CYAN}Frontend:${NC} http://localhost:4321"
+    echo -e "  ${CYAN}Backend:${NC}  http://localhost:3000"
+    echo -e "  ${CYAN}Health:${NC}   http://localhost:3000/health"
+    echo ""
+}
+
+stop_all() {
+    echo ""
+    echo -e "${BRIGHT_YELLOW}${BOLD}${ICON_STOP} Stopping All Services${NC}"
+    echo ""
+    
+    stop_frontend
+    stop_backend
+    stop_database
+    
+    echo ""
+    print_success "All services stopped"
+    echo ""
+}
+
+restart_all() {
+    stop_all
+    sleep 2
+    start_all
+}
+
+# ==================== Clean Functions ====================
+
+clean_project() {
+    echo ""
+    draw_box "Clean Project" 50 "$YELLOW"
+    draw_box_line "${ICON_WARN} This will delete:" 50 "$YELLOW"
+    draw_box_line "  • Database tables" 50 "$YELLOW"
+    draw_box_line "  • Backend build (target/)" 50 "$YELLOW"
+    draw_box_line "  • Frontend build (dist/)" 50 "$YELLOW"
+    draw_box_line "  • Cache files" 50 "$YELLOW"
+    draw_box_bottom 50 "$YELLOW"
+    echo ""
+    
+    echo -en "${YELLOW}Type 'yes' to confirm: ${NC}"
+    read -r confirm
+    
+    if [[ "$confirm" != "yes" ]]; then
+        print_info "Cancelled"
         return
     fi
     
     echo ""
-    echo -e "${CYAN}Starting cleanup...${NC}"
+    local total=5
+    local current=0
     
-    # 1. Clear database
-    print_info "[1/5] Clearing database..."
-    if docker ps --filter "name=myriad-postgres" --format "{{.Names}}" | grep -q "myriad-postgres"; then
-        docker exec myriad-postgres psql -U myriad -d myriad -c "
+    ((current++)); progress_bar $current $total 40 "Cleaning"
+    if get_service_status database; then
+        docker exec myriad-postgres-dev psql -U myriad -d myriad -c "
 DO \$\$ DECLARE r RECORD;
 BEGIN
     FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
         EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
     END LOOP;
-END \$\$;" > /dev/null 2>&1
-        print_success "Database tables dropped"
-    else
-        echo -e "${GRAY}  Database not running${NC}"
+END \$\$;" > /dev/null 2>&1 || true
     fi
+    sleep 0.3
     
-    # 2. Delete backend build files
-    print_info "[2/5] Deleting backend build files..."
-    if [[ -d "$PROJECT_ROOT/backend/target" ]]; then
-        rm -rf "$PROJECT_ROOT/backend/target"
-        print_success "Backend build files deleted"
-    else
-        echo -e "${GRAY}  No backend build files${NC}"
-    fi
+    ((current++)); progress_bar $current $total 40 "Cleaning"
+    rm -rf "$PROJECT_ROOT/backend/target" 2>/dev/null || true
+    sleep 0.3
     
-    # 3. Delete frontend build files
-    print_info "[3/5] Deleting frontend build files..."
-    if [[ -d "$PROJECT_ROOT/frontend/dist" ]]; then
-        rm -rf "$PROJECT_ROOT/frontend/dist"
-        print_success "Frontend build files deleted"
-    else
-        echo -e "${GRAY}  No frontend build files${NC}"
-    fi
+    ((current++)); progress_bar $current $total 40 "Cleaning"
+    rm -rf "$PROJECT_ROOT/frontend/dist" "$PROJECT_ROOT/frontend/.astro" 2>/dev/null || true
+    sleep 0.3
     
-    # 4. Delete cache files
-    print_info "[4/5] Deleting cache files..."
-    if [[ -d "$PROJECT_ROOT/backend/cache" ]]; then
-        rm -f "$PROJECT_ROOT/backend/cache"/*.json 2>/dev/null || true
-        print_success "Cache files deleted"
-    else
-        echo -e "${GRAY}  No cache files${NC}"
-    fi
+    ((current++)); progress_bar $current $total 40 "Cleaning"
+    rm -rf "$PROJECT_ROOT/backend/cache"/*.json 2>/dev/null || true
+    sleep 0.3
     
-    # 5. Delete environment config
-    print_info "[5/5] Deleting environment config..."
-    if [[ -f "$PROJECT_ROOT/backend/.env" ]]; then
-        rm -f "$PROJECT_ROOT/backend/.env"
-        print_success ".env file deleted"
-    else
-        echo -e "${GRAY}  No .env file${NC}"
-    fi
+    ((current++)); progress_bar $current $total 40 "Cleaning"
+    rm -f "$PROJECT_ROOT/backend.log" "$PROJECT_ROOT/frontend.log" 2>/dev/null || true
     
     echo ""
-    print_success "Cleanup Complete!"
-    echo -e "\nNext steps:"
-    echo "  1. Run './dev.sh start' to start services"
-    echo "  2. Complete setup wizard at http://localhost:4321/setup"
+    echo ""
+    print_success "Cleanup complete!"
     echo ""
 }
 
-# ====================
-# STATUS Command
-# ====================
-show_status() {
-    print_header "Myriad Services Status"
+# ==================== Interactive Menu ====================
+
+show_menu() {
+    clear_screen
+    show_logo
+    show_status_dashboard
     
-    # Backend status
-    if pgrep -f "myriad-backend|cargo run" > /dev/null; then
-        echo -en "Backend:  "
-        echo -e "${GREEN}RUNNING${NC}"
-        echo -e "${GRAY}  PIDs: $(pgrep -f "myriad-backend|cargo run" | tr '\n' ' ')${NC}"
-    else
-        echo -en "Backend:  "
-        echo -e "${RED}STOPPED${NC}"
-    fi
-    
-    # Frontend status
-    if pgrep -f "astro dev|vite|npm run dev" > /dev/null; then
-        echo -en "Frontend: "
-        echo -e "${GREEN}RUNNING${NC}"
-        echo -e "${GRAY}  PIDs: $(pgrep -f "astro dev|vite" | tr '\n' ' ')${NC}"
-    else
-        echo -en "Frontend: "
-        echo -e "${RED}STOPPED${NC}"
-    fi
+    local width=50
+    draw_box "Main Menu" $width "$MAGENTA"
+    draw_box_line "" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_GREEN}1${NC})  ${ICON_ROCKET} Start All Services" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_GREEN}2${NC})  ${ICON_STOP} Stop All Services" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_GREEN}3${NC})  ${ICON_REFRESH} Restart All Services" $width "$MAGENTA"
+    draw_box_line "" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_YELLOW}4${NC})  ${ICON_DB} Database Only" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_YELLOW}5${NC})  ${ICON_RUST} Backend Only" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_YELLOW}6${NC})  ${ICON_NODE} Frontend Only" $width "$MAGENTA"
+    draw_box_line "" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_CYAN}7${NC})  ${ICON_INFO} Show Status" $width "$MAGENTA"
+    draw_box_line "  ${BRIGHT_RED}8${NC})  ${ICON_TRASH} Clean Project" $width "$MAGENTA"
+    draw_box_line "" $width "$MAGENTA"
+    draw_box_line "  ${DIM}q${NC})  Exit" $width "$MAGENTA"
+    draw_box_line "" $width "$MAGENTA"
+    draw_box_bottom $width "$MAGENTA"
     
     echo ""
+    echo -en "${CYAN}Select option: ${NC}"
 }
 
-# ====================
-# LOGS Command
-# ====================
-show_logs() {
-    local service="${1:-all}"
-    print_header "Myriad Service Logs"
+show_service_menu() {
+    local service=$1
+    local service_name="" icon=""
     
-    if [[ "$service" == "backend" ]]; then
-        if [[ -f "$PROJECT_ROOT/backend.log" ]]; then
-            tail -f "$PROJECT_ROOT/backend.log"
-        else
-            echo "Backend logs are in the terminal window where it was started"
-        fi
-    elif [[ "$service" == "frontend" ]]; then
-        if [[ -f "$PROJECT_ROOT/frontend.log" ]]; then
-            tail -f "$PROJECT_ROOT/frontend.log"
-        else
-            echo "Frontend logs are in the terminal window where it was started"
-        fi
-    else
-        echo "Logs are displayed in service terminal windows"
-        echo "If services were started in background:"
-        echo "  Backend:  $PROJECT_ROOT/backend.log"
-        echo "  Frontend: $PROJECT_ROOT/frontend.log"
-    fi
+    case $service in
+        database) service_name="Database"; icon="$ICON_DB" ;;
+        backend) service_name="Backend"; icon="$ICON_RUST" ;;
+        frontend) service_name="Frontend"; icon="$ICON_NODE" ;;
+    esac
+    
     echo ""
+    draw_box "$icon $service_name" 40 "$CYAN"
+    draw_box_line "  1) Start" 40 "$CYAN"
+    draw_box_line "  2) Stop" 40 "$CYAN"
+    draw_box_line "  3) Restart" 40 "$CYAN"
+    draw_box_line "  b) Back" 40 "$CYAN"
+    draw_box_bottom 40 "$CYAN"
+    
+    echo ""
+    echo -en "${CYAN}Select: ${NC}"
+    read -r choice
+    
+    case $choice in
+        1) case $service in
+            database) start_database ;; backend) start_backend ;; frontend) start_frontend ;;
+           esac ;;
+        2) case $service in
+            database) stop_database ;; backend) stop_backend ;; frontend) stop_frontend ;;
+           esac ;;
+        3) case $service in
+            database) stop_database; sleep 1; start_database ;;
+            backend) stop_backend; sleep 1; start_backend ;;
+            frontend) stop_frontend; sleep 1; start_frontend ;;
+           esac ;;
+    esac
+    
+    echo ""
+    echo -e "${DIM}Press Enter to continue...${NC}"
+    read -r
 }
 
-# ====================
-# HELP Command
-# ====================
+run_interactive() {
+    trap 'show_cursor; echo ""; exit 0' INT TERM
+    
+    while true; do
+        show_menu
+        read -r choice
+        
+        case $choice in
+            1) start_all; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
+            2) stop_all; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
+            3) restart_all; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
+            4) show_service_menu "database" ;;
+            5) show_service_menu "backend" ;;
+            6) show_service_menu "frontend" ;;
+            7) clear_screen; show_mini_logo; show_status_dashboard; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
+            8) clean_project; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
+            q|Q) clear_screen; echo -e "${CYAN}${ICON_HEART} Thanks for using Myriad! ${ICON_HEART}${NC}"; echo ""; exit 0 ;;
+            *) print_warning "Invalid option"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==================== CLI Help ====================
+
 show_help() {
-    echo "Myriad Development Script"
+    show_mini_logo
     echo ""
-    echo "Usage: ./dev.sh <command> [service]"
+    echo -e "${BOLD}Usage:${NC} ./dev.sh [command] [service]"
     echo ""
-    echo "Commands:"
-    echo "  start [service]   - Start services (default: all)"
-    echo "  stop [service]    - Stop services (default: all)"
-    echo "  restart [service] - Restart services (default: all)"
-    echo "  clean             - Clean build files and database"
-    echo "  status            - Show service status"
-    echo "  logs [service]    - Show logs (default: all)"
-    echo "  help              - Show this help"
+    echo -e "${BOLD}Commands:${NC}"
+    echo -e "  ${GREEN}start${NC}   [service]  Start services (default: all)"
+    echo -e "  ${RED}stop${NC}    [service]  Stop services (default: all)"
+    echo -e "  ${YELLOW}restart${NC} [service]  Restart services (default: all)"
+    echo -e "  ${CYAN}status${NC}             Show service status"
+    echo -e "  ${MAGENTA}clean${NC}              Clean build files and database"
+    echo -e "  ${BLUE}menu${NC}               Open interactive menu"
+    echo -e "  ${DIM}help${NC}               Show this help"
     echo ""
-    echo "Services: backend, frontend, all (default)"
+    echo -e "${BOLD}Services:${NC} database (db), backend, frontend, all"
     echo ""
-    echo "Examples:"
-    echo "  ./dev.sh start              # Start all services"
-    echo "  ./dev.sh start backend      # Start backend only"
-    echo "  ./dev.sh stop               # Stop all services"
-    echo "  ./dev.sh restart frontend   # Restart frontend only"
-    echo "  ./dev.sh clean              # Clean everything"
-    echo "  ./dev.sh status             # Show status"
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${DIM}./dev.sh${NC}                 # Open interactive menu"
+    echo -e "  ${DIM}./dev.sh start${NC}           # Start all services"
+    echo -e "  ${DIM}./dev.sh start backend${NC}   # Start backend only"
+    echo -e "  ${DIM}./dev.sh stop${NC}            # Stop all services"
+    echo -e "  ${DIM}./dev.sh status${NC}          # Show status"
     echo ""
 }
 
-# ====================
-# Main Execution
-# ====================
-COMMAND="${1:-help}"
-SERVICE="${2:-all}"
+# ==================== Main ====================
 
-case "$COMMAND" in
-    start)
-        start_services "$SERVICE"
-        ;;
-    stop)
-        stop_services "$SERVICE"
-        ;;
-    restart)
-        restart_services "$SERVICE"
-        ;;
-    clean)
-        clean_project
-        ;;
-    status)
-        show_status
-        ;;
-    logs)
-        show_logs "$SERVICE"
-        ;;
-    help|--help|-h)
-        show_help
-        ;;
-    *)
-        echo -e "${RED}Unknown command: $COMMAND${NC}"
-        echo ""
-        show_help
-        exit 1
-        ;;
-esac
+main() {
+    local command="${1:-}"
+    local service="${2:-all}"
+    
+    [[ -z "$command" ]] && { run_interactive; exit 0; }
+    
+    case "$command" in
+        start)
+            case "$service" in
+                all) start_all ;; database|db) start_database ;;
+                backend) start_backend ;; frontend) start_frontend ;;
+                *) print_error "Unknown service: $service" ;;
+            esac ;;
+        stop)
+            case "$service" in
+                all) stop_all ;; database|db) stop_database ;;
+                backend) stop_backend ;; frontend) stop_frontend ;;
+                *) print_error "Unknown service: $service" ;;
+            esac ;;
+        restart)
+            case "$service" in
+                all) restart_all ;;
+                database|db) stop_database; sleep 1; start_database ;;
+                backend) stop_backend; sleep 1; start_backend ;;
+                frontend) stop_frontend; sleep 1; start_frontend ;;
+                *) print_error "Unknown service: $service" ;;
+            esac ;;
+        status) show_mini_logo; show_status_dashboard ;;
+        clean) clean_project ;;
+        menu) run_interactive ;;
+        help|--help|-h) show_help ;;
+        *) print_error "Unknown command: $command"; echo ""; show_help; exit 1 ;;
+    esac
+}
+
+main "$@"

@@ -27,6 +27,7 @@ import { calculateWidgetDimensions, sendResizeMessage, useIframeResize } from '.
 import {
   generateCSP,
   generateNonce,
+  generateSessionToken,
   generateThemeCSS,
   generateWidgetSDK,
   IFRAME_SANDBOX_ATTRS,
@@ -348,9 +349,10 @@ export const TappWidgetSandbox = memo(({
 
   // 初始化（不依赖 theme/primaryColor 变化）
   // 🎯 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
+  // 🎯 Safari 兼容：使用 imperative iframe 创建，确保 srcdoc 在 DOM 插入前设置
   useEffect(() => {
-    const iframe = iframeRef.current
-    if (!iframe)
+    const container = containerRef.current
+    if (!container)
       return
 
     // 🎯 从 ref 获取当前对象，避免闭包陈旧问题
@@ -364,20 +366,24 @@ export const TappWidgetSandbox = memo(({
       primaryColor: initialColorRef.current,
     }
 
-    // 创建 Bridge（在生成 HTML 之前，以获取 session token）
+    // 生成 session token（独立于 Bridge）
+    const sessionToken = generateSessionToken()
+
+    // 创建 iframe 元素（尚未插入 DOM）
+    const iframe = document.createElement('iframe')
+    iframe.className = 'tapp-widget-iframe'
+    const pointerEvents = (stableWidgetProps.isEditMode || stableWidgetProps.isPreview) ? 'none' : 'auto'
+    iframe.style.cssText = `position:absolute;top:0;left:0;width:100%;height:100%;border:none;background-color:transparent;display:block;border-radius:inherit;visibility:visible;opacity:1;pointer-events:${pointerEvents};`
+    iframe.setAttribute('sandbox', IFRAME_SANDBOX_ATTRS)
+    iframe.setAttribute('referrerpolicy', 'no-referrer')
+    iframe.title = `${currentTappInstance.manifest.name} Widget`
+    iframe.allowFullscreen = true
+    iframeRef.current = iframe
+
+    // 创建 Bridge（在 DOM 插入前设置消息监听）
     const bridge = new TappBridge()
-    bridge.initialize(iframe, currentTappInstance)
+    bridge.initialize(iframe, currentTappInstance, sessionToken)
     bridgeRef.current = bridge
-
-    // 获取 session token（用于消息验证）
-    const sessionToken = bridge.getSessionToken()
-
-    // 生成 HTML（传递 session token）
-    const html = generateWidgetHTML(currentTappInstance, currentCode, widgetId, propsForHtml, sessionToken)
-
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    iframe.src = url
 
     // 注册处理器（Widget 只需要基础 API）
     const permission = new TappPermissionController(currentTappInstance)
@@ -394,9 +400,20 @@ export const TappWidgetSandbox = memo(({
       handleReady()
     })
 
+    // 生成 HTML（使用预生成的 session token）
+    const html = generateWidgetHTML(currentTappInstance, currentCode, widgetId, propsForHtml, sessionToken)
+
+    // 🎯 关键：先设置 srcdoc，再插入 DOM
+    // Safari 要求 srcdoc 在 iframe 插入 DOM 之前就设置好
+    iframe.srcdoc = html
+    container.appendChild(iframe)
+
     return () => {
-      URL.revokeObjectURL(url)
       unsubscribeReady()
+      iframeRef.current = null
+      if (container.contains(iframe)) {
+        container.removeChild(iframe)
+      }
       bridge.destroy()
       bridgeRef.current = null
       setIsReady(false)
@@ -475,35 +492,11 @@ export const TappWidgetSandbox = memo(({
         position: 'relative',
         width: '100%',
         height: '100%',
-        overflow: 'hidden',
         borderRadius: 'inherit',
         ...style,
       }}
     >
-      <iframe
-        ref={iframeRef}
-        className="tapp-widget-iframe"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          backgroundColor: 'transparent',
-          display: 'block',
-          borderRadius: 'inherit',
-          // 编辑模式或预览模式下禁用 iframe 的鼠标事件
-          pointerEvents: (widgetProps.isEditMode || widgetProps.isPreview) ? 'none' : 'auto',
-        }}
-        sandbox={IFRAME_SANDBOX_ATTRS}
-        referrerPolicy="no-referrer"
-        title={`${tappInstance.manifest.name} Widget`}
-        // Safari/WebKit 全屏兼容性
-        allowFullScreen
-        // @ts-expect-error Safari webkit prefix
-        webkitallowfullscreen="true"
-      />
+      {/* iframe 在 useEffect 中 imperatively 创建，确保 srcdoc 在 DOM 插入前设置（Safari 兼容） */}
     </div>
   )
 })

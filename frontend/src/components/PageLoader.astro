@@ -169,6 +169,16 @@
           // 显示应用容器
           if (this.appRoot) {
             this.appRoot.classList.add('app-ready')
+            // 过渡完成后移除 opacity/transition，避免 Safari 持续保持合成层
+            // 导致 position:fixed 子元素（如顶栏、iframe）无法正常绘制
+            // 使用 setTimeout 而非 transitionend，因为 transitionend 可能被 background-color 等其他过渡先触发
+            const appRootRef = this.appRoot
+            setTimeout(() => {
+              if (appRootRef) {
+                appRootRef.style.opacity = '1'
+                appRootRef.style.transition = 'none'
+              }
+            }, 600) // 0.5s transition + 0.1s buffer
           }
 
           // 立即开始隐藏加载器

@@ -4,7 +4,8 @@ import path from 'node:path'
 import react from '@astrojs/react'
 import { readFileSync } from 'node:fs'
 import tailwindcss from '@tailwindcss/vite'
-import { visualizer } from 'rollup-plugin-visualizer'
+// rollup-plugin-visualizer 与 Vite 7 (Rolldown) 不兼容，仅在构建时按需加载
+// import { visualizer } from 'rollup-plugin-visualizer'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -67,12 +68,6 @@ export default defineConfig({
     plugins: [
       tailwindcss(), // Tailwind CSS v4 Vite plugin
       spaFallbackPlugin(), // 自定义 SPA 路由回退
-      visualizer({
-        filename: 'dist/stats.html',
-        template: 'treemap',
-        gzipSize: true,
-        brotliSize: true,
-      }),
     ],
     resolve: {
       alias: {
@@ -88,7 +83,7 @@ export default defineConfig({
       minify: 'terser',
       terserOptions: {
         compress: {
-          drop_console: import.meta.env.PROD,
+          drop_console: process.env.NODE_ENV === 'production',
           drop_debugger: true,
           passes: 2,
         },

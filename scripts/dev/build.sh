@@ -36,7 +36,7 @@ echo ""
 # Build Frontend
 echo -e "${YELLOW}[2/2] Building Astro frontend...${NC}"
 cd frontend
-npm run build
+pnpm run build
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Frontend built successfully${NC}"
 else

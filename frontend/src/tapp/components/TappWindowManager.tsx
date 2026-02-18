@@ -520,7 +520,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
           <div
             data-window-id={window.windowId}
             data-tapp-id={window.tappId}
-            className="w-full h-full"
+            className="absolute inset-0"
           >
                     <TappPageSandbox
                       tappInstance={window.tapp}

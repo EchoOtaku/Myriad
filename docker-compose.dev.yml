@@ -1,0 +1,36 @@
+# Myriad 本地开发 Docker Compose 配置
+# 仅启动 PostgreSQL 数据库，用于本地开发环境
+#
+# 使用方法:
+#   启动: docker compose -f docker-compose.dev.yml up -d
+#   停止: docker compose -f docker-compose.dev.yml down
+#   查看日志: docker compose -f docker-compose.dev.yml logs -f
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database for local development
+  postgres:
+    image: postgres:16-alpine
+    container_name: myriad-postgres-dev
+    environment:
+      POSTGRES_DB: myriad
+      POSTGRES_USER: myriad
+      POSTGRES_PASSWORD: myriad_dev_password
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C --lc-collate=C --lc-ctype=C"
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myriad -d myriad"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres_dev_data:
+    driver: local
