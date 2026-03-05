@@ -20,13 +20,13 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub input: String,
     /// 预设类型: 'favorite' 或 'history'
-    #[sea_orm(column_type = "String(Some(16))")]
+    #[sea_orm(column_type = "String(StringLen::N(16))")]
     pub preset_type: String,
     /// 解析后的步骤（JSON 格式）
     #[sea_orm(column_type = "Json", nullable)]
     pub parsed_steps: Option<Json>,
     /// 意图摘要
-    #[sea_orm(column_type = "String(Some(255))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(255))", nullable)]
     pub intent_summary: Option<String>,
     /// 最后使用时间
     pub last_used_at: DateTimeWithTimeZone,
@@ -35,7 +35,7 @@ pub struct Model {
     /// 创建时间
     pub created_at: DateTimeWithTimeZone,
     /// 对话标题（自动生成或用户设置）
-    #[sea_orm(column_type = "String(Some(255))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(255))", nullable)]
     pub title: Option<String>,
     /// 对话历史数据（JSON 格式）
     /// 存储消息列表：[{role, content, metadata?, created_at}]

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// 执行状态
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum ExecutionStatus {
     #[sea_orm(string_value = "pending")]
     Pending,
@@ -39,11 +39,11 @@ pub struct Model {
     pub user_id: i32,
 
     /// Tapp ID
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 
     /// 任务 ID
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub task_id: String,
 
     /// 计划执行时间
@@ -57,7 +57,7 @@ pub struct Model {
     pub completed_at: Option<DateTimeWithTimeZone>,
 
     /// 执行目标
-    #[sea_orm(column_type = "String(Some(20))")]
+    #[sea_orm(column_type = "String(StringLen::N(20))")]
     pub execution_target: String,
 
     /// 执行状态

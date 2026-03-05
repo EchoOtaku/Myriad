@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// 注释类型
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum AnnotationType {
     /// 专业术语/难词
     #[sea_orm(string_value = "term")]

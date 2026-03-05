@@ -3704,8 +3704,8 @@ async fn execute_random_content(params: &HashMap<String, Value>) -> Result<Value
             let items = extract_platform_items_for_random(platform, &data);
 
             // 随机选取
-            use rand::seq::SliceRandom;
-            let mut rng = rand::thread_rng();
+            use rand::seq::IndexedRandom;
+            let mut rng = rand::rng();
             let selected: Vec<_> = items
                 .choose_multiple(&mut rng, count.min(items.len()))
                 .cloned()

@@ -99,7 +99,7 @@ fn generate_region_spoof(client_ip: String, accept_language: &str) -> SpoofHeade
 
 /// 生成随机的中国大陆 IP 地址
 pub fn get_random_china_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // 中国大陆主流运营商的真实 IP 段
     let china_ip_ranges = [
@@ -124,16 +124,16 @@ pub fn get_random_china_ip() -> String {
         ("223.64", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &china_ip_ranges[rng.gen_range(0..china_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &china_ip_ranges[rng.random_range(0..china_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
 
 /// 生成随机的日本 IP 地址
 pub fn get_random_japan_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let japan_ip_ranges = [
         ("133.1", 0..255, 0..255),
@@ -144,16 +144,16 @@ pub fn get_random_japan_ip() -> String {
         ("153.126", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &japan_ip_ranges[rng.gen_range(0..japan_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &japan_ip_ranges[rng.random_range(0..japan_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
 
 /// 生成随机的美国 IP 地址
 pub fn get_random_us_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let us_ip_ranges = [
         ("24.1", 0..255, 0..255),
@@ -164,16 +164,16 @@ pub fn get_random_us_ip() -> String {
         ("75.139", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &us_ip_ranges[rng.gen_range(0..us_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &us_ip_ranges[rng.random_range(0..us_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
 
 /// 生成随机的韩国 IP 地址
 pub fn get_random_korea_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let korea_ip_ranges = [
         ("175.193", 0..255, 0..255),
@@ -182,16 +182,16 @@ pub fn get_random_korea_ip() -> String {
         ("121.88", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &korea_ip_ranges[rng.gen_range(0..korea_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &korea_ip_ranges[rng.random_range(0..korea_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
 
 /// 生成随机的台湾 IP 地址
 pub fn get_random_taiwan_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let taiwan_ip_ranges = [
         ("36.224", 0..255, 0..255),
@@ -200,16 +200,16 @@ pub fn get_random_taiwan_ip() -> String {
         ("114.32", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &taiwan_ip_ranges[rng.gen_range(0..taiwan_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &taiwan_ip_ranges[rng.random_range(0..taiwan_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
 
 /// 生成随机的香港 IP 地址
 pub fn get_random_hongkong_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let hk_ip_ranges = [
         ("202.40", 0..255, 0..255),
@@ -218,9 +218,9 @@ pub fn get_random_hongkong_ip() -> String {
         ("223.16", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &hk_ip_ranges[rng.gen_range(0..hk_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &hk_ip_ranges[rng.random_range(0..hk_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
@@ -229,7 +229,7 @@ pub fn get_random_hongkong_ip() -> String {
 
 /// 通用 User-Agent
 pub fn get_random_common_ua() -> &'static str {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
@@ -240,7 +240,7 @@ pub fn get_random_common_ua() -> &'static str {
         "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     ];
 
-    user_agents[rng.gen_range(0..user_agents.len())]
+    user_agents[rng.random_range(0..user_agents.len())]
 }
 
 #[cfg(test)]

@@ -26,7 +26,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub title: String,
     /// 检测到的语言
-    #[sea_orm(column_type = "String(Some(20))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(20))", nullable)]
     pub language: Option<String>,
     /// 对话列表（JSON 格式）
     #[sea_orm(column_type = "JsonBinary")]

@@ -7,7 +7,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use oauth2::{
-    basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
+    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId,
     ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -147,13 +147,11 @@ pub async fn github_login(
         oauth_config.redirect_url
     );
 
-    let client = BasicClient::new(
-        ClientId::new(oauth_config.client_id),
-        Some(ClientSecret::new(oauth_config.client_secret)),
-        AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-        Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
-    )
-    .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
+    let client = BasicClient::new(ClientId::new(oauth_config.client_id))
+        .set_client_secret(ClientSecret::new(oauth_config.client_secret))
+        .set_auth_uri(AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap())
+        .set_token_uri(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap())
+        .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
 
     let (auth_url, csrf_token) = client
         .authorize_url(CsrfToken::new_random)
@@ -261,18 +259,17 @@ pub async fn github_callback(
         frontend_url
     );
 
-    let client = BasicClient::new(
-        ClientId::new(oauth_config.client_id),
-        Some(ClientSecret::new(oauth_config.client_secret)),
-        AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-        Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
-    )
-    .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
+    let client = BasicClient::new(ClientId::new(oauth_config.client_id))
+        .set_client_secret(ClientSecret::new(oauth_config.client_secret))
+        .set_auth_uri(AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap())
+        .set_token_uri(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap())
+        .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
 
     // Exchange code for token
+    let http_client_oauth = reqwest::Client::new();
     let token_result = client
         .exchange_code(AuthorizationCode::new(params.code))
-        .request_async(async_http_client)
+        .request_async(&http_client_oauth)
         .await
         .map_err(|e| {
             tracing::error!("Failed to exchange code: {:?}", e);
@@ -981,13 +978,11 @@ pub async fn github_link(
             )
         })?;
 
-    let client = BasicClient::new(
-        ClientId::new(oauth_config.client_id),
-        Some(ClientSecret::new(oauth_config.client_secret)),
-        AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-        Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
-    )
-    .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
+    let client = BasicClient::new(ClientId::new(oauth_config.client_id))
+        .set_client_secret(ClientSecret::new(oauth_config.client_secret))
+        .set_auth_uri(AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap())
+        .set_token_uri(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap())
+        .set_redirect_uri(RedirectUrl::new(oauth_config.redirect_url).unwrap());
 
     // ✅ 安全修复: 使用随机 state 并存储，防止 CSRF 攻击
     let (auth_url, csrf_token) = client

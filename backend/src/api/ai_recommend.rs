@@ -97,7 +97,7 @@ fn match_platform_icon(platform: &str) -> IconRecommendResponse {
         ),
         (
             "linkedin",
-            "SiLinkedin",
+            "FaLinkedin",
             "#0A66C2",
             "https://linkedin.com/in/{username}",
         ),
@@ -154,7 +154,7 @@ fn match_platform_icon(platform: &str) -> IconRecommendResponse {
         ("microsoft", "SiMicrosoft", "#5E5E5E", ""),
         (
             "amazon",
-            "SiAmazon",
+            "FaAmazon",
             "#FF9900",
             "https://amazon.com/shop/{username}",
         ),
@@ -182,8 +182,8 @@ fn match_platform_icon(platform: &str) -> IconRecommendResponse {
             "#0084FF",
             "https://www.zhihu.com/people/{username}",
         ),
-        ("qq", "SiTencentqq", "#12B7F5", ""),     // QQ蓝色
-        ("腾讯qq", "SiTencentqq", "#12B7F5", ""), // QQ蓝色
+        ("qq", "SiQq", "#12B7F5", ""),     // QQ蓝色
+        ("腾讯qq", "SiQq", "#12B7F5", ""), // QQ蓝色
         ("wechat", "SiWechat", "#07C160", ""),
         ("微信", "SiWechat", "#07C160", ""),
         ("baidu", "SiBaidu", "#2932E1", ""), // 百度蓝色
@@ -304,7 +304,7 @@ fn match_platform_icon(platform: &str) -> IconRecommendResponse {
             "https://{username}.itch.io",
         ),
         ("playstation", "SiPlaystation", "#003791", ""),
-        ("nintendo", "SiNintendoswitch", "#E60012", ""),
+        ("nintendo", "FaGamepad", "#E60012", ""),
         ("epic games", "SiEpicgames", "#313131", ""),
         ("origin", "SiOrigin", "#F56C2D", ""),
         (
@@ -654,9 +654,9 @@ fn match_platform_icon(platform: &str) -> IconRecommendResponse {
         "#38BDF8", "#818CF8", "#C084FC", "#F472B6",
     ];
 
-    let mut rng = rand::thread_rng();
-    let icon = random_icons[rng.gen_range(0..random_icons.len())];
-    let color = random_colors[rng.gen_range(0..random_colors.len())];
+    let mut rng = rand::rng();
+    let icon = random_icons[rng.random_range(0..random_icons.len())];
+    let color = random_colors[rng.random_range(0..random_colors.len())];
 
     IconRecommendResponse {
         icon_type: "react-icons".to_string(),

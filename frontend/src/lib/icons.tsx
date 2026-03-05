@@ -7,7 +7,6 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { IconType } from 'react-icons'
-
 // ============================================================
 // Lucide Icons (Lu*) - 用于 Brew 阅读器等现代 UI
 // ============================================================
@@ -18,18 +17,14 @@ import {
   ArrowRight as LuArrowRight,
   ArrowUpDown as LuArrowUpDown,
   BarChart3 as LuBarChart3,
-
   Calendar as LuCalendar,
   Check as LuCheck,
   CheckCircle as LuCheckCircle,
-  // 选择 & 复选框
   CheckSquare as LuCheckSquare,
   ChevronDown as LuChevronDown,
-  // 导航 & 方向
   ChevronLeft as LuChevronLeft,
   ChevronRight as LuChevronRight,
   ChevronUp as LuChevronUp,
-  // 时间 & 用户
   Clock as LuClock,
   Cloud as LuCloud,
   Copy as LuCopy,
@@ -40,69 +35,48 @@ import {
   EyeOff as LuEyeOff,
   FileText as LuFileText,
   Folder as LuFolder,
-
   FolderOpen as LuFolderOpen,
   Globe as LuGlobe,
   GripVertical as LuGripVertical,
-
   Inbox as LuInbox,
   Key as LuKey,
   Keyboard as LuKeyboard,
   Link as LuLink,
-
-  // 布局 & 视图
   List as LuList,
-  // 状态 & 反馈
   Loader2 as LuLoader2,
   MessageSquare as LuMessageSquare,
   Mic as LuMic,
   Minus as LuMinus,
   MinusSquare as LuMinusSquare,
   Monitor as LuMonitor,
-
   MoreHorizontal as LuMoreHorizontal,
   Palette as LuPalette,
   Pause as LuPause,
   Play as LuPlay,
-
-  // 操作
   Plus as LuPlus,
   RefreshCw as LuRefreshCw,
   Reply as LuReply,
-
   RotateCw as LuRotateCw,
-  // RSS & 链接
   Rss as LuRss,
   Search as LuSearch,
   Send as LuSend,
-  // 服务器 & 监控
   Server as LuServer,
-
-  // 设置 & 工具
   Settings as LuSettings,
-  // 排序
   Shuffle as LuShuffle,
-
   SkipBack as LuSkipBack,
   SkipForward as LuSkipForward,
   SortAsc as LuSortAsc,
-  // AI & 特效
   Sparkles as LuSparkles,
   Square as LuSquare,
-  // 内容 & 媒体
   Star as LuStar,
-
   Tag as LuTag,
   Trash2 as LuTrash2,
   Type as LuType,
   Upload as LuUpload,
   User as LuUser,
-
   Volume2 as LuVolume2,
   X as LuX,
-
   Zap as LuZap,
-  // 图片相关
   ZoomIn as LuZoomIn,
   ZoomOut as LuZoomOut,
 } from 'lucide-react'
@@ -112,6 +86,7 @@ import {
 // ============================================================
 import {
   FaAlipay,
+  FaAmazon,
   FaAnchor,
   FaArrowDown,
   FaArrowLeft,
@@ -188,6 +163,7 @@ import {
   FaLeaf,
   FaLightbulb,
   FaLink,
+  FaLinkedin,
   FaList,
   FaLock,
   FaMagic,
@@ -245,17 +221,14 @@ import {
   FaWrench,
   FaXbox,
 } from 'react-icons/fa'
-
 // ============================================================
 // Font Awesome 6 Icons (Fa6*) - 用于 FaGrip 等
 // ============================================================
 import { FaGrip } from 'react-icons/fa6'
-
 // ============================================================
 // Simple Icons (Si*) - 品牌图标
 // ============================================================
 import {
-  SiAmazon,
   SiAnilist,
   SiApple,
   SiAppstore,
@@ -294,7 +267,6 @@ import {
   SiLastdotfm,
   SiLetterboxd,
   SiLine,
-  SiLinkedin,
   SiMaildotru,
   SiMastodon,
   SiMedium,
@@ -303,7 +275,6 @@ import {
   SiNaver,
   SiNeteasecloudmusic,
   SiNiconico,
-  SiNintendoswitch,
   SiNotion,
   SiOdnoklassniki,
   SiOpenai,
@@ -313,6 +284,7 @@ import {
   SiPixiv,
   SiPlaystation,
   SiProducthunt,
+  SiQq,
   SiReddit,
   SiSinaweibo,
   SiSnapchat,
@@ -322,7 +294,6 @@ import {
   SiSteam,
   SiSubstack,
   SiTelegram,
-  SiTencentqq,
   SiThreads,
   SiTiktok,
   SiTrakt,
@@ -342,7 +313,6 @@ import {
 
 // 导出 Simple Icons
 export {
-  SiAmazon,
   SiAnilist,
   SiApple,
   SiAppstore,
@@ -381,7 +351,6 @@ export {
   SiLastdotfm,
   SiLetterboxd,
   SiLine,
-  SiLinkedin,
   SiMaildotru,
   SiMastodon,
   SiMedium,
@@ -390,7 +359,6 @@ export {
   SiNaver,
   SiNeteasecloudmusic,
   SiNiconico,
-  SiNintendoswitch,
   SiNotion,
   SiOdnoklassniki,
   SiOpenai,
@@ -400,6 +368,7 @@ export {
   SiPixiv,
   SiPlaystation,
   SiProducthunt,
+  SiQq,
   SiReddit,
   SiSinaweibo,
   SiSnapchat,
@@ -409,7 +378,6 @@ export {
   SiSteam,
   SiSubstack,
   SiTelegram,
-  SiTencentqq,
   SiThreads,
   SiTiktok,
   SiTrakt,
@@ -430,6 +398,7 @@ export {
 // 导出 Font Awesome
 export {
   FaAlipay,
+  FaAmazon,
   FaAnchor,
   FaArrowDown,
   FaArrowLeft,
@@ -506,6 +475,7 @@ export {
   FaLeaf,
   FaLightbulb,
   FaLink,
+  FaLinkedin,
   FaList,
   FaLock,
   FaMagic,
@@ -678,7 +648,7 @@ export const iconMap: Record<string, IconType> = {
   SiInstagram,
   SiYoutube,
   SiTiktok,
-  SiLinkedin,
+  FaLinkedin,
   SiReddit,
   SiDiscord,
   SiTelegram,
@@ -690,10 +660,10 @@ export const iconMap: Record<string, IconType> = {
   SiApple,
   SiAppstore,
   SiGoogle,
-  SiAmazon,
+  FaAmazon,
   SiDouban,
   SiZhihu,
-  SiTencentqq,
+  SiQq,
   SiWechat,
   SiBaidu,
   SiXiaohongshu,
@@ -716,7 +686,6 @@ export const iconMap: Record<string, IconType> = {
   SiBandcamp,
   SiItchdotio,
   SiPlaystation,
-  SiNintendoswitch,
   SiEpicgames,
   SiOrigin,
   SiAnilist,

@@ -11,14 +11,14 @@ pub struct Model {
     pub id: i32,
 
     /// 所属 Tapp ID
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 
     /// 所属用户 ID
     pub user_id: i32,
 
     /// 键名
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub key: String,
 
     /// 值 (JSON)

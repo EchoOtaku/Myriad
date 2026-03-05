@@ -32,7 +32,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub context_after: Option<String>,
     /// 评论颜色标记
-    #[sea_orm(column_type = "String(Some(20))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(20))", nullable)]
     pub color: Option<String>,
     /// 是否公开（预留）
     pub is_public: bool,

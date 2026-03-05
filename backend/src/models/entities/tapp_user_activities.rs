@@ -16,7 +16,7 @@ pub struct Model {
     pub user_id: i32,
 
     /// Tapp 唯一标识符 (如 com.example.my-app)
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 
     /// 最后运行时间

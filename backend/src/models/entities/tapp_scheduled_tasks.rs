@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// 调度类型
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum ScheduleType {
     #[sea_orm(string_value = "cron")]
     Cron,
@@ -25,7 +25,7 @@ impl Default for ScheduleType {
 
 /// 执行目标
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum ExecutionTarget {
     #[sea_orm(string_value = "backend")]
     Backend,
@@ -43,7 +43,7 @@ impl Default for ExecutionTarget {
 
 /// 错过执行策略
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum MissedPolicy {
     #[sea_orm(string_value = "skip")]
     Skip,
@@ -62,7 +62,7 @@ impl Default for MissedPolicy {
 /// 任务作用域
 /// 决定任务的执行范围和前端推送目标
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum TaskScope {
     /// 用户级别：只影响注册该任务的用户
     /// 后端执行时使用该用户的权限，前端推送给该用户
@@ -97,18 +97,18 @@ pub struct Model {
     pub id: i32,
 
     /// 任务 ID（Tapp 内唯一）
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub task_id: String,
 
     /// 所属 Tapp ID
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 
     /// 所属用户 ID
     pub user_id: i32,
 
     /// 任务名称
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub name: String,
 
     /// 调度类型

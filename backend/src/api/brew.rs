@@ -2051,7 +2051,7 @@ async fn handle_brew_websocket(mut socket: axum::extract::ws::WebSocket, _db: Da
                 // 接收来自调度器的通知
                 Ok(notification) = rx.recv() => {
                     let msg = serde_json::to_string(&notification).unwrap_or_default();
-                    if socket.send(Message::Text(msg)).await.is_err() {
+                    if socket.send(Message::Text(msg.into())).await.is_err() {
                         break;
                     }
                 }

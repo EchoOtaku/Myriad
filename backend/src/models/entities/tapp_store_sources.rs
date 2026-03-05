@@ -11,7 +11,7 @@ pub struct Model {
     pub id: i32,
 
     /// 商店名称
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub name: String,
 
     /// 商店描述
@@ -29,7 +29,7 @@ pub struct Model {
     pub official: bool,
 
     /// 图标
-    #[sea_orm(column_type = "String(Some(100))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(100))", nullable)]
     pub icon: Option<String>,
 
     /// 创建时间

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Tapp 状态
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum TappStatus {
     #[sea_orm(string_value = "installed")]
     Installed,
@@ -31,18 +31,18 @@ pub struct Model {
     pub id: i32,
 
     /// Tapp 唯一标识符 (如 com.example.my-app)
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 
     /// 所属用户 ID
     pub user_id: i32,
 
     /// 显示名称
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub name: String,
 
     /// 版本号
-    #[sea_orm(column_type = "String(Some(50))")]
+    #[sea_orm(column_type = "String(StringLen::N(50))")]
     pub version: String,
 
     /// 描述
@@ -58,7 +58,7 @@ pub struct Model {
     pub icon: Option<String>,
 
     /// 主题色
-    #[sea_orm(column_type = "String(Some(20))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(20))", nullable)]
     pub theme_color: Option<String>,
 
     /// 完整清单 (JSON)

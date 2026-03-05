@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -54,7 +54,7 @@ static CSRF_TOKENS: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, CsrfToken>>
 
 /// 生成随机 CSRF Token
 fn generate_csrf_token() -> String {
-    rand::thread_rng()
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(32)
         .map(char::from)

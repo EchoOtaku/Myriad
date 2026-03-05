@@ -6,15 +6,15 @@ use rand::Rng;
 
 /// 生成随机设备ID (模拟Android设备)
 pub fn generate_device_id() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: Vec<u8> = (0..16).map(|_| rng.gen()).collect();
+    let mut rng = rand::rng();
+    let bytes: Vec<u8> = (0..16).map(|_| rng.random()).collect();
     bytes.iter().map(|b| format!("{:02X}", b)).collect()
 }
 
 /// 生成随机的中国大陆 IP 地址
 /// 使用真实的中国电信/联通/移动的 IP 段，增强真实性
 pub fn get_random_china_ip() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // 中国大陆主流运营商的真实 IP 段（部分示例）
     let china_ip_ranges = [
@@ -57,9 +57,9 @@ pub fn get_random_china_ip() -> String {
         ("223.73", 0..255, 0..255),
     ];
 
-    let (prefix, range2, range3) = &china_ip_ranges[rng.gen_range(0..china_ip_ranges.len())];
-    let third = rng.gen_range(range2.clone());
-    let fourth = rng.gen_range(range3.clone());
+    let (prefix, range2, range3) = &china_ip_ranges[rng.random_range(0..china_ip_ranges.len())];
+    let third = rng.random_range(range2.clone());
+    let fourth = rng.random_range(range3.clone());
 
     format!("{}.{}.{}", prefix, third, fourth)
 }
@@ -67,7 +67,7 @@ pub fn get_random_china_ip() -> String {
 /// 获取随机 User-Agent（模拟不同设备和浏览器）
 /// 降低被识别为爬虫的风险
 pub fn get_random_user_agent() -> &'static str {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let user_agents = [
         // 桌面浏览器 - Chrome
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -91,19 +91,19 @@ pub fn get_random_user_agent() -> &'static str {
         "Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SD1A.210817.036; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.120 Mobile Safari/537.36 BiliApp/6.80.0",
     ];
 
-    user_agents[rng.gen_range(0..user_agents.len())]
+    user_agents[rng.random_range(0..user_agents.len())]
 }
 
 /// 生成随机的 buvid3 (Bilibili User Video ID)
 /// 用于模拟真实用户身份
 pub fn generate_buvid3() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let chars: Vec<char> = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         .chars()
         .collect();
 
     let random_part: String = (0..32)
-        .map(|_| chars[rng.gen_range(0..chars.len())])
+        .map(|_| chars[rng.random_range(0..chars.len())])
         .collect();
 
     random_part

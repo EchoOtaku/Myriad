@@ -43,7 +43,7 @@ pub struct Model {
 
 /// 实例健康状态
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum HealthStatus {
     /// 健康 - 响应正常
     #[sea_orm(string_value = "healthy")]

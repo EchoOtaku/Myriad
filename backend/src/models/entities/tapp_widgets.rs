@@ -11,18 +11,18 @@ pub struct Model {
     pub id: i32,
 
     /// 小组件完整 ID (tapp.{tapp_id}.{widget_id})
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub widget_id: String,
 
     /// 所属 Tapp ID
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 
     /// 所属用户 ID
     pub user_id: i32,
 
     /// 显示名称
-    #[sea_orm(column_type = "String(Some(255))")]
+    #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub name: String,
 
     /// 描述
@@ -34,7 +34,7 @@ pub struct Model {
     pub icon: Option<String>,
 
     /// 默认尺寸
-    #[sea_orm(column_type = "String(Some(10))")]
+    #[sea_orm(column_type = "String(StringLen::N(10))")]
     pub default_size: String,
 
     /// 支持的尺寸 (JSON 数组)
@@ -42,7 +42,7 @@ pub struct Model {
     pub sizes: serde_json::Value,
 
     /// 分类
-    #[sea_orm(column_type = "String(Some(50))", nullable)]
+    #[sea_orm(column_type = "String(StringLen::N(50))", nullable)]
     pub category: Option<String>,
 
     /// 完整配置 (JSON)

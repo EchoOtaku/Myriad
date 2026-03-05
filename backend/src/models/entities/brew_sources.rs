@@ -78,7 +78,7 @@ pub struct Model {
 
 /// 订阅源类型
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum FeedType {
     #[sea_orm(string_value = "rss")]
     Rss,
@@ -103,7 +103,7 @@ impl Default for FeedType {
 /// - Rss: 标准 RSS/Atom 订阅
 /// - Brewlia: AI 增强订阅，在 RSS 基础上提供词汇注释等增强功能
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(20))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum SourceType {
     #[sea_orm(string_value = "link")]
     Link,
