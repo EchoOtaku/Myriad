@@ -1,6 +1,6 @@
 # Frontend Dockerfile - Multi-stage build
 ARG NODE_VERSION=22
-ARG PNPM_VERSION=9.15.4
+ARG PNPM_VERSION=9.15.9
 ARG PACKAGE_MANAGER=pnpm
 FROM node:${NODE_VERSION}-alpine AS builder
 
@@ -39,7 +39,7 @@ FROM node:${NODE_VERSION}-alpine
 WORKDIR /app
 
 # Install serve globally and create user
-RUN npm install -g serve@14 && \
+RUN npm install -g serve@14.2.6 && \
     (addgroup -g 1000 myriad 2>/dev/null || addgroup myriad) && \
     (adduser -D -u 1000 -G myriad myriad 2>/dev/null || adduser -D -G myriad myriad)
 
