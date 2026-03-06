@@ -9,7 +9,7 @@
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect,
+    QueryFilter, QueryOrder, QuerySelect, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -367,10 +367,15 @@ impl BrewSchedulerEngine {
             new_items.push(new_item);
         }
 
-        // 批量插入新文章
+        // 批量插入新文章（ON CONFLICT DO NOTHING 防止竞态条件导致的重复键错误）
         let new_count = new_items.len() as i32;
         if !new_items.is_empty() {
+            let on_conflict = OnConflict::columns([brew_items::Column::SourceId, brew_items::Column::Guid])
+                .do_nothing()
+                .to_owned();
             brew_items::Entity::insert_many(new_items)
+                .on_conflict(on_conflict)
+                .do_nothing()
                 .exec(db)
                 .await
                 .map_err(|e| format!("Failed to batch insert items: {}", e))?;

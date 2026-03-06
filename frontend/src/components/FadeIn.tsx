@@ -301,7 +301,7 @@ export function FadeInWithSkeleton({
   staggerDelay = 50,
   waitForPage = true,
   groupId = 'fadein-skeleton',
-  keepPlaceholder = true,
+  _keepPlaceholder = true,
   estimatedHeight,
 }: FadeInWithSkeletonProps & { groupId?: string, keepPlaceholder?: boolean, estimatedHeight?: number | string }) {
   // 使用新的动画协调系统

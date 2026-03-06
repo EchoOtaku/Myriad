@@ -17,7 +17,7 @@ export async function parseJsonResponse(response: Response): Promise<any> {
   try {
     return await response.json()
   }
-  catch (error) {
+  catch (_error) {
     throw new Error(`服务器返回了无效的响应格式 (${response.status})`)
   }
 }
@@ -43,7 +43,7 @@ export async function handleErrorResponse(
       const errorData = await response.json()
       errorMessage = errorData.message || errorData.error || defaultMessage
     }
-    catch (jsonError) {
+    catch (_jsonError) {
       errorMessage = `${defaultMessage} (${response.status})`
     }
   }

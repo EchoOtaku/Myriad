@@ -43,7 +43,7 @@ export interface GlowBackgroundProps {
  */
 export const GlowBackground = memo(({
   color,
-  animLevel,
+  _animLevel,
   shouldAnimate,
   variant = 'single',
   size = 'md',

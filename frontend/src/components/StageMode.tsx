@@ -105,7 +105,7 @@ function SubtitleDisplay({
   rightContent?: React.ReactNode
 }) {
   const [visibleLines, setVisibleLines] = useState<{ id: number, text: string }[]>([])
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [_currentIndex, setCurrentIndex] = useState(0)
 
   useEffect(() => {
     if (!isActive || lines.length === 0 || isPaused) {
@@ -457,7 +457,7 @@ function parseReportToChapters(reportData: {
 }
 
 // 舞台模式主组件
-export default function StageMode({ isOpen, onClose, reportData, onRefresh, playAllMode = false }: StageModeProps) {
+export default function StageMode({ isOpen, onClose, reportData, _onRefresh, playAllMode = false }: StageModeProps) {
   const { t } = useI18n()
   const [currentChapter, setCurrentChapter] = useState(0)
   const [chapters, setChapters] = useState<StageChapter[]>([])

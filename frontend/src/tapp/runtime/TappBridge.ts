@@ -308,7 +308,7 @@ export class TappBridge {
     window.removeEventListener('message', this.handleMessage)
 
     // 清理所有待处理的请求
-    for (const [id, pending] of this.pendingRequests) {
+    for (const [_id, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout)
       pending.reject(new Error('Bridge destroyed'))
     }

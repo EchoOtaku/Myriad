@@ -102,7 +102,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
           }
         }
       }
-      catch (error) {
+      catch (_error) {
         // 站长资料获取失败，回退到 authUser 信息
         console.debug('[UserSection] Failed to fetch admin profile, using authUser info')
       }
@@ -208,7 +208,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
         credentials: 'include',
       })
     }
-    catch (error) {
+    catch (_error) {
       // 静默处理退出错误
     }
 

@@ -7,6 +7,7 @@ import {
   shouldYield,
   yieldToMain,
 } from '../hooks/animation'
+
 import { loadImagePooled } from './objectPool'
 
 /**
@@ -152,6 +153,7 @@ export function rafThrottleWithMaxWait<T extends (...args: any[]) => any>(
   let context: any = null
 
   return function (this: any, ...args: Parameters<T>) {
+    // eslint-disable-next-line ts/no-this-alias
     context = this
     pendingArgs = args
 
@@ -326,7 +328,7 @@ export class MemoryManager {
 /**
  * Web Workers工具
  */
-export function createWorker(fn: Function): Worker {
+export function createWorker(fn: (...args: unknown[]) => unknown): Worker {
   const blob = new Blob([`(${fn.toString()})()`], {
     type: 'application/javascript',
   })

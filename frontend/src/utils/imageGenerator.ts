@@ -70,7 +70,7 @@ async function generatePromptFromAPI(title: string, summary: string, category: s
 
     return data.prompt
   }
-  catch (error) {
+  catch (_error) {
     // 降级方案：使用简单的默认提示词
     return `A cute chibi character, ${title}, in Studio Ghibli art style, transparent background, PNG format, no background, isolated subject, masterpiece, highest quality, detailed character design, soft lighting, hand-drawn animation style, Hayao Miyazaki inspired, watercolor texture, gentle colors, whimsical atmosphere, professional illustration, 8K resolution, ultra detailed, cute kawaii style`
   }
@@ -136,7 +136,7 @@ export function getCachedIllustrations(): Map<number, CardIllustration> {
 
     return illustrations
   }
-  catch (e) {
+  catch (_e) {
     return new Map()
   }
 }
@@ -154,7 +154,7 @@ export function saveIllustration(cardId: number, illustration: CardIllustration)
 
     localStorage.setItem(IMAGE_CACHE_KEY, JSON.stringify(data))
   }
-  catch (e) {
+  catch (_e) {
     // 静默失败,缓存不可用不影响功能
   }
 }
@@ -176,14 +176,14 @@ export async function generateCardIllustration(
 
   // 从公开配置读取参数 - 注意：图片生成配置目前不在公开API中
   // 这里暂时使用默认值，如果需要从配置读取，需要将相关配置添加到 /api/config/ui
-  let config: any = {}
+  const _config: any = {}
   try {
     const response = await fetch(`${API_URL}/api/config/ui`)
     const data = await response.json()
     // 注意：目前 /api/config/ui 不包含 image_gen 配置，使用默认值
-    config = data || {}
+    _config = data || {}
   }
-  catch (e) {
+  catch (_e) {
     // 使用默认配置
   }
 

@@ -4,7 +4,7 @@ import React, { Suspense } from 'react'
  * 通用图表懒加载封装：仅在渲染时加载 chart.js + react-chartjs-2
  */
 export const LazyChart = React.lazy(async () => {
-  const [{ Chart }, chartjs2] = await Promise.all([
+  const [{ _Chart }, chartjs2] = await Promise.all([
     import('chart.js'),
     import('react-chartjs-2'),
   ])

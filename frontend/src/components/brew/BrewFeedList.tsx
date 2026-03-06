@@ -11,6 +11,7 @@
 
 import type { BrewItem } from '../../types/brew'
 import type { TimeTranslations } from './types'
+
 import { LuFileText as FileText } from '@lib/icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
@@ -110,7 +111,7 @@ export default function BrewFeedList({
   // 瀑布流列分配 - 最短列优先算法（根据预估高度平衡列）
   const columns = useMemo(() => {
     const cols: BrewItem[][] = Array.from({ length: columnCount }, () => [])
-    const colHeights: number[] = new Array(columnCount).fill(0)
+    const colHeights: number[] = Array.from({ length: columnCount }, () => 0)
 
     // 预估卡片高度：基础高度 + 封面图高度 + 摘要行数
     const estimateHeight = (item: BrewItem): number => {

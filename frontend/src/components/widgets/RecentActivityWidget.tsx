@@ -11,6 +11,7 @@
  */
 
 import type { TranslationKeys } from '../../i18n'
+
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
@@ -22,7 +23,7 @@ import { hasSessionHint } from '../../utils/sessionDetection'
 // 缓存配置
 const CACHE_KEY = 'recent_activities_cache'
 const CACHE_DURATION = 5 * 60 * 1000 // 5分钟
-const DEBOUNCE_DELAY = 300 // 300ms 防抖
+const _DEBOUNCE_DELAY = 300 // 300ms 防抖
 
 // 全局请求状态 - 避免多实例重复请求
 let globalFetchPromise: Promise<Activity[]> | null = null
@@ -77,7 +78,7 @@ function formatValue(value: any, t: TranslationKeys): string {
     return value.toString()
   if (typeof value === 'string') {
     // 如果是时间戳或日期字符串
-    if (!isNaN(Date.parse(value)) && value.match(/^\d{4}-\d{2}-\d{2}/)) {
+    if (!Number.isNaN(Date.parse(value)) && value.match(/^\d{4}-\d{2}-\d{2}/)) {
       const date = new Date(value)
       return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
     }
@@ -128,7 +129,7 @@ function parseFieldName(fieldStr: string): { name: string, skip: boolean } {
   if (parts.length > 1) {
     // 检查最后一部分是否是数组索引
     const lastPart = parts[parts.length - 1]
-    if (!isNaN(Number(lastPart))) {
+    if (!Number.isNaN(Number(lastPart))) {
       // 如果最后是数字索引（如 games.0），取倒数第二个
       cleanName = parts[parts.length - 2] || parts[0]
     }
@@ -313,7 +314,7 @@ const ActivityItem = memo(({ activity, index, t }: { activity: Activity, index: 
 
 ActivityItem.displayName = 'ActivityItem'
 
-export const RecentActivityWidget = memo(({ config, isEditMode, isPreview }: WidgetComponentProps) => {
+export const RecentActivityWidget = memo(({ _config, isEditMode, isPreview }: WidgetComponentProps) => {
   const { isAuthenticated, isLoading: authLoading, hasChecked, checkAuth } = useAuth()
   const { t } = useI18n()
   const [activities, setActivities] = useState<Activity[]>([])

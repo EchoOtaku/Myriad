@@ -599,10 +599,10 @@ export function highlightAnnotations(html: string, annotations: AnnotationItem[]
 
     // 在全文中找到所有出现位置
     const positions: number[] = []
-    let pos = 0
-    while ((pos = fullText.indexOf(term, pos)) !== -1) {
+    let pos = fullText.indexOf(term, 0)
+    while (pos !== -1) {
       positions.push(pos)
-      pos += 1
+      pos = fullText.indexOf(term, pos + 1)
     }
 
     if (positions.length === 0)

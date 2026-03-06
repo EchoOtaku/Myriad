@@ -9,18 +9,30 @@
  * - 动画统一接入调度器，根据设备性能自适应
  */
 
-import * as brewApi from '../../services/brewApi';
-import * as brewliaApi from '../../services/brewliaApi';
+import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi'
 
-import { AnimatePresence, motion } from 'framer-motion';
-import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi';
+import type { BrewItem, SourceType } from '../../types/brew'
+import {
+  LuCalendar as Calendar,
+  LuClock as Clock,
+  LuUser as User,
+} from '@lib/icons'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useI18n } from '../../contexts/I18nContext'
+import { useNavigation } from '../../contexts/NavigationContext'
+import { usePageContentOptional } from '../../contexts/PageContentContext'
+import { useReadingListOptional } from '../../contexts/ReadingListContext'
+
+import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation/pages/brew'
+import * as brewliaApi from '../../services/brewliaApi'
+import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
+import { processRssContent } from '../../utils/rssContentProcessor'
 import {
   AnnotationTooltip,
   CommentInputPopup,
-  CommentTooltip,
   CommentsListPanel,
-  DATE_FORMAT_FULL,
-  DATE_FORMAT_SHORT,
+  CommentTooltip,
   Lightbox,
   MobileReaderBar,
   FONT_OPTIONS as READER_FONT_OPTIONS,
@@ -28,37 +40,14 @@ import {
   THEMES as READER_THEMES,
   ReaderLeftPanel,
   ReaderRightPanel,
-  STYLE_MAX_HEIGHT_320,
-  STYLE_MAX_HEIGHT_60VH,
   STYLE_READER_CONTAINER,
   STYLE_SCROLL_SMOOTH,
-  THEME_ORDER,
   TRANSITION_FAST,
-  TRANSITION_NORMAL,
-  TRANSITION_PANEL,
-  TRANSITION_SLOW,
   useAnnotations,
   useComments,
   usePodcast,
   useReaderSettings,
-} from './reader';
-import type { BrewItem, SourceType } from '../../types/brew';
-import {
-  LuCalendar as Calendar,
-  LuClock as Clock,
-  LuUser as User,
-} from '@lib/icons';
-import type { LayoutKey, ThemeKey } from './reader';
-import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation/pages/brew';
-import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-import type { CommentItem } from '../../services/brewApi';
-import { processRssContent } from '../../utils/rssContentProcessor';
-import { useI18n } from '../../contexts/I18nContext';
-import { useNavigation } from '../../contexts/NavigationContext';
-import { usePageContentOptional } from '../../contexts/PageContentContext';
-import { useReadingListOptional } from '../../contexts/ReadingListContext';
+} from './reader'
 
 // API URL
 const API_URL = import.meta.env.PUBLIC_API_URL || ''
@@ -86,7 +75,7 @@ interface BrewReaderProps {
   isAdmin?: boolean // 是否为管理员（游客/普通用户隐藏重新生成按钮）
   sourceType?: SourceType // 来源类型（brewlia 时显示 AI 功能）
   // 阅读列表导航回调（从 Brew.tsx 传入）
-  onNavigateToArticle?: (articleId: number) => void;
+  onNavigateToArticle?: (articleId: number) => void
 }
 
 // 目录项类型
@@ -97,30 +86,30 @@ interface TocItem {
 }
 
 // 使用导入的常量
-const FONT_OPTIONS = READER_FONT_OPTIONS
-const THEMES = READER_THEMES
-const LAYOUT_OPTIONS = READER_LAYOUT_OPTIONS
+const _FONT_OPTIONS = READER_FONT_OPTIONS
+const _THEMES = READER_THEMES
+const _LAYOUT_OPTIONS = READER_LAYOUT_OPTIONS
 
 export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType, onNavigateToArticle }: BrewReaderProps) {
-  const { t } = useI18n();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const articleRef = useRef<HTMLElement>(null);
+  const { t } = useI18n()
+  const contentRef = useRef<HTMLDivElement>(null)
+  const articleRef = useRef<HTMLElement>(null)
 
   // 阅读列表上下文 - 用于顺序阅读导航
-  const readingList = useReadingListOptional();
-  const positionInfo = readingList?.getPositionInfo(item.id);
+  const readingList = useReadingListOptional()
+  const positionInfo = readingList?.getPositionInfo(item.id)
 
   // 沉浸模式 - 进入阅读器时隐藏导航栏和控制面板
-  const { setImmersiveMode } = useNavigation();
+  const { setImmersiveMode } = useNavigation()
 
   // 页面内容上下文 - 用于 Agent 访问当前阅读的文章
-  const { setPageContent, clearPageContent } = usePageContentOptional() || {};
+  const { setPageContent, clearPageContent } = usePageContentOptional() || {}
 
   // 设置当前阅读的文章内容到全局上下文
   useEffect(() => {
     if (setPageContent && item) {
       // 获取文章内容：优先使用 content，其次 summary
-      const articleContent = item.content || item.summary || '';
+      const articleContent = item.content || item.summary || ''
 
       setPageContent({
         type: 'brew_article',
@@ -132,42 +121,42 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         metadata: {
           sourceId: item.source_id,
           sourceName: item.source_name,
-          sourceType: sourceType,
+          sourceType,
           isBrewlia: sourceType === 'brewlia',
         },
-      });
+      })
 
       console.log('[BrewReader] Page content set:', {
         title: item.title,
         hasContent: !!articleContent,
         contentLength: articleContent?.length || 0,
-      });
+      })
     }
 
     // 清理：离开阅读器时清除内容
     return () => {
       if (clearPageContent) {
-        clearPageContent();
+        clearPageContent()
       }
-    };
-  }, [item, sourceType, setPageContent, clearPageContent]);
+    }
+  }, [item, sourceType, setPageContent, clearPageContent])
 
   // 动画配置 - 根据设备性能自适应
-  const animConfig = useBrewAnimationConfig();
-  const readerTransition = useMemo(() => getBrewTransition(animConfig, 'reader'), [animConfig]);
-  const enableAnimations = animConfig.level !== 'none';
+  const animConfig = useBrewAnimationConfig()
+  const readerTransition = useMemo(() => getBrewTransition(animConfig, 'reader'), [animConfig])
+  const enableAnimations = animConfig.level !== 'none'
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
-  const [contentReady, setContentReady] = useState(!enableAnimations);
+  const [contentReady, setContentReady] = useState(!enableAnimations)
 
   // Brewlia AI 功能标识
-  const isBrewlia = sourceType === 'brewlia';
+  const isBrewlia = sourceType === 'brewlia'
 
   // 阅读设置 - 使用自定义 hook
   const {
     fontSize,
     lineHeight,
-    fontFamily,
+    _fontFamily,
     theme,
     layout,
     currentTheme,
@@ -179,26 +168,26 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     cycleTheme,
     cycleFont,
     cycleLayout,
-  } = useReaderSettings();
+  } = useReaderSettings()
 
-  const [readingProgress, setReadingProgress] = useState(0);
-  const [showToast, setShowToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Toast 定时器，防止泄漏
-  const [showPanels, setShowPanels] = useState(true);
-  const [showMobileControls, setShowMobileControls] = useState(false); // 移动端控制条展开状态
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null); // 灯箱图片
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastMouseMoveRef = useRef<number>(0);
-  const isScrollingRef = useRef(false);
-  const cooldownRef = useRef(false); // 冷却期，防止刚隐藏就显示
-  const lastScrollTopRef = useRef(0); // 上次滚动位置，用于判断滚动方向
-  const isHoveringControlsRef = useRef(false); // 鼠标是否在控制栏区域
-  const [toc, setToc] = useState<TocItem[]>([]);
-  const [showToc, setShowToc] = useState(false);
-  const [activeHeadingId, setActiveHeadingId] = useState<string>('');
-  const [headingHistory, setHeadingHistory] = useState<string[]>([]); // 标题访问历史
-  const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLongPressRef = useRef(false);
+  const [readingProgress, setReadingProgress] = useState(0)
+  const [showToast, setShowToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null) // Toast 定时器，防止泄漏
+  const [showPanels, setShowPanels] = useState(true)
+  const [showMobileControls, setShowMobileControls] = useState(false) // 移动端控制条展开状态
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null) // 灯箱图片
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastMouseMoveRef = useRef<number>(0)
+  const isScrollingRef = useRef(false)
+  const cooldownRef = useRef(false) // 冷却期，防止刚隐藏就显示
+  const lastScrollTopRef = useRef(0) // 上次滚动位置，用于判断滚动方向
+  const isHoveringControlsRef = useRef(false) // 鼠标是否在控制栏区域
+  const [toc, setToc] = useState<TocItem[]>([])
+  const [showToc, setShowToc] = useState(false)
+  const [activeHeadingId, setActiveHeadingId] = useState<string>('')
+  const [headingHistory, setHeadingHistory] = useState<string[]>([]) // 标题访问历史
+  const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isLongPressRef = useRef(false)
 
   // 统一的 Toast 显示函数，自动管理定时器防止泄漏
   const showToastMessage = useCallback((message: string, duration = 2000) => {
@@ -219,8 +208,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current)
       }
-    };
-  }, []);
+    }
+  }, [])
 
   // Brewlia AI 注释 - 使用自定义 hook
   const {
@@ -232,7 +221,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     showBrewliaPanel,
     hoveredAnnotation,
     tooltipPosition,
-    setShowAnnotations,
+    _setShowAnnotations,
     setSelectedAnnotation,
     setShowBrewliaPanel,
     setHoveredAnnotation,
@@ -247,7 +236,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     isBrewlia,
     showToastMessage,
     t,
-  });
+  })
 
   // 用户评论 - 使用自定义 hook
   const {
@@ -257,7 +246,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     showCommentPopup,
     commentPopupPosition,
     selectedText,
-    selectionRange,
+    _selectionRange,
     commentInput,
     commentSubmitting,
     showCommentsPanel,
@@ -267,7 +256,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     expandedComments,
     commentReplies,
     commentTooltip,
-    setComments,
+    _setComments,
     setShowCommentPopup,
     setCommentPopupPosition,
     setSelectedText,
@@ -283,19 +272,19 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     toggleReplies,
     submitReply,
     highlightComments,
-    commentsLoadingRef,
+    _commentsLoadingRef,
   } = useComments({
     itemId: item.id,
     isAuthenticated,
     showToastMessage,
     t,
-  });
+  })
 
   // Brewlia AI 播客 - 使用自定义 hook
   const {
     podcastDialogues,
     podcastLoading,
-    podcastError,
+    _podcastError,
     showPodcastPlayer,
     podcastState,
     podcastCurrentIndex,
@@ -311,11 +300,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     articleCache,
     articleCacheLoading,
     clearingVoiceId,
-    groupedVoices,
+    _groupedVoices,
     setShowPodcastPlayer,
     setShowVoiceSettings,
     loadPodcast,
-    regeneratePodcast,
+    _regeneratePodcast,
     handleTtsEngineChange,
     handleVoiceChange,
     handleOpenSettings,
@@ -328,14 +317,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     handlePodcastPrev,
     handlePodcastNext,
     handlePodcastSeek,
-    podcastListRef,
+    _podcastListRef,
   } = usePodcast({
     itemId: item.id,
     sourceId: item.source_id,
     isBrewlia,
     showToastMessage,
     t,
-  });
+  })
 
   // 侧边栏按钮样式 - useMemo 缓存
   const sideButtonClass = useMemo(() =>
@@ -345,36 +334,38 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 处理文章内容（带注释、评论高亮和嵌入内容）
   // WebKit 优化：使用状态 + useEffect 异步处理，避免阻塞首次渲染
-  const [processedContent, setProcessedContent] = useState<string>('');
+  const [processedContent, setProcessedContent] = useState<string>('')
 
   useEffect(() => {
     // 如果内容还没准备好，不处理
-    if (!contentReady) return;
+    if (!contentReady)
+      return
 
     // 🔴 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
     if (item.fromWebSearch && !item.content) {
-      const hasSummary = item.summary && item.summary.trim().length > 20;
+      const hasSummary = item.summary && item.summary.trim().length > 20
       if (hasSummary) {
         // 将摘要转换为段落格式，让阅读器样式能够控制
-        const paragraphs = item.summary!.split(/\n\n|\n/).filter(p => p.trim());
-        const summaryHtml = paragraphs.map(p => `<p>${p.trim()}</p>`).join('\n');
+        const paragraphs = item.summary!.split(/\n\n|\n/).filter(p => p.trim())
+        const summaryHtml = paragraphs.map(p => `<p>${p.trim()}</p>`).join('\n')
 
         setProcessedContent(`<div class="web-search-summary">
           ${summaryHtml}
           <p class="web-search-note">以上内容由 AI 根据网络搜索结果生成</p>
-        </div>`);
-        return;
-      } else {
+        </div>`)
+        return
+      }
+      else {
         // 没有摘要时显示提示
         setProcessedContent(`<div class="web-search-summary">
           <p class="opacity-60">暂无内容摘要</p>
-        </div>`);
-        return;
+        </div>`)
+        return
       }
     }
 
     // 🔴 优先使用 item 自带的内容
-    let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`;
+    let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`
 
     // 0. 首先处理 RSS 内容格式（清理危险标签、适配各类 HTML 标签样式）
     content = processRssContent(content, {
@@ -383,10 +374,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       removeTrackingParams: true,
       removeEmptyTags: true,
       baseUrl: item.link || undefined,
-    });
+    })
 
     // 1. 处理嵌入内容（iframe、特定链接转卡片）
-    content = processEmbeds(content, isDark);
+    content = processEmbeds(content, isDark)
 
     // 2. 处理 AI 注释高亮
     if (showAnnotations && annotations.length > 0) {
@@ -398,8 +389,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       content = highlightComments(content, comments, theme)
     }
 
-    setProcessedContent(content);
-  }, [contentReady, item.content, item.summary, item.link, item.fromWebSearch, showAnnotations, annotations, comments, highlightComments, isDark, theme, t.brew.noContent]);
+    setProcessedContent(content)
+  }, [contentReady, item.content, item.summary, item.link, item.fromWebSearch, showAnnotations, annotations, comments, highlightComments, isDark, theme, t.brew.noContent])
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   // 这避免了同时执行动画 + 大量 DOM 渲染导致的卡顿
@@ -414,12 +405,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     const delay = (readerTransition.duration * 1000) + 50
     const timer = setTimeout(() => {
       requestAnimationFrame(() => {
-        setContentReady(true);
-      });
-    }, delay);
+        setContentReady(true)
+      })
+    }, delay)
 
-    return () => clearTimeout(timer);
-  }, [enableAnimations, readerTransition.duration]);
+    return () => clearTimeout(timer)
+  }, [enableAnimations, readerTransition.duration])
 
   // 沉浸模式控制 - 进入阅读器时隐藏导航岛和控制面板
   useEffect(() => {
@@ -445,7 +436,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     if (articleRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = articleRef.current
       const progress = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100))
-      setReadingProgress(isNaN(progress) ? 0 : progress)
+      setReadingProgress(Number.isNaN(progress) ? 0 : progress)
     }
   }, [])
 
@@ -460,17 +451,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         }
 
         // 跳过已处理的图片
-        if (img.dataset.sizeProcessed) return;
-        img.dataset.sizeProcessed = 'true';
+        if (img.dataset.sizeProcessed)
+          return
+        img.dataset.sizeProcessed = 'true'
 
         // 添加基础样式
-        img.classList.add('rounded-xl', 'h-auto', 'my-4', 'mx-auto', 'block');
+        img.classList.add('rounded-xl', 'h-auto', 'my-4', 'mx-auto', 'block')
 
         // 检测正方形图片并限制宽度
         const handleImageLoad = () => {
-          const ratio = img.naturalWidth / img.naturalHeight;
-          const isSquare = ratio >= 0.8 && ratio <= 1.25;
-          const isSmall = img.naturalWidth <= 200 && img.naturalHeight <= 200;
+          const ratio = img.naturalWidth / img.naturalHeight
+          const isSquare = ratio >= 0.8 && ratio <= 1.25
+          const isSmall = img.naturalWidth <= 200 && img.naturalHeight <= 200
 
           if (isSquare || isSmall) {
             // 正方形或小图限制宽度到 35%
@@ -496,21 +488,22 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       const codeBlocks = contentRef.current.querySelectorAll('pre')
       codeBlocks.forEach((pre) => {
         // 跳过已处理的代码块
-        if (pre.parentElement?.classList.contains('code-block-wrapper')) return;
+        if (pre.parentElement?.classList.contains('code-block-wrapper'))
+          return
 
         // 创建包装容器
-        const wrapper = document.createElement('div');
-        wrapper.className = 'code-block-wrapper relative group my-5';
+        const wrapper = document.createElement('div')
+        wrapper.className = 'code-block-wrapper relative group my-5'
 
         // 将 pre 移入 wrapper
-        pre.parentNode?.insertBefore(wrapper, pre);
-        wrapper.appendChild(pre);
+        pre.parentNode?.insertBefore(wrapper, pre)
+        wrapper.appendChild(pre)
 
         // 添加复制按钮 - 代码块背景始终是深色的，所以按钮用浅色样式
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm';
-        copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`;
-        copyBtn.title = '复制代码';
+        const copyBtn = document.createElement('button')
+        copyBtn.className = 'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm'
+        copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`
+        copyBtn.title = '复制代码'
 
         copyBtn.addEventListener('click', async (e) => {
           e.preventDefault()
@@ -527,29 +520,29 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           catch (err) {
             console.error('复制失败:', err)
           }
-        });
+        })
 
-        wrapper.appendChild(copyBtn);
-      });
+        wrapper.appendChild(copyBtn)
+      })
 
       // 解析标题生成目录
-      const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6');
-      const tocItems: TocItem[] = [];
+      const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6')
+      const tocItems: TocItem[] = []
 
       headings.forEach((heading, index) => {
-        const level = parseInt(heading.tagName[1]);
-        const text = heading.textContent?.trim() || '';
-        const id = `heading-${index}-${text.slice(0, 20).replace(/\s+/g, '-').toLowerCase()}`;
+        const level = Number.parseInt(heading.tagName[1])
+        const text = heading.textContent?.trim() || ''
+        const id = `heading-${index}-${text.slice(0, 20).replace(/\s+/g, '-').toLowerCase()}`
 
         // 为标题添加 id
-        heading.id = id;
+        heading.id = id
 
         if (text) {
           tocItems.push({ id, text, level })
         }
-      });
+      })
 
-      setToc(tocItems);
+      setToc(tocItems)
 
       // 自动加载嵌入卡片数据（网易云音乐封面、歌名等）
       // 延迟执行以确保 DOM 已完全渲染
@@ -559,15 +552,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             console.error('[BrewReader] 加载嵌入数据失败:', err)
           })
         }
-      }, 100);
+      }, 100)
 
-      return () => clearTimeout(loadTimer);
+      return () => clearTimeout(loadTimer)
     }
   }, [processedContent]) // 依赖 processedContent 确保嵌入卡片已渲染
 
   // 处理评论高亮和嵌入卡片的点击和悬停事件
   useEffect(() => {
-    if (!contentRef.current) return;
+    if (!contentRef.current)
+      return
 
     const handleContentClick = async (e: Event) => {
       const target = e.target as HTMLElement
@@ -576,7 +570,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       if (target.tagName === 'IMG') {
         const img = target as HTMLImageElement
         // 检查图片是否在嵌入卡片内（brew-embed-card, brew-embed-exempt, brew-bilibili-embed 等）
-        const isInEmbedCard = img.closest('.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video');
+        const isInEmbedCard = img.closest('.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video')
 
         if (img.src && !isInEmbedCard) {
           e.preventDefault()
@@ -613,13 +607,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       }
 
       // 检查是否点击了高亮文本
-      const highlight = target.closest('.user-comment-highlight');
+      const highlight = target.closest('.user-comment-highlight')
 
       if (highlight) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault()
+        e.stopPropagation()
 
-        const commentId = highlight.getAttribute('data-comment-id');
+        const commentId = highlight.getAttribute('data-comment-id')
         if (commentId) {
           // 隐藏 tooltip
           setCommentTooltip(null)
@@ -634,12 +628,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           }, 100)
         }
       }
-    };
+    }
 
     // 处理悬停显示 tooltip
     const handleMouseOver = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const highlight = target.closest('.user-comment-highlight') as HTMLElement;
+      const target = e.target as HTMLElement
+      const highlight = target.closest('.user-comment-highlight') as HTMLElement
 
       if (highlight) {
         const commentId = highlight.getAttribute('data-comment-id')
@@ -655,21 +649,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           }
         }
       }
-    };
+    }
 
     const handleMouseOut = (e: Event) => {
-      const relatedTarget = (e as MouseEvent).relatedTarget as HTMLElement;
+      const relatedTarget = (e as MouseEvent).relatedTarget as HTMLElement
 
       // 如果移出的目标不是评论相关元素，隐藏 tooltip
       if (!relatedTarget?.closest('.user-comment-highlight')
         && !relatedTarget?.closest('.comment-tooltip')) {
         setCommentTooltip(null)
       }
-    };
+    }
 
-    contentRef.current.addEventListener('click', handleContentClick);
-    contentRef.current.addEventListener('mouseover', handleMouseOver);
-    contentRef.current.addEventListener('mouseout', handleMouseOut);
+    contentRef.current.addEventListener('click', handleContentClick)
+    contentRef.current.addEventListener('mouseover', handleMouseOver)
+    contentRef.current.addEventListener('mouseout', handleMouseOut)
 
     return () => {
       contentRef.current?.removeEventListener('click', handleContentClick)
@@ -691,7 +685,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       return
 
     const handleScrollForToc = () => {
-      let currentId = '';
+      let currentId = ''
 
       for (const heading of headings) {
         const rect = heading.getBoundingClientRect()
@@ -742,16 +736,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const scrollToHeading = useCallback((id: string) => {
     const heading = document.getElementById(id)
     if (heading && articleRef.current) {
-      const articleRect = articleRef.current.getBoundingClientRect();
-      const headingRect = heading.getBoundingClientRect();
-      const scrollTop = articleRef.current.scrollTop + headingRect.top - articleRect.top - 80;
+      const articleRect = articleRef.current.getBoundingClientRect()
+      const headingRect = heading.getBoundingClientRect()
+      const scrollTop = articleRef.current.scrollTop + headingRect.top - articleRect.top - 80
 
       articleRef.current.scrollTo({
         top: scrollTop,
-        behavior: 'smooth'
-      });
+        behavior: 'smooth',
+      })
 
-      setActiveHeadingId(id);
+      setActiveHeadingId(id)
     }
   }, [])
 
@@ -852,14 +846,15 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 处理文本选择
   const handleTextSelection = useCallback(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated)
+      return
 
-    const selection = window.getSelection();
+    const selection = window.getSelection()
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
       return
     }
 
-    const text = selection.toString().trim();
+    const text = selection.toString().trim()
     if (!text || text.length < 2 || text.length > 500) {
       return
     }
@@ -871,14 +866,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
 
     // 获取选中文本的位置信息
-    const rect = range.getBoundingClientRect();
+    const rect = range.getBoundingClientRect()
 
     // 使用视口坐标（因为弹窗是 fixed 定位）
-    const x = rect.left + rect.width / 2;
-    const y = rect.top;
+    const x = rect.left + rect.width / 2
+    const y = rect.top
 
-    setSelectedText(text);
-    setCommentPopupPosition({ x, y }); // 视口坐标
+    setSelectedText(text)
+    setCommentPopupPosition({ x, y }) // 视口坐标
 
     // 获取上下文
     const fullText = contentRef.current?.textContent || ''
@@ -892,21 +887,22 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       })
     }
 
-    setShowCommentPopup(true);
-  }, [isAuthenticated]);
+    setShowCommentPopup(true)
+  }, [isAuthenticated])
 
   // 监听选择事件
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated)
+      return
 
-    let selectionTimer: ReturnType<typeof setTimeout> | null = null;
+    let selectionTimer: ReturnType<typeof setTimeout> | null = null
 
     const handleMouseUp = () => {
       // 延迟执行，等待选择完成
-      selectionTimer = setTimeout(handleTextSelection, 10);
-    };
+      selectionTimer = setTimeout(handleTextSelection, 10)
+    }
 
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', handleMouseUp)
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
       if (selectionTimer)
@@ -926,7 +922,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         return
       }
 
-      const selection = window.getSelection();
+      const selection = window.getSelection()
       // 如果选中被清除（没有选中或选中为空），关闭弹窗
       if (!selection || selection.isCollapsed || !selection.toString().trim()) {
         setShowCommentPopup(false)
@@ -945,9 +941,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       // 如果点击的是评论弹窗内部或评论高亮，不关闭
-      if (target.closest('.comment-popup') ||
-          target.closest('.user-comment-highlight')) {
-        return;
+      if (target.closest('.comment-popup')
+        || target.closest('.user-comment-highlight')) {
+        return
       }
       if (showCommentPopup) {
         setShowCommentPopup(false)
@@ -957,7 +953,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         // 关闭弹窗时清除浏览器选中状态
         window.getSelection()?.removeAllRanges()
       }
-    };
+    }
 
     // 使用 click 而不是 mousedown，避免在文本选择时触发
     document.addEventListener('click', handleClickOutside)
@@ -971,11 +967,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 监听注释 hover 事件（优化稳定性）
   useEffect(() => {
-    if (!contentRef.current || !showAnnotations) return;
+    if (!contentRef.current || !showAnnotations)
+      return
 
     const handleMouseOver = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.brewlia-annotation') as HTMLElement;
-      if (!target) return;
+      const target = (e.target as HTMLElement).closest('.brewlia-annotation') as HTMLElement
+      if (!target)
+        return
 
       // 清除之前的延迟隐藏
       if (hoverTimeoutRef.current) {
@@ -983,21 +981,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         hoverTimeoutRef.current = null
       }
 
-      const term = decodeURIComponent(target.dataset.term || '');
-      const explanation = decodeURIComponent(target.dataset.explanation || '');
-      const type = target.dataset.type as AnnotationType || 'term';
+      const term = decodeURIComponent(target.dataset.term || '')
+      const explanation = decodeURIComponent(target.dataset.explanation || '')
+      const type = target.dataset.type as AnnotationType || 'term'
 
-      const rect = target.getBoundingClientRect();
+      const rect = target.getBoundingClientRect()
       setTooltipPosition({
         x: rect.left + rect.width / 2,
-        y: rect.top - 8
-      });
-      setHoveredAnnotation({ term, explanation, type });
-    };
+        y: rect.top - 8,
+      })
+      setHoveredAnnotation({ term, explanation, type })
+    }
 
     const handleMouseOut = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.brewlia-annotation');
-      const relatedTarget = (e.relatedTarget as HTMLElement)?.closest?.('.brewlia-annotation');
+      const target = (e.target as HTMLElement).closest('.brewlia-annotation')
+      const relatedTarget = (e.relatedTarget as HTMLElement)?.closest?.('.brewlia-annotation')
 
       // 如果移动到另一个注释，不隐藏
       if (target && !relatedTarget) {
@@ -1006,11 +1004,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           setHoveredAnnotation(null)
         }, 150)
       }
-    };
+    }
 
-    const container = contentRef.current;
-    container.addEventListener('mouseover', handleMouseOver);
-    container.addEventListener('mouseout', handleMouseOut);
+    const container = contentRef.current
+    container.addEventListener('mouseover', handleMouseOver)
+    container.addEventListener('mouseout', handleMouseOut)
 
     return () => {
       container.removeEventListener('mouseover', handleMouseOver)
@@ -1075,7 +1073,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       lastScrollTopRef.current = currentScrollTop
 
       // 清除之前的定时器
-      if (scrollEndTimer) clearTimeout(scrollEndTimer);
+      if (scrollEndTimer)
+        clearTimeout(scrollEndTimer)
 
       // 向上滚动（往之前内容滑动）时显示控制栏
       if (isScrollingUp && currentScrollTop > 10) {
@@ -1110,24 +1109,24 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 鼠标移动时显示（节流处理 + 控制栏区域检测）
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const now = Date.now();
-      const windowWidth = window.innerWidth;
+      const now = Date.now()
+      const windowWidth = window.innerWidth
 
       // 根据当前布局计算内容区宽度
       // narrow: max-w-3xl = 768px, wide: max-w-4xl = 896px
-      const layoutMaxWidth = layout === 'wide' ? 896 : 768;
-      const contentWidth = Math.min(layoutMaxWidth, windowWidth - 48); // 减去 px-6 左右内边距
-      const contentLeft = (windowWidth - contentWidth) / 2;
-      const contentRight = contentLeft + contentWidth;
+      const layoutMaxWidth = layout === 'wide' ? 896 : 768
+      const contentWidth = Math.min(layoutMaxWidth, windowWidth - 48) // 减去 px-6 左右内边距
+      const contentLeft = (windowWidth - contentWidth) / 2
+      const contentRight = contentLeft + contentWidth
 
       // 控制栏区域：内容区两侧各 80px 范围内（控制栏宽度约 60px + margin）
-      const controlZoneWidth = 80;
-      const isInLeftControlZone = e.clientX >= contentLeft - controlZoneWidth && e.clientX <= contentLeft;
-      const isInRightControlZone = e.clientX >= contentRight && e.clientX <= contentRight + controlZoneWidth;
-      const isInControlZone = isInLeftControlZone || isInRightControlZone;
+      const controlZoneWidth = 80
+      const isInLeftControlZone = e.clientX >= contentLeft - controlZoneWidth && e.clientX <= contentLeft
+      const isInRightControlZone = e.clientX >= contentRight && e.clientX <= contentRight + controlZoneWidth
+      const isInControlZone = isInLeftControlZone || isInRightControlZone
 
       // 更新悬停状态
-      isHoveringControlsRef.current = isInControlZone;
+      isHoveringControlsRef.current = isInControlZone
 
       // 控制栏区域立即响应，其他区域节流
       if (isInControlZone) {
@@ -1231,13 +1230,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
       {/* 顶部淡出遮罩 */}
       <div
-        className={`absolute top-0 left-0 right-0 h-24 pointer-events-none z-[5]`}
+        className="absolute top-0 left-0 right-0 h-24 pointer-events-none z-[5]"
         style={maskGradientStyles.top}
       />
 
       {/* 底部淡入遮罩 */}
       <div
-        className={`absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-[5]`}
+        className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-[5]"
         style={maskGradientStyles.bottom}
       />
 
@@ -1596,7 +1595,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.web-search-link]:bg-black/5 [&_.web-search-link]:hover:bg-black/10
               [&_.web-search-link]:transition-colors
 
-              ${isDark ? `
+              ${isDark
+      ? `
                 /* === 暗色主题 === */
                 prose-invert
 
@@ -1826,7 +1826,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-code_figcaption]:text-center [&_.notion-code_figcaption]:text-sm
                 [&_.notion-code_figcaption]:mt-2 [&_.notion-code_figcaption]:opacity-50
 
-              ` : `
+              `
+      : `
                 /* === 浅色主题 === */
 
                 /* 链接 */
@@ -2075,95 +2076,101 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                   )}
             </div>
 
-          {/* 音频播放器 */}
-          {item.audio_url && (
-            <div
-              className={`mt-8 p-4 rounded-2xl ${currentTheme.surfaceSolid} border ${currentTheme.border}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p className={`text-sm ${currentTheme.secondary} mb-3`}>{t.brew.audioLabel}</p>
-              <audio src={item.audio_url} controls className="w-full" />
-            </div>
-          )}
-
-          {/* 阅读列表导航 - 上一篇/下一篇 */}
-          {positionInfo && onNavigateToArticle && (
-            <div
-              className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* 列表信息 */}
-              <div className={`text-center mb-6 ${currentTheme.secondary}`}>
-                <span className="text-sm">
-                  {readingList?.currentList?.name} · {positionInfo.index + 1} / {positionInfo.total}
-                </span>
+            {/* 音频播放器 */}
+            {item.audio_url && (
+              <div
+                className={`mt-8 p-4 rounded-2xl ${currentTheme.surfaceSolid} border ${currentTheme.border}`}
+                onClick={e => e.stopPropagation()}
+              >
+                <p className={`text-sm ${currentTheme.secondary} mb-3`}>{t.brew.audioLabel}</p>
+                <audio src={item.audio_url} controls className="w-full" />
               </div>
+            )}
 
-              {/* 导航按钮 */}
-              <div className="flex gap-4">
-                {/* 上一篇 */}
-                <button
-                  onClick={() => {
-                    const prev = readingList?.getPrevious();
-                    if (prev) {
-                      readingList?.goToArticle(positionInfo.index - 1);
-                      onNavigateToArticle(prev.id);
-                    }
-                  }}
-                  disabled={!positionInfo.hasPrev}
-                  className={`
+            {/* 阅读列表导航 - 上一篇/下一篇 */}
+            {positionInfo && onNavigateToArticle && (
+              <div
+                className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
+                onClick={e => e.stopPropagation()}
+              >
+                {/* 列表信息 */}
+                <div className={`text-center mb-6 ${currentTheme.secondary}`}>
+                  <span className="text-sm">
+                    {readingList?.currentList?.name}
+                    {' '}
+                    ·
+                    {positionInfo.index + 1}
+                    {' '}
+                    /
+                    {positionInfo.total}
+                  </span>
+                </div>
+
+                {/* 导航按钮 */}
+                <div className="flex gap-4">
+                  {/* 上一篇 */}
+                  <button
+                    onClick={() => {
+                      const prev = readingList?.getPrevious()
+                      if (prev) {
+                        readingList?.goToArticle(positionInfo.index - 1)
+                        onNavigateToArticle(prev.id)
+                      }
+                    }}
+                    disabled={!positionInfo.hasPrev}
+                    className={`
                     flex-1 min-w-0 p-4 rounded-2xl text-left transition-all
                     ${positionInfo.hasPrev
-                      ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
-                      : 'opacity-30 cursor-not-allowed'}
+                ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
+                : 'opacity-30 cursor-not-allowed'}
                     border ${currentTheme.border}
                   `}
-                >
-                  <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
-                    <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    上一篇
-                  </div>
-                  <div className={`${currentTheme.text} font-medium truncate`}>
-                    {readingList?.getPrevious()?.title || '没有了'}
-                  </div>
-                </button>
+                  >
+                    <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      上一篇
+                    </div>
+                    <div className={`${currentTheme.text} font-medium truncate`}>
+                      {readingList?.getPrevious()?.title || '没有了'}
+                    </div>
+                  </button>
 
-                {/* 下一篇 */}
-                <button
-                  onClick={() => {
-                    const next = readingList?.getNext();
-                    if (next) {
-                      readingList?.goToArticle(positionInfo.index + 1);
-                      onNavigateToArticle(next.id);
-                    }
-                  }}
-                  disabled={!positionInfo.hasNext}
-                  className={`
+                  {/* 下一篇 */}
+                  <button
+                    onClick={() => {
+                      const next = readingList?.getNext()
+                      if (next) {
+                        readingList?.goToArticle(positionInfo.index + 1)
+                        onNavigateToArticle(next.id)
+                      }
+                    }}
+                    disabled={!positionInfo.hasNext}
+                    className={`
                     flex-1 min-w-0 p-4 rounded-2xl text-right transition-all
                     ${positionInfo.hasNext
-                      ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
-                      : 'opacity-30 cursor-not-allowed'}
+                ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
+                : 'opacity-30 cursor-not-allowed'}
                     border ${currentTheme.border}
                   `}
-                >
-                  <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
-                    下一篇
-                    <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <div className={`${currentTheme.text} font-medium truncate`}>
-                    {readingList?.getNext()?.title || '没有了'}
-                  </div>
-                </button>
+                  >
+                    <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
+                      下一篇
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div className={`${currentTheme.text} font-medium truncate`}>
+                      {readingList?.getNext()?.title || '没有了'}
+                    </div>
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* 底部留白 */}
-          <div className="h-20" />
+            {/* 底部留白 */}
+            <div className="h-20" />
           </div>
 
           {/* 右侧控制栏 - 设置与操作 */}

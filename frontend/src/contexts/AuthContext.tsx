@@ -4,6 +4,7 @@
  */
 
 import type { ReactNode } from 'react'
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../config'
 import { clearSessionHint } from '../utils/sessionDetection'
@@ -63,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false)
       }
     }
-    catch (error) {
+    catch (_error) {
       // 网络错误时静默处理
       setUser(null)
       setIsAuthenticated(false)
@@ -106,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.debug('[AuthContext] Page load, checking auth session...')
       checkAuth()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // 🔧 性能优化：使用 useMemo 缓存 context value，避免不必要的重渲染
   const value = useMemo(() => ({

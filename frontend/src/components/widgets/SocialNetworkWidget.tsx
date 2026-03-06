@@ -718,7 +718,7 @@ const InfoTooltip = memo(({
   anchorRef: React.RefObject<HTMLDivElement | null>
 }) => {
   const { t } = useI18n()
-  const [copied, setCopied] = useState(false)
+  const [_copied, setCopied] = useState(false)
 
   // 解析内容
   const { textContent, imageUrls } = useMemo(() =>
@@ -1228,7 +1228,7 @@ PlatformButton.displayName = 'PlatformButton'
 export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
   const { containerRef, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
   const { t } = useI18n()
 
   // 🆕 使用触发式动画 - 组件挂载时播放一次hover动画

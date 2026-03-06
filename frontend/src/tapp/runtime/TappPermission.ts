@@ -512,7 +512,7 @@ export class TappPermissionController {
     const normalizedPrompt = prompt.normalize('NFKC')
 
     // 检测隐藏字符和零宽字符（可能用于绕过检测）
-    const hiddenCharPattern = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g
+    const hiddenCharPattern = /[\u200B-\u200D\u2060\uFEFF\u00AD]/
     if (hiddenCharPattern.test(prompt)) {
       console.warn('[Tapp Security] Hidden characters detected in prompt')
       return {
@@ -587,7 +587,7 @@ export class TappPermissionController {
     }
 
     // 检测重复字符（可能的 token 溢出攻击）
-    const repeatedCharPattern = /(.)\1{50,}/g
+    const repeatedCharPattern = /(.)\1{50,}/
     if (repeatedCharPattern.test(prompt)) {
       return {
         valid: false,
@@ -636,7 +636,7 @@ export class TappPermissionController {
     // 如果非 ASCII 字符过少但存在，可能是同形字符攻击
     if (nonAsciiCount > 0 && nonAsciiCount < 5 && asciiCount > 50) {
       // 检查是否是常见的同形字符（西里尔字母等）
-      const homoglyphs = /[\u0430\u0435\u043E\u0440\u0441\u0443\u0445\u0410\u0412\u0415\u041A\u041C\u041D\u041E\u0420\u0421\u0422\u0425]/g
+      const homoglyphs = /[\u0430\u0435\u043E\u0440\u0441\u0443\u0445\u0410\u0412\u0415\u041A\u041C\u041D\u041E\u0420\u0421\u0422\u0425]/
       if (homoglyphs.test(prompt)) {
         console.warn('[Tapp Security] Homoglyph attack detected')
         return {

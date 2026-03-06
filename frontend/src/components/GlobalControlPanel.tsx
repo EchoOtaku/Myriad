@@ -1,4 +1,5 @@
 import type { DynamicContentType } from '../services/DynamicContentProvider'
+
 import type {
   QuoteData,
   WeatherData,
@@ -6,6 +7,7 @@ import type {
 import type { User } from './ControlPanel/UserSection'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -15,7 +17,6 @@ import { useMusicPlayer } from '../hooks/useMusicPlayer'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import {
-
   getDynamicContentProvider,
 } from '../services/DynamicContentProvider'
 import {
@@ -126,7 +127,7 @@ const GlobalControlPanel: React.FC = () => {
   const [needsScroll, setNeedsScroll] = useState(false)
 
   // 壁纸管理 Hook（替代之前的独立状态和函数）
-  const { wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper()
+  const { _wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper()
 
   // 音乐播放器 Hook（从 GlobalControlPanel 分离）
   const musicPlayer = useMusicPlayer()
@@ -151,7 +152,6 @@ const GlobalControlPanel: React.FC = () => {
 
     // 加载壁纸配置以初始化 canRefresh 状态
     loadWallpaper()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // 只在挂载时运行一次，避免循环依赖
 
   // 点击外部关闭音量弹窗
@@ -448,7 +448,6 @@ const GlobalControlPanel: React.FC = () => {
   // 初始化时加载音乐配置（只在挂载时运行一次）
   useEffect(() => {
     musicPlayer.loadMusicConfig()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // 仅在组件挂载时运行一次
 
   // 确保 currentContentIndex 在有效范围内（使用 validContents）

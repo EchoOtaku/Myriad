@@ -184,7 +184,7 @@ export async function shouldApplyColorExtraction(url: string): Promise<ColorExtr
 /**
  * 验证图片是否有效
  */
-async function validateImage(url: string): Promise<{ valid: boolean, reason?: string }> {
+async function _validateImage(url: string): Promise<{ valid: boolean, reason?: string }> {
   return new Promise((resolve) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'

@@ -67,7 +67,6 @@ export function useIdleEffect(
         cleanup()
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 }
 
@@ -100,7 +99,6 @@ export function useDeferredInit<T>(
     return () => {
       cancelIdle(idleId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return value
@@ -167,7 +165,6 @@ export function useIdleBatch<T>(
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, enabled])
 }
 

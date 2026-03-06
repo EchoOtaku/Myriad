@@ -201,7 +201,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
       }
     }
   }
-  catch (error) {
+  catch (_error) {
     // SessionStorage 读取失败，静默处理
   }
 
@@ -263,7 +263,7 @@ export function clearPlaylistCache(): void {
   try {
     sessionStorage.removeItem(PLAYLIST_STORAGE_KEY)
   }
-  catch (error) {
+  catch (_error) {
     // 静默处理
   }
 }

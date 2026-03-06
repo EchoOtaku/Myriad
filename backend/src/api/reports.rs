@@ -841,7 +841,7 @@ pub async fn get_comprehensive_reports_list(
 }
 
 /// 删除特定的综合报告
-/// DELETE /api/reports/comprehensive/:id
+/// DELETE /api/reports/comprehensive/{id}
 pub async fn delete_comprehensive_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -899,7 +899,7 @@ pub async fn delete_comprehensive_report(
 }
 
 /// 根据ID获取特定的综合报告
-/// GET /api/reports/comprehensive/:id
+/// GET /api/reports/comprehensive/{id}
 /// 支持未认证访问，默认返回管理员（user_id=1）的报告
 pub async fn get_comprehensive_report_by_id(
     State(db): State<DatabaseConnection>,

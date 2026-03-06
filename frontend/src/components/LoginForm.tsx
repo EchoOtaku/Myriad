@@ -27,7 +27,7 @@ const LoginForm: React.FC = () => {
       const data = await fetchJson(`${API_URL}/api/setup/config`)
       setGithubEnabled(data.github_oauth?.client_id_set || false)
     }
-    catch (err) {
+    catch (_err) {
       // Failed to check GitHub OAuth config
     }
   }

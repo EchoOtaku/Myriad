@@ -1,25 +1,25 @@
 /**
  * AraelPresets - 收藏胶囊组件
- * 
+ *
  * 与 AraelPanel.tsx 源文件的收藏胶囊保持一致
  * 使用 .arael-* CSS 类
  */
 
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import type { TaskPreset } from '../../../services/agent';
-import { SPRING_SNAPPY } from '../types';
+import type { TaskPreset } from '../../../services/agent'
+import { AnimatePresence, motion } from 'framer-motion'
+import React from 'react'
+import { SPRING_SNAPPY } from '../types'
 
 /** 收藏胶囊 Props */
 export interface AraelPresetsProps {
   /** 收藏列表 */
-  favorites: TaskPreset[];
+  favorites: TaskPreset[]
   /** 是否显示 */
-  isVisible: boolean;
+  isVisible: boolean
   /** 使用预设回调 */
-  onUsePreset: (preset: TaskPreset) => void;
+  onUsePreset: (preset: TaskPreset) => void
   /** 切换收藏回调 */
-  onToggleFavorite: (presetId: number) => void;
+  onToggleFavorite: (presetId: number) => void
 }
 
 /**
@@ -33,9 +33,9 @@ export const AraelPresets: React.FC<AraelPresetsProps> = ({
 }) => {
   return (
     <AnimatePresence>
-      {isVisible && 
-        favorites.map((preset, index) => (
-          <motion.div 
+      {isVisible
+        && favorites.map((preset, index) => (
+          <motion.div
             key={preset.id}
             className="arael-favorite-capsule"
             title={preset.input}
@@ -54,8 +54,8 @@ export const AraelPresets: React.FC<AraelPresetsProps> = ({
               <button
                 className="arael-favorite-action arael-favorite-run"
                 onClick={(e) => {
-                  e.stopPropagation();
-                  onUsePreset(preset);
+                  e.stopPropagation()
+                  onUsePreset(preset)
                 }}
                 title="运行"
               >
@@ -64,21 +64,20 @@ export const AraelPresets: React.FC<AraelPresetsProps> = ({
               <button
                 className="arael-favorite-action arael-favorite-unfav"
                 onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(preset.id);
+                  e.stopPropagation()
+                  onToggleFavorite(preset.id)
                 }}
                 title="取消收藏"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                 </svg>
               </button>
             </div>
           </motion.div>
-        ))
-      }
+        ))}
     </AnimatePresence>
-  );
-};
+  )
+}
 
-export default AraelPresets;
+export default AraelPresets

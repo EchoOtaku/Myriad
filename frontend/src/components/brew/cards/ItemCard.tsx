@@ -66,7 +66,7 @@ export const ItemCard = React.memo<ItemCardProps>(({
   const [isHovered, setIsHovered] = useState(false)
 
   // 接入动画调度器
-  const { canAnimate, animateStyle, animConfig } = useBrewCardStagger(index, 'item')
+  const { _canAnimate, animateStyle, animConfig } = useBrewCardStagger(index, 'item')
   const enableHover = animConfig.level !== 'none'
 
   // 缓存摘要文本和完整文本

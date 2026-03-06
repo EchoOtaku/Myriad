@@ -850,7 +850,7 @@ pub async fn process_stream(
 }
 
 /// 获取任务状态
-/// GET /api/agent/tasks/:task_id
+/// GET /api/agent/tasks/{task_id}
 pub async fn get_task(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -940,7 +940,7 @@ pub async fn list_capabilities(
 }
 
 /// 取消任务
-/// POST /api/agent/tasks/:task_id/cancel
+/// POST /api/agent/tasks/{task_id}/cancel
 pub async fn cancel_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -990,7 +990,7 @@ pub struct AnswerQuestionRequest {
 }
 
 /// 回答任务中的问题
-/// POST /api/agent/tasks/:task_id/answer
+/// POST /api/agent/tasks/{task_id}/answer
 pub async fn answer_task_question(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1424,7 +1424,7 @@ async fn cleanup_old_history(db: &DatabaseConnection, user_id: i32) {
 }
 
 /// 删除任务预设（仅限历史类型，收藏类型不允许直接删除）
-/// DELETE /api/agent/presets/:id
+/// DELETE /api/agent/presets/{id}
 pub async fn delete_preset(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1480,7 +1480,7 @@ pub async fn delete_preset(
 }
 
 /// 切换收藏状态
-/// POST /api/agent/presets/:id/toggle-favorite
+/// POST /api/agent/presets/{id}/toggle-favorite
 pub async fn toggle_favorite(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1534,7 +1534,7 @@ pub async fn toggle_favorite(
 }
 
 /// 更新预设使用时间（每次使用时调用）
-/// POST /api/agent/presets/:id/use
+/// POST /api/agent/presets/{id}/use
 pub async fn use_preset(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1595,7 +1595,7 @@ pub struct UpdateConversationRequest {
 }
 
 /// 更新预设的对话数据（用于「继续对话」功能）
-/// PATCH /api/agent/presets/:id/conversation
+/// PATCH /api/agent/presets/{id}/conversation
 pub async fn update_preset_conversation(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1654,7 +1654,7 @@ pub async fn update_preset_conversation(
 }
 
 /// 执行任务预设
-/// POST /api/agent/presets/:id/execute
+/// POST /api/agent/presets/{id}/execute
 ///
 /// 直接执行已保存的预设，跳过意图分析步骤
 pub async fn execute_preset(
@@ -1816,17 +1816,17 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         )
         // 任务详情（需要认证）
         .route(
-            "/tasks/:task_id",
+            "/tasks/{task_id}",
             get(get_task).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 取消任务（需要认证）
         .route(
-            "/tasks/:task_id/cancel",
+            "/tasks/{task_id}/cancel",
             post(cancel_task).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 回答任务问题（需要认证）
         .route(
-            "/tasks/:task_id/answer",
+            "/tasks/{task_id}/answer",
             post(answer_task_question).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // ============ 任务预设路由 ============
@@ -1842,29 +1842,29 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         )
         // 删除预设（需要认证）
         .route(
-            "/presets/:preset_id",
+            "/presets/{preset_id}",
             axum::routing::delete(delete_preset)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 切换收藏状态（需要认证）
         .route(
-            "/presets/:preset_id/toggle-favorite",
+            "/presets/{preset_id}/toggle-favorite",
             post(toggle_favorite).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 更新使用时间（需要认证）
         .route(
-            "/presets/:preset_id/use",
+            "/presets/{preset_id}/use",
             post(use_preset).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 更新预设对话数据（用于「继续对话」功能）
         .route(
-            "/presets/:preset_id/conversation",
+            "/presets/{preset_id}/conversation",
             axum::routing::patch(update_preset_conversation)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 执行预设（直接执行已保存的 recipe，跳过意图分析）
         .route(
-            "/presets/:preset_id/execute",
+            "/presets/{preset_id}/execute",
             post(execute_preset).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
 }

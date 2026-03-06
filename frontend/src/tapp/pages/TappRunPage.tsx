@@ -219,7 +219,6 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const canConfigure = tapp?.userRole === 'admin' || (tapp?.userRole === 'user' && tapp?.isTemporary === true)
   const iconStyle = tapp ? getTappIconStyle(tapp.manifest) : null
 
-
   // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同
   // 页面级动画由 App.tsx 的 FixedPageWrapper 提供（纯 opacity，不用 transform）
   return (

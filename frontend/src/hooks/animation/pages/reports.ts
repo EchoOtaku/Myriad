@@ -195,7 +195,7 @@ export function useReportsRaf(
   callback: (time: number) => void,
   active = true,
 ): void {
-  const keyRef = useRef(Symbol())
+  const keyRef = useRef(Symbol('reports'))
   const savedCallback = useRef(callback)
 
   useEffect(() => {

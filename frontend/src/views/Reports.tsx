@@ -13,6 +13,7 @@ import {
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
+
 import StageMode from '../components/StageMode'
 import Toast from '../components/Toast'
 import { API_URL } from '../config'
@@ -66,7 +67,7 @@ function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
 }
 
 // 🚀 性能优化：骨架屏加载组件
-const SkeletonCard = memo(() => (
+const _SkeletonCard = memo(() => (
   <div className="relative aspect-[2/1] rounded-2xl overflow-hidden glass animate-pulse">
     <div className="absolute inset-0 p-3.5 flex flex-col justify-between">
       <div className="flex justify-between items-center">
@@ -199,10 +200,10 @@ function getBilibiliProxyUrl(cover?: string, title?: string): string {
 const DanmakuWidget = memo(({ data, defaultDanmaku, triggerKey }: { data?: { danmaku?: string[] }, defaultDanmaku: string[], triggerKey?: unknown }) => {
   const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku])
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
 
   // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
-  const { isAnimating } = useLoopAnimation({
+  const { _isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
     trigger: triggerKey, // 状态切换时触发
     enabled: anim.loop, // 低端设备禁用
@@ -326,7 +327,7 @@ const SteamStatsWidget = memo(({ data, defaultPlayerType }: { data?: {
   player_type?: string
   games_count?: number
   total_playtime?: number
-}; defaultPlayerType: string }) => {
+}, defaultPlayerType: string }) => {
   const score = useMemo(() => data?.hardcore_score || 0, [data?.hardcore_score])
   const type = useMemo(() => data?.player_type || defaultPlayerType, [data?.player_type, defaultPlayerType])
   const gamesCount = useMemo(() => data?.games_count || 0, [data?.games_count])
@@ -488,7 +489,7 @@ const GithubStatsWidget = memo(({ data, defaultLevel, levelKeywords }: { data?: 
   repos_count?: number
   languages?: { name: string, percentage: number }[]
   contribution_calendar?: Array<{ date: string, count: number }>
-}; defaultLevel: string; levelKeywords: { legendary: string, core: string, senior: string, prolific: string, active: string } }) => {
+}, defaultLevel: string, levelKeywords: { legendary: string, core: string, senior: string, prolific: string, active: string } }) => {
   const level = useMemo(() => data?.contribution_level || defaultLevel, [data?.contribution_level, defaultLevel])
   const contributions = useMemo(() => data?.total_contributions || 0, [data?.total_contributions])
   const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count])
@@ -820,9 +821,9 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
   follower_count?: number
   playlist_count?: number
   level?: number
-}; tenThousandSuffix: string; triggerKey?: unknown }) => {
+}, tenThousandSuffix: string, triggerKey?: unknown }) => {
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
 
   // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
@@ -834,7 +835,7 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
   const canAnimate = anim.loop && isAnimating
   const { t } = useI18n()
 
-  const color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
+  const _color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords])
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count])
   const playlistCount = useMemo(() => data?.playlist_count || 0, [data?.playlist_count])
@@ -970,7 +971,7 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
                 opacity: 1,
                 y: canAnimate ? [0, -8, 0, 8, 0] : 0,
                 boxShadow: `
-                  0 8px 20px -6px ${bubble.color}60, 
+                  0 8px 20px -6px ${bubble.color}60,
                   inset 0 4px 10px rgba(255,255,255,0.3),
                   inset 0 -5px 15px ${bubble.color}30
                 `,
@@ -1217,7 +1218,7 @@ export default function Reports() {
   ], [t])
 
   // 使用二级导航 Hook
-  const { activeId: activeTab, setActiveId: setActiveTab, setExpanded } = useSecondaryNav({
+  const { activeId: activeTab, setActiveId: _setActiveTab, setExpanded } = useSecondaryNav({
     routePath: '/reports',
     items: navItems,
     defaultActiveId: 'platform',
@@ -1276,17 +1277,17 @@ export default function Reports() {
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null)
   const [report, setReport] = useState<CrossPlatformReport | null>(null)
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(true)
+  const [_isPlaying, _setIsPlaying] = useState(true)
   const [customStyle, setCustomStyle] = useState<string>('')
   // 🚀 性能优化：防抖处理用户输入
   const debouncedCustomStyle = useDebounce(customStyle, 300)
   // 🆕 动画级别控制，用于装饰性动画
   const anim = useAnimationLevel()
   const [isAdmin, setIsAdmin] = useState(false)
-  const [isComprehensiveExpanded, setIsComprehensiveExpanded] = useState(false)
+  const [_isComprehensiveExpanded, setIsComprehensiveExpanded] = useState(false)
   const [comprehensiveReports, setComprehensiveReports] = useState<any[]>([]) // 所有综合报告列表
-  const [currentComprehensiveId, setCurrentComprehensiveId] = useState<number | null>(null) // 当前打开的综合报告ID
-  const [isInputExpanded, setIsInputExpanded] = useState(false) // 输入框展开状态
+  const [_currentComprehensiveId, setCurrentComprehensiveId] = useState<number | null>(null) // 当前打开的综合报告ID
+  const [_isInputExpanded, _setIsInputExpanded] = useState(false) // 输入框展开状态
 
   // 🎭 舞台模式状态
   const [isStageMode, setIsStageMode] = useState(false)
@@ -1294,7 +1295,7 @@ export default function Reports() {
   const [refreshingStage, setRefreshingStage] = useState(false) // 刷新舞台报告加载状态
   const [toastMessage, setToastMessage] = useState<string>('') // Toast消息
   const [playAllMode, setPlayAllMode] = useState(false) // 播放所有模式
-  const [playAllQueue, setPlayAllQueue] = useState<string[]>([]) // 播放队列
+  const [_playAllQueue, setPlayAllQueue] = useState<string[]>([]) // 播放队列
   const playAllQueueRef = useRef<string[]>([]) // 用ref保存队列，避免闭包问题
   const [stageReportData, setStageReportData] = useState<{
     platform?: string
@@ -1860,7 +1861,7 @@ export default function Reports() {
       : null, [selectedPlatform, report])
 
   // 🚀 性能优化：缓存平台卡片点击处理器
-  const handlePlatformClick = useCallback((platformId: string, hasReport: boolean) => {
+  const _handlePlatformClick = useCallback((platformId: string, hasReport: boolean) => {
     if (hasReport) {
       setSelectedPlatform(platformId)
     }
@@ -1873,7 +1874,7 @@ export default function Reports() {
   }, [generatePlatformReport, isAdmin, t.reportsPage.adminOnlyGenerate])
 
   // 🚀 性能优化：缓存删除报告处理器
-  const handleDeleteReport = useCallback(async (reportId: number) => {
+  const _handleDeleteReport = useCallback(async (reportId: number) => {
     if (!window.confirm(t.reportsPage.confirmDeleteReport)) {
       return
     }
@@ -2205,7 +2206,7 @@ export default function Reports() {
                           whileHover={{ scale: 1.02, y: -4 }}
                           whileTap={{ scale: 0.98 }}
                           className={`
-                    relative aspect-[2/1] rounded-2xl overflow-hidden cursor-pointer group 
+                    relative aspect-[2/1] rounded-2xl overflow-hidden cursor-pointer group
                     glass
                     hover:shadow-xl transition-shadow
                     flex-shrink-0 w-[280px] lg:w-auto snap-center
@@ -2752,7 +2753,7 @@ export default function Reports() {
                             key={compReport.id}
                             compReport={compReport}
                             index={index}
-                            onOpen={(analysis: any, id: number, createdAt: string) => {
+                            onOpen={(analysis: any, _id: number, _createdAt: string) => {
                               // 打开综合报告的舞台模式
                               // 从所有平台报告中提取 library_items
                               const allLibraryItems: Array<{ title: string, cover?: string, type: string, platform?: string }> = []

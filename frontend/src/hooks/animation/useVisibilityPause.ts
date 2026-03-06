@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
+
 import { coordinator } from './coordinator'
 
 interface UseVisibilityIntervalOptions {
@@ -123,7 +124,6 @@ interface UseVisibilityTimeoutOptions {
  *
  * @param callback 延迟执行的回调
  * @param options 配置选项
- * @returns 取消定时器的函数
  *
  * @example
  * ```tsx

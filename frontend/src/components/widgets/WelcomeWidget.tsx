@@ -28,7 +28,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   // 如果是预览模式，强制 scale 为 1，因为外部容器已经进行了缩放
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
   const { t, locale } = useI18n()
 
   // 非中文语言时减小标题字体（英文等语言单词较长）

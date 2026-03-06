@@ -14,21 +14,24 @@
  * - 登录用户可编辑、收藏、标记已读等
  */
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { AnimatePresence } from 'framer-motion';
-import AnimatedView from '../components/AnimatedView';
-import BrewSourceGrid from '../components/brew/BrewSourceGrid';
-import BrewFeedList from '../components/brew/BrewFeedList';
-import BrewReader from '../components/brew/BrewReader';
-import ControlIsland from '../components/brew/manager/ControlIsland';
-import { useBrewKeyboard } from '../hooks/useBrewKeyboard';
-import { useSecondaryNav, type SecondaryNavItem } from '../contexts/NavigationContext';
-import { useI18n } from '../contexts/I18nContext';
-import { useBrewScheduler, useBrewAnimationConfig } from '../hooks/animation/pages/brew';
-import { useAuth } from '../contexts/AuthContext';
-import { useReadingListOptional } from '../contexts/ReadingListContext';
-import type { BrewSource, BrewItem, BrewStats } from '../types/brew';
-import * as brewApi from '../services/brewApi';
+import type { SecondaryNavItem } from '../contexts/NavigationContext'
+
+import type { BrewItem, BrewSource, BrewStats } from '../types/brew'
+import { AnimatePresence } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import AnimatedView from '../components/AnimatedView'
+import BrewFeedList from '../components/brew/BrewFeedList'
+import BrewReader from '../components/brew/BrewReader'
+import BrewSourceGrid from '../components/brew/BrewSourceGrid'
+import ControlIsland from '../components/brew/manager/ControlIsland'
+import { useAuth } from '../contexts/AuthContext'
+import { useI18n } from '../contexts/I18nContext'
+import { useSecondaryNav } from '../contexts/NavigationContext'
+import { useReadingListOptional } from '../contexts/ReadingListContext'
+import { useBrewAnimationConfig, useBrewScheduler } from '../hooks/animation/pages/brew'
+import { useBrewKeyboard } from '../hooks/useBrewKeyboard'
+import * as brewApi from '../services/brewApi'
 
 // 导航图标
 const NavIcons = {
@@ -55,12 +58,12 @@ const NavIcons = {
 }
 
 // 预置分类 ID（用于前端逻辑判断）
-const PRESET_CATEGORY_IDS = {
+const _PRESET_CATEGORY_IDS = {
   friends: 'friends',
   mine: 'mine',
 } as const
 
-type PresetCategoryId = typeof PRESET_CATEGORY_IDS[keyof typeof PRESET_CATEGORY_IDS]
+type PresetCategoryId = typeof _PRESET_CATEGORY_IDS[keyof typeof _PRESET_CATEGORY_IDS]
 
 // 预置分类的数据库存储值（后端使用的固定值，不要改动）
 // 这些值与数据库中存储的分类名称一致
@@ -70,7 +73,7 @@ const PRESET_CATEGORY_DB_VALUES: Record<PresetCategoryId, string> = {
 }
 
 // 需要合并展示文章的特殊分类（不显示网站卡片）
-const MERGED_FEED_CATEGORIES: PresetCategoryId[] = ['mine']
+const _MERGED_FEED_CATEGORIES: PresetCategoryId[] = ['mine']
 
 type CategoryKey = PresetCategoryId | 'all'
 
@@ -84,7 +87,7 @@ type ViewMode = 'sources' | 'items' | 'starred' | 'category-feed'
 export default function Brew() {
   // 初始化动画调度器
   useBrewScheduler()
-  const animConfig = useBrewAnimationConfig()
+  const _animConfig = useBrewAnimationConfig()
   const { t } = useI18n()
 
   // 获取预置分类的显示名称（国际化）
@@ -102,7 +105,7 @@ export default function Brew() {
   const { isAuthenticated, isAdmin } = useAuth()
 
   // 阅读列表上下文 - 用于顺序阅读导航
-  const readingList = useReadingListOptional();
+  const readingList = useReadingListOptional()
 
   // 数据状态
   const [sources, setSources] = useState<BrewSource[]>([])
@@ -127,7 +130,7 @@ export default function Brew() {
   const [starredProcessing, setStarredProcessing] = useState(false)
 
   // 分页状态
-  const [page, setPage] = useState(1)
+  const [_page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [total, setTotal] = useState(0)
   const pageRef = useRef(1) // 用 ref 存储 page，避免 loadItems 重新创建
@@ -190,31 +193,31 @@ export default function Brew() {
   useEffect(() => {
     const handleAgentOpenArticle = async (e: Event) => {
       const customEvent = e as CustomEvent<{
-        articleId?: string;
-        articleLink?: string;
-        openLatest?: boolean;
+        articleId?: string
+        articleLink?: string
+        openLatest?: boolean
         webSearchArticle?: {
-          id: number;
-          title: string;
-          author?: string;
-          sourceName?: string;
-          publishedAt?: string;
-          summary?: string;
-          relevanceReason?: string;
-          link?: string;
-          content?: string;
-          fromWebSearch?: boolean;
-          isWebSearchArticle?: boolean;
-        };
-      }>;
-      console.log('[Brew] Agent open article event received:', customEvent.detail);
-      console.log('[Brew] Current items count:', items.length);
+          id: number
+          title: string
+          author?: string
+          sourceName?: string
+          publishedAt?: string
+          summary?: string
+          relevanceReason?: string
+          link?: string
+          content?: string
+          fromWebSearch?: boolean
+          isWebSearchArticle?: boolean
+        }
+      }>
+      console.log('[Brew] Agent open article event received:', customEvent.detail)
+      console.log('[Brew] Current items count:', items.length)
 
-      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail;
+      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail
 
       // 🔴 处理网络搜索文章：创建临时的 BrewItem
       if (webSearchArticle?.isWebSearchArticle) {
-        console.log('[Brew] Opening web search article:', webSearchArticle.title);
+        console.log('[Brew] Opening web search article:', webSearchArticle.title)
         const tempBrewItem: BrewItem = {
           id: webSearchArticle.id,
           source_id: 0,
@@ -224,7 +227,7 @@ export default function Brew() {
           title: webSearchArticle.title,
           link: webSearchArticle.link || '',
           summary: webSearchArticle.summary || webSearchArticle.relevanceReason || null,
-          content: webSearchArticle.content || null,  // 可能为空，BrewReader 会通过 API 获取
+          content: webSearchArticle.content || null, // 可能为空，BrewReader 会通过 API 获取
           image: null,
           audio_url: null,
           author: webSearchArticle.author || null,
@@ -235,123 +238,135 @@ export default function Brew() {
           is_starred: false,
           read_progress: null,
           created_at: Date.now(),
-          fromWebSearch: true,  // 标记为网络搜索文章
-        };
-        setSelectedItem(tempBrewItem);
-        return;
+          fromWebSearch: true, // 标记为网络搜索文章
+        }
+        setSelectedItem(tempBrewItem)
+        return
       }
 
       // 🔴 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
       // 这样才能正确打开"指定作者的最新文章"
       if (articleId || articleLink) {
-        console.log('[Brew] Looking for specific article:', { articleId, articleLink });
+        console.log('[Brew] Looking for specific article:', { articleId, articleLink })
 
         // 🔴 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
-        const numericId = articleId ? parseInt(articleId, 10) : NaN;
-        if (!isNaN(numericId)) {
+        const numericId = articleId ? Number.parseInt(articleId, 10) : Number.NaN
+        if (!Number.isNaN(numericId)) {
           try {
-            console.log('[Brew] Fetching article by ID:', numericId);
-            const article = await brewApi.getItem(numericId);
+            console.log('[Brew] Fetching article by ID:', numericId)
+            const article = await brewApi.getItem(numericId)
             if (article) {
-              console.log('[Brew] Got article by ID:', article.title);
-              setSelectedItem(article);
-              return;
+              console.log('[Brew] Got article by ID:', article.title)
+              setSelectedItem(article)
+              return
             }
-          } catch (err) {
-            console.warn('[Brew] Failed to fetch article by ID:', err);
+          }
+          catch (err) {
+            console.warn('[Brew] Failed to fetch article by ID:', err)
             // 继续尝试其他方式
           }
         }
 
         // 先在已加载的 items 中查找
         // 🔴 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
-        let targetItem = items.find(item => {
+        let targetItem = items.find((item) => {
           // 1. 优先匹配 link（最准确）
-          if (articleLink && item.link === articleLink) return true;
+          if (articleLink && item.link === articleLink)
+            return true
           // 2. 匹配数字 ID
-          if (articleId && String(item.id) === articleId) return true;
+          if (articleId && String(item.id) === articleId)
+            return true
           // 3. 匹配 guid（后端可能返回 guid 作为 articleId）
-          if (articleId && item.guid === articleId) return true;
-          return false;
-        });
+          if (articleId && item.guid === articleId)
+            return true
+          return false
+        })
 
         if (targetItem) {
-          console.log('[Brew] Found article in loaded items:', targetItem.title);
-          setSelectedItem(targetItem);
-          return;
+          console.log('[Brew] Found article in loaded items:', targetItem.title)
+          setSelectedItem(targetItem)
+          return
         }
 
         // 如果没找到，尝试从 API 加载
         try {
-          console.log('[Brew] Article not found locally, loading from API...');
-          const data = await brewApi.getItems({ per_page: 100, filter: 'all' });
-          console.log('[Brew] Loaded', data.items.length, 'items from API');
+          console.log('[Brew] Article not found locally, loading from API...')
+          const data = await brewApi.getItems({ per_page: 100, filter: 'all' })
+          console.log('[Brew] Loaded', data.items.length, 'items from API')
 
-          targetItem = data.items.find(item => {
-            if (articleLink && item.link === articleLink) return true;
-            if (articleId && String(item.id) === articleId) return true;
-            if (articleId && item.guid === articleId) return true;
-            return false;
-          });
+          targetItem = data.items.find((item) => {
+            if (articleLink && item.link === articleLink)
+              return true
+            if (articleId && String(item.id) === articleId)
+              return true
+            if (articleId && item.guid === articleId)
+              return true
+            return false
+          })
 
           if (targetItem) {
-            console.log('[Brew] Found article from API:', targetItem.title);
-            setItems(data.items);
-            setTotal(data.total);
-            setSelectedItem(targetItem);
-            return;
-          } else {
-            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink });
-            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link));
+            console.log('[Brew] Found article from API:', targetItem.title)
+            setItems(data.items)
+            setTotal(data.total)
+            setSelectedItem(targetItem)
+            return
           }
-        } catch (err) {
-          console.error('[Brew] Failed to load article for agent:', err);
+          else {
+            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink })
+            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link))
+          }
+        }
+        catch (err) {
+          console.error('[Brew] Failed to load article for agent:', err)
         }
       }
 
       // 🔴 只有在没有指定 articleId/articleLink 且 openLatest 为 true 时，才取第一篇
       if (openLatest && !articleId && !articleLink) {
-        console.log('[Brew] No specific article, opening latest...');
+        console.log('[Brew] No specific article, opening latest...')
         // 如果 items 为空，先加载
         if (items.length === 0) {
-          console.log('[Brew] Items empty, loading from API...');
-          setItemsLoading(true);
+          console.log('[Brew] Items empty, loading from API...')
+          setItemsLoading(true)
           try {
-            const data = await brewApi.getItems({ per_page: 20, filter: 'all' });
-            console.log('[Brew] Loaded items:', data.items.length);
-            setItems(data.items);
-            setTotal(data.total);
+            const data = await brewApi.getItems({ per_page: 20, filter: 'all' })
+            console.log('[Brew] Loaded items:', data.items.length)
+            setItems(data.items)
+            setTotal(data.total)
             // 打开第一篇
             if (data.items.length > 0) {
-              console.log('[Brew] Opening first article:', data.items[0].title);
-              setSelectedItem(data.items[0]);
+              console.log('[Brew] Opening first article:', data.items[0].title)
+              setSelectedItem(data.items[0])
             }
-          } catch (err) {
-            console.error('[Brew] Failed to load items for agent:', err);
-          } finally {
-            setItemsLoading(false);
           }
-        } else {
+          catch (err) {
+            console.error('[Brew] Failed to load items for agent:', err)
+          }
+          finally {
+            setItemsLoading(false)
+          }
+        }
+        else {
           // 直接打开第一篇
-          console.log('[Brew] Opening first existing article:', items[0].title);
-          setSelectedItem(items[0]);
+          console.log('[Brew] Opening first existing article:', items[0].title)
+          setSelectedItem(items[0])
         }
       }
-    };
+    }
 
-    console.log('[Brew] Registering agent:open-brew-article event listener');
-    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle);
+    console.log('[Brew] Registering agent:open-brew-article event listener')
+    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle)
 
     // 检查是否有通过 sessionStorage 传递的待执行阅读列表（解决跨页面导航的竞态条件）
-    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list');
+    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list')
     if (pendingReadingListStr) {
       try {
-        const pendingAction = JSON.parse(pendingReadingListStr);
-        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingReadingListStr)
+        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_reading_list');
+          sessionStorage.removeItem('brew_pending_reading_list')
 
           // 设置阅读列表
           if (pendingAction.readingList) {
@@ -359,98 +374,102 @@ export default function Brew() {
               detail: {
                 ...pendingAction.readingList,
                 createdAt: new Date(pendingAction.readingList.createdAt),
-              }
-            }));
+              },
+            }))
           }
 
           // 打开第一篇文章
           if (pendingAction.articleId) {
             setTimeout(() => {
-              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId);
+              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId)
               const syntheticEvent = new CustomEvent('agent:open-brew-article', {
                 detail: {
                   articleId: pendingAction.articleId,
                   openLatest: false,
-                  webSearchArticle: pendingAction.webSearchArticle,  // 传递网络搜索文章数据
-                }
-              });
-              handleAgentOpenArticle(syntheticEvent);
-            }, 200);
+                  webSearchArticle: pendingAction.webSearchArticle, // 传递网络搜索文章数据
+                },
+              })
+              handleAgentOpenArticle(syntheticEvent)
+            }, 200)
           }
-        } else {
-          console.log('[Brew] Pending reading list expired, removing');
-          sessionStorage.removeItem('brew_pending_reading_list');
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending reading list:', e);
-        sessionStorage.removeItem('brew_pending_reading_list');
+        else {
+          console.log('[Brew] Pending reading list expired, removing')
+          sessionStorage.removeItem('brew_pending_reading_list')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending reading list:', e)
+        sessionStorage.removeItem('brew_pending_reading_list')
       }
     }
 
     // 检查是否有通过 sessionStorage 传递的待执行操作（解决跨页面导航的竞态条件）
-    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article');
+    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article')
     if (pendingActionStr) {
       try {
-        const pendingAction = JSON.parse(pendingActionStr);
-        console.log('[Brew] Found pending action from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingActionStr)
+        console.log('[Brew] Found pending action from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_open_article');
+          sessionStorage.removeItem('brew_pending_open_article')
           // 模拟事件触发
           const syntheticEvent = new CustomEvent('agent:open-brew-article', {
-            detail: pendingAction
-          });
+            detail: pendingAction,
+          })
           // 使用 setTimeout 确保组件完全渲染后再处理
           setTimeout(() => {
-            console.log('[Brew] Executing pending action from sessionStorage');
-            handleAgentOpenArticle(syntheticEvent);
-          }, 100);
-        } else {
-          console.log('[Brew] Pending action expired, removing');
-          sessionStorage.removeItem('brew_pending_open_article');
+            console.log('[Brew] Executing pending action from sessionStorage')
+            handleAgentOpenArticle(syntheticEvent)
+          }, 100)
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending action:', e);
-        sessionStorage.removeItem('brew_pending_open_article');
+        else {
+          console.log('[Brew] Pending action expired, removing')
+          sessionStorage.removeItem('brew_pending_open_article')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending action:', e)
+        sessionStorage.removeItem('brew_pending_open_article')
       }
     }
 
     return () => {
-      console.log('[Brew] Unregistering agent:open-brew-article event listener');
-      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle);
-    };
-  }, [items]);
+      console.log('[Brew] Unregistering agent:open-brew-article event listener')
+      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle)
+    }
+  }, [items])
 
   // 监听 Agent 打开文章事件
   useEffect(() => {
     const handleAgentOpenArticle = async (e: Event) => {
       const customEvent = e as CustomEvent<{
-        articleId?: string;
-        articleLink?: string;
-        openLatest?: boolean;
+        articleId?: string
+        articleLink?: string
+        openLatest?: boolean
         webSearchArticle?: {
-          id: number;
-          title: string;
-          author?: string;
-          sourceName?: string;
-          publishedAt?: string;
-          summary?: string;
-          relevanceReason?: string;
-          link?: string;
-          content?: string;
-          fromWebSearch?: boolean;
-          isWebSearchArticle?: boolean;
-        };
-      }>;
-      console.log('[Brew] Agent open article event received:', customEvent.detail);
-      console.log('[Brew] Current items count:', items.length);
+          id: number
+          title: string
+          author?: string
+          sourceName?: string
+          publishedAt?: string
+          summary?: string
+          relevanceReason?: string
+          link?: string
+          content?: string
+          fromWebSearch?: boolean
+          isWebSearchArticle?: boolean
+        }
+      }>
+      console.log('[Brew] Agent open article event received:', customEvent.detail)
+      console.log('[Brew] Current items count:', items.length)
 
-      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail;
+      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail
 
       // 🔴 处理网络搜索文章：创建临时的 BrewItem
       if (webSearchArticle?.isWebSearchArticle) {
-        console.log('[Brew] Opening web search article:', webSearchArticle.title);
+        console.log('[Brew] Opening web search article:', webSearchArticle.title)
         const tempBrewItem: BrewItem = {
           id: webSearchArticle.id,
           source_id: 0,
@@ -460,7 +479,7 @@ export default function Brew() {
           title: webSearchArticle.title,
           link: webSearchArticle.link || '',
           summary: webSearchArticle.summary || webSearchArticle.relevanceReason || null,
-          content: webSearchArticle.content || null,  // 可能为空，BrewReader 会通过 API 获取
+          content: webSearchArticle.content || null, // 可能为空，BrewReader 会通过 API 获取
           image: null,
           audio_url: null,
           author: webSearchArticle.author || null,
@@ -471,123 +490,135 @@ export default function Brew() {
           is_starred: false,
           read_progress: null,
           created_at: Date.now(),
-          fromWebSearch: true,  // 标记为网络搜索文章
-        };
-        setSelectedItem(tempBrewItem);
-        return;
+          fromWebSearch: true, // 标记为网络搜索文章
+        }
+        setSelectedItem(tempBrewItem)
+        return
       }
 
       // 🔴 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
       // 这样才能正确打开"指定作者的最新文章"
       if (articleId || articleLink) {
-        console.log('[Brew] Looking for specific article:', { articleId, articleLink });
+        console.log('[Brew] Looking for specific article:', { articleId, articleLink })
 
         // 🔴 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
-        const numericId = articleId ? parseInt(articleId, 10) : NaN;
-        if (!isNaN(numericId)) {
+        const numericId = articleId ? Number.parseInt(articleId, 10) : Number.NaN
+        if (!Number.isNaN(numericId)) {
           try {
-            console.log('[Brew] Fetching article by ID:', numericId);
-            const article = await brewApi.getItem(numericId);
+            console.log('[Brew] Fetching article by ID:', numericId)
+            const article = await brewApi.getItem(numericId)
             if (article) {
-              console.log('[Brew] Got article by ID:', article.title);
-              setSelectedItem(article);
-              return;
+              console.log('[Brew] Got article by ID:', article.title)
+              setSelectedItem(article)
+              return
             }
-          } catch (err) {
-            console.warn('[Brew] Failed to fetch article by ID:', err);
+          }
+          catch (err) {
+            console.warn('[Brew] Failed to fetch article by ID:', err)
             // 继续尝试其他方式
           }
         }
 
         // 先在已加载的 items 中查找
         // 🔴 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
-        let targetItem = items.find(item => {
+        let targetItem = items.find((item) => {
           // 1. 优先匹配 link（最准确）
-          if (articleLink && item.link === articleLink) return true;
+          if (articleLink && item.link === articleLink)
+            return true
           // 2. 匹配数字 ID
-          if (articleId && String(item.id) === articleId) return true;
+          if (articleId && String(item.id) === articleId)
+            return true
           // 3. 匹配 guid（后端可能返回 guid 作为 articleId）
-          if (articleId && item.guid === articleId) return true;
-          return false;
-        });
+          if (articleId && item.guid === articleId)
+            return true
+          return false
+        })
 
         if (targetItem) {
-          console.log('[Brew] Found article in loaded items:', targetItem.title);
-          setSelectedItem(targetItem);
-          return;
+          console.log('[Brew] Found article in loaded items:', targetItem.title)
+          setSelectedItem(targetItem)
+          return
         }
 
         // 如果没找到，尝试从 API 加载
         try {
-          console.log('[Brew] Article not found locally, loading from API...');
-          const data = await brewApi.getItems({ per_page: 100, filter: 'all' });
-          console.log('[Brew] Loaded', data.items.length, 'items from API');
+          console.log('[Brew] Article not found locally, loading from API...')
+          const data = await brewApi.getItems({ per_page: 100, filter: 'all' })
+          console.log('[Brew] Loaded', data.items.length, 'items from API')
 
-          targetItem = data.items.find(item => {
-            if (articleLink && item.link === articleLink) return true;
-            if (articleId && String(item.id) === articleId) return true;
-            if (articleId && item.guid === articleId) return true;
-            return false;
-          });
+          targetItem = data.items.find((item) => {
+            if (articleLink && item.link === articleLink)
+              return true
+            if (articleId && String(item.id) === articleId)
+              return true
+            if (articleId && item.guid === articleId)
+              return true
+            return false
+          })
 
           if (targetItem) {
-            console.log('[Brew] Found article from API:', targetItem.title);
-            setItems(data.items);
-            setTotal(data.total);
-            setSelectedItem(targetItem);
-            return;
-          } else {
-            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink });
-            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link));
+            console.log('[Brew] Found article from API:', targetItem.title)
+            setItems(data.items)
+            setTotal(data.total)
+            setSelectedItem(targetItem)
+            return
           }
-        } catch (err) {
-          console.error('[Brew] Failed to load article for agent:', err);
+          else {
+            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink })
+            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link))
+          }
+        }
+        catch (err) {
+          console.error('[Brew] Failed to load article for agent:', err)
         }
       }
 
       // 🔴 只有在没有指定 articleId/articleLink 且 openLatest 为 true 时，才取第一篇
       if (openLatest && !articleId && !articleLink) {
-        console.log('[Brew] No specific article, opening latest...');
+        console.log('[Brew] No specific article, opening latest...')
         // 如果 items 为空，先加载
         if (items.length === 0) {
-          console.log('[Brew] Items empty, loading from API...');
-          setItemsLoading(true);
+          console.log('[Brew] Items empty, loading from API...')
+          setItemsLoading(true)
           try {
-            const data = await brewApi.getItems({ per_page: 20, filter: 'all' });
-            console.log('[Brew] Loaded items:', data.items.length);
-            setItems(data.items);
-            setTotal(data.total);
+            const data = await brewApi.getItems({ per_page: 20, filter: 'all' })
+            console.log('[Brew] Loaded items:', data.items.length)
+            setItems(data.items)
+            setTotal(data.total)
             // 打开第一篇
             if (data.items.length > 0) {
-              console.log('[Brew] Opening first article:', data.items[0].title);
-              setSelectedItem(data.items[0]);
+              console.log('[Brew] Opening first article:', data.items[0].title)
+              setSelectedItem(data.items[0])
             }
-          } catch (err) {
-            console.error('[Brew] Failed to load items for agent:', err);
-          } finally {
-            setItemsLoading(false);
           }
-        } else {
+          catch (err) {
+            console.error('[Brew] Failed to load items for agent:', err)
+          }
+          finally {
+            setItemsLoading(false)
+          }
+        }
+        else {
           // 直接打开第一篇
-          console.log('[Brew] Opening first existing article:', items[0].title);
-          setSelectedItem(items[0]);
+          console.log('[Brew] Opening first existing article:', items[0].title)
+          setSelectedItem(items[0])
         }
       }
-    };
+    }
 
-    console.log('[Brew] Registering agent:open-brew-article event listener');
-    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle);
+    console.log('[Brew] Registering agent:open-brew-article event listener')
+    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle)
 
     // 检查是否有通过 sessionStorage 传递的待执行阅读列表（解决跨页面导航的竞态条件）
-    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list');
+    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list')
     if (pendingReadingListStr) {
       try {
-        const pendingAction = JSON.parse(pendingReadingListStr);
-        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingReadingListStr)
+        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_reading_list');
+          sessionStorage.removeItem('brew_pending_reading_list')
 
           // 设置阅读列表
           if (pendingAction.readingList) {
@@ -595,98 +626,102 @@ export default function Brew() {
               detail: {
                 ...pendingAction.readingList,
                 createdAt: new Date(pendingAction.readingList.createdAt),
-              }
-            }));
+              },
+            }))
           }
 
           // 打开第一篇文章
           if (pendingAction.articleId) {
             setTimeout(() => {
-              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId);
+              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId)
               const syntheticEvent = new CustomEvent('agent:open-brew-article', {
                 detail: {
                   articleId: pendingAction.articleId,
                   openLatest: false,
-                  webSearchArticle: pendingAction.webSearchArticle,  // 传递网络搜索文章数据
-                }
-              });
-              handleAgentOpenArticle(syntheticEvent);
-            }, 200);
+                  webSearchArticle: pendingAction.webSearchArticle, // 传递网络搜索文章数据
+                },
+              })
+              handleAgentOpenArticle(syntheticEvent)
+            }, 200)
           }
-        } else {
-          console.log('[Brew] Pending reading list expired, removing');
-          sessionStorage.removeItem('brew_pending_reading_list');
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending reading list:', e);
-        sessionStorage.removeItem('brew_pending_reading_list');
+        else {
+          console.log('[Brew] Pending reading list expired, removing')
+          sessionStorage.removeItem('brew_pending_reading_list')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending reading list:', e)
+        sessionStorage.removeItem('brew_pending_reading_list')
       }
     }
 
     // 检查是否有通过 sessionStorage 传递的待执行操作（解决跨页面导航的竞态条件）
-    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article');
+    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article')
     if (pendingActionStr) {
       try {
-        const pendingAction = JSON.parse(pendingActionStr);
-        console.log('[Brew] Found pending action from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingActionStr)
+        console.log('[Brew] Found pending action from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_open_article');
+          sessionStorage.removeItem('brew_pending_open_article')
           // 模拟事件触发
           const syntheticEvent = new CustomEvent('agent:open-brew-article', {
-            detail: pendingAction
-          });
+            detail: pendingAction,
+          })
           // 使用 setTimeout 确保组件完全渲染后再处理
           setTimeout(() => {
-            console.log('[Brew] Executing pending action from sessionStorage');
-            handleAgentOpenArticle(syntheticEvent);
-          }, 100);
-        } else {
-          console.log('[Brew] Pending action expired, removing');
-          sessionStorage.removeItem('brew_pending_open_article');
+            console.log('[Brew] Executing pending action from sessionStorage')
+            handleAgentOpenArticle(syntheticEvent)
+          }, 100)
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending action:', e);
-        sessionStorage.removeItem('brew_pending_open_article');
+        else {
+          console.log('[Brew] Pending action expired, removing')
+          sessionStorage.removeItem('brew_pending_open_article')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending action:', e)
+        sessionStorage.removeItem('brew_pending_open_article')
       }
     }
 
     return () => {
-      console.log('[Brew] Unregistering agent:open-brew-article event listener');
-      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle);
-    };
-  }, [items]);
+      console.log('[Brew] Unregistering agent:open-brew-article event listener')
+      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle)
+    }
+  }, [items])
 
   // 监听 Agent 打开文章事件
   useEffect(() => {
     const handleAgentOpenArticle = async (e: Event) => {
       const customEvent = e as CustomEvent<{
-        articleId?: string;
-        articleLink?: string;
-        openLatest?: boolean;
+        articleId?: string
+        articleLink?: string
+        openLatest?: boolean
         webSearchArticle?: {
-          id: number;
-          title: string;
-          author?: string;
-          sourceName?: string;
-          publishedAt?: string;
-          summary?: string;
-          relevanceReason?: string;
-          link?: string;
-          content?: string;
-          fromWebSearch?: boolean;
-          isWebSearchArticle?: boolean;
-        };
-      }>;
-      console.log('[Brew] Agent open article event received:', customEvent.detail);
-      console.log('[Brew] Current items count:', items.length);
+          id: number
+          title: string
+          author?: string
+          sourceName?: string
+          publishedAt?: string
+          summary?: string
+          relevanceReason?: string
+          link?: string
+          content?: string
+          fromWebSearch?: boolean
+          isWebSearchArticle?: boolean
+        }
+      }>
+      console.log('[Brew] Agent open article event received:', customEvent.detail)
+      console.log('[Brew] Current items count:', items.length)
 
-      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail;
+      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail
 
       // 🔴 处理网络搜索文章：创建临时的 BrewItem
       if (webSearchArticle?.isWebSearchArticle) {
-        console.log('[Brew] Opening web search article:', webSearchArticle.title);
+        console.log('[Brew] Opening web search article:', webSearchArticle.title)
         const tempBrewItem: BrewItem = {
           id: webSearchArticle.id,
           source_id: 0,
@@ -696,7 +731,7 @@ export default function Brew() {
           title: webSearchArticle.title,
           link: webSearchArticle.link || '',
           summary: webSearchArticle.summary || webSearchArticle.relevanceReason || null,
-          content: webSearchArticle.content || null,  // 可能为空，BrewReader 会通过 API 获取
+          content: webSearchArticle.content || null, // 可能为空，BrewReader 会通过 API 获取
           image: null,
           audio_url: null,
           author: webSearchArticle.author || null,
@@ -707,123 +742,135 @@ export default function Brew() {
           is_starred: false,
           read_progress: null,
           created_at: Date.now(),
-          fromWebSearch: true,  // 标记为网络搜索文章
-        };
-        setSelectedItem(tempBrewItem);
-        return;
+          fromWebSearch: true, // 标记为网络搜索文章
+        }
+        setSelectedItem(tempBrewItem)
+        return
       }
 
       // 🔴 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
       // 这样才能正确打开"指定作者的最新文章"
       if (articleId || articleLink) {
-        console.log('[Brew] Looking for specific article:', { articleId, articleLink });
+        console.log('[Brew] Looking for specific article:', { articleId, articleLink })
 
         // 🔴 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
-        const numericId = articleId ? parseInt(articleId, 10) : NaN;
-        if (!isNaN(numericId)) {
+        const numericId = articleId ? Number.parseInt(articleId, 10) : Number.NaN
+        if (!Number.isNaN(numericId)) {
           try {
-            console.log('[Brew] Fetching article by ID:', numericId);
-            const article = await brewApi.getItem(numericId);
+            console.log('[Brew] Fetching article by ID:', numericId)
+            const article = await brewApi.getItem(numericId)
             if (article) {
-              console.log('[Brew] Got article by ID:', article.title);
-              setSelectedItem(article);
-              return;
+              console.log('[Brew] Got article by ID:', article.title)
+              setSelectedItem(article)
+              return
             }
-          } catch (err) {
-            console.warn('[Brew] Failed to fetch article by ID:', err);
+          }
+          catch (err) {
+            console.warn('[Brew] Failed to fetch article by ID:', err)
             // 继续尝试其他方式
           }
         }
 
         // 先在已加载的 items 中查找
         // 🔴 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
-        let targetItem = items.find(item => {
+        let targetItem = items.find((item) => {
           // 1. 优先匹配 link（最准确）
-          if (articleLink && item.link === articleLink) return true;
+          if (articleLink && item.link === articleLink)
+            return true
           // 2. 匹配数字 ID
-          if (articleId && String(item.id) === articleId) return true;
+          if (articleId && String(item.id) === articleId)
+            return true
           // 3. 匹配 guid（后端可能返回 guid 作为 articleId）
-          if (articleId && item.guid === articleId) return true;
-          return false;
-        });
+          if (articleId && item.guid === articleId)
+            return true
+          return false
+        })
 
         if (targetItem) {
-          console.log('[Brew] Found article in loaded items:', targetItem.title);
-          setSelectedItem(targetItem);
-          return;
+          console.log('[Brew] Found article in loaded items:', targetItem.title)
+          setSelectedItem(targetItem)
+          return
         }
 
         // 如果没找到，尝试从 API 加载
         try {
-          console.log('[Brew] Article not found locally, loading from API...');
-          const data = await brewApi.getItems({ per_page: 100, filter: 'all' });
-          console.log('[Brew] Loaded', data.items.length, 'items from API');
+          console.log('[Brew] Article not found locally, loading from API...')
+          const data = await brewApi.getItems({ per_page: 100, filter: 'all' })
+          console.log('[Brew] Loaded', data.items.length, 'items from API')
 
-          targetItem = data.items.find(item => {
-            if (articleLink && item.link === articleLink) return true;
-            if (articleId && String(item.id) === articleId) return true;
-            if (articleId && item.guid === articleId) return true;
-            return false;
-          });
+          targetItem = data.items.find((item) => {
+            if (articleLink && item.link === articleLink)
+              return true
+            if (articleId && String(item.id) === articleId)
+              return true
+            if (articleId && item.guid === articleId)
+              return true
+            return false
+          })
 
           if (targetItem) {
-            console.log('[Brew] Found article from API:', targetItem.title);
-            setItems(data.items);
-            setTotal(data.total);
-            setSelectedItem(targetItem);
-            return;
-          } else {
-            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink });
-            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link));
+            console.log('[Brew] Found article from API:', targetItem.title)
+            setItems(data.items)
+            setTotal(data.total)
+            setSelectedItem(targetItem)
+            return
           }
-        } catch (err) {
-          console.error('[Brew] Failed to load article for agent:', err);
+          else {
+            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink })
+            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link))
+          }
+        }
+        catch (err) {
+          console.error('[Brew] Failed to load article for agent:', err)
         }
       }
 
       // 🔴 只有在没有指定 articleId/articleLink 且 openLatest 为 true 时，才取第一篇
       if (openLatest && !articleId && !articleLink) {
-        console.log('[Brew] No specific article, opening latest...');
+        console.log('[Brew] No specific article, opening latest...')
         // 如果 items 为空，先加载
         if (items.length === 0) {
-          console.log('[Brew] Items empty, loading from API...');
-          setItemsLoading(true);
+          console.log('[Brew] Items empty, loading from API...')
+          setItemsLoading(true)
           try {
-            const data = await brewApi.getItems({ per_page: 20, filter: 'all' });
-            console.log('[Brew] Loaded items:', data.items.length);
-            setItems(data.items);
-            setTotal(data.total);
+            const data = await brewApi.getItems({ per_page: 20, filter: 'all' })
+            console.log('[Brew] Loaded items:', data.items.length)
+            setItems(data.items)
+            setTotal(data.total)
             // 打开第一篇
             if (data.items.length > 0) {
-              console.log('[Brew] Opening first article:', data.items[0].title);
-              setSelectedItem(data.items[0]);
+              console.log('[Brew] Opening first article:', data.items[0].title)
+              setSelectedItem(data.items[0])
             }
-          } catch (err) {
-            console.error('[Brew] Failed to load items for agent:', err);
-          } finally {
-            setItemsLoading(false);
           }
-        } else {
+          catch (err) {
+            console.error('[Brew] Failed to load items for agent:', err)
+          }
+          finally {
+            setItemsLoading(false)
+          }
+        }
+        else {
           // 直接打开第一篇
-          console.log('[Brew] Opening first existing article:', items[0].title);
-          setSelectedItem(items[0]);
+          console.log('[Brew] Opening first existing article:', items[0].title)
+          setSelectedItem(items[0])
         }
       }
-    };
+    }
 
-    console.log('[Brew] Registering agent:open-brew-article event listener');
-    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle);
+    console.log('[Brew] Registering agent:open-brew-article event listener')
+    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle)
 
     // 检查是否有通过 sessionStorage 传递的待执行阅读列表（解决跨页面导航的竞态条件）
-    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list');
+    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list')
     if (pendingReadingListStr) {
       try {
-        const pendingAction = JSON.parse(pendingReadingListStr);
-        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingReadingListStr)
+        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_reading_list');
+          sessionStorage.removeItem('brew_pending_reading_list')
 
           // 设置阅读列表
           if (pendingAction.readingList) {
@@ -831,98 +878,102 @@ export default function Brew() {
               detail: {
                 ...pendingAction.readingList,
                 createdAt: new Date(pendingAction.readingList.createdAt),
-              }
-            }));
+              },
+            }))
           }
 
           // 打开第一篇文章
           if (pendingAction.articleId) {
             setTimeout(() => {
-              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId);
+              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId)
               const syntheticEvent = new CustomEvent('agent:open-brew-article', {
                 detail: {
                   articleId: pendingAction.articleId,
                   openLatest: false,
-                  webSearchArticle: pendingAction.webSearchArticle,  // 传递网络搜索文章数据
-                }
-              });
-              handleAgentOpenArticle(syntheticEvent);
-            }, 200);
+                  webSearchArticle: pendingAction.webSearchArticle, // 传递网络搜索文章数据
+                },
+              })
+              handleAgentOpenArticle(syntheticEvent)
+            }, 200)
           }
-        } else {
-          console.log('[Brew] Pending reading list expired, removing');
-          sessionStorage.removeItem('brew_pending_reading_list');
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending reading list:', e);
-        sessionStorage.removeItem('brew_pending_reading_list');
+        else {
+          console.log('[Brew] Pending reading list expired, removing')
+          sessionStorage.removeItem('brew_pending_reading_list')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending reading list:', e)
+        sessionStorage.removeItem('brew_pending_reading_list')
       }
     }
 
     // 检查是否有通过 sessionStorage 传递的待执行操作（解决跨页面导航的竞态条件）
-    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article');
+    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article')
     if (pendingActionStr) {
       try {
-        const pendingAction = JSON.parse(pendingActionStr);
-        console.log('[Brew] Found pending action from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingActionStr)
+        console.log('[Brew] Found pending action from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_open_article');
+          sessionStorage.removeItem('brew_pending_open_article')
           // 模拟事件触发
           const syntheticEvent = new CustomEvent('agent:open-brew-article', {
-            detail: pendingAction
-          });
+            detail: pendingAction,
+          })
           // 使用 setTimeout 确保组件完全渲染后再处理
           setTimeout(() => {
-            console.log('[Brew] Executing pending action from sessionStorage');
-            handleAgentOpenArticle(syntheticEvent);
-          }, 100);
-        } else {
-          console.log('[Brew] Pending action expired, removing');
-          sessionStorage.removeItem('brew_pending_open_article');
+            console.log('[Brew] Executing pending action from sessionStorage')
+            handleAgentOpenArticle(syntheticEvent)
+          }, 100)
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending action:', e);
-        sessionStorage.removeItem('brew_pending_open_article');
+        else {
+          console.log('[Brew] Pending action expired, removing')
+          sessionStorage.removeItem('brew_pending_open_article')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending action:', e)
+        sessionStorage.removeItem('brew_pending_open_article')
       }
     }
 
     return () => {
-      console.log('[Brew] Unregistering agent:open-brew-article event listener');
-      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle);
-    };
-  }, [items]);
+      console.log('[Brew] Unregistering agent:open-brew-article event listener')
+      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle)
+    }
+  }, [items])
 
   // 监听 Agent 打开文章事件
   useEffect(() => {
     const handleAgentOpenArticle = async (e: Event) => {
       const customEvent = e as CustomEvent<{
-        articleId?: string;
-        articleLink?: string;
-        openLatest?: boolean;
+        articleId?: string
+        articleLink?: string
+        openLatest?: boolean
         webSearchArticle?: {
-          id: number;
-          title: string;
-          author?: string;
-          sourceName?: string;
-          publishedAt?: string;
-          summary?: string;
-          relevanceReason?: string;
-          link?: string;
-          content?: string;
-          fromWebSearch?: boolean;
-          isWebSearchArticle?: boolean;
-        };
-      }>;
-      console.log('[Brew] Agent open article event received:', customEvent.detail);
-      console.log('[Brew] Current items count:', items.length);
+          id: number
+          title: string
+          author?: string
+          sourceName?: string
+          publishedAt?: string
+          summary?: string
+          relevanceReason?: string
+          link?: string
+          content?: string
+          fromWebSearch?: boolean
+          isWebSearchArticle?: boolean
+        }
+      }>
+      console.log('[Brew] Agent open article event received:', customEvent.detail)
+      console.log('[Brew] Current items count:', items.length)
 
-      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail;
+      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail
 
       // 🔴 处理网络搜索文章：创建临时的 BrewItem
       if (webSearchArticle?.isWebSearchArticle) {
-        console.log('[Brew] Opening web search article:', webSearchArticle.title);
+        console.log('[Brew] Opening web search article:', webSearchArticle.title)
         const tempBrewItem: BrewItem = {
           id: webSearchArticle.id,
           source_id: 0,
@@ -932,7 +983,7 @@ export default function Brew() {
           title: webSearchArticle.title,
           link: webSearchArticle.link || '',
           summary: webSearchArticle.summary || webSearchArticle.relevanceReason || null,
-          content: webSearchArticle.content || null,  // 可能为空，BrewReader 会通过 API 获取
+          content: webSearchArticle.content || null, // 可能为空，BrewReader 会通过 API 获取
           image: null,
           audio_url: null,
           author: webSearchArticle.author || null,
@@ -943,123 +994,135 @@ export default function Brew() {
           is_starred: false,
           read_progress: null,
           created_at: Date.now(),
-          fromWebSearch: true,  // 标记为网络搜索文章
-        };
-        setSelectedItem(tempBrewItem);
-        return;
+          fromWebSearch: true, // 标记为网络搜索文章
+        }
+        setSelectedItem(tempBrewItem)
+        return
       }
 
       // 🔴 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
       // 这样才能正确打开"指定作者的最新文章"
       if (articleId || articleLink) {
-        console.log('[Brew] Looking for specific article:', { articleId, articleLink });
+        console.log('[Brew] Looking for specific article:', { articleId, articleLink })
 
         // 🔴 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
-        const numericId = articleId ? parseInt(articleId, 10) : NaN;
-        if (!isNaN(numericId)) {
+        const numericId = articleId ? Number.parseInt(articleId, 10) : Number.NaN
+        if (!Number.isNaN(numericId)) {
           try {
-            console.log('[Brew] Fetching article by ID:', numericId);
-            const article = await brewApi.getItem(numericId);
+            console.log('[Brew] Fetching article by ID:', numericId)
+            const article = await brewApi.getItem(numericId)
             if (article) {
-              console.log('[Brew] Got article by ID:', article.title);
-              setSelectedItem(article);
-              return;
+              console.log('[Brew] Got article by ID:', article.title)
+              setSelectedItem(article)
+              return
             }
-          } catch (err) {
-            console.warn('[Brew] Failed to fetch article by ID:', err);
+          }
+          catch (err) {
+            console.warn('[Brew] Failed to fetch article by ID:', err)
             // 继续尝试其他方式
           }
         }
 
         // 先在已加载的 items 中查找
         // 🔴 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
-        let targetItem = items.find(item => {
+        let targetItem = items.find((item) => {
           // 1. 优先匹配 link（最准确）
-          if (articleLink && item.link === articleLink) return true;
+          if (articleLink && item.link === articleLink)
+            return true
           // 2. 匹配数字 ID
-          if (articleId && String(item.id) === articleId) return true;
+          if (articleId && String(item.id) === articleId)
+            return true
           // 3. 匹配 guid（后端可能返回 guid 作为 articleId）
-          if (articleId && item.guid === articleId) return true;
-          return false;
-        });
+          if (articleId && item.guid === articleId)
+            return true
+          return false
+        })
 
         if (targetItem) {
-          console.log('[Brew] Found article in loaded items:', targetItem.title);
-          setSelectedItem(targetItem);
-          return;
+          console.log('[Brew] Found article in loaded items:', targetItem.title)
+          setSelectedItem(targetItem)
+          return
         }
 
         // 如果没找到，尝试从 API 加载
         try {
-          console.log('[Brew] Article not found locally, loading from API...');
-          const data = await brewApi.getItems({ per_page: 100, filter: 'all' });
-          console.log('[Brew] Loaded', data.items.length, 'items from API');
+          console.log('[Brew] Article not found locally, loading from API...')
+          const data = await brewApi.getItems({ per_page: 100, filter: 'all' })
+          console.log('[Brew] Loaded', data.items.length, 'items from API')
 
-          targetItem = data.items.find(item => {
-            if (articleLink && item.link === articleLink) return true;
-            if (articleId && String(item.id) === articleId) return true;
-            if (articleId && item.guid === articleId) return true;
-            return false;
-          });
+          targetItem = data.items.find((item) => {
+            if (articleLink && item.link === articleLink)
+              return true
+            if (articleId && String(item.id) === articleId)
+              return true
+            if (articleId && item.guid === articleId)
+              return true
+            return false
+          })
 
           if (targetItem) {
-            console.log('[Brew] Found article from API:', targetItem.title);
-            setItems(data.items);
-            setTotal(data.total);
-            setSelectedItem(targetItem);
-            return;
-          } else {
-            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink });
-            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link));
+            console.log('[Brew] Found article from API:', targetItem.title)
+            setItems(data.items)
+            setTotal(data.total)
+            setSelectedItem(targetItem)
+            return
           }
-        } catch (err) {
-          console.error('[Brew] Failed to load article for agent:', err);
+          else {
+            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink })
+            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link))
+          }
+        }
+        catch (err) {
+          console.error('[Brew] Failed to load article for agent:', err)
         }
       }
 
       // 🔴 只有在没有指定 articleId/articleLink 且 openLatest 为 true 时，才取第一篇
       if (openLatest && !articleId && !articleLink) {
-        console.log('[Brew] No specific article, opening latest...');
+        console.log('[Brew] No specific article, opening latest...')
         // 如果 items 为空，先加载
         if (items.length === 0) {
-          console.log('[Brew] Items empty, loading from API...');
-          setItemsLoading(true);
+          console.log('[Brew] Items empty, loading from API...')
+          setItemsLoading(true)
           try {
-            const data = await brewApi.getItems({ per_page: 20, filter: 'all' });
-            console.log('[Brew] Loaded items:', data.items.length);
-            setItems(data.items);
-            setTotal(data.total);
+            const data = await brewApi.getItems({ per_page: 20, filter: 'all' })
+            console.log('[Brew] Loaded items:', data.items.length)
+            setItems(data.items)
+            setTotal(data.total)
             // 打开第一篇
             if (data.items.length > 0) {
-              console.log('[Brew] Opening first article:', data.items[0].title);
-              setSelectedItem(data.items[0]);
+              console.log('[Brew] Opening first article:', data.items[0].title)
+              setSelectedItem(data.items[0])
             }
-          } catch (err) {
-            console.error('[Brew] Failed to load items for agent:', err);
-          } finally {
-            setItemsLoading(false);
           }
-        } else {
+          catch (err) {
+            console.error('[Brew] Failed to load items for agent:', err)
+          }
+          finally {
+            setItemsLoading(false)
+          }
+        }
+        else {
           // 直接打开第一篇
-          console.log('[Brew] Opening first existing article:', items[0].title);
-          setSelectedItem(items[0]);
+          console.log('[Brew] Opening first existing article:', items[0].title)
+          setSelectedItem(items[0])
         }
       }
-    };
+    }
 
-    console.log('[Brew] Registering agent:open-brew-article event listener');
-    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle);
+    console.log('[Brew] Registering agent:open-brew-article event listener')
+    window.addEventListener('agent:open-brew-article', handleAgentOpenArticle)
 
     // 检查是否有通过 sessionStorage 传递的待执行阅读列表（解决跨页面导航的竞态条件）
-    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list');
+    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list')
     if (pendingReadingListStr) {
       try {
-        const pendingAction = JSON.parse(pendingReadingListStr);
-        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingReadingListStr)
+        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_reading_list');
+          sessionStorage.removeItem('brew_pending_reading_list')
 
           // 设置阅读列表
           if (pendingAction.readingList) {
@@ -1067,68 +1130,72 @@ export default function Brew() {
               detail: {
                 ...pendingAction.readingList,
                 createdAt: new Date(pendingAction.readingList.createdAt),
-              }
-            }));
+              },
+            }))
           }
 
           // 打开第一篇文章
           if (pendingAction.articleId) {
             setTimeout(() => {
-              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId);
+              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId)
               const syntheticEvent = new CustomEvent('agent:open-brew-article', {
                 detail: {
                   articleId: pendingAction.articleId,
                   openLatest: false,
-                  webSearchArticle: pendingAction.webSearchArticle,  // 传递网络搜索文章数据
-                }
-              });
-              handleAgentOpenArticle(syntheticEvent);
-            }, 200);
+                  webSearchArticle: pendingAction.webSearchArticle, // 传递网络搜索文章数据
+                },
+              })
+              handleAgentOpenArticle(syntheticEvent)
+            }, 200)
           }
-        } else {
-          console.log('[Brew] Pending reading list expired, removing');
-          sessionStorage.removeItem('brew_pending_reading_list');
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending reading list:', e);
-        sessionStorage.removeItem('brew_pending_reading_list');
+        else {
+          console.log('[Brew] Pending reading list expired, removing')
+          sessionStorage.removeItem('brew_pending_reading_list')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending reading list:', e)
+        sessionStorage.removeItem('brew_pending_reading_list')
       }
     }
 
     // 检查是否有通过 sessionStorage 传递的待执行操作（解决跨页面导航的竞态条件）
-    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article');
+    const pendingActionStr = sessionStorage.getItem('brew_pending_open_article')
     if (pendingActionStr) {
       try {
-        const pendingAction = JSON.parse(pendingActionStr);
-        console.log('[Brew] Found pending action from sessionStorage:', pendingAction);
+        const pendingAction = JSON.parse(pendingActionStr)
+        console.log('[Brew] Found pending action from sessionStorage:', pendingAction)
         // 检查时间戳，只处理 10 秒内的请求
         if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
           // 清除存储，避免重复执行
-          sessionStorage.removeItem('brew_pending_open_article');
+          sessionStorage.removeItem('brew_pending_open_article')
           // 模拟事件触发
           const syntheticEvent = new CustomEvent('agent:open-brew-article', {
-            detail: pendingAction
-          });
+            detail: pendingAction,
+          })
           // 使用 setTimeout 确保组件完全渲染后再处理
           setTimeout(() => {
-            console.log('[Brew] Executing pending action from sessionStorage');
-            handleAgentOpenArticle(syntheticEvent);
-          }, 100);
-        } else {
-          console.log('[Brew] Pending action expired, removing');
-          sessionStorage.removeItem('brew_pending_open_article');
+            console.log('[Brew] Executing pending action from sessionStorage')
+            handleAgentOpenArticle(syntheticEvent)
+          }, 100)
         }
-      } catch (e) {
-        console.error('[Brew] Failed to parse pending action:', e);
-        sessionStorage.removeItem('brew_pending_open_article');
+        else {
+          console.log('[Brew] Pending action expired, removing')
+          sessionStorage.removeItem('brew_pending_open_article')
+        }
+      }
+      catch (e) {
+        console.error('[Brew] Failed to parse pending action:', e)
+        sessionStorage.removeItem('brew_pending_open_article')
       }
     }
 
     return () => {
-      console.log('[Brew] Unregistering agent:open-brew-article event listener');
-      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle);
-    };
-  }, [items]);
+      console.log('[Brew] Unregistering agent:open-brew-article event listener')
+      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle)
+    }
+  }, [items])
 
   // 监听导航变化
   // 用于追踪上一次的 activeId，避免 viewMode 变化导致重复执行
@@ -1341,9 +1408,9 @@ export default function Brew() {
   const handleNavigateToArticle = useCallback(async (articleId: number) => {
     // 🔴 首先检查阅读列表中是否有这篇文章（可能是网络搜索结果）
     if (readingList?.currentList) {
-      const listItem = readingList.currentList.items.find(i => i.id === articleId);
+      const listItem = readingList.currentList.items.find(i => i.id === articleId)
       if (listItem?.fromWebSearch) {
-        console.log('[Brew] Navigating to web search article from reading list:', listItem.title);
+        console.log('[Brew] Navigating to web search article from reading list:', listItem.title)
         const tempBrewItem: BrewItem = {
           id: listItem.id,
           source_id: 0,
@@ -1353,7 +1420,7 @@ export default function Brew() {
           title: listItem.title,
           link: listItem.link || '',
           summary: listItem.summary || listItem.relevanceReason || null,
-          content: listItem.content || null,  // 可能为空，BrewReader 会通过 API 获取
+          content: listItem.content || null, // 可能为空，BrewReader 会通过 API 获取
           image: null,
           audio_url: null,
           author: listItem.author || null,
@@ -1365,34 +1432,35 @@ export default function Brew() {
           read_progress: null,
           created_at: Date.now(),
           fromWebSearch: true,
-        };
-        setSelectedItem(tempBrewItem);
-        // 更新阅读列表的当前位置
-        const itemIndex = readingList.currentList.items.findIndex(i => i.id === articleId);
-        if (itemIndex !== -1) {
-          readingList.goToArticle(itemIndex);
         }
-        return;
+        setSelectedItem(tempBrewItem)
+        // 更新阅读列表的当前位置
+        const itemIndex = readingList.currentList.items.findIndex(i => i.id === articleId)
+        if (itemIndex !== -1) {
+          readingList.goToArticle(itemIndex)
+        }
+        return
       }
     }
 
     // 先尝试从当前 items 列表中查找
-    let targetItem = items.find(i => i.id === articleId);
+    let targetItem = items.find(i => i.id === articleId)
 
     if (!targetItem) {
       // 如果在当前列表中找不到，从 API 获取
       try {
-        targetItem = await brewApi.getItem(articleId);
-      } catch (err) {
-        console.error('Failed to fetch article:', err);
-        return;
+        targetItem = await brewApi.getItem(articleId)
+      }
+      catch (err) {
+        console.error('Failed to fetch article:', err)
+        return
       }
     }
 
     if (targetItem) {
-      handleItemSelect(targetItem);
+      handleItemSelect(targetItem)
     }
-  }, [items, handleItemSelect, readingList]);
+  }, [items, handleItemSelect, readingList])
 
   // 处理收藏切换
   const handleToggleStar = async (item: BrewItem) => {
@@ -1677,85 +1745,86 @@ export default function Brew() {
             />
           )}
 
-        {/* 文章列表视图 */}
-        {viewMode === 'items' && selectedSource && (
-          <div className="relative pb-24 sm:pb-16">
-            {/* 控制岛 - 文章列表模式 */}
-            <ControlIsland
-              sources={sources}
-              filteredSources={sources}
-              categories={[]}
-              isAdmin={isAdmin}
-              isAuthenticated={isAuthenticated}
-              feedMode={{
-                source: selectedSource,
-                total,
-                onBack: handleBackToSources,
-                onRefresh: () => handleRefreshSource(selectedSource.id),
-                onMarkAllRead: handleMarkAllRead,
-                isRefreshing: sourceRefreshing,
-              }}
-            />
+          {/* 文章列表视图 */}
+          {viewMode === 'items' && selectedSource && (
+            <div className="relative pb-24 sm:pb-16">
+              {/* 控制岛 - 文章列表模式 */}
+              <ControlIsland
+                sources={sources}
+                filteredSources={sources}
+                categories={[]}
+                isAdmin={isAdmin}
+                isAuthenticated={isAuthenticated}
+                feedMode={{
+                  source: selectedSource,
+                  total,
+                  onBack: handleBackToSources,
+                  onRefresh: () => handleRefreshSource(selectedSource.id),
+                  onMarkAllRead: handleMarkAllRead,
+                  isRefreshing: sourceRefreshing,
+                }}
+              />
 
-            {/* 文章列表 */}
-            <BrewFeedList
-              items={items}
-              selectedItem={selectedItem}
-              loading={itemsLoading}
-              hasMore={hasMore}
-              total={total}
-              onItemSelect={handleItemSelect}
-              onToggleStar={handleToggleStar}
-              onLoadMore={handleLoadMore}
-              sourceColors={sourceColors}
-              isAuthenticated={isAuthenticated}
-            />
-          </div>
-        )}
+              {/* 文章列表 */}
+              <BrewFeedList
+                items={items}
+                selectedItem={selectedItem}
+                loading={itemsLoading}
+                hasMore={hasMore}
+                total={total}
+                onItemSelect={handleItemSelect}
+                onToggleStar={handleToggleStar}
+                onLoadMore={handleLoadMore}
+                sourceColors={sourceColors}
+                isAuthenticated={isAuthenticated}
+              />
+            </div>
+          )}
 
-        {/* 分类合并文章视图 - 用于"我"等特殊分类 */}
-        {viewMode === 'category-feed' && selectedCategory !== 'all' && (
-          <div className="relative pb-24 sm:pb-16">
-            {/* 控制岛 - 分类合并文章列表模式 */}
-            <ControlIsland
-              sources={sources}
-              filteredSources={sources}
-              categories={[]}
-              isAdmin={isAdmin}
-              isAuthenticated={isAuthenticated}
-              categoryFeedMode={{
-                categoryName: PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId],
-                categoryLabel: getCategoryName(selectedCategory as PresetCategoryId),
-                total,
-                unreadCount: sources
-                  .filter(s => {
-                    const targetCat = PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
-                    if (!s.category) return false
-                    return s.category.split(',').map(c => c.trim()).includes(targetCat)
-                  })
-                  .reduce((sum, s) => sum + s.unread_count, 0),
-                onBack: handleBackFromCategoryFeed,
-                onMarkAllRead: handleMarkAllRead,
-              }}
-            />
+          {/* 分类合并文章视图 - 用于"我"等特殊分类 */}
+          {viewMode === 'category-feed' && selectedCategory !== 'all' && (
+            <div className="relative pb-24 sm:pb-16">
+              {/* 控制岛 - 分类合并文章列表模式 */}
+              <ControlIsland
+                sources={sources}
+                filteredSources={sources}
+                categories={[]}
+                isAdmin={isAdmin}
+                isAuthenticated={isAuthenticated}
+                categoryFeedMode={{
+                  categoryName: PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId],
+                  categoryLabel: getCategoryName(selectedCategory as PresetCategoryId),
+                  total,
+                  unreadCount: sources
+                    .filter((s) => {
+                      const targetCat = PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
+                      if (!s.category)
+                        return false
+                      return s.category.split(',').map(c => c.trim()).includes(targetCat)
+                    })
+                    .reduce((sum, s) => sum + s.unread_count, 0),
+                  onBack: handleBackFromCategoryFeed,
+                  onMarkAllRead: handleMarkAllRead,
+                }}
+              />
 
-            {/* 文章列表 */}
-            <BrewFeedList
-              items={items}
-              selectedItem={selectedItem}
-              loading={itemsLoading}
-              hasMore={hasMore}
-              total={total}
-              onItemSelect={handleItemSelect}
-              onToggleStar={handleToggleStar}
-              onLoadMore={handleLoadMore}
-              sourceColors={sourceColors}
-              isAuthenticated={isAuthenticated}
-            />
-          </div>
-        )}
+              {/* 文章列表 */}
+              <BrewFeedList
+                items={items}
+                selectedItem={selectedItem}
+                loading={itemsLoading}
+                hasMore={hasMore}
+                total={total}
+                onItemSelect={handleItemSelect}
+                onToggleStar={handleToggleStar}
+                onLoadMore={handleLoadMore}
+                sourceColors={sourceColors}
+                isAuthenticated={isAuthenticated}
+              />
+            </div>
+          )}
 
-        {/* 收藏文章视图 - 仅登录用户可用 */}
+          {/* 收藏文章视图 - 仅登录用户可用 */}
           {viewMode === 'starred' && isAuthenticated && (
             <div className="relative pb-24 sm:pb-16">
               {/* 控制岛 - 收藏模式 */}
@@ -1894,7 +1963,7 @@ export default function Brew() {
                 isAuthenticated={isAuthenticated}
                 isAdmin={isAdmin}
                 sourceType={sources.find(s => s.id === selectedItem.source_id)?.source_type}
-              onNavigateToArticle={readingList?.currentList ? handleNavigateToArticle : undefined}
+                onNavigateToArticle={readingList?.currentList ? handleNavigateToArticle : undefined}
               />
             )}
           </AnimatePresence>

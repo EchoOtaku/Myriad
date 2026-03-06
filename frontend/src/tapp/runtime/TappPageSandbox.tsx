@@ -12,15 +12,14 @@ import type { TappPermissionController } from './TappPermission'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
+
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { getIsDarkMode, subscribeToTheme } from '../../utils/themeSubscriber'
 import { getCodeForMode } from '../examples/tapps/types'
-
 import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 // 核心模块
 import {
-
   generateCSP,
   generateFullSDK,
   generateNonce,
@@ -29,7 +28,6 @@ import {
   generateThemeCSS,
   IFRAME_SANDBOX_ATTRS,
   PAGE_STATIC_CSS,
-
 } from './sandbox'
 // 处理器
 import {
@@ -49,7 +47,6 @@ import {
   registerUserHandlers,
   registerWidgetHandlers,
 } from './sandbox/handlers'
-
 import { createTappBridge } from './TappBridge'
 import { createPermissionController } from './TappPermission'
 
@@ -165,7 +162,7 @@ function generatePageHTML(
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
   ${bodyContent}
-  
+
   <script nonce="${nonce}">
     window._TAPP_MODE = 'page';
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
@@ -185,7 +182,7 @@ function generatePageHTML(
         root.style.setProperty('--tapp-font-scale', msg.payload.fontScale || 1);
         var content = document.getElementById('tapp-content');
         if (content) {
-          content.style.padding = 
+          content.style.padding =
             (msg.payload.safeInsetTop || 0) + 'px ' +
             (msg.payload.safeInsetRight || 0) + 'px ' +
             (msg.payload.safeInsetBottom || 0) + 'px ' +
@@ -195,10 +192,10 @@ function generatePageHTML(
       }
     });
   </script>
-  
+
   <script nonce="${nonce}">${securityWrapper}</script>
   <script nonce="${nonce}">${sdkCode}</script>
-  
+
   <!-- JS 代码始终加载（用于事件绑定等） -->
   <script nonce="${nonce}">
     (function() {
@@ -211,7 +208,7 @@ function generatePageHTML(
       }
     })();
   </script>
-  
+
   ${needsJsRender
     ? `
   <!-- 纯 JS 模式：调用 render 函数 -->
@@ -232,7 +229,7 @@ function generatePageHTML(
           }
         } catch (error) {
           console.error('[Page] Render error:', error);
-          document.getElementById('tapp-content').innerHTML = 
+          document.getElementById('tapp-content').innerHTML =
             '<div class="tapp-empty tapp-text-error">Page Error: ' + error.message + '</div>';
         }
       }, 50);
@@ -251,7 +248,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   tappInstance,
   code,
   onReady,
-  onError,
+  _onError,
   onDestroy,
   onNotification,
   className,
@@ -508,11 +505,13 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // 类似 Radix UI Portal / Floating UI 的定位策略
     let lastRect = ''
     const syncPosition = () => {
-      if (!document.body.contains(iframe)) return
+      if (!document.body.contains(iframe))
+        return
       const rect = container.getBoundingClientRect()
       // 避免不必要的 style 写入（性能优化）
       const key = `${rect.top},${rect.left},${rect.width},${rect.height}`
-      if (key === lastRect) return
+      if (key === lastRect)
+        return
       lastRect = key
       iframe.style.top = `${rect.top}px`
       iframe.style.left = `${rect.left}px`
@@ -553,7 +552,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   // - tappInstance.id: Tapp 实例 ID
   // - codeFingerprint: 代码指纹（内容变化才会变）
   // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tappInstance.id, codeFingerprint, handleReady])
 
   return (

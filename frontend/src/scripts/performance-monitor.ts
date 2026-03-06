@@ -70,7 +70,7 @@ class PerformanceMonitor {
         })
         fcpObserver.observe({ entryTypes: ['paint'] })
       }
-      catch (e) {
+      catch (_e) {
         // FCP monitoring not supported
       }
 
@@ -86,7 +86,7 @@ class PerformanceMonitor {
         })
         lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] })
       }
-      catch (e) {
+      catch (_e) {
         // LCP monitoring not supported
       }
 
@@ -95,9 +95,9 @@ class PerformanceMonitor {
         let clsValue = 0
         const clsObserver = new PerformanceObserver((entryList) => {
           for (const entry of entryList.getEntries()) {
-            // @ts-ignore
+            // @ts-expect-error - LayoutShift entry has hadRecentInput
             if (!entry.hadRecentInput) {
-              // @ts-ignore
+              // @ts-expect-error - LayoutShift entry has value
               clsValue += entry.value
               this.metrics.cls = clsValue
             }
@@ -108,7 +108,7 @@ class PerformanceMonitor {
         })
         clsObserver.observe({ entryTypes: ['layout-shift'] })
       }
-      catch (e) {
+      catch (_e) {
         // CLS monitoring not supported
       }
 
@@ -116,7 +116,7 @@ class PerformanceMonitor {
       try {
         const fidObserver = new PerformanceObserver((entryList) => {
           for (const entry of entryList.getEntries()) {
-            // @ts-ignore
+            // @ts-expect-error - PerformanceEventTiming has processingStart
             this.metrics.fid = entry.processingStart - entry.startTime
             if (ENABLE_LOGGING) {
               console.log(`✅ FID: ${this.metrics.fid.toFixed(2)}ms`)
@@ -125,7 +125,7 @@ class PerformanceMonitor {
         })
         fidObserver.observe({ entryTypes: ['first-input'] })
       }
-      catch (e) {
+      catch (_e) {
         // FID monitoring not supported
       }
     }
@@ -235,7 +235,7 @@ class PerformanceMonitor {
       })
       observer.observe({ entryTypes: ['longtask'] })
     }
-    catch (e) {
+    catch (_e) {
       // Long task monitoring not supported
     }
   }

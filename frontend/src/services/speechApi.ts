@@ -228,43 +228,43 @@ export async function getVoiceList(): Promise<{ voices: VoiceInfo[] }> {
  */
 export interface ASRRequest {
   /** Base64编码的音频数据（与url二选一） */
-  audio_data?: string;
+  audio_data?: string
   /** 音频URL（与audio_data二选一） */
-  url?: string;
+  url?: string
   /** 音频格式: wav, pcm, mp3, m4a, aac, amr，默认wav */
-  format?: string;
+  format?: string
   /** 引擎类型: 16k_zh, 16k_en, 16k_yue等，默认16k_zh */
-  engine?: string;
+  engine?: string
   /** 是否返回词级别时间戳: 0-不返回, 1-返回(不含标点), 2-返回(含标点) */
-  word_info?: number;
-  /** 是否过滤脏词: 0-不过滤, 1-过滤, 2-替换为* */
-  filter_dirty?: number;
+  word_info?: number
+  /** 是否过滤脏词: 0-不过滤, 1-过滤, 2-替换为 */
+  filter_dirty?: number
   /** 临时热词表 (格式: "热词1|权重,热词2|权重") */
-  hotword_list?: string;
+  hotword_list?: string
 }
 
 /**
  * ASR 词信息
  */
 export interface ASRWord {
-  word: string;
-  start_time: number;
-  end_time: number;
+  word: string
+  start_time: number
+  end_time: number
 }
 
 /**
  * ASR 响应
  */
 export interface ASRResponse {
-  success: boolean;
+  success: boolean
   /** 识别结果文本 */
-  text?: string;
+  text?: string
   /** 音频时长(ms) */
-  duration?: number;
+  duration?: number
   /** 词时间戳列表 */
-  words?: ASRWord[];
+  words?: ASRWord[]
   /** 错误信息 */
-  error?: string;
+  error?: string
 }
 
 /**
@@ -274,7 +274,7 @@ export async function speechToText(req: ASRRequest): Promise<ASRResponse> {
   return request<ASRResponse>('/asr', {
     method: 'POST',
     body: JSON.stringify(req),
-  });
+  })
 }
 
 /**
@@ -282,16 +282,16 @@ export async function speechToText(req: ASRRequest): Promise<ASRResponse> {
  */
 export function audioToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+    const reader = new FileReader()
     reader.onloadend = () => {
-      const base64 = reader.result as string;
+      const base64 = reader.result as string
       // 去掉 data:audio/xxx;base64, 前缀
-      const base64Data = base64.split(',')[1];
-      resolve(base64Data);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+      const base64Data = base64.split(',')[1]
+      resolve(base64Data)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
 }
 
 // ==================== TTS 文本转语音 ====================

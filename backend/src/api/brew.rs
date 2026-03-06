@@ -39,10 +39,10 @@ pub fn create_brew_routes() -> Router<DatabaseConnection> {
         // 订阅源管理
         .route("/sources", get(list_sources).post(add_source))
         .route(
-            "/sources/:id",
+            "/sources/{id}",
             get(get_source).put(update_source).delete(delete_source),
         )
-        .route("/sources/:id/refresh", post(refresh_source))
+        .route("/sources/{id}/refresh", post(refresh_source))
         .route("/sources/discover", post(discover_source))
         // OPML 导入导出
         .route("/import-opml", post(import_opml))
@@ -50,26 +50,26 @@ pub fn create_brew_routes() -> Router<DatabaseConnection> {
         // 分类管理
         .route("/categories", get(list_categories).post(create_category))
         .route(
-            "/categories/:id",
+            "/categories/{id}",
             put(update_category).delete(delete_category),
         )
         // 文章获取
         .route("/items", get(list_items))
-        .route("/items/:id", get(get_item))
-        .route("/items/:id/fulltext", get(fetch_fulltext))
+        .route("/items/{id}", get(get_item))
+        .route("/items/{id}/fulltext", get(fetch_fulltext))
         // 阅读状态
-        .route("/items/:id/read", post(mark_read))
-        .route("/items/:id/unread", post(mark_unread))
-        .route("/items/:id/star", post(star_item))
-        .route("/items/:id/unstar", post(unstar_item))
+        .route("/items/{id}/read", post(mark_read))
+        .route("/items/{id}/unread", post(mark_unread))
+        .route("/items/{id}/star", post(star_item))
+        .route("/items/{id}/unstar", post(unstar_item))
         .route("/mark-all-read", post(mark_all_read))
         // 用户评论（批注）
         .route(
-            "/items/:id/comments",
+            "/items/{id}/comments",
             get(list_comments).post(create_comment),
         )
-        .route("/comments/:id", put(update_comment).delete(delete_comment))
-        .route("/comments/:id/replies", get(list_comment_replies))
+        .route("/comments/{id}", put(update_comment).delete(delete_comment))
+        .route("/comments/{id}/replies", get(list_comment_replies))
         // 离线同步
         .route("/sync-states", post(sync_states))
         // 统计信息
@@ -82,14 +82,14 @@ pub fn create_brew_routes() -> Router<DatabaseConnection> {
             get(list_rsshub_instances).post(add_rsshub_instance),
         )
         .route(
-            "/rsshub/instances/:id",
+            "/rsshub/instances/{id}",
             put(update_rsshub_instance).delete(delete_rsshub_instance),
         )
         .route(
-            "/rsshub/instances/:id/health-check",
+            "/rsshub/instances/{id}/health-check",
             post(health_check_rsshub_instance),
         )
-        .route("/rsshub/instances/:id/reset", post(reset_rsshub_instance))
+        .route("/rsshub/instances/{id}/reset", post(reset_rsshub_instance))
         .route(
             "/rsshub/health-check-all",
             post(health_check_all_rsshub_instances),

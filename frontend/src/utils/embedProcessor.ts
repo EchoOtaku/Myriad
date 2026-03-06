@@ -167,7 +167,7 @@ function extractGithubRepo(url: string): { owner: string, repo: string } | null 
  * 正方形封面，悬停显示信息，平台图标气泡
  * 使用 my-4 作为默认margin（小尺寸卡片）
  */
-function generateNeteaseMusicCard(songId: string, isDark: boolean): string {
+function generateNeteaseMusicCard(songId: string, _isDark: boolean): string {
   return `
     <div class="brew-embed-card brew-netease-music brew-embed-exempt not-prose block group cursor-pointer"
          data-embed-type="netease-music"
@@ -207,7 +207,7 @@ function generateNeteaseMusicCard(songId: string, isDark: boolean): string {
  * 横版卡片，悬停显示信息遮罩，无平台图标
  * 使用 my-6 作为默认margin（大尺寸卡片）
  */
-function generateSteamGameCard(appId: string, isDark: boolean): string {
+function generateSteamGameCard(appId: string, _isDark: boolean): string {
   const storeUrl = `https://store.steampowered.com/app/${appId}`
   const headerImg = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`
 
@@ -280,7 +280,7 @@ function generateBilibiliIframe(videoId: { type: 'bv' | 'av', id: string }): str
  * 生成 Bilibili 视频卡片 HTML - 与资料库视频卡片风格一致
  * 横版封面，悬停显示信息（保留但不再使用）
  */
-function generateBilibiliVideoCard(videoId: { type: 'bv' | 'av', id: string }, isDark: boolean): string {
+function _generateBilibiliVideoCard(videoId: { type: 'bv' | 'av', id: string }, _isDark: boolean): string {
   const videoUrl = videoId.type === 'bv'
     ? `https://www.bilibili.com/video/${videoId.id}`
     : `https://www.bilibili.com/video/av${videoId.id}`
@@ -337,7 +337,7 @@ function generateBilibiliVideoCard(videoId: { type: 'bv' | 'av', id: string }, i
  * 显示仓库基本信息，与阅读器风格统一
  * margin 由 BrewReader 统一控制
  */
-function generateGithubRepoCard(repo: { owner: string, repo: string }, isDark: boolean): string {
+function generateGithubRepoCard(repo: { owner: string, repo: string }, _isDark: boolean): string {
   const repoUrl = `https://github.com/${repo.owner}/${repo.repo}`
   const ownerAvatar = `https://github.com/${repo.owner}.png?size=32`
 

@@ -33,6 +33,7 @@ import {
 } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
+
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -40,9 +41,7 @@ import { hasSessionHint } from '../../utils/sessionDetection'
 import { EXAMPLE_TAPPS, getCategoryName } from '../examples'
 import { getTappRuntime } from '../runtime'
 import {
-
   RemoteStoreService,
-
 } from '../services/RemoteStoreService'
 import { getCategoryGradient } from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
@@ -132,7 +131,7 @@ function getAppIconStyle(app: UnifiedAppItem): { className: string, style?: Reac
 }
 
 /** 获取应用图标背景色（优先使用主题色） - 兼容旧代码 */
-function getAppIconGradient(app: UnifiedAppItem): string {
+function _getAppIconGradient(app: UnifiedAppItem): string {
   if (app.themeColor) {
     // 返回空字符串，实际样式通过 style prop 设置
     return ''
@@ -516,6 +515,7 @@ function SourcesSettingsModal({
       return
     }
     try {
+      // eslint-disable-next-line no-new
       new URL(newSourceUrl)
     }
     catch {

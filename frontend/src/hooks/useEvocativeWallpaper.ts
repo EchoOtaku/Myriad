@@ -26,7 +26,7 @@ import { batchWrite, isPageVisible, onVisibility } from './animation/core'
 // ==================== 共享配置常量 ====================
 const SMOOTH = 0.08 // 基础平滑因子
 const SMOOTH_RETURN = 0.04 // 归正时使用更慢的速度
-const FRAME_MS = 33 // ~30fps
+const _FRAME_MS = 33 // ~30fps
 const MAX_DELTA = 100 // 最大时间间隔
 const THROTTLE_MS = 50 // 鼠标事件节流
 const THRESHOLD = 0.05 // 静止检测阈值
@@ -52,7 +52,7 @@ const RIPPLE_DURATION = 2000
 const RIPPLE_SPEED = 400
 const RIPPLE_WAVELENGTH = 80
 const RIPPLE_AMPLITUDE = 15
-const RIPPLE_SCALE = 0.85
+const _RIPPLE_SCALE = 0.85
 const RIPPLE_FRAME_MS = 17
 
 // 预计算正弦查找表
@@ -250,7 +250,7 @@ async function captureWallpaperToCanvas(
       const imgRatio = img.width / img.height
       const canvasRatio = canvasW / canvasH
 
-      let drawW: number, drawH: number, drawX: number, drawY: number
+      let drawW: number, drawH: number
 
       if (imgRatio > canvasRatio) {
         drawH = canvasH
@@ -261,8 +261,8 @@ async function captureWallpaperToCanvas(
         drawH = drawW / imgRatio
       }
 
-      drawX = (canvasW - drawW) / 2
-      drawY = (canvasH - drawH) / 2
+      const drawX = (canvasW - drawW) / 2
+      const drawY = (canvasH - drawH) / 2
 
       const scaledBlur = currentBlur * rippleScale
       ctx.filter = scaledBlur > 0 ? `blur(${scaledBlur}px)` : 'none'

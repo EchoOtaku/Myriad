@@ -6,7 +6,7 @@
  */
 
 /** 功能标识 */
-export const enum Feature {
+export enum Feature {
   /** 页面可见性监听 */
   Visibility = 1 << 0,
   /** ResizeObserver 尺寸监听 */

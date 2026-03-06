@@ -30,10 +30,11 @@
  */
 
 import type { AnimationConfig } from '../../useAnimationLevel'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAnimationLevel } from '../../useAnimationLevel'
 
-const PAGE_ID = 'brew'
+const _PAGE_ID = 'brew'
 
 // 动画配置 - 减少延迟提升响应速度
 const STAGGER_CONFIG = {
@@ -206,10 +207,8 @@ export function useBrewCardStagger(
     lastBatchIdRef.current = pageAnimationBatchId
 
     // 使用单个 RAF 来批量处理，减少回流
-    let timeoutId: ReturnType<typeof setTimeout>
-
     // 直接使用 setTimeout，避免 RAF 嵌套
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       setCanAnimate(true)
       hasAnimatedRef.current = true
     }, delay)

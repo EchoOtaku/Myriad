@@ -310,7 +310,7 @@ export class TappRuntime {
   async installTapp(
     manifest: TappManifest,
     code: TappCodeStructure,
-    requestedPermissions?: TappPermission[],
+    _requestedPermissions?: TappPermission[],
   ): Promise<TappInstance> {
     // 验证 Manifest
     const validation = TappPermissionController.validateManifestPermissions(manifest)

@@ -4,12 +4,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+
 import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
 import { SiteFooter } from '../components/SiteFooter'
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget'
 import { API_URL } from '../config'
+
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useNotification } from '../contexts/NotificationContext'
@@ -36,9 +38,9 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation()
-  const { isAuthenticated, isAdmin, user, checkAuth: checkAuthFromContext } = useAuth()
+  const { _isAuthenticated, _isAdmin, user, checkAuth: checkAuthFromContext } = useAuth()
   const { t } = useI18n()
-  const [userAvatar, setUserAvatar] = useState('')
+  const [_userAvatar, setUserAvatar] = useState('')
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null)
   const [hasEverConnected, setHasEverConnected] = useState(false)
   const { notifications } = useNotification()
@@ -269,7 +271,6 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
     })()
     // 认证检查现在由 AuthContext 管理，按需触发
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 监听壁纸变化事件（由 GlobalControlPanel 触发）

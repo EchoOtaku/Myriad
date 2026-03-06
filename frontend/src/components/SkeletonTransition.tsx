@@ -9,12 +9,14 @@
  */
 
 import type { ReactNode } from 'react'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import './Skeleton.css'
 
 /** 过渡阶段 */
-const enum TransitionPhase {
+enum TransitionPhase {
   SKELETON = 'skeleton', // 显示骨架屏
   FADING = 'fading', // 骨架屏淡出中
   CONTENT = 'content', // 显示内容

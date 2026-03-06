@@ -9,6 +9,7 @@
 
 import { SiAppstore } from '@lib/icons'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useI18n } from '../contexts/I18nContext'
 import { useNavigation } from '../contexts/NavigationContext'
@@ -386,8 +387,8 @@ export function NavigationIsland() {
     })
 
     // 延迟两帧读取尺寸，确保新内容已完全渲染和布局
-    let sizeRafId1: number, sizeRafId2: number
-    sizeRafId1 = requestAnimationFrame(() => {
+    let sizeRafId2: number
+    const sizeRafId1 = requestAnimationFrame(() => {
       sizeRafId2 = requestAnimationFrame(() => {
         const currentContent = navContentRef.current
         if (!currentContent)
@@ -444,11 +445,11 @@ export function NavigationIsland() {
     })
 
     // 进入动画
-    let rafId1: number, rafId2: number
+    let rafId2: number
     const enterTimers: number[] = []
     let cleanupTimer: number
 
-    rafId1 = requestAnimationFrame(() => {
+    const rafId1 = requestAnimationFrame(() => {
       rafId2 = requestAnimationFrame(() => {
         groups.forEach((group, index) => {
           const timer = window.setTimeout(() => {
@@ -530,7 +531,6 @@ export function NavigationIsland() {
 
     return () => cancelAnimationFrame(rafId)
     // 仅首次挂载时执行
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 窗口大小变化时更新尺寸 - 使用防抖避免频繁更新

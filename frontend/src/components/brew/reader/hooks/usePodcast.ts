@@ -250,7 +250,7 @@ export function usePodcast({
 
     const player = new PodcastPlayer()
     player.setCallbacks({
-      onProgress: (index, total) => {
+      onProgress: (index, _total) => {
         setPodcastCurrentIndex(index)
       },
       onEnd: () => {
@@ -275,7 +275,7 @@ export function usePodcast({
       return
 
     const player = new CloudPodcastPlayer()
-    player.setOnProgress((index, total) => {
+    player.setOnProgress((index, _total) => {
       setPodcastCurrentIndex(index)
     })
     player.setOnEnd(() => {

@@ -59,13 +59,14 @@
   background:
     linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)) padding-box,
     conic-gradient(
-      from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
-      var(--color-primary, #10b981),
-      var(--color-secondary, #34d399),
-      var(--color-accent, #f59e0b),
-      var(--color-light, #feca57),
-      var(--color-primary, #10b981)
-    ) border-box;
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        var(--color-primary, #10b981),
+        var(--color-secondary, #34d399),
+        var(--color-accent, #f59e0b),
+        var(--color-light, #feca57),
+        var(--color-primary, #10b981)
+      )
+      border-box;
   border: 3px solid transparent;
   animation:
     arael-gradient-flow-angle 4s ease-in-out infinite,
@@ -86,34 +87,58 @@ html.dark .arael-panel.arael-panel-processing {
   background:
     linear-gradient(rgba(24, 24, 27, 0.94), rgba(24, 24, 27, 0.94)) padding-box,
     conic-gradient(
-      from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
-      var(--color-primary, #10b981),
-      var(--color-secondary, #34d399),
-      var(--color-accent, #f59e0b),
-      var(--color-light, #feca57),
-      var(--color-primary, #10b981)
-    ) border-box;
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        var(--color-primary, #10b981),
+        var(--color-secondary, #34d399),
+        var(--color-accent, #f59e0b),
+        var(--color-light, #feca57),
+        var(--color-primary, #10b981)
+      )
+      border-box;
   border: 3px solid transparent;
 }
 
 /* 渐变流动动画 - 不规则路径 */
 @keyframes arael-gradient-flow-angle {
-  0%, 100% { --arael-gradient-angle: 0deg; }
-  25% { --arael-gradient-angle: 120deg; }
-  50% { --arael-gradient-angle: 200deg; }
-  75% { --arael-gradient-angle: 300deg; }
+  0%,
+  100% {
+    --arael-gradient-angle: 0deg;
+  }
+  25% {
+    --arael-gradient-angle: 120deg;
+  }
+  50% {
+    --arael-gradient-angle: 200deg;
+  }
+  75% {
+    --arael-gradient-angle: 300deg;
+  }
 }
 
 @keyframes arael-gradient-flow-x {
-  0%, 100% { --arael-gradient-x: 30%; }
-  33% { --arael-gradient-x: 70%; }
-  66% { --arael-gradient-x: 20%; }
+  0%,
+  100% {
+    --arael-gradient-x: 30%;
+  }
+  33% {
+    --arael-gradient-x: 70%;
+  }
+  66% {
+    --arael-gradient-x: 20%;
+  }
 }
 
 @keyframes arael-gradient-flow-y {
-  0%, 100% { --arael-gradient-y: 20%; }
-  40% { --arael-gradient-y: 80%; }
-  70% { --arael-gradient-y: 40%; }
+  0%,
+  100% {
+    --arael-gradient-y: 20%;
+  }
+  40% {
+    --arael-gradient-y: 80%;
+  }
+  70% {
+    --arael-gradient-y: 40%;
+  }
 }
 
 @property --arael-gradient-angle {
@@ -146,12 +171,12 @@ html.dark .arael-panel.arael-panel-processing {
   border-bottom: 1px solid transparent;
 }
 
-.arael-tasks-wrapper[data-expanded="true"] {
+.arael-tasks-wrapper[data-expanded='true'] {
   grid-template-rows: 1fr;
   border-bottom-color: rgba(0, 0, 0, 0.06);
 }
 
-html.dark .arael-tasks-wrapper[data-expanded="true"] {
+html.dark .arael-tasks-wrapper[data-expanded='true'] {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -220,7 +245,8 @@ html.dark .arael-logs-btn:hover {
 }
 
 @keyframes arael-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
@@ -327,7 +353,9 @@ html.dark .arael-task-item:hover {
 }
 
 @keyframes arael-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .arael-icon-waiting {
@@ -438,7 +466,9 @@ html.dark .arael-task-message {
   color: var(--text-muted, #9ca3af);
   cursor: pointer;
   opacity: 0.6;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
 }
 
 .arael-task-close:hover {
@@ -571,7 +601,7 @@ html.dark .arael-history-dot.active {
   transition: grid-template-rows 0.2s ease;
 }
 
-.arael-task-details-wrapper[data-expanded="true"] {
+.arael-task-details-wrapper[data-expanded='true'] {
   grid-template-rows: 1fr;
 }
 
@@ -580,7 +610,7 @@ html.dark .arael-history-dot.active {
   overflow: hidden;
 }
 
-.arael-task-details-wrapper[data-expanded="true"] .arael-task-details {
+.arael-task-details-wrapper[data-expanded='true'] .arael-task-details {
   padding: 0 12px 12px;
 }
 
@@ -634,7 +664,8 @@ html.dark .arael-task-progress-bar {
 
 /* 步骤标记的简单呼吸动画（只有透明度变化） */
 @keyframes arael-pulse-simple {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -1063,7 +1094,8 @@ html.dark .arael-preset-capsule {
 }
 
 @keyframes arael-recording-pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
   }
@@ -1161,7 +1193,7 @@ html.dark .arael-logs-toggle:hover {
   transition: grid-template-rows 0.2s ease;
 }
 
-.arael-logs-wrapper[data-expanded="true"] {
+.arael-logs-wrapper[data-expanded='true'] {
   grid-template-rows: 1fr;
 }
 
@@ -1396,13 +1428,14 @@ html.dark .arael-log-data pre {
   background:
     linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)) padding-box,
     conic-gradient(
-      from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
-      var(--color-primary, #10b981),
-      var(--color-secondary, #34d399),
-      var(--color-accent, #f59e0b),
-      var(--color-light, #feca57),
-      var(--color-primary, #10b981)
-    ) border-box;
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        var(--color-primary, #10b981),
+        var(--color-secondary, #34d399),
+        var(--color-accent, #f59e0b),
+        var(--color-light, #feca57),
+        var(--color-primary, #10b981)
+      )
+      border-box;
   border: 1px solid transparent;
   border-radius: 16px;
   box-shadow:
@@ -1427,13 +1460,14 @@ html.dark .arael-favorite-capsule {
   background:
     linear-gradient(rgba(24, 24, 27, 0.92), rgba(24, 24, 27, 0.92)) padding-box,
     conic-gradient(
-      from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
-      var(--color-primary, #10b981),
-      var(--color-secondary, #34d399),
-      var(--color-accent, #f59e0b),
-      var(--color-light, #feca57),
-      var(--color-primary, #10b981)
-    ) border-box;
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        var(--color-primary, #10b981),
+        var(--color-secondary, #34d399),
+        var(--color-accent, #f59e0b),
+        var(--color-light, #feca57),
+        var(--color-primary, #10b981)
+      )
+      border-box;
   color: #d1d5db;
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.3),

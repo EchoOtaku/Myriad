@@ -747,35 +747,43 @@ function extractClassNames(source: string): Set<string> {
 
   // 1. 匹配 HTML class="..." 或 class='...'
   const htmlClassRegex = /class=["']([^"']+)["']/g
-  let match
-  while ((match = htmlClassRegex.exec(source)) !== null) {
+  let match = htmlClassRegex.exec(source)
+  while (match !== null) {
     addClasses(match[1])
+    match = htmlClassRegex.exec(source)
   }
 
   // 2. 匹配 JS .className = '...' 或 .className = "..."（赋值或拼接）
   const classNameAssignRegex = /\.className\s*\+?=\s*["'`]([^"'`]+)["'`]/g
-  while ((match = classNameAssignRegex.exec(source)) !== null) {
+  match = classNameAssignRegex.exec(source)
+  while (match !== null) {
     addClasses(match[1])
+    match = classNameAssignRegex.exec(source)
   }
 
   // 3. 匹配 JS classList.add('...') / classList.remove('...') / classList.toggle('...')
   const classListRegex = /classList\.(add|remove|toggle|contains)\s*\(\s*["'`]([^"'`]+)["'`]/g
-  while ((match = classListRegex.exec(source)) !== null) {
+  match = classListRegex.exec(source)
+  while (match !== null) {
     addClasses(match[2])
+    match = classListRegex.exec(source)
   }
 
   // 4. 匹配三元表达式中的类名字符串
   // 例如: (role === 'user' ? 'flex-row-reverse msg-user-enter' : 'msg-ai-enter')
   const ternaryClassRegex = /\?\s*["'`]([^"'`]+)["'`]\s*:\s*["'`]([^"'`]*)["'`]/g
-  while ((match = ternaryClassRegex.exec(source)) !== null) {
+  match = ternaryClassRegex.exec(source)
+  while (match !== null) {
     addClasses(match[1])
     addClasses(match[2])
+    match = ternaryClassRegex.exec(source)
   }
 
   // 5. 匹配所有看起来像 Tailwind 类的字符串
   // 这是一个宽松的匹配，用于捕获各种场景下的类名
   const looseClassRegex = /["'`]([-\w:/[\].!]+(?:\s+[-\w:/[\].!]+)*)["'`]/g
-  while ((match = looseClassRegex.exec(source)) !== null) {
+  match = looseClassRegex.exec(source)
+  while (match !== null) {
     const value = match[1]
     // 只添加看起来像 Tailwind 类的内容
     if (value.match(/^[-\w:/[\].!\s]+$/)
@@ -784,6 +792,7 @@ function extractClassNames(source: string): Set<string> {
       && value.length < 200) {
       addClasses(value)
     }
+    match = looseClassRegex.exec(source)
   }
 
   return classes
@@ -1493,7 +1502,7 @@ export function generateThemeCSS(isDark: boolean, primaryColor: string): string 
   /* 壁纸主色（从系统传入） */
   --tapp-primary: ${primaryColor};
   --tapp-primary-rgb: ${primaryRgb};
-  
+
   /* 缩放因子（由容器动态更新） */
   --tapp-scale: 1;
   --tapp-font-scale: 1;

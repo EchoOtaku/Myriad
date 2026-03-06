@@ -206,7 +206,7 @@ function cleanUrl(url: string): string {
  */
 function removeDangerousTags(html: string): string {
   const tagPattern = DANGEROUS_TAGS.join('|')
-  const regex = new RegExp(`<(${tagPattern})[^>]*>([\\s\\S]*?)<\\/\\1>|<(${tagPattern})[^>]*\\/?>`, 'gi')
+  const regex = new RegExp(`<(${tagPattern})[^>]*>([\\s\\S]*?)<\\/\\1>|<(${tagPattern})[^>]*>`, 'gi')
   return html.replace(regex, '')
 }
 
@@ -362,7 +362,7 @@ function processAudio(html: string): string {
 /**
  * 处理 iframe 嵌入
  */
-function processIframes(html: string): string {
+function _processIframes(html: string): string {
   return html.replace(/<iframe([^>]*)>/gi, (match, attrs) => {
     // 提取 src
     const srcMatch = attrs.match(/src\s*=\s*["']([^"']+)["']/i)
@@ -626,7 +626,7 @@ function processAbbr(html: string, isDark: boolean): string {
 function processHr(html: string, isDark: boolean): string {
   const bgClass = isDark ? 'bg-white/10' : 'bg-black/10'
 
-  return html.replace(/<hr([^>]*)\/?>/gi, (match, attrs) => {
+  return html.replace(/<hr([^>]*)>/gi, (match, attrs) => {
     return `<hr${attrs} class="rss-content-hr border-0 h-px ${bgClass} my-8">`
   })
 }
@@ -724,7 +724,7 @@ function fixMalformedHtml(html: string): string {
 
     // 处理 img 标签（可能粘连）
     // 例如: <br/>img src=... referrerpolicy=no-referrer<br/>
-    result = result.replace(/(?<![</a-z])img\s+(src=[^\s<>]*(?:\s+[a-z]+=(?:"[^"]*"|[^\s<>]*))*)/gi, '<img $1/>')
+    result = result.replace(/(?<![</a-z])img\s+(src=[^\s<>]*(?:\s+[a-z]+=(?:"[^"]*"|[^\s<>"]*))*)/gi, '<img $1/>')
 
     // 清理剩余的标记
     result = result.replace(/~CLOSE_IFRAME~/g, '</iframe>')
@@ -768,7 +768,7 @@ function fixMalformedHtml(html: string): string {
 /**
  * 清理多余的空白和换行
  */
-function normalizeWhitespace(html: string): string {
+function _normalizeWhitespace(html: string): string {
   // 移除标签之间的多余换行
   let result = html.replace(/>\s+</g, '> <')
 
@@ -807,7 +807,7 @@ function processRssHubSpecific(html: string): string {
  * 处理特定来源的内容格式
  * 针对不同 RSS 源的特殊处理
  */
-function processSourceSpecific(html: string, options: ProcessOptions): string {
+function processSourceSpecific(html: string, _options: ProcessOptions): string {
   let result = html
 
   // 移除微信文章的头像等干扰元素
@@ -975,12 +975,13 @@ export function countWords(html: string): number {
 export function extractImageUrls(html: string): string[] {
   const imgPattern = /<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*>/gi
   const urls: string[] = []
-  let match
+  let match = imgPattern.exec(html)
 
-  while ((match = imgPattern.exec(html)) !== null) {
+  while (match !== null) {
     if (match[1] && !match[1].startsWith('data:')) {
       urls.push(match[1])
     }
+    match = imgPattern.exec(html)
   }
 
   return urls
@@ -1015,10 +1016,10 @@ export function extractCoverImage(html: string): string | null {
 export function extractHeadings(html: string): Array<{ level: number, text: string, id: string }> {
   const headingPattern = /<h([1-6])([^>]*)>([^<]*(?:<[^/h][^>]*>[^<]*)*)<\/h\1>/gi
   const headings: Array<{ level: number, text: string, id: string }> = []
-  let match
+  let match = headingPattern.exec(html)
   let index = 0
 
-  while ((match = headingPattern.exec(html)) !== null) {
+  while (match !== null) {
     const level = Number.parseInt(match[1])
     const text = extractPlainText(match[3]).trim()
 
@@ -1027,6 +1028,7 @@ export function extractHeadings(html: string): Array<{ level: number, text: stri
       headings.push({ level, text, id })
       index++
     }
+    match = headingPattern.exec(html)
   }
 
   return headings

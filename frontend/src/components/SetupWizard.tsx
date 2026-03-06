@@ -95,7 +95,7 @@ const SetupWizard: React.FC = () => {
       setDbConfigured(healthData.database_connected)
       setAdminCreated(data.has_admin_user)
     }
-    catch (err) {
+    catch (_err) {
       setError(t.setup.connectionFailedDesc)
     }
     finally {
@@ -172,7 +172,7 @@ const SetupWizard: React.FC = () => {
           }
         }
       }
-      catch (err) {
+      catch (_err) {
         // 轮询检查失败，继续尝试
       }
 

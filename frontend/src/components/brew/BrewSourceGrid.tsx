@@ -16,24 +16,23 @@
  */
 
 import type { BrewSource, CardSize, SourceType } from '../../types/brew'
+
 import type { SortMode } from './manager/ControlIsland'
 import {
   LuRss as Rss,
   LuSearch as Search,
 } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
 
+import { useI18n } from '../../contexts/I18nContext'
 import * as brewApi from '../../services/brewApi'
 // 卡片组件
 import { SourceCard } from './cards'
-
 // 共享常量
 import {
   PRESET_CATEGORY_DB_VALUES,
 } from './constants'
 import ControlIsland from './manager/ControlIsland'
-
 // 管理组件
 import EditModal from './manager/EditModal'
 
@@ -244,7 +243,7 @@ export default function BrewSourceGrid({
           return indexA - indexB
         })
 
-      case 'category':
+      case 'category': {
         // 按分类排序（同分类内按名称排序）
         // 预置分类（友情链接、我）在排序时被忽略，取主分类进行排序
         const getMainCategory = (cat: string | null): string => {
@@ -263,6 +262,7 @@ export default function BrewSourceGrid({
           }
           return a.name.localeCompare(b.name, 'zh-CN')
         })
+      }
 
       case 'random':
         // 随机排序（使用种子确保同一会话内稳定）
@@ -544,7 +544,7 @@ export default function BrewSourceGrid({
   }, [filteredSources, onRefreshSource])
 
   // 全部订阅标记已读
-  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false)
+  const [_isMarkingAllRead, setIsMarkingAllRead] = useState(false)
   const handleMarkAllSourcesRead = useCallback(async () => {
     if (!isAuthenticated)
       return
@@ -597,7 +597,7 @@ export default function BrewSourceGrid({
   }, [isEditMode, sources])
 
   // 尺寸对应的 row-span 高度（与 SourceCard 中一致）
-  const SIZE_TO_ROWS: Record<CardSize, number> = {
+  const _SIZE_TO_ROWS: Record<CardSize, number> = {
     full: 8, // 8 × 24px = 192px
     mini: 4, // 4 × 24px = 96px
     tiny: 2, // 2 × 24px = 48px

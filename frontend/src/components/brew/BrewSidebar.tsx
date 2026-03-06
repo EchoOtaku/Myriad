@@ -66,7 +66,7 @@ export default memo(({
   const [contextMenu, setContextMenu] = useState<{ sourceId: number, x: number, y: number } | null>(null)
 
   // 获取分类列表 - 支持多分类（逗号分隔）- useMemo 缓存
-  const categories = useMemo(() => [...new Set(
+  const _categories = useMemo(() => [...new Set(
     sources
       .filter(s => s.category)
       .flatMap(s => s.category!.split(',').map(c => c.trim()).filter(Boolean)),

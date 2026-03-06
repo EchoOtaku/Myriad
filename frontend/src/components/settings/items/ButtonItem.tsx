@@ -24,7 +24,7 @@ export interface ButtonItemProps extends Omit<ButtonSettingConfig, 'type'> {
 }
 
 export const ButtonItem = React.memo<ButtonItemProps>(({
-  itemKey,
+  _itemKey,
   label,
   description,
   hint,

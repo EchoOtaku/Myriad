@@ -219,7 +219,7 @@ export function resetGeoCache(): void {
       }
     })
   }
-  catch (error) {
+  catch (_error) {
     // localStorage 操作失败，静默处理
   }
 
@@ -286,7 +286,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
       }
     }
   }
-  catch (error) {
+  catch (_error) {
     // 静默失败，尝试下一个服务
   }
 
@@ -311,7 +311,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
       }
     }
   }
-  catch (error) {
+  catch (_error) {
     // 静默失败，尝试下一个服务
   }
 
@@ -340,7 +340,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
       }
     }
   }
-  catch (error) {
+  catch (_error) {
     // 静默失败
   }
 
@@ -371,7 +371,7 @@ export async function getGeoLocationWithLocalCache(clientIdentifier: string): Pr
       }
     }
   }
-  catch (error) {
+  catch (_error) {
     // localStorage 读取失败，继续获取新数据
   }
 
@@ -384,7 +384,7 @@ export async function getGeoLocationWithLocalCache(clientIdentifier: string): Pr
       localStorage.setItem(cacheKey, JSON.stringify(location))
       localStorage.setItem(cacheTimeKey, Date.now().toString())
     }
-    catch (error) {
+    catch (_error) {
       // localStorage 写入失败，静默处理
     }
   }
@@ -433,7 +433,7 @@ export async function getBrowserGeolocation(): Promise<GeoLocationData | null> {
           || '当前位置'
       }
     }
-    catch (e) {
+    catch (_e) {
       // 反向地理编码失败，使用默认城市名
     }
 
@@ -443,7 +443,7 @@ export async function getBrowserGeolocation(): Promise<GeoLocationData | null> {
       city,
     }
   }
-  catch (error) {
+  catch (_error) {
     // 浏览器 API 失败（可能用户拒绝授权）
     return null
   }

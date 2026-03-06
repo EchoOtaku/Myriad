@@ -54,7 +54,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   )
   const [newCategory, setNewCategory] = useState('')
   const [updateInterval, setUpdateInterval] = useState(source.update_interval)
-  const [enabled, setEnabled] = useState(source.enabled)
+  const [enabled, _setEnabled] = useState(source.enabled)
   const [customIcon, setCustomIcon] = useState<string | null>(null)
   const [iconPreview, setIconPreview] = useState<string | null>(source.icon)
   const [saving, setSaving] = useState(false)
@@ -63,7 +63,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   const [showIntervalDropdown, setShowIntervalDropdown] = useState(false)
   const [isEditingInfo, setIsEditingInfo] = useState(false) // 名称/分类编辑模式
   const [themeColor, setThemeColor] = useState<string>(source.theme_color || '#f97316')
-  const [sourceType, setSourceType] = useState<SourceType>(source.source_type || 'rss')
+  const [sourceType, _setSourceType] = useState<SourceType>(source.source_type || 'rss')
   // AI 风格标签状态
   const [styleTags, setStyleTags] = useState<string[]>(source.ai_style_tags || [])
   const [generatingTags, setGeneratingTags] = useState(false)
@@ -153,7 +153,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
     setThemeColor('')
   }
 
-  const handleRestoreIcon = () => {
+  const _handleRestoreIcon = () => {
     setCustomIcon(null)
     setIconPreview(source.icon)
     // 恢复原始图标时恢复原始主题色

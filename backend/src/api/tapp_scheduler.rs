@@ -282,7 +282,7 @@ pub async fn register_task(
 }
 
 /// 删除定时任务
-/// DELETE /api/tapp/scheduler/:tapp_id/tasks/:task_id
+/// DELETE /api/tapp/scheduler/{tapp_id}/tasks/{task_id}
 pub async fn unregister_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -339,7 +339,7 @@ pub async fn list_tasks(
 }
 
 /// 获取 Tapp 的任务列表
-/// GET /api/tapp/scheduler/:tapp_id/tasks
+/// GET /api/tapp/scheduler/{tapp_id}/tasks
 pub async fn list_tapp_tasks(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -370,7 +370,7 @@ pub async fn list_tapp_tasks(
 }
 
 /// 获取单个任务
-/// GET /api/tapp/scheduler/:tapp_id/tasks/:task_id
+/// GET /api/tapp/scheduler/{tapp_id}/tasks/{task_id}
 pub async fn get_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -403,7 +403,7 @@ pub async fn get_task(
 }
 
 /// 启用任务
-/// POST /api/tapp/scheduler/:tapp_id/tasks/:task_id/enable
+/// POST /api/tapp/scheduler/{tapp_id}/tasks/{task_id}/enable
 pub async fn enable_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -430,7 +430,7 @@ pub async fn enable_task(
 }
 
 /// 禁用任务
-/// POST /api/tapp/scheduler/:tapp_id/tasks/:task_id/disable
+/// POST /api/tapp/scheduler/{tapp_id}/tasks/{task_id}/disable
 pub async fn disable_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -457,7 +457,7 @@ pub async fn disable_task(
 }
 
 /// 手动触发任务
-/// POST /api/tapp/scheduler/:tapp_id/tasks/:task_id/trigger
+/// POST /api/tapp/scheduler/{tapp_id}/tasks/{task_id}/trigger
 pub async fn trigger_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,

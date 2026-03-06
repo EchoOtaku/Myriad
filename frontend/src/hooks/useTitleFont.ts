@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { API_URL } from '../config'
 
 // ==================== 类型定义 ====================
@@ -291,7 +292,7 @@ async function initGlobalState(): Promise<void> {
 
       if (data.title_font_size != null) {
         const fontSize = Number(data.title_font_size)
-        if (!isNaN(fontSize) && sizeMap.has(fontSize)) {
+        if (!Number.isNaN(fontSize) && sizeMap.has(fontSize)) {
           updates.fontSize = fontSize
         }
       }

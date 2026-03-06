@@ -110,7 +110,7 @@ export function useBrewKeyboard({
   }, [getCurrentIndex, items, onSelectItem])
 
   // 切换阅读器
-  const toggleReader = useCallback(() => {
+  const _toggleReader = useCallback(() => {
     if (selectedItem) {
       // 如果已有选中项，关闭阅读器
       onCloseReader?.()

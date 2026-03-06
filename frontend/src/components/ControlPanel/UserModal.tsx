@@ -135,7 +135,7 @@ export const UserModal: React.FC<UserModalProps> = ({
         setPasswordError(result.message || result.error || t.common.error)
       }
     }
-    catch (error) {
+    catch (_error) {
       setPasswordError(t.userModal.networkError)
     }
     finally {

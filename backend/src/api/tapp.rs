@@ -13,7 +13,7 @@
 /// 10. 组件注册（components/*）
 /// 11. 快捷键注册（shortcuts/*）
 /// 12. 事件总线（events/*）
-/// 13. Tapp API 声明系统（api/:name）
+/// 13. Tapp API 声明系统（api/{name}）
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -2555,7 +2555,7 @@ pub struct ListReportsQuery {
 }
 
 /// 获取 Tapp 报告列表
-/// GET /api/tapp/reports/tapp/:tapp_id
+/// GET /api/tapp/reports/tapp/{tapp_id}
 pub async fn list_tapp_reports(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -2622,7 +2622,7 @@ pub async fn list_tapp_reports(
 }
 
 /// 获取报告详情
-/// GET /api/tapp/reports/:tapp_id/:report_id
+/// GET /api/tapp/reports/{tapp_id}/{report_id}
 pub async fn get_tapp_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -2671,7 +2671,7 @@ pub async fn get_tapp_report(
 }
 
 /// 更新报告
-/// PUT /api/tapp/reports/:tapp_id/:report_id
+/// PUT /api/tapp/reports/{tapp_id}/{report_id}
 pub async fn update_tapp_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -2747,7 +2747,7 @@ pub async fn update_tapp_report(
 }
 
 /// 删除报告
-/// DELETE /api/tapp/reports/:tapp_id/:report_id
+/// DELETE /api/tapp/reports/{tapp_id}/{report_id}
 pub async fn delete_tapp_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -3041,7 +3041,7 @@ pub async fn register_component(
 }
 
 /// 注销组件
-/// DELETE /api/tapp/components/:tapp_id/:component_type/:component_id
+/// DELETE /api/tapp/components/{tapp_id}/{component_type}/{component_id}
 pub async fn unregister_component(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -3097,7 +3097,7 @@ pub async fn unregister_component(
 }
 
 /// 列出已注册的组件
-/// GET /api/tapp/components/:tapp_id
+/// GET /api/tapp/components/{tapp_id}
 pub async fn list_components(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -3150,7 +3150,7 @@ pub async fn list_components(
 }
 
 /// 列出所有 Tapp 的指定类型组件
-/// GET /api/tapp/components/all/:component_type
+/// GET /api/tapp/components/all/{component_type}
 pub async fn list_all_components_by_type(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -3335,7 +3335,7 @@ pub async fn register_shortcut(
 }
 
 /// 注销快捷键
-/// DELETE /api/tapp/shortcuts/:tapp_id/:shortcut_id
+/// DELETE /api/tapp/shortcuts/{tapp_id}/{shortcut_id}
 pub async fn unregister_shortcut(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -3539,7 +3539,7 @@ pub async fn publish_event(
 }
 
 /// 获取事件订阅状态
-/// GET /api/tapp/events/subscriptions/:tapp_id
+/// GET /api/tapp/events/subscriptions/{tapp_id}
 pub async fn get_event_subscriptions(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -3584,7 +3584,7 @@ pub async fn get_event_subscriptions(
 }
 
 /// 更新事件订阅
-/// PUT /api/tapp/events/subscriptions/:tapp_id
+/// PUT /api/tapp/events/subscriptions/{tapp_id}
 #[derive(Debug, Deserialize)]
 pub struct UpdateSubscriptionsRequest {
     pub subscriptions: Vec<String>, // 事件类型列表
@@ -3733,7 +3733,7 @@ pub async fn reset_tapp_metrics(
 }
 
 /// 获取用户的速率限制状态
-/// GET /api/tapp/rate-limit/:tapp_id
+/// GET /api/tapp/rate-limit/{tapp_id}
 pub async fn get_rate_limit_status(
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
@@ -3807,7 +3807,7 @@ pub struct TappApiCallRequest {
 }
 
 /// 执行 Tapp 声明的 API
-/// POST /api/tapp/:tapp_id/api/:api_name
+/// POST /api/tapp/{tapp_id}/api/{api_name}
 ///
 /// 支持两种访问级别：
 /// - public: 所有用户（包括游客）可调用
@@ -3932,7 +3932,7 @@ pub async fn execute_tapp_api(
 }
 
 /// 列出 Tapp 可用的 API
-/// GET /api/tapp/:tapp_id/apis
+/// GET /api/tapp/{tapp_id}/apis
 pub async fn list_tapp_apis(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,

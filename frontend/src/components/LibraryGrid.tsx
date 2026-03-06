@@ -328,7 +328,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     // y 从 0 开始无限增长，x 从 0 到 columns-1
     let y = 0
     while (placedCount < totalItems) {
-      const rowHasEmpty = false
+      const _rowHasEmpty = false
 
       for (let x = 0; x < layoutColumns; x++) {
         if (isOccupied(x, y))

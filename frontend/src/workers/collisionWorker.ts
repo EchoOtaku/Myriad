@@ -152,8 +152,8 @@ function batchCheckCollisions(
     position: { x: number, y: number }
     size: { w: number, h: number }
   }>,
-  gridWidth: number,
-  gridHeight: number,
+  _gridWidth: number,
+  _gridHeight: number,
 ): { collisions: Array<{ id1: string, id2: string }> } {
   const collisions: Array<{ id1: string, id2: string }> = []
 
@@ -169,7 +169,7 @@ function batchCheckCollisions(
 }
 
 // Worker 消息处理
-self.onmessage = (e: MessageEvent<WorkerMessage>) => {
+globalThis.onmessage = (e: MessageEvent<WorkerMessage>) => {
   const { type, payload } = e.data
 
   switch (type) {
@@ -182,7 +182,7 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         gridHeight,
         excludeId,
       )
-      self.postMessage({
+      globalThis.postMessage({
         type: 'collisionResult',
         payload: {
           widgetId,
@@ -201,7 +201,7 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         gridHeight,
         preferredPosition,
       )
-      self.postMessage({
+      globalThis.postMessage({
         type: 'positionResult',
         payload: { position },
       })
@@ -211,7 +211,7 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
     case 'batchCheckCollisions': {
       const { widgets, gridWidth, gridHeight } = payload
       const result = batchCheckCollisions(widgets, gridWidth, gridHeight)
-      self.postMessage({
+      globalThis.postMessage({
         type: 'batchResult',
         payload: result,
       })

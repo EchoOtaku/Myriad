@@ -132,7 +132,7 @@ export function sanitizeUrl(url: string): string {
  */
 export function sanitizeInteger(value: any, min?: number, max?: number): number | null {
   const num = Number.parseInt(value, 10)
-  if (isNaN(num))
+  if (Number.isNaN(num))
     return null
   if (min !== undefined && num < min)
     return null

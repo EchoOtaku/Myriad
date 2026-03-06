@@ -130,7 +130,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
   const { t } = useI18n()
 
   // 接入动画调度器
-  const { canAnimate, delay, onComplete, animConfig, initialStyle, animateStyle } = useBrewCardStagger(index, 'source')
+  const { canAnimate, _delay, onComplete, animConfig, _initialStyle, animateStyle } = useBrewCardStagger(index, 'source')
 
   const enableHover = animConfig.level !== 'none'
 
@@ -213,7 +213,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
   }, [onEdit])
 
   // 处理删除点击
-  const handleDelete = useCallback((e: React.MouseEvent) => {
+  const _handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     onDelete?.()
   }, [onDelete])

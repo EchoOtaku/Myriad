@@ -110,10 +110,10 @@ function installAnimationTracker() {
   // 保存原始函数
   const originalRAF = window.requestAnimationFrame.bind(window)
   const originalCAF = window.cancelAnimationFrame.bind(window)
-  const originalSetInterval = window.setInterval.bind(window)
-  const originalClearInterval = window.clearInterval.bind(window)
-  const originalSetTimeout = window.setTimeout.bind(window)
-  const originalClearTimeout = window.clearTimeout.bind(window);
+  const _originalSetInterval = window.setInterval.bind(window)
+  const _originalClearInterval = window.clearInterval.bind(window)
+  const _originalSetTimeout = window.setTimeout.bind(window)
+  const _originalClearTimeout = window.clearTimeout.bind(window);
 
   // 包装 requestAnimationFrame
   (window as Window).requestAnimationFrame = function (callback: FrameRequestCallback): number {
@@ -280,7 +280,7 @@ const OPTIMIZED_ANIMATIONS = new Set([
 ])
 
 /** 检测动画是否可能造成性能问题 */
-function isExpensiveAnimation(el: Element, style: CSSStyleDeclaration): boolean {
+function _isExpensiveAnimation(el: Element, style: CSSStyleDeclaration): boolean {
   const animationName = style.animationName || ''
   const willChange = style.willChange || ''
   const transform = style.transform || ''

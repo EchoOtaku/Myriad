@@ -388,23 +388,23 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/install-file", post(install_tapp_file))
         .route("/cleanup-temporary", post(cleanup_temporary_tapps))
         .route("/recent", get(get_recent_tapps))
-        .route("/:tapp_id", delete(uninstall_tapp))
-        .route("/:tapp_id/update", post(update_tapp))
-        .route("/:tapp_id/start", post(start_tapp))
-        .route("/:tapp_id/stop", post(stop_tapp))
-        .route("/:tapp_id/widgets", post(register_widget))
-        .route("/:tapp_id/widgets/:widget_id", delete(unregister_widget))
-        .route("/:tapp_id/storage", get(list_storage_keys))
-        .route("/:tapp_id/storage", delete(clear_storage))
-        .route("/:tapp_id/storage/:key", get(get_storage))
-        .route("/:tapp_id/storage/:key", post(set_storage))
-        .route("/:tapp_id/storage/:key", delete(delete_storage))
+        .route("/{tapp_id}", delete(uninstall_tapp))
+        .route("/{tapp_id}/update", post(update_tapp))
+        .route("/{tapp_id}/start", post(start_tapp))
+        .route("/{tapp_id}/stop", post(stop_tapp))
+        .route("/{tapp_id}/widgets", post(register_widget))
+        .route("/{tapp_id}/widgets/{widget_id}", delete(unregister_widget))
+        .route("/{tapp_id}/storage", get(list_storage_keys))
+        .route("/{tapp_id}/storage", delete(clear_storage))
+        .route("/{tapp_id}/storage/{key}", get(get_storage))
+        .route("/{tapp_id}/storage/{key}", post(set_storage))
+        .route("/{tapp_id}/storage/{key}", delete(delete_storage))
         // 更新分离式 CSS（用于商店安装后前端生成）
-        .route("/:tapp_id/separated-css", post(update_separated_css))
+        .route("/{tapp_id}/separated-css", post(update_separated_css))
         // 商店源管理（需要认证，API 内部检查管理员权限）
         .route("/store/sources", post(add_store_source))
-        .route("/store/sources/:source_id", post(update_store_source))
-        .route("/store/sources/:source_id", delete(delete_store_source))
+        .route("/store/sources/{source_id}", post(update_store_source))
+        .route("/store/sources/{source_id}", delete(delete_store_source))
         .route_layer(from_fn_with_state((), |req, next| async {
             auth_middleware(req, next).await
         }));
@@ -414,11 +414,11 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/", get(list_tapps))
         .route("/widgets", get(list_all_widgets))
         .route("/store/sources", get(list_store_sources))
-        .route("/:tapp_id", get(get_tapp))
-        .route("/:tapp_id/code", get(get_tapp_code))
-        .route("/:tapp_id/resources", get(get_tapp_resources))
-        .route("/:tapp_id/export", get(export_tapp))
-        .route("/:tapp_id/widgets", get(list_widgets));
+        .route("/{tapp_id}", get(get_tapp))
+        .route("/{tapp_id}/code", get(get_tapp_code))
+        .route("/{tapp_id}/resources", get(get_tapp_resources))
+        .route("/{tapp_id}/export", get(export_tapp))
+        .route("/{tapp_id}/widgets", get(list_widgets));
 
     // 合并路由
     public_routes.merge(authenticated_routes)

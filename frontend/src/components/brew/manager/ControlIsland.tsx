@@ -277,7 +277,7 @@ export default function ControlIsland({
 }: ControlIslandProps) {
   const { t } = useI18n()
   const animConfig = useBrewAnimationConfig()
-  const enableAnimations = animConfig.level !== 'none'
+  const _enableAnimations = animConfig.level !== 'none'
 
   // 根据模式确定初始状态
   const getInitialMode = (): ControlMode => {
@@ -319,7 +319,7 @@ export default function ControlIsland({
   const [importExportError, setImportExportError] = useState<string | null>(null)
   const [importExportSuccess, setImportExportSuccess] = useState<string | null>(null)
   const [importProgress, setImportProgress] = useState<{ step: string, current: number, total: number } | null>(null)
-  const [exporting, setExporting] = useState(false)
+  const [_exporting, setExporting] = useState(false)
 
   // Refs
   const sortDropdownRef = useRef<HTMLDivElement>(null)
@@ -481,7 +481,7 @@ export default function ControlIsland({
       setImportExportSuccess(t.brew.exportSuccess?.replace('{count}', String(sources.length)) || `已导出 ${sources.length} 个订阅源`)
       setTimeout(() => setImportExportSuccess(null), 3000)
     }
-    catch (err) {
+    catch (_err) {
       setImportExportError(t.brew.errorExportFailed)
     }
     finally {

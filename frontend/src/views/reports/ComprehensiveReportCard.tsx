@@ -71,7 +71,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
   onOpen,
 }) => {
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
   const { t } = useI18n()
 
   // 🆕 使用触发式动画 - 组件挂载时播放一次装饰动画

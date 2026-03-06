@@ -94,19 +94,19 @@ export interface WeatherWidgetProps {
   isPreview?: boolean
 }
 
-export const WeatherWidget = memo(({ config, isEditMode, isPreview }: WeatherWidgetProps) => {
-  const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
+export const WeatherWidget = memo(({ config, _isEditMode, isPreview }: WeatherWidgetProps) => {
+  const { containerRef, _scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
   const { t, locale } = useI18n()
   // framer-motion 动态模块（仅在需要动画时加载）
   const [FM, setFM] = useState<null | { motion: any }>(null)
 
   // 非中文语言时减小标题字体（英文等语言单词较长）
   const isNonChinese = !locale.startsWith('zh')
-  const titleFontScale = isNonChinese ? fontScale * 0.9 : fontScale // 温度等标题减少约6-8px
-  const infoFontScale = isNonChinese ? fontScale * 0.8 : fontScale // 城市等信息减少约4px
+  const _titleFontScale = isNonChinese ? fontScale * 0.9 : fontScale // 温度等标题减少约6-8px
+  const _infoFontScale = isNonChinese ? fontScale * 0.8 : fontScale // 城市等信息减少约4px
 
   // 🆕 使用触发式动画 - 组件挂载时播放一次天气图标动画
   const { isAnimating } = useLoopAnimation({

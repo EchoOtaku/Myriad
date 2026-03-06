@@ -135,7 +135,7 @@ class ConcurrentRequestManager {
    */
   cancelAll(): void {
     // 取消所有活动请求
-    for (const [key, controller] of this.activeRequests) {
+    for (const [_key, controller] of this.activeRequests) {
       controller.abort()
     }
     this.activeRequests.clear()

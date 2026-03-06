@@ -25,6 +25,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+
 import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
 
 // Framer Motion transition 配置常量
@@ -272,7 +273,7 @@ interface RSSHubConfigProps {
 export default function RSSHubConfigComponent({
   initialConfig,
   onConfigChange,
-  isEditMode = false,
+  _isEditMode = false,
   disabled = false,
 }: RSSHubConfigProps) {
   const { t, locale } = useI18n()
@@ -400,7 +401,7 @@ export default function RSSHubConfigComponent({
   // 组件加载时获取实例列表
   useEffect(() => {
     loadInstances()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // 添加实例
   const handleAddInstance = async () => {
@@ -650,7 +651,7 @@ export default function RSSHubConfigComponent({
     setTesting(true)
     setTestResult(null)
     try {
-      const response = await fetch(fullUrl, {
+      const _response = await fetch(fullUrl, {
         method: 'HEAD',
         mode: 'no-cors',
       })

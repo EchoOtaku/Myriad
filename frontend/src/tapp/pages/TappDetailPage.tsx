@@ -204,8 +204,8 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const { t, format } = useI18n()
 
   // 🎬 动画和性能配置
-  const animConfig = useAnimationLevel()
-  const perf = usePerformanceProfile()
+  const _animConfig = useAnimationLevel()
+  const _perf = usePerformanceProfile()
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [loading, setLoading] = useState(true)

@@ -29,10 +29,10 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
   const { t } = useI18n()
   const texts = useMemo(() => data?.danmaku || t.reportsPage.danmakuDefaults, [data?.danmaku, t.reportsPage.danmakuDefaults])
   const anim = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
 
   // 使用触发式循环动画（弹幕核心动画）
-  const { isAnimating } = useLoopAnimation({
+  const { _isAnimating } = useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
     enabled: anim.loop,
   })
@@ -621,7 +621,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
 } }) => {
   const { t } = useI18n()
   const animConfig = useAnimationLevel()
-  const uniqueId = useId()
+  const _uniqueId = useId()
 
   // 使用触发式循环动画（音乐气泡核心动画）
   const { isAnimating } = useLoopAnimation({
@@ -631,7 +631,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
 
   const canAnimate = animConfig.loop && isAnimating
 
-  const color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
+  const _color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords])
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count])
   const playlistCount = useMemo(() => data?.playlist_count || 0, [data?.playlist_count])

@@ -9,7 +9,13 @@
  * - 窗口层级管理（点击置顶）
  */
 
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type {
+  FrontendAction,
+  WindowTarget,
+} from '../../services/agent'
+import type { TappCodeStructure } from '../examples/tapps/types'
+import type { TappNotificationOptions } from '../runtime/sandbox/types'
+import type { TappInstance } from '../types'
 import {
   FaExclamationTriangle,
   FaGripVertical,
@@ -20,34 +26,28 @@ import {
   FaTimes,
   FaTrash,
 } from '@lib/icons'
-import type {
-  FrontendAction,
-  WindowTarget
-} from '../../services/agent'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
+import { useI18n } from '../../contexts/I18nContext'
 // 统一动画调度器
 import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation/core'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 // Agent 服务 - 前端操作处理器
 import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../../services/agent'
-
-import type { TappCodeStructure } from '../examples/tapps/types'
-import { TappIcon } from './TappIcon'
-import type { TappInstance } from '../types'
-import type { TappNotificationOptions } from '../runtime/sandbox/types'
-import { TappPageSandbox } from '../runtime/TappPageSandbox'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
-import { getTappIconStyle } from '../utils/tappColors'
-import { getTappRuntime } from '../runtime'
 // API 配置
 import { getUIConfigDeduped } from '../../utils/requestDedup'
+import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { useAuth } from '../../contexts/AuthContext'
-import { useI18n } from '../../contexts/I18nContext'
+import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { getTappIconStyle } from '../utils/tappColors'
+import { TappIcon } from './TappIcon'
 
 const API_URL = import.meta.env.PUBLIC_API_URL || ''
 
@@ -110,7 +110,7 @@ interface WindowScheme {
 const MIN_WINDOW_SIZE = { width: 320, height: 240 }
 
 /** 窗口头部高度 */
-const WINDOW_HEADER_HEIGHT = 40
+const _WINDOW_HEADER_HEIGHT = 40
 
 /**
  * 生成唯一窗口ID
@@ -338,7 +338,6 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
       document.removeEventListener('touchcancel', handleEnd)
     }
   // 注意：onMove, onResize, window.windowId 通过闭包捕获，不加入依赖以避免不必要的重新绑定
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDragging, isResizing, resizeDirection, containerBounds])
 
   // 计算窗口样式 - 使用 transform 进行 GPU 加速
@@ -517,18 +516,18 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
               )
             : window.tapp && window.code
               ? (
-          <div
-            data-window-id={window.windowId}
-            data-tapp-id={window.tappId}
-            className="absolute inset-0"
-          >
+                  <div
+                    data-window-id={window.windowId}
+                    data-tapp-id={window.tappId}
+                    className="absolute inset-0"
+                  >
                     <TappPageSandbox
                       tappInstance={window.tapp}
                       code={window.code}
                       onError={err => console.error('[TappWindow] Error:', err)}
                       onNotification={onNotification}
                     />
-          </div>
+                  </div>
                 )
               : null}
       </div>
@@ -690,7 +689,6 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     if (initialTappId && windows.length === 0) {
       openTappWindow(initialTappId)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTappId])
 
   // 打开新的 Tapp 窗口
@@ -876,13 +874,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                 if (targetWindow) {
                   // 通过 data-window-id 找到包装容器，然后获取内部的 iframe
                   const container = document.querySelector(
-                    `[data-window-id="${windowId}"]`
+                    `[data-window-id="${windowId}"]`,
                   )
                   const iframe = container?.querySelector('iframe') as HTMLIFrameElement
                   if (iframe?.contentWindow) {
                     iframe.contentWindow.postMessage({
                       type: 'AGENT_FILL_DATA',
-                      data: data,
+                      data,
                     }, '*')
                     return true
                   }
@@ -900,7 +898,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               const windowId = resolveWindowTarget(target)
               if (windowId) {
                 const container = document.querySelector(
-                  `[data-window-id="${windowId}"]`
+                  `[data-window-id="${windowId}"]`,
                 )
                 const iframe = container?.querySelector('iframe') as HTMLIFrameElement
                 if (iframe?.contentWindow) {
@@ -920,7 +918,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             console.warn('Unknown agent action:', action.type)
             return false
         }
-      } catch (error) {
+      }
+      catch (error) {
         console.error('Failed to execute agent action:', error)
         return false
       }

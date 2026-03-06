@@ -24,7 +24,7 @@ export interface QuoteWidgetProps {
   isPreview?: boolean
 }
 
-export const QuoteWidget = memo(({ config, isEditMode, isPreview }: QuoteWidgetProps) => {
+export const QuoteWidget = memo(({ config, _isEditMode, isPreview }: QuoteWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const anim = useAnimationLevel()
   const { t } = useI18n()

@@ -57,7 +57,7 @@ function calculateDelay(
 /**
  * 默认的错误重试判断
  */
-function defaultShouldRetry(error: Error, attempt: number): boolean {
+function defaultShouldRetry(error: Error, _attempt: number): boolean {
   // 网络错误总是重试
   if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
     return true

@@ -55,21 +55,21 @@ fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::R
 pub fn create_brewlia_routes() -> Router<DatabaseConnection> {
     Router::new()
         // 获取文章注释（优先从数据库，不存在则生成）
-        .route("/items/:item_id/annotations", get(get_annotations))
+        .route("/items/{item_id}/annotations", get(get_annotations))
         // 重新生成注释
         .route(
-            "/items/:item_id/annotations/regenerate",
+            "/items/{item_id}/annotations/regenerate",
             post(regenerate_annotations),
         )
         // AI 播客：生成对话式文稿
-        .route("/items/:item_id/podcast", get(get_podcast_script))
+        .route("/items/{item_id}/podcast", get(get_podcast_script))
         // AI 播客：强制重新生成
         .route(
-            "/items/:item_id/podcast/regenerate",
+            "/items/{item_id}/podcast/regenerate",
             post(regenerate_podcast_script),
         )
         // AI 风格标签：为订阅源生成风格标签
-        .route("/sources/:source_id/style-tags", post(generate_style_tags))
+        .route("/sources/{source_id}/style-tags", post(generate_style_tags))
 }
 
 // ==================== 注释类型 ====================

@@ -1,9 +1,9 @@
-import { defineConfig } from 'astro/config'
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
-import react from '@astrojs/react'
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import react from '@astrojs/react'
 import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'astro/config'
 // rollup-plugin-visualizer 与 Vite 7 (Rolldown) 不兼容，仅在构建时按需加载
 // import { visualizer } from 'rollup-plugin-visualizer'
 
@@ -83,6 +83,7 @@ export default defineConfig({
       minify: 'terser',
       terserOptions: {
         compress: {
+          // eslint-disable-next-line node/prefer-global/process
           drop_console: process.env.NODE_ENV === 'production',
           drop_debugger: true,
           passes: 2,

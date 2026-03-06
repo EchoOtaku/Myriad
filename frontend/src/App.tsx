@@ -4,6 +4,26 @@
  * 优化: 代码分割 + 预加载 + 性能监控
  */
 
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import React, { lazy, Suspense, useEffect, useState } from 'react'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import CustomScrollbar from './components/CustomScrollbar'
+import RouteLoader from './components/RouteLoader'
+import { AgentGlobalActions } from './contexts/AgentGlobalActions'
+import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
+import { AuthProvider } from './contexts/AuthContext'
+import { I18nProvider } from './contexts/I18nContext'
+
+import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
+import { NavigationProvider } from './contexts/NavigationContext'
+import { NotificationProvider } from './contexts/NotificationContext'
+
+import { PageContentProvider } from './contexts/PageContentContext'
+import { ReadingListProvider } from './contexts/ReadingListContext'
+import { useRouteScheduler } from './hooks/animation'
+import { AppLayout } from './layouts/AppLayout'
+import { recordNavigation } from './router/navigationHistory'
+import { preloadCriticalRoutes } from './utils/codeSplitting'
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
@@ -13,26 +33,6 @@ import './styles/utility.css'
 import './styles/modals.css'
 import './styles/overrides.css'
 import './styles/performance.css'
-
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import React, { Suspense, lazy, useEffect, useState } from 'react'
-
-import { AgentGlobalActions } from './contexts/AgentGlobalActions'
-import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
-import { AppLayout } from './layouts/AppLayout'
-import { AuthProvider } from './contexts/AuthContext'
-import CustomScrollbar from './components/CustomScrollbar'
-import { I18nProvider } from './contexts/I18nContext'
-import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
-import { NavigationProvider } from './contexts/NavigationContext'
-import { NotificationProvider } from './contexts/NotificationContext'
-import { PageContentProvider } from './contexts/PageContentContext'
-import { ReadingListProvider } from './contexts/ReadingListContext'
-import RouteLoader from './components/RouteLoader'
-import { preloadCriticalRoutes } from './utils/codeSplitting'
-import { recordNavigation } from './router/navigationHistory'
-import { useRouteScheduler } from './hooks/animation'
 
 // TappBackgroundRunner 懒加载，避免其错误阻塞主应用
 const TappBackgroundRunner = lazy(() => import('./tapp/components/TappBackgroundRunner')) // 🔧 性能优化 CSS
@@ -53,7 +53,7 @@ const TappRun = lazy(() => import('./views/TappRunView.tsx'))
 const TappDetail = lazy(() => import('./views/TappDetailView.tsx'))
 
 // Arael AI 助手浮动面板
-const AraelPanel = lazy(() => import('./components/agent/AraelPanel'));
+const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
 
 /**
  * 路由守卫：检查认证状态
@@ -284,7 +284,7 @@ function AppRoutes() {
  */
 export function App() {
   console.debug('[App] App component rendering...')
-  const [isLayoutReady, setIsLayoutReady] = useState(false)
+  const [_isLayoutReady, setIsLayoutReady] = useState(false)
 
   // 在 React 应用挂载完成后标记就绪状态
   // 注意：这只是通知基本框架已加载，各个组件会独立控制自己的淡入显示
@@ -324,28 +324,28 @@ export function App() {
               <MusicPlayerProvider>
                 <NavigationProvider>
                   <PageContentProvider>
-                  <ReadingListProvider>
-                  {/* Agent 全局动作处理器 - 处理路由导航和页面元素交互 */}
-                  <AgentGlobalActions />
-                  {/* Arael AI 助手浮动面板 - 长按触发 */}
-                  <Suspense fallback={null}>
-                    <AraelPanel />
-                  </Suspense>
-                  <RouteLoader />
-                  <CustomScrollbar />
-                  <Suspense fallback={null}>
-                    <TappBackgroundRunner />
-                  </Suspense>
-                  <AppLayout>
-                    <AppRoutes />
-                  </AppLayout>
-                  {/* 开发环境下显示合并的性能监控工具 */}
-                  {import.meta.env.DEV && (
-                    <Suspense fallback={null}>
-                      {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
-                    </Suspense>
-                  )}
-                  </ReadingListProvider>
+                    <ReadingListProvider>
+                      {/* Agent 全局动作处理器 - 处理路由导航和页面元素交互 */}
+                      <AgentGlobalActions />
+                      {/* Arael AI 助手浮动面板 - 长按触发 */}
+                      <Suspense fallback={null}>
+                        <AraelPanel />
+                      </Suspense>
+                      <RouteLoader />
+                      <CustomScrollbar />
+                      <Suspense fallback={null}>
+                        <TappBackgroundRunner />
+                      </Suspense>
+                      <AppLayout>
+                        <AppRoutes />
+                      </AppLayout>
+                      {/* 开发环境下显示合并的性能监控工具 */}
+                      {import.meta.env.DEV && (
+                        <Suspense fallback={null}>
+                          {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+                        </Suspense>
+                      )}
+                    </ReadingListProvider>
                   </PageContentProvider>
                 </NavigationProvider>
               </MusicPlayerProvider>

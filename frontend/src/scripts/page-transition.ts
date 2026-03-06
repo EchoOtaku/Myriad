@@ -52,7 +52,7 @@ export async function navigateWithTransition(
       throw new Error('Cross-origin navigation not allowed')
     }
   }
-  catch (error) {
+  catch (_error) {
     throw new Error('Invalid URL format')
   }
 
@@ -91,7 +91,7 @@ export async function navigateWithTransition(
     // 4. 导航到新页面
     window.location.href = url
   }
-  catch (error) {
+  catch (_error) {
     // 隐藏加载器
     loader?.hide(0)
 
@@ -119,7 +119,7 @@ async function preloadPage(url: string): Promise<void> {
       // 静默失败,不影响用户体验
     }
   }
-  catch (error) {
+  catch (_error) {
     // 静默失败,预加载失败不应阻止导航
   }
 }

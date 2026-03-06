@@ -10,7 +10,7 @@ import './SettingItem.css'
 export interface ProviderItemProps<T = string> extends Omit<ProviderSettingConfig<T>, 'type'> {}
 
 function ProviderItemComponent<T extends string = string>({
-  itemKey,
+  _itemKey,
   label,
   description,
   hint,

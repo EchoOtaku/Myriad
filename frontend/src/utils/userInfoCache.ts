@@ -75,7 +75,7 @@ function clearCache(cacheKey: string, cacheTimeKey: string): void {
     localStorage.removeItem(cacheKey)
     localStorage.removeItem(cacheTimeKey)
   }
-  catch (e) {
+  catch (_e) {
     // 忽略错误
   }
 }

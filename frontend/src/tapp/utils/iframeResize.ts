@@ -225,8 +225,8 @@ export function calculateWidgetDimensions(
 ): IframeDimensions {
   // 解析 widget size
   const [cols, rows] = widgetSize.split('x').map(Number)
-  const validCols = isNaN(cols) ? 1 : cols
-  const validRows = isNaN(rows) ? 1 : rows
+  const validCols = Number.isNaN(cols) ? 1 : cols
+  const validRows = Number.isNaN(rows) ? 1 : rows
 
   // 计算期望尺寸
   const expectedWidth = validCols * BASE_CELL_SIZE
@@ -274,8 +274,8 @@ export function calculatePageDimensions(
  */
 export function getIframeStyles(
   mode: 'widget' | 'page',
-  dimensions: IframeDimensions,
-  isPreview?: boolean,
+  _dimensions: IframeDimensions,
+  _isPreview?: boolean,
 ): React.CSSProperties {
   const baseStyles: React.CSSProperties = {
     width: '100%',
@@ -331,10 +331,10 @@ export function getIframeStyles(
 export const IFRAME_RESIZE_SCRIPT = `
 (function() {
   'use strict';
-  
+
   // 读取预设的安全区域值（由框架注入）
   var initialInsets = window._TAPP_INITIAL_SAFE_INSETS || {};
-  
+
   // 使用 Object.create(null) 避免原型链查找
   var dims = Object.create(null);
   dims.width = window.innerWidth;
@@ -348,7 +348,7 @@ export const IFRAME_RESIZE_SCRIPT = `
   dims.safeInsetRight = initialInsets.right || 0;
   dims.safeInsetBottom = initialInsets.bottom || 0;
   dims.safeInsetLeft = initialInsets.left || 0;
-  
+
   // 暴露给 Tapp SDK
   window._TAPP_DIMENSIONS = dims;
 
@@ -371,7 +371,7 @@ export const IFRAME_RESIZE_SCRIPT = `
     var sir = (d.safeInsetRight || 0) + 'px';
     var sib = (d.safeInsetBottom || 0) + 'px';
     var sil = (d.safeInsetLeft || 0) + 'px';
-    
+
     // 仅更新变化的变量
     if (cssCache.w !== w) { cssCache.w = w; rootStyle.setProperty('--tapp-container-width', w); }
     if (cssCache.h !== h) { cssCache.h = h; rootStyle.setProperty('--tapp-container-height', h); }
@@ -385,7 +385,7 @@ export const IFRAME_RESIZE_SCRIPT = `
     if (cssCache.sir !== sir) { cssCache.sir = sir; rootStyle.setProperty('--tapp-safe-inset-right', sir); }
     if (cssCache.sib !== sib) { cssCache.sib = sib; rootStyle.setProperty('--tapp-safe-inset-bottom', sib); }
     if (cssCache.sil !== sil) { cssCache.sil = sil; rootStyle.setProperty('--tapp-safe-inset-left', sil); }
-    
+
     // 使用 classList 批量操作（比 toggle 更快）
     var cl = document.body.classList;
     if (d.isCompact && !cl.contains('tapp-compact')) cl.add('tapp-compact');
@@ -409,7 +409,7 @@ export const IFRAME_RESIZE_SCRIPT = `
   function onMessage(e) {
     var msg = e.data;
     if (!msg || msg.type !== 'event' || msg.action !== 'container:resize') return;
-    
+
     var p = msg.payload;
     dims.width = p.width;
     dims.height = p.height;
@@ -422,11 +422,11 @@ export const IFRAME_RESIZE_SCRIPT = `
     dims.safeInsetRight = p.safeInsetRight || 0;
     dims.safeInsetBottom = p.safeInsetBottom || 0;
     dims.safeInsetLeft = p.safeInsetLeft || 0;
-    
+
     updateCSS(dims);
     queueResizeEvent();
   }
-  
+
   window.addEventListener('message', onMessage, false);
 
   // 备用：监听 iframe resize（节流 100ms）
@@ -442,19 +442,19 @@ export const IFRAME_RESIZE_SCRIPT = `
 
   // 初始化
   updateCSS(dims);
-  
+
   // 通知父窗口就绪
   // 注意：消息格式需要符合 TappBridge 规范，包含 id、type、action 字段
   // action 只能包含字母数字下划线和点号
   if (window.parent !== window) {
-    try { 
-      window.parent.postMessage({ 
+    try {
+      window.parent.postMessage({
         type: 'event',
         id: 'tapp-ready-' + Date.now(),
         action: 'tapp.ready',
         payload: null,
         timestamp: Date.now()
-      }, '*'); 
+      }, '*');
     } catch(e) {}
   }
 })();
@@ -558,7 +558,7 @@ export const IFRAME_RESIZE_CSS = `
   }
 
   /* Widget 模式下不需要分层和安全区域 */
-  .tapp-mode-widget #tapp-root { 
+  .tapp-mode-widget #tapp-root {
     overflow: hidden;
     contain: strict;
   }
@@ -664,7 +664,7 @@ export const IFRAME_RESIZE_CSS = `
   }
 
   /* 动画 - GPU 加速 */
-  .tapp-transition { 
+  .tapp-transition {
     transition: color .15s, background-color .15s, border-color .15s, opacity .15s, transform .15s;
     will-change: transform, opacity;
   }
@@ -682,7 +682,7 @@ export const IFRAME_RESIZE_CSS = `
 @layer tapp-responsive {
   /* 紧凑模式 */
   .tapp-compact .tapp-hide-compact { display: none; }
-  
+
   /* 迷你模式 */
   .tapp-mini .tapp-hide-mini { display: none; }
   .tapp-mini .tapp-hide-compact { display: none; }

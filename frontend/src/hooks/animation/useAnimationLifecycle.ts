@@ -364,7 +364,7 @@ export function useBatchAnimationLifecycle(
     staggerDelay = 50,
     duration = 300,
     autoStart = true,
-    groupId = 'batch',
+    _groupId = 'batch',
   } = options
 
   // 存储每个元素的完成状态

@@ -20,6 +20,7 @@ import type { RegisteredWidget, TappInstance } from '../../tapp/types'
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import { useI18n } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -113,7 +114,7 @@ const TappWidgetPreview = memo(({
     code: TappCodeStructure
     widget: RegisteredWidget
   } | null>(null)
-  const [fallback, setFallback] = useState(false)
+  const [_fallback, setFallback] = useState(false)
 
   // 获取预览信息（用于回退显示）
   const previewInfo = useMemo(() => getTappWidgetPreviewInfo(tappWidgetId), [tappWidgetId])
@@ -572,7 +573,6 @@ export const TappWidgetComponent = memo(({
       primaryColor,
       locale,
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.size, configString, isEditMode, isPreview, locale])
 
   // 启动 Tapp

@@ -33,7 +33,7 @@ const WALLPAPER_CDN_DOMAINS = [
 ]
 
 // 安装 Service Worker
-self.addEventListener('install', (event) => {
+globalThis.addEventListener('install', (event) => {
   console.log('[SW] Installing Service Worker...')
 
   event.waitUntil(
@@ -48,11 +48,11 @@ self.addEventListener('install', (event) => {
   )
 
   // 强制激活新的 Service Worker
-  self.skipWaiting()
+  globalThis.skipWaiting()
 })
 
 // 激活 Service Worker 并清理旧缓存
-self.addEventListener('activate', (event) => {
+globalThis.addEventListener('activate', (event) => {
   console.log('[SW] Activating Service Worker...')
 
   event.waitUntil(
@@ -69,7 +69,7 @@ self.addEventListener('activate', (event) => {
   )
 
   // 立即控制所有客户端
-  return self.clients.claim()
+  return globalThis.clients.claim()
 })
 
 // 限制缓存大小
@@ -117,7 +117,7 @@ async function cacheWithTimestamp(cacheName, request, response) {
 }
 
 // 拦截请求
-self.addEventListener('fetch', (event) => {
+globalThis.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
@@ -128,22 +128,22 @@ self.addEventListener('fetch', (event) => {
 
   // 跳过 blob: URL（由浏览器直接处理）
   if (request.url.startsWith('blob:')) {
-    return;
+    return
   }
 
   // 跳过 blob: URL（由浏览器直接处理）
   if (request.url.startsWith('blob:')) {
-    return;
+    return
   }
 
   // 跳过 blob: URL（由浏览器直接处理）
   if (request.url.startsWith('blob:')) {
-    return;
+    return
   }
 
   // 跳过 blob: URL（由浏览器直接处理）
   if (request.url.startsWith('blob:')) {
-    return;
+    return
   }
 
   // API 请求 - 网络优先策略
@@ -307,9 +307,9 @@ self.addEventListener('fetch', (event) => {
 })
 
 // 消息处理
-self.addEventListener('message', (event) => {
+globalThis.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting()
+    globalThis.skipWaiting()
   }
 
   if (event.data && event.data.type === 'CLEAR_CACHE') {

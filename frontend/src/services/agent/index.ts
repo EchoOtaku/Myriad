@@ -5,93 +5,93 @@
  */
 
 // 导出类型
+// ============ 便捷函数 ============
+
+import type { AgentResponse, ProcessContext, ProgressCallback } from './types'
+
+import { agentService } from './agentApi'
+
+// 导出 API 服务
+export { agentService } from './agentApi'
+
+// 导出前端动作处理器
+export type { FrontendActionHandler } from './frontendActions'
+
+export {
+  clearAllHandlers,
+  executeFrontendAction,
+  getRegisteredActionTypes,
+  hasActionHandler,
+  registerActionHandler,
+  unregisterActionHandler,
+} from './frontendActions'
 export type {
-  // 上下文
-  ProcessContext,
-  ProcessRequest,
-  ClarifyRequest,
-
-  // 任务
-  TaskStatus,
-  TaskInfo,
-  TaskDetail,
-
-  // 澄清
-  ClarificationType,
-  ClarificationPoint,
-
+  AgentResponse,
   // 响应
   AgentResponseType,
-  AgentResponse,
-
-  // SSE 事件
-  TaskCreatedEvent,
-  StepStartedEvent,
-  StepCompletedEvent,
-  ProgressUpdateEvent,
-  TaskCompletedEvent,
-  WaitingForInputEvent,
-  ErrorEvent,
-  ProgressEvent,
-  ProgressCallback,
-
-  // 数据展示
-  ColumnDef,
-  DataDisplayHint,
-
-  // 前端动作
-  FrontendActionType,
-  WindowTarget,
-  PageElementTarget,
-  InteractionCommand,
-  ScrollOptions,
-  WaitCondition,
-  ReadingListPayload,
-  FrontendAction,
-
   // 能力
   Capability,
 
-  // 预设
-  PresetType,
-  TaskPreset,
-  TaskPresetListResponse,
-  CreatePresetRequest,
+  ClarificationPoint,
+  // 澄清
+  ClarificationType,
+  ClarifyRequest,
+
+  // 数据展示
+  ColumnDef,
   ConversationMessage,
 
+  CreatePresetRequest,
+  DataDisplayHint,
+
+  ErrorEvent,
+  FrontendAction,
+  // 前端动作
+  FrontendActionType,
+  InteractionCommand,
+  PageElementTarget,
+  // 预设
+  PresetType,
+  // 上下文
+  ProcessContext,
+  ProcessRequest,
+  ProgressCallback,
+
+  ProgressEvent,
+  ProgressUpdateEvent,
+
+  ReadingListPayload,
+  ScrollOptions,
   // 会话
   SessionInfo,
   SessionMessage,
-} from './types';
+  StepCompletedEvent,
+  StepStartedEvent,
+  TaskCompletedEvent,
+  // SSE 事件
+  TaskCreatedEvent,
 
-// 导出 API 服务
-export { agentService } from './agentApi';
+  TaskDetail,
 
-// 导出前端动作处理器
-export type { FrontendActionHandler } from './frontendActions';
-export {
-  registerActionHandler,
-  unregisterActionHandler,
-  executeFrontendAction,
-  hasActionHandler,
-  getRegisteredActionTypes,
-  clearAllHandlers,
-} from './frontendActions';
+  TaskInfo,
+  TaskPreset,
+  TaskPresetListResponse,
+  // 任务
+  TaskStatus,
+  WaitCondition,
 
-// ============ 便捷函数 ============
-
-import type { AgentResponse, ProcessContext, ProgressCallback } from './types';
-
-import { agentService } from './agentApi';
+  WaitingForInputEvent,
+  WindowTarget,
+} from './types'
 
 /**
  * 快捷处理函数
  */
 export async function ask(
   input: string,
-  context?: Partial<ProcessContext>
+  context?: Partial<ProcessContext>,
 ): Promise<AgentResponse> {
-  return agentService.process(input, context);
+  return agentService.process(input, context)
 }
 
 /**
@@ -99,9 +99,9 @@ export async function ask(
  */
 export async function chat(
   input: string,
-  context?: Partial<ProcessContext>
+  context?: Partial<ProcessContext>,
 ): Promise<AgentResponse> {
-  return agentService.process(input, context);
+  return agentService.process(input, context)
 }
 
 /**
@@ -110,7 +110,7 @@ export async function chat(
 export async function askWithProgress(
   input: string,
   onProgress: ProgressCallback,
-  context?: Partial<ProcessContext>
+  context?: Partial<ProcessContext>,
 ): Promise<AgentResponse> {
-  return agentService.processWithProgress(input, onProgress, context);
+  return agentService.processWithProgress(input, onProgress, context)
 }

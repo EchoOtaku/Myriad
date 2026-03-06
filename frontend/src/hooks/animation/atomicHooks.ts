@@ -258,7 +258,6 @@ export function useIdleEffect(
     const id = `idle-${now()}-${Math.random().toString(36).slice(2, 9)}`
     const cancel = scheduleIdle(id, () => callbackRef.current(), options?.priority)
     return cancel
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 }
 

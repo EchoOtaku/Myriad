@@ -46,9 +46,10 @@ export const SettingItem: React.FC<SettingItemConfig> = (props) => {
       console.warn('SliderItem not implemented yet')
       return null
 
-    default:
+    default: {
       const _exhaustive: never = props
       return null
+    }
   }
 }
 

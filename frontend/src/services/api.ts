@@ -4,23 +4,23 @@
  * 提供统一的 HTTP 请求封装
  */
 
-import { getCSRFToken } from '../utils/csrf';
+import { getCSRFToken } from '../utils/csrf'
 
-const API_BASE = '/api';
+const API_BASE = '/api'
 
 export interface ApiRequestOptions extends RequestInit {
   /** 是否需要认证 */
-  requireAuth?: boolean;
+  requireAuth?: boolean
   /** 超时时间（毫秒） */
-  timeout?: number;
+  timeout?: number
   /** 查询参数 */
-  params?: Record<string, string | number | boolean | undefined>;
+  params?: Record<string, string | number | boolean | undefined>
 }
 
 export interface ApiResponse<T> {
-  data: T;
-  status: number;
-  ok: boolean;
+  data: T
+  status: number
+  ok: boolean
 }
 
 /**
@@ -31,10 +31,10 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public code?: string,
-    public details?: unknown
+    public details?: unknown,
   ) {
-    super(message);
-    this.name = 'ApiError';
+    super(message)
+    this.name = 'ApiError'
   }
 }
 
@@ -42,17 +42,17 @@ export class ApiError extends Error {
  * 构建完整 URL
  */
 function buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined>): string {
-  const url = new URL(`${API_BASE}${endpoint}`, window.location.origin);
+  const url = new URL(`${API_BASE}${endpoint}`, window.location.origin)
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) {
-        url.searchParams.append(key, String(value));
+        url.searchParams.append(key, String(value))
       }
-    });
+    })
   }
 
-  return url.toString();
+  return url.toString()
 }
 
 /**
@@ -60,36 +60,36 @@ function buildUrl(endpoint: string, params?: Record<string, string | number | bo
  */
 async function request<T>(
   endpoint: string,
-  options: ApiRequestOptions = {}
+  options: ApiRequestOptions = {},
 ): Promise<T> {
   const {
-    requireAuth = false,
+    _requireAuth = false,
     timeout = 30000,
     params,
     ...fetchOptions
-  } = options;
+  } = options
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(fetchOptions.headers as Record<string, string>),
-  };
+  }
 
   // 对于状态变更操作添加 CSRF Token
-  const method = fetchOptions.method?.toUpperCase() || 'GET';
-  const needsCSRF = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+  const method = fetchOptions.method?.toUpperCase() || 'GET'
+  const needsCSRF = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
 
   if (needsCSRF) {
-    const csrfToken = await getCSRFToken();
+    const csrfToken = await getCSRFToken()
     if (csrfToken) {
-      headers['X-CSRF-Token'] = csrfToken;
+      headers['X-CSRF-Token'] = csrfToken
     }
   }
 
-  const url = buildUrl(endpoint, params);
+  const url = buildUrl(endpoint, params)
 
   // 创建 AbortController 用于超时控制
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
 
   try {
     const response = await fetch(url, {
@@ -97,50 +97,52 @@ async function request<T>(
       headers,
       credentials: 'include',
       signal: controller.signal,
-    });
+    })
 
-    clearTimeout(timeoutId);
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
-      let errorMessage = `API Error: ${response.status}`;
-      let errorCode: string | undefined;
-      let errorDetails: unknown;
+      let errorMessage = `API Error: ${response.status}`
+      let errorCode: string | undefined
+      let errorDetails: unknown
 
       try {
-        const errorBody = await response.json();
-        errorMessage = errorBody.message || errorBody.error || errorMessage;
-        errorCode = errorBody.code;
-        errorDetails = errorBody.details;
-      } catch {
+        const errorBody = await response.json()
+        errorMessage = errorBody.message || errorBody.error || errorMessage
+        errorCode = errorBody.code
+        errorDetails = errorBody.details
+      }
+      catch {
         // 忽略 JSON 解析错误
       }
 
-      throw new ApiError(errorMessage, response.status, errorCode, errorDetails);
+      throw new ApiError(errorMessage, response.status, errorCode, errorDetails)
     }
 
     // 处理空响应
-    const contentType = response.headers.get('content-type');
+    const contentType = response.headers.get('content-type')
     if (contentType?.includes('application/json')) {
-      return await response.json();
+      return await response.json()
     }
 
-    return {} as T;
-  } catch (error) {
-    clearTimeout(timeoutId);
+    return {} as T
+  }
+  catch (error) {
+    clearTimeout(timeoutId)
 
     if (error instanceof ApiError) {
-      throw error;
+      throw error
     }
 
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError('Request timeout', 408, 'TIMEOUT');
+      throw new ApiError('Request timeout', 408, 'TIMEOUT')
     }
 
     throw new ApiError(
       error instanceof Error ? error.message : 'Unknown error',
       0,
-      'NETWORK_ERROR'
-    );
+      'NETWORK_ERROR',
+    )
   }
 }
 
@@ -152,7 +154,7 @@ export const apiService = {
    * GET 请求
    */
   get<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {
-    return request<T>(endpoint, { ...options, method: 'GET' });
+    return request<T>(endpoint, { ...options, method: 'GET' })
   },
 
   /**
@@ -163,7 +165,7 @@ export const apiService = {
       ...options,
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    })
   },
 
   /**
@@ -174,7 +176,7 @@ export const apiService = {
       ...options,
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    })
   },
 
   /**
@@ -185,15 +187,15 @@ export const apiService = {
       ...options,
       method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    })
   },
 
   /**
    * DELETE 请求
    */
   delete<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {
-    return request<T>(endpoint, { ...options, method: 'DELETE' });
+    return request<T>(endpoint, { ...options, method: 'DELETE' })
   },
-};
+}
 
-export default apiService;
+export default apiService

@@ -274,7 +274,7 @@ function CustomScrollbarInner() {
 
   // 显示/隐藏滚动条 + 滚动状态检测
   useEffect(() => {
-    let lastScrollTime = Date.now()
+    const _lastScrollTime = Date.now()
 
     const handleScroll = () => {
       const now = Date.now()
@@ -416,7 +416,7 @@ function CustomScrollbarInner() {
   }, [isDragging, updateThumb])
 
   // 点击轨道跳转
-  const handleTrackClick = (e: React.MouseEvent) => {
+  const _handleTrackClick = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget)
       return // 只响应轨道点击，不响应thumb点击
 

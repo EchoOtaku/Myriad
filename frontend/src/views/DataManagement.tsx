@@ -72,7 +72,7 @@ export default function DataManagement() {
     getCacheStatus,
     clearPlatformCache,
     submitTask,
-    isSubmitting,
+    _isSubmitting,
   } = useBackgroundTasks()
 
   // 使用 AuthContext 检查管理员权限
@@ -139,7 +139,7 @@ export default function DataManagement() {
         setCacheStatuses(cacheData.caches)
       }
     }
-    catch (error) {
+    catch (_error) {
       setMessage(t.dataManagement.loadStatusFailed)
       setTimeout(() => setMessage(''), 3000)
     }

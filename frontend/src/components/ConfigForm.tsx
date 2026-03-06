@@ -151,7 +151,7 @@ const ModernConfigForm: React.FC = () => {
   const [config, setConfig] = useState<Config | null>(null)
   const [initialConfig, setInitialConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)
-  const [testing, setTesting] = useState<string | null>(null)
+  const [_testing, setTesting] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [activeSection, setActiveSection] = useState<string>('platforms')
   const [platformModalOpen, setPlatformModalOpen] = useState<string | null>(null)
@@ -477,7 +477,7 @@ const ModernConfigForm: React.FC = () => {
           window.location.reload()
         }, 2000)
       }
-      catch (restartError) {
+      catch (_restartError) {
         setMessage(`✓ ${t.config.savedSuccess}`)
         // 即使刷新配置失败，仍然刷新页面以应用数据库中的新配置
         setTimeout(() => {
@@ -596,7 +596,7 @@ const ModernConfigForm: React.FC = () => {
       const event = new CustomEvent('config-loaded', { detail: data })
       window.dispatchEvent(event)
     }
-    catch (error) {
+    catch (_error) {
       setMessage(t.config.loadConfigFailed)
     }
     finally {
@@ -622,7 +622,7 @@ const ModernConfigForm: React.FC = () => {
     }
   }, [handleSave, handleReset])
 
-  const handleTest = React.useCallback(async (platformName: string) => {
+  const _handleTest = React.useCallback(async (platformName: string) => {
     const platform = config?.platforms.find(p => p.name === platformName)
     if (!platform)
       return
@@ -644,7 +644,7 @@ const ModernConfigForm: React.FC = () => {
       setMessage(result.message)
       setTimeout(() => setMessage(''), 5000)
     }
-    catch (error) {
+    catch (_error) {
       setMessage(`✗ ${t.config.testFailed}`)
     }
     finally {
@@ -666,7 +666,7 @@ const ModernConfigForm: React.FC = () => {
         message: result.available ? t.config.speechTestSuccess : (result.error || t.config.speechTestFailed),
       }
     }
-    catch (error) {
+    catch (_error) {
       return {
         success: false,
         message: t.config.speechTestFailed,

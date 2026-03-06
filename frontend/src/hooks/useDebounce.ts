@@ -37,7 +37,6 @@ export function useDebouncedCallback<T extends (...args: any[]) => any>(
 ): T {
   return useCallback(
     debounce(callback, delay) as T,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [delay, ...deps],
   )
 }
@@ -56,7 +55,6 @@ export function useThrottledCallback<T extends (...args: any[]) => any>(
 ): T {
   return useCallback(
     throttle(callback, limit) as T,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [limit, ...deps],
   )
 }

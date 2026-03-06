@@ -1019,10 +1019,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::reports::generate_all_reports)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
-            // Note: /api/reports/latest, /api/reports/comprehensive/list, /api/reports/comprehensive/:id
+            // Note: /api/reports/latest, /api/reports/comprehensive/list, /api/reports/comprehensive/{id}
             // are now registered above with wrappers in the main api_router
             .route(
-                "/api/reports/comprehensive/:id/delete",
+                "/api/reports/comprehensive/{id}/delete",
                 delete(api::reports::delete_comprehensive_report)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
@@ -1067,12 +1067,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tasks/:task_id",
+                "/api/tasks/{task_id}",
                 get(api::tasks::get_task_status)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tasks/platform/:platform",
+                "/api/tasks/platform/{platform}",
                 get(api::tasks::get_platform_task)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1083,12 +1083,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/cache/status/:platform",
+                "/api/cache/status/{platform}",
                 get(api::cache::get_platform_cache_status)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/cache/:platform",
+                "/api/cache/{platform}",
                 delete(api::cache::clear_platform_cache)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
@@ -1124,13 +1124,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             .route(
-                "/api/profile/reports/:id",
+                "/api/profile/reports/{id}",
                 get(api::profile::get_report_by_id)
                     .delete(api::profile::delete_report_by_id)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/profile/reports/:id/cards",
+                "/api/profile/reports/{id}/cards",
                 delete(api::profile::delete_card_from_report)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1160,7 +1160,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(get_comprehensive_reports_list_wrapper),
             )
             .route(
-                "/api/reports/comprehensive/:id",
+                "/api/reports/comprehensive/{id}",
                 get(get_comprehensive_report_by_id_wrapper),
             )
             // ============ Tapp 应用管理 API ============
@@ -1181,17 +1181,17 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // ============ Tapp API ============
             // Platform data API - 🔒 REQUIRE AUTHENTICATION
             .route(
-                "/api/tapp/platform/:platform/data",
+                "/api/tapp/platform/{platform}/data",
                 get(api::tapp::get_platform_data)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/platform/:platform/stats",
+                "/api/tapp/platform/{platform}/stats",
                 get(api::tapp::get_platform_stats)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/platform/:platform/distribution/:dimension",
+                "/api/tapp/platform/{platform}/distribution/{dimension}",
                 get(api::tapp::get_platform_distribution)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1268,12 +1268,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/reports/tapp/:tapp_id",
+                "/api/tapp/reports/tapp/{tapp_id}",
                 get(api::tapp::list_tapp_reports)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/reports/:tapp_id/:report_id",
+                "/api/tapp/reports/{tapp_id}/{report_id}",
                 get(api::tapp::get_tapp_report)
                     .put(api::tapp::update_tapp_report)
                     .delete(api::tapp::delete_tapp_report)
@@ -1297,17 +1297,17 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/components/:tapp_id/:component_type/:component_id",
+                "/api/tapp/components/{tapp_id}/{component_type}/{component_id}",
                 delete(api::tapp::unregister_component)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/components/:tapp_id",
+                "/api/tapp/components/{tapp_id}",
                 get(api::tapp::list_components)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/components/all/:component_type",
+                "/api/tapp/components/all/{component_type}",
                 get(api::tapp::list_all_components_by_type)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1318,7 +1318,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/shortcuts/:tapp_id/:shortcut_id",
+                "/api/tapp/shortcuts/{tapp_id}/{shortcut_id}",
                 delete(api::tapp::unregister_shortcut)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1334,7 +1334,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/events/subscriptions/:tapp_id",
+                "/api/tapp/events/subscriptions/{tapp_id}",
                 get(api::tapp::get_event_subscriptions)
                     .put(api::tapp::update_event_subscriptions)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
@@ -1351,7 +1351,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/rate-limit/:tapp_id",
+                "/api/tapp/rate-limit/{tapp_id}",
                 get(api::tapp::get_rate_limit_status)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1364,28 +1364,28 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/scheduler/:tapp_id/tasks",
+                "/api/tapp/scheduler/{tapp_id}/tasks",
                 get(api::tapp_scheduler::list_tapp_tasks)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/scheduler/:tapp_id/tasks/:task_id",
+                "/api/tapp/scheduler/{tapp_id}/tasks/{task_id}",
                 get(api::tapp_scheduler::get_task)
                     .delete(api::tapp_scheduler::unregister_task)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/scheduler/:tapp_id/tasks/:task_id/enable",
+                "/api/tapp/scheduler/{tapp_id}/tasks/{task_id}/enable",
                 post(api::tapp_scheduler::enable_task)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/scheduler/:tapp_id/tasks/:task_id/disable",
+                "/api/tapp/scheduler/{tapp_id}/tasks/{task_id}/disable",
                 post(api::tapp_scheduler::disable_task)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
-                "/api/tapp/scheduler/:tapp_id/tasks/:task_id/trigger",
+                "/api/tapp/scheduler/{tapp_id}/tasks/{task_id}/trigger",
                 post(api::tapp_scheduler::trigger_task)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
@@ -1397,13 +1397,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // ============ Tapp API 声明系统 ============
             // API Execute - 支持 public 和 protected 两级权限
             .route(
-                "/api/tapp/:tapp_id/api/:api_name",
+                "/api/tapp/{tapp_id}/api/{api_name}",
                 post(api::tapp::execute_tapp_api)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // API List - 列出 Tapp 可用的 API
             .route(
-                "/api/tapp/:tapp_id/apis",
+                "/api/tapp/{tapp_id}/apis",
                 get(api::tapp::list_tapp_apis)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
@@ -1419,45 +1419,45 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/proxy/fetch-content", get(api::proxy::fetch_web_content))
             // Music proxy routes
             .route(
-                "/api/proxy/music/netease/playlist/:id",
+                "/api/proxy/music/netease/playlist/{id}",
                 get(api::proxy::proxy_netease_playlist),
             )
             .route(
-                "/api/proxy/music/netease/lyrics/:id",
+                "/api/proxy/music/netease/lyrics/{id}",
                 get(api::proxy::proxy_netease_lyrics),
             )
             .route(
-                "/api/proxy/music/netease/song/:id",
+                "/api/proxy/music/netease/song/{id}",
                 get(api::proxy::proxy_netease_song),
             )
             .route(
-                "/api/proxy/music/netease/audio/:id",
+                "/api/proxy/music/netease/audio/{id}",
                 get(api::proxy::proxy_netease_audio),
             )
             .route(
-                "/api/proxy/music/qq/playlist/:id",
+                "/api/proxy/music/qq/playlist/{id}",
                 get(api::proxy::proxy_qq_playlist),
             )
             .route(
-                "/api/proxy/music/qq/lyrics/:id",
+                "/api/proxy/music/qq/lyrics/{id}",
                 get(api::proxy::proxy_qq_lyrics),
             )
             // Bilibili API routes
             .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
             .route(
-                "/api/bilibili/user/:uid",
+                "/api/bilibili/user/{uid}",
                 get(api::bilibili::get_bilibili_user_info),
             )
             .route(
-                "/api/bilibili/favorites/:uid",
+                "/api/bilibili/favorites/{uid}",
                 get(api::bilibili::get_bilibili_favorites),
             )
             .route(
-                "/api/bilibili/bangumi/:uid",
+                "/api/bilibili/bangumi/{uid}",
                 get(api::bilibili::get_bilibili_bangumi),
             )
             .route(
-                "/api/bilibili/bangumi/all/:uid",
+                "/api/bilibili/bangumi/all/{uid}",
                 get(api::bilibili::get_all_bilibili_bangumi),
             )
             // Steam API routes
@@ -1465,12 +1465,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/steam/user/info", get(api::steam::get_steam_user_info))
             .route("/api/steam/games", get(api::steam::get_steam_games))
             .route(
-                "/api/steam/wishlist/:steam_id",
+                "/api/steam/wishlist/{steam_id}",
                 get(api::steam::get_steam_wishlist),
             )
             .route("/api/steam/stats", get(api::steam::get_steam_stats))
             .route(
-                "/api/steam/game/:app_id",
+                "/api/steam/game/{app_id}",
                 get(api::steam::get_steam_game_details),
             )
             .with_state(db);

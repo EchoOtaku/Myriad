@@ -12,16 +12,17 @@
  */
 
 import type { TappCodeStructure } from '../examples/tapps/types'
+
 import type { TappInstance } from '../types'
 import type { WidgetRenderProps } from './sandbox'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isPageVisible, onVisibility } from '../../hooks/animation/core'
 import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
 import { subscribeToTheme } from '../../utils/themeSubscriber'
+
 import { getCodeForMode } from '../examples/tapps/types'
 import { getQuotaManager } from '../services/QuotaManager'
 import * as TappApiService from '../services/TappApiService'
-
 import { calculateWidgetDimensions, sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 // 核心模块
 import {
@@ -32,9 +33,7 @@ import {
   generateWidgetSDK,
   IFRAME_SANDBOX_ATTRS,
   WIDGET_STATIC_CSS,
-
 } from './sandbox'
-
 // 处理器（Widget 只需要基础处理器）
 import {
   registerContextHandlers,
@@ -43,7 +42,6 @@ import {
   registerStorageHandlers,
   registerUIHandlers,
 } from './sandbox/handlers'
-
 import { TappBridge } from './TappBridge'
 import { TappPermissionController } from './TappPermission'
 
@@ -137,14 +135,14 @@ function generateWidgetHTML(
 </head>
 <body class="${isDark ? 'dark' : 'light'}">
   <div id="widget-root">${widgetHtmlContent}</div>
-  
+
   <script nonce="${nonce}">
     window._TAPP_MODE = 'widget';
     window._TAPP_WIDGET_ID = '${widgetId}';
     window._TAPP_WIDGET_PROPS = ${JSON.stringify(widgetProps)};
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1, isCompact: false, isMini: false };
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
-    
+
     window.addEventListener('message', function(e) {
       var msg = e.data;
       if (msg?.type === 'event' && msg.action === 'container:resize') {
@@ -155,7 +153,7 @@ function generateWidgetHTML(
         window.dispatchEvent(new CustomEvent('tapp:resize', { detail: msg.payload }));
       }
     });
-    
+
     window.parent.postMessage({
       type: 'event',
       id: 'widget-ready-' + Date.now(),
@@ -164,10 +162,10 @@ function generateWidgetHTML(
       timestamp: Date.now()
     }, '*');
   </script>
-  
+
   <!-- SDK 始终加载 -->
   <script nonce="${nonce}">${sdkCode}</script>
-  
+
   <!-- JS 代码始终加载（用于事件绑定等） -->
   <script nonce="${nonce}">
     (function() {
@@ -179,7 +177,7 @@ function generateWidgetHTML(
       }
     })();
   </script>
-  
+
   ${needsJsRender
     ? `
   <!-- 纯 JS 模式：调用 render 函数 -->
@@ -191,22 +189,22 @@ function generateWidgetHTML(
           var widgetId = '${widgetId}';
           var widgetDef = Tapp.widgets[widgetId];
           var container = document.getElementById('widget-root');
-          
+
           if (!widgetDef || typeof widgetDef.render !== 'function') {
             console.warn('[Widget] Not found:', widgetId);
             container.innerHTML = '<div class="tapp-empty">Widget not found: ' + widgetId + '</div>';
             return;
           }
-          
+
           var props = window._TAPP_WIDGET_PROPS;
           props.scale = window._TAPP_DIMENSIONS.scale;
           props.fontScale = window._TAPP_DIMENSIONS.fontScale;
-          
+
           widgetDef.render(container, props);
-          
+
         } catch (error) {
           console.error('[Widget] Render error:', error);
-          document.getElementById('widget-root').innerHTML = 
+          document.getElementById('widget-root').innerHTML =
             '<div class="tapp-empty tapp-text-error">Error: ' + error.message + '</div>';
         }
       }, 16);
@@ -275,7 +273,7 @@ export const TappWidgetSandbox = memo(({
   code,
   widgetId,
   widgetProps,
-  onError,
+  _onError,
   onReady,
   className,
   style,
@@ -313,7 +311,6 @@ export const TappWidgetSandbox = memo(({
     widgetProps.isPreview,
     widgetProps.locale,
     // 使用字符串比较稳定 config 依赖
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     configString,
   ])
 
@@ -423,7 +420,6 @@ export const TappWidgetSandbox = memo(({
   // - widgetId: Widget ID
   // - codeFingerprint: 代码指纹（内容变化才会变）
   // - stableWidgetProps: 已稳定化的 props
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tappInstance.id, widgetId, codeFingerprint, handleReady, stableWidgetProps])
 
   // 主题变化监听（通过事件通知 iframe，而不是重建）

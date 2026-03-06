@@ -8,6 +8,10 @@ import type {
   MusicSource,
   Song,
 } from '../utils/musicPlayer'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { API_URL } from '../config'
+
+import { extractColorsFromImage } from '../utils/colorExtractor'
 import {
   audioManager,
   filterPlaylist,
@@ -18,12 +22,8 @@ import {
   getQQPlaylist,
   throttle,
 } from '../utils/musicPlayer'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-import { API_URL } from '../config'
-import { extractColorsFromImage } from '../utils/colorExtractor'
-import { getPerformanceProfileSync } from './usePerformanceProfile'
 import { loadResource } from '../utils/resourceLoader'
+import { getPerformanceProfileSync } from './usePerformanceProfile'
 
 // 播放模式类型
 export type PlayMode = 'loop' | 'single' | 'shuffle'
@@ -627,7 +627,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           setLyrics([])
         }
       }
-      catch (error) {
+      catch (_error) {
         setLyrics([])
         setCurrentLyricIndex(-1)
       }
@@ -653,7 +653,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
             setIsPlaying(true)
             audioManager.setPlaybackState('playing')
           }
-          catch (error) {
+          catch (_error) {
             // 播放失败
             setIsPlaying(false)
             audioManager.setPlaybackState('paused')
@@ -816,7 +816,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
       broadcastStateChange()
     }
-    catch (error) {
+    catch (_error) {
       // 静默处理
     }
   }, [loadPlaylist, broadcastStateChange])
@@ -876,6 +876,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       newIndex = currentSongIndex === 0 ? playlist.length - 1 : currentSongIndex - 1
       let attempts = 0
 
+      // eslint-disable-next-line no-unmodified-loop-condition
       while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
         newIndex = newIndex === 0 ? playlist.length - 1 : newIndex - 1
         attempts++
@@ -906,6 +907,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       newIndex = (currentSongIndex + 1) % playlist.length
       let attempts = 0
 
+      // eslint-disable-next-line no-unmodified-loop-condition
       while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
         newIndex = (newIndex + 1) % playlist.length
         attempts++
@@ -938,7 +940,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       try {
         preloadAudioRef.current.volume = clampedVolume
       }
-      catch (error) {
+      catch (_error) {
         // 静默处理
       }
     }
@@ -1033,7 +1035,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       setCurrentTime(currentTime)
 
       // 更新 Media Session 位置状态（移动端后台播放关键）
-      if (audio.duration && isFinite(audio.duration)) {
+      if (audio.duration && Number.isFinite(audio.duration)) {
         audioManager.updatePositionState(audio.duration, currentTime, audio.playbackRate)
       }
 
@@ -1091,7 +1093,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
 
     const handleLoadedMetadata = () => {
-      if (audio.duration && isFinite(audio.duration)) {
+      if (audio.duration && Number.isFinite(audio.duration)) {
         setAudioDuration(audio.duration)
       }
     }
@@ -1160,6 +1162,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         else {
           newIndex = (currentSongIndex + 1) % playlist.length
 
+          // eslint-disable-next-line no-unmodified-loop-condition
           while (excludeVipSongs && playlist[newIndex]?.isVip && attempts < playlist.length) {
             newIndex = (newIndex + 1) % playlist.length
             attempts++
@@ -1220,7 +1223,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               }, 150)
               timeoutIdsRef.current.push(tid1)
             }
-            catch (error) {
+            catch (_error) {
               setMusicColors(null)
             }
           }
@@ -1242,7 +1245,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
                 setCurrentLyricIndex(-1)
               }
             }
-            catch (error) {
+            catch (_error) {
               setLyrics([])
             }
           })

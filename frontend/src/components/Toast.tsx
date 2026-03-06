@@ -14,7 +14,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+
 import { TappIcon } from '../tapp/components/TappIcon'
+
 import './Toast.css'
 
 /** Toast 消息类型 */
@@ -81,7 +83,7 @@ function inferTypeFromMessage(message: string): ToastType {
  * 清理消息中的前缀符号
  */
 function cleanMessagePrefix(message: string): string {
-  return message.replace(/^[✓✔✗✘❌⚠⚡ℹ💡]\s*/, '')
+  return message.replace(/^[✓✔✗✘❌⚠⚡ℹ💡]\s*/u, '')
 }
 
 /**

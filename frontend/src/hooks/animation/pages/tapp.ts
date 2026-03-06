@@ -34,7 +34,7 @@ import { coordinator } from '../coordinator'
 import { isPageVisible } from '../core'
 import { AnimationPriority, AnimationState } from '../types'
 
-const PAGE_ID = 'tapp'
+const _PAGE_ID = 'tapp'
 const STAGGER_GROUP_ID = 'tapp-cards'
 const BASE_STAGGER_DELAY = 60 // ms
 

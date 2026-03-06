@@ -22,7 +22,7 @@ import type { TappInstance } from '../../types'
  * 只允许字母、数字、下划线、连字符、点、冒号
  * 禁止路径遍历字符
  */
-const STORAGE_KEY_REGEX = /^[\w.\-:]+$/
+const _STORAGE_KEY_REGEX = /^[\w.\-:]+$/
 
 // ========================
 // 🎯 预缓存的静态代码片段

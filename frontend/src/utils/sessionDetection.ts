@@ -33,7 +33,7 @@ export function hasSessionHint(): boolean {
   try {
     return localStorage.getItem(SESSION_HINT_KEY) === 'true'
   }
-  catch (e) {
+  catch (_e) {
     // localStorage 访问失败时，返回 false
     return false
   }

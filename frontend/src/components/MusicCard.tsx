@@ -40,7 +40,7 @@ const MusicCard = React.memo<MusicCardProps>(({
   layout,
   platformColor,
   isVip,
-  isCurrentSong,
+  _isCurrentSong,
   isPlaying,
   musicColor,
   animationDelay,

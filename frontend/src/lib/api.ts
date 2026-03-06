@@ -39,7 +39,7 @@ const api = axios.create({
 })
 
 // 验证 JWT token 格式
-function isValidToken(token: string): boolean {
+function _isValidToken(token: string): boolean {
   if (!token || typeof token !== 'string')
     return false
   const parts = token.split('.')

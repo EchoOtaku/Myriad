@@ -9,33 +9,32 @@
  * - 「继续对话」：加载完整对话历史，继续之前的对话
  */
 
-import { AnimatePresence, motion } from 'framer-motion';
-import React, { useCallback, useMemo } from 'react';
+import type { TaskPreset } from '../../../services/agent'
+import { AnimatePresence, motion } from 'framer-motion'
 
-import { SPRING_SNAPPY } from '../types';
-import type { TaskPreset } from '../../../services/agent';
+import React, { useCallback, useMemo } from 'react'
 
 /** 历史组件 Props */
 export interface AraelHistoryProps {
   /** 历史记录列表 */
-  history: TaskPreset[];
+  history: TaskPreset[]
   /** 当前页码 */
-  currentPage: number;
+  currentPage: number
   /** 每页条数 */
-  pageSize?: number;
+  pageSize?: number
   /** 页码变更回调 */
-  onPageChange: (page: number) => void;
+  onPageChange: (page: number) => void
   /** 重新运行预设回调（使用 input 开始新对话） */
-  onUsePreset: (preset: TaskPreset) => void;
+  onUsePreset: (preset: TaskPreset) => void
   /** 继续对话回调（加载完整对话历史） */
-  onContinueConversation?: (preset: TaskPreset) => void;
+  onContinueConversation?: (preset: TaskPreset) => void
   /** 切换收藏回调 */
-  onToggleFavorite: (presetId: number) => void;
+  onToggleFavorite: (presetId: number) => void
   /** 删除预设回调 */
-  onDeletePreset: (presetId: number) => void;
+  onDeletePreset: (presetId: number) => void
 }
 
-const HISTORY_ITEM_HEIGHT = 46; // 每个历史记录项的高度（包含 margin）
+const HISTORY_ITEM_HEIGHT = 46 // 每个历史记录项的高度（包含 margin）
 
 /**
  * 历史任务组件 - 与源文件一致
@@ -50,38 +49,38 @@ export const AraelHistory: React.FC<AraelHistoryProps> = ({
   onToggleFavorite,
   onDeletePreset,
 }) => {
-  const totalPages = Math.ceil(history.length / pageSize);
+  const totalPages = Math.ceil(history.length / pageSize)
 
   const displayedHistory = useMemo(() =>
-    history.slice(currentPage * pageSize, (currentPage + 1) * pageSize),
-    [history, currentPage, pageSize]
-  );
+    history.slice(currentPage * pageSize, (currentPage + 1) * pageSize), [history, currentPage, pageSize])
 
   // 计算当前页历史记录的高度
   const historyPageHeight = useMemo(() => {
-    const itemCount = displayedHistory.length;
-    const paginationHeight = totalPages > 1 ? 28 : 0;
-    return itemCount * HISTORY_ITEM_HEIGHT + paginationHeight;
-  }, [displayedHistory.length, totalPages]);
+    const itemCount = displayedHistory.length
+    const paginationHeight = totalPages > 1 ? 28 : 0
+    return itemCount * HISTORY_ITEM_HEIGHT + paginationHeight
+  }, [displayedHistory.length, totalPages])
 
   // 历史记录翻页（滚轮控制）
   const handleHistoryWheel = useCallback((e: React.WheelEvent) => {
-    if (history.length <= pageSize) return;
+    if (history.length <= pageSize)
+      return
 
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault()
+    e.stopPropagation()
 
     if (e.deltaY > 0) {
       // 向下滚动 - 下一页
-      onPageChange(Math.min(currentPage + 1, totalPages - 1));
-    } else if (e.deltaY < 0) {
-      // 向上滚动 - 上一页
-      onPageChange(Math.max(currentPage - 1, 0));
+      onPageChange(Math.min(currentPage + 1, totalPages - 1))
     }
-  }, [history.length, pageSize, currentPage, totalPages, onPageChange]);
+    else if (e.deltaY < 0) {
+      // 向上滚动 - 上一页
+      onPageChange(Math.max(currentPage - 1, 0))
+    }
+  }, [history.length, pageSize, currentPage, totalPages, onPageChange])
 
   if (history.length === 0) {
-    return null;
+    return null
   }
 
   return (
@@ -101,7 +100,7 @@ export const AraelHistory: React.FC<AraelHistoryProps> = ({
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
         >
-          {displayedHistory.map((preset) => (
+          {displayedHistory.map(preset => (
             <div
               key={`history-${preset.id}`}
               className="arael-task-item arael-task-history"
@@ -111,8 +110,8 @@ export const AraelHistory: React.FC<AraelHistoryProps> = ({
                 <div className="arael-task-status">
                   <span className="arael-icon-history">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/>
-                      <polyline points="12 6 12 12 16 14"/>
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
                     </svg>
                   </span>
                 </div>
@@ -125,39 +124,39 @@ export const AraelHistory: React.FC<AraelHistoryProps> = ({
                     <button
                       className="arael-task-continue"
                       onClick={(e) => {
-                        e.stopPropagation();
-                        onContinueConversation(preset);
+                        e.stopPropagation()
+                        onContinueConversation(preset)
                       }}
                       title="继续对话"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg>
                     </button>
                   )}
                   <button
                     className="arael-task-favorite"
                     onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleFavorite(preset.id);
+                      e.stopPropagation()
+                      onToggleFavorite(preset.id)
                     }}
                     title="添加收藏"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
                   </button>
                   <button
                     className="arael-task-close"
                     onClick={(e) => {
-                      e.stopPropagation();
-                      onDeletePreset(preset.id);
+                      e.stopPropagation()
+                      onDeletePreset(preset.id)
                     }}
                     aria-label="删除"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                   </button>
                 </div>
@@ -180,7 +179,7 @@ export const AraelHistory: React.FC<AraelHistoryProps> = ({
         </div>
       )}
     </motion.div>
-  );
-};
+  )
+}
 
-export default AraelHistory;
+export default AraelHistory

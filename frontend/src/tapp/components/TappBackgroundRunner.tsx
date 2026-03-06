@@ -32,7 +32,7 @@ import { TappPageSandbox } from '../runtime/TappPageSandbox'
 export const TappBackgroundRunner: React.FC = () => {
   const [backgroundTapps, setBackgroundTapps] = useState<TappInstance[]>([])
   const [tappCodes, setTappCodes] = useState<Map<string, TappCodeStructure>>(new Map())
-  const [isLoading, setIsLoading] = useState(false)
+  const [_isLoading, setIsLoading] = useState(false)
   const loadingRef = useRef(false)
   const runtime = getTappRuntime()
 

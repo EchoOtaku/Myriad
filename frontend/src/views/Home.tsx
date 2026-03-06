@@ -35,7 +35,7 @@ export default function Home() {
   // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
   useHomeScheduler()
 
-  const navigate = useNavigate()
+  const _navigate = useNavigate()
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth()
   const { t } = useI18n()
   const isPageReady = usePageReady()
