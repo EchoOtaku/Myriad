@@ -5,5 +5,7 @@
 export * from './QuotaManager'
 export { DEFAULT_QUOTA, getQuotaManager, TappQuotaManager } from './QuotaManager'
 
+export * from './RemoteStoreService'
+
 export * from './TappApiService'
 export { default as TappApiService } from './TappApiService'

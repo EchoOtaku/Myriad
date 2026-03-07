@@ -28,7 +28,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isPageVisible } from '../core'
+import { getPageResizeManager, isPageVisible, registerPageCleanup } from '../core'
 import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'library'
@@ -48,20 +48,9 @@ export function useLibraryScheduler(): void {
 
 // ==================== Resize Hooks ====================
 
-let _libraryResizeObserver: ResizeObserver | null = null
-const _libraryResizeCallbacks = new Map<Element, (entry: ResizeObserverEntry) => void>()
-
-function getLibraryResizeObserver(): ResizeObserver {
-  if (!_libraryResizeObserver) {
-    _libraryResizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const cb = _libraryResizeCallbacks.get(entry.target)
-        if (cb)
-          cb(entry)
-      }
-    })
-  }
-  return _libraryResizeObserver
+/** 获取资料库页 Resize 管理器 */
+function getResizeManager() {
+  return getPageResizeManager(PAGE_ID)
 }
 
 /**
@@ -81,7 +70,7 @@ export function useLibraryResize<T extends Element>(
     if (!el)
       return
 
-    const observer = getLibraryResizeObserver()
+    const manager = getResizeManager()
     const callback = (entry: ResizeObserverEntry) => {
       const { width, height } = entry.contentRect
       setSize((prev) => {
@@ -92,15 +81,13 @@ export function useLibraryResize<T extends Element>(
       })
     }
 
-    _libraryResizeCallbacks.set(el, callback)
-    observer.observe(el)
+    manager.observe(el, callback)
 
     const rect = el.getBoundingClientRect()
     setSize({ width: rect.width, height: rect.height })
 
     return () => {
-      _libraryResizeCallbacks.delete(el)
-      observer.unobserve(el)
+      manager.unobserve(el)
     }
   }, [ref])
 
@@ -336,11 +323,7 @@ export function useLibraryPrefetch(
 // ==================== 清理 ====================
 
 export function cleanupLibrary(): void {
-  if (_libraryResizeObserver) {
-    _libraryResizeObserver.disconnect()
-    _libraryResizeObserver = null
-  }
-  _libraryResizeCallbacks.clear()
+  getPageResizeManager(PAGE_ID).cleanup()
 
   if (_libraryIntersectionObserver) {
     _libraryIntersectionObserver.disconnect()
@@ -348,3 +331,6 @@ export function cleanupLibrary(): void {
   }
   _libraryIntersectionCallbacks.clear()
 }
+
+// 自注册清理函数
+registerPageCleanup(PAGE_ID, cleanupLibrary)

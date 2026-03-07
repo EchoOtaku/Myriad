@@ -4,11 +4,10 @@ import type {
   QuoteData,
   WeatherData,
 } from '../utils/dynamicContent'
-import type { User } from './ControlPanel/UserSection'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
+
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
@@ -47,7 +46,7 @@ interface DynamicContent {
 
 const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate()
-  const { user: authUser } = useAuth()
+  const { user } = useAuth()
   const { locale, setLocale, t } = useI18n()
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDynamicContent, setShowDynamicContent] = useState(true)
@@ -55,7 +54,6 @@ const GlobalControlPanel: React.FC = () => {
   const [showOverlay, setShowOverlay] = useState(false)
   // 使用共享主题订阅器，避免创建多余的 MutationObserver
   const isDark = useThemeMode()
-  const [user, setUser] = useState<User | null>(null)
 
   // 页面可见性状态 - 用于冻结动态内容更新
   const [isPageVisible, setIsPageVisible] = useState(!document.hidden)
@@ -127,7 +125,7 @@ const GlobalControlPanel: React.FC = () => {
   const [needsScroll, setNeedsScroll] = useState(false)
 
   // 壁纸管理 Hook（替代之前的独立状态和函数）
-  const { _wallpaperUrl, canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper()
+  const { canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper()
 
   // 音乐播放器 Hook（从 GlobalControlPanel 分离）
   const musicPlayer = useMusicPlayer()
@@ -418,16 +416,6 @@ const GlobalControlPanel: React.FC = () => {
     // 4. 加载 Tapp 提供的动态内容
     refreshTappContents()
   }, [user?.username, t, locale, dynamicContentProvider, refreshTappContents, safeSetDynamicContents, weatherData, quoteData, getWeatherText])
-
-  // 同步 AuthContext 的用户信息到本地状态
-  useEffect(() => {
-    if (authUser) {
-      setUser(authUser as User)
-    }
-    else {
-      setUser(null)
-    }
-  }, [authUser])
 
   // 当用户信息更新时，重新加载动态内容
   useEffect(() => {

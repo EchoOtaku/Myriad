@@ -3,13 +3,13 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import AnimatedView from '../components/AnimatedView'
 
+import AnimatedView from '../components/AnimatedView'
 import ConfigForm from '../components/ConfigForm'
-import { useAuth } from '../contexts/AuthContext'
-import { useConfigScheduler } from '../hooks/animation/pages/simple'
 import { hasSessionHint } from '../utils/sessionDetection'
+import { useAuth } from '../contexts/AuthContext'
+import { useConfigScheduler } from '../hooks/animation'
+import { useNavigate } from 'react-router-dom'
 
 export default function Config() {
   // 🆕 初始化页面级调度器

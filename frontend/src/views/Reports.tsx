@@ -11,17 +11,16 @@ import {
   SiNeteasecloudmusic,
 } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import AnimatedView from '../components/AnimatedView'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
 import Toast from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
-import { useLoopAnimation, usePageReady } from '../hooks/animation'
-import { useReportsScheduler, useReportsVisibilityInterval } from '../hooks/animation/pages/reports'
+import { useLoopAnimation, usePageReady, useReportsScheduler, useReportsVisibilityInterval } from '../hooks/animation'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useTitleFont } from '../hooks/useTitleFont'
 import { getCSRFToken } from '../utils/csrf'
@@ -65,23 +64,6 @@ function useLibraryItemRotation(libraryItems: any[], showOverview: boolean) {
 
   return { currentItem, currentItemIndex }
 }
-
-// 🚀 性能优化：骨架屏加载组件
-const _SkeletonCard = memo(() => (
-  <div className="relative aspect-[2/1] rounded-2xl overflow-hidden glass animate-pulse">
-    <div className="absolute inset-0 p-3.5 flex flex-col justify-between">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-gray-300 dark:bg-neutral-800 rounded" />
-          <div className="w-16 h-3 bg-gray-300 dark:bg-neutral-800 rounded" />
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-20 h-20 bg-gray-300 dark:bg-neutral-800 rounded-full" />
-      </div>
-    </div>
-  </div>
-))
 
 interface PlatformReport {
   platform: string
@@ -200,10 +182,9 @@ function getBilibiliProxyUrl(cover?: string, title?: string): string {
 const DanmakuWidget = memo(({ data, defaultDanmaku, triggerKey }: { data?: { danmaku?: string[] }, defaultDanmaku: string[], triggerKey?: unknown }) => {
   const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku])
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
 
   // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
-  const { _isAnimating } = useLoopAnimation({
+  useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
     trigger: triggerKey, // 状态切换时触发
     enabled: anim.loop, // 低端设备禁用
@@ -823,7 +804,6 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
   level?: number
 }, tenThousandSuffix: string, triggerKey?: unknown }) => {
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
 
   // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
@@ -835,7 +815,6 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
   const canAnimate = anim.loop && isAnimating
   const { t } = useI18n()
 
-  const _color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords])
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count])
   const playlistCount = useMemo(() => data?.playlist_count || 0, [data?.playlist_count])
@@ -1277,17 +1256,13 @@ export default function Reports() {
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null)
   const [report, setReport] = useState<CrossPlatformReport | null>(null)
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null)
-  const [_isPlaying, _setIsPlaying] = useState(true)
   const [customStyle, setCustomStyle] = useState<string>('')
   // 🚀 性能优化：防抖处理用户输入
   const debouncedCustomStyle = useDebounce(customStyle, 300)
   // 🆕 动画级别控制，用于装饰性动画
   const anim = useAnimationLevel()
   const [isAdmin, setIsAdmin] = useState(false)
-  const [_isComprehensiveExpanded, setIsComprehensiveExpanded] = useState(false)
   const [comprehensiveReports, setComprehensiveReports] = useState<any[]>([]) // 所有综合报告列表
-  const [_currentComprehensiveId, setCurrentComprehensiveId] = useState<number | null>(null) // 当前打开的综合报告ID
-  const [_isInputExpanded, _setIsInputExpanded] = useState(false) // 输入框展开状态
 
   // 🎭 舞台模式状态
   const [isStageMode, setIsStageMode] = useState(false)
@@ -1859,56 +1834,6 @@ export default function Reports() {
     selectedPlatform && report
       ? report.platform_reports.find(r => r.platform === selectedPlatform)
       : null, [selectedPlatform, report])
-
-  // 🚀 性能优化：缓存平台卡片点击处理器
-  const _handlePlatformClick = useCallback((platformId: string, hasReport: boolean) => {
-    if (hasReport) {
-      setSelectedPlatform(platformId)
-    }
-    else if (isAdmin) {
-      generatePlatformReport(platformId)
-    }
-    else {
-      setToastMessage(`⛗ ${t.reportsPage.adminOnlyGenerate}`)
-    }
-  }, [generatePlatformReport, isAdmin, t.reportsPage.adminOnlyGenerate])
-
-  // 🚀 性能优化：缓存删除报告处理器
-  const _handleDeleteReport = useCallback(async (reportId: number) => {
-    if (!window.confirm(t.reportsPage.confirmDeleteReport)) {
-      return
-    }
-
-    try {
-      const csrfToken = await getCSRFToken(true)
-      if (!csrfToken)
-        return
-
-      const response = await fetch(`${API_URL}/api/reports/comprehensive/${reportId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
-        credentials: 'include',
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        setIsComprehensiveExpanded(false)
-        setCurrentComprehensiveId(null)
-        setComprehensiveReports(prev => prev.filter(r => r.id !== reportId))
-        setReport(prev => prev ? { ...prev, 综合分析: null } : null)
-      }
-      else {
-        alert(data.message || t.reportsPage.deleteFailed)
-      }
-    }
-    catch (err) {
-      console.error('Delete report failed:', err)
-      alert(t.reportsPage.deleteFailedRetry)
-    }
-  }, [t.reportsPage.deleteFailed, t.reportsPage.deleteFailedRetry, t.reportsPage.confirmDeleteReport])
 
   return (
     <AnimatedView className="h-screen overflow-hidden">

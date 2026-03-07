@@ -1,15 +1,16 @@
-import type { Song } from '../utils/musicPlayer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { API_URL } from '../config'
-import { useI18n } from '../contexts/I18nContext'
-import { useMusicPlayerControl } from '../contexts/MusicPlayerContext'
-import { useNotification } from '../contexts/NotificationContext'
-import { useLibraryIntersectionObserver } from '../hooks/animation/pages/library'
-import { useSharedResize } from '../hooks/useSharedEventListener'
-import { getLibraryDataDeduped } from '../utils/requestDedup'
 import PlatformIcon from './PlatformIcon'
 import { QuickTransition } from './SkeletonTransition'
+import type { Song } from '../utils/musicPlayer'
 import { Spinner } from './Spinner'
+import { getLibraryDataDeduped } from '../utils/requestDedup'
+import { useI18n } from '../contexts/I18nContext'
+import { useLibraryIntersectionObserver } from '../hooks/animation'
+import { useMusicPlayerControl } from '../contexts/MusicPlayerContext'
+import { useNotification } from '../contexts/NotificationContext'
+import { useSharedResize } from '../hooks/useSharedEventListener'
 
 // 添加样式到页面
 if (typeof document !== 'undefined' && !document.getElementById('library-grid-styles')) {
@@ -31,11 +32,11 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
         .library-card-container {
             animation: fadeInUp 0.5s ease-out backwards;
         }
-        
+
         .animate-fade-in {
             animation: fadeIn 0.5s ease-out forwards;
         }
-        
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -44,12 +45,12 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
                 opacity: 1;
             }
         }
-        
+
         /* 卡片容器样式 */
         .library-card-container {
             transition: left 0.4s ease-out, top 0.4s ease-out, width 0.4s ease-out, height 0.4s ease-out;
         }
-        
+
         /* 平台图标背景 */
         .platform-icon-bg {
             width: 2.5rem;
@@ -63,20 +64,20 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             transition: all 0.3s;
             background-color: color-mix(in srgb, var(--platform-color, #6b7280) 8%, transparent);
         }
-        
+
         .platform-icon-bg svg,
         .platform-icon-bg img {
             color: var(--platform-color, #6b7280);
             transition: color 0.3s ease;
         }
-        
+
         /* 播放中的平台图标颜色变化 */
         .playing-breath svg,
         .playing-breath img {
             color: var(--music-color, var(--platform-color, #ef4444)) !important;
             filter: drop-shadow(0 0 4px color-mix(in srgb, var(--music-color, #ef4444) 40%, transparent));
         }
-        
+
         /* 加载按钮样式 */
         .load-more-btn {
             padding: 0.625rem 1.5rem;
@@ -86,18 +87,18 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             font-weight: 500;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
-        
+
         .load-more-btn:hover {
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        
+
         /* 加载按钮主题色 */
         .load-more-btn.primary-load-btn {
             background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
             color: var(--color-primary, #3b82f6);
             border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
         }
-        
+
         .load-more-btn.primary-load-btn:hover {
             background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
         }
@@ -115,11 +116,11 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
                 transform: translate(-50%, -50%) scale(1.05);
             }
         }
-        
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
+
         .playing-indicator {
             position: absolute;
             top: 50%;
@@ -137,19 +138,19 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             pointer-events: none;
             border: 2px solid color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 40%, transparent);
         }
-        
+
         /* 统一使用大幅透明背景，不区分亮色/暗色模式 */
         .playing-indicator {
             background-color: color-mix(in srgb, var(--music-color, #ef4444) 8%, transparent);
         }
-        
+
         .playing-indicator::before {
             content: '';
             position: absolute;
             inset: -3px;
             border-radius: 9999px;
-            background: conic-gradient(from 0deg, 
-                transparent 0deg, 
+            background: conic-gradient(from 0deg,
+                transparent 0deg,
                 color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 30%, transparent) 90deg,
                 color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 50%, transparent) 180deg,
                 color-mix(in srgb, var(--music-color, var(--platform-color, #ef4444)) 30%, transparent) 270deg,
@@ -158,7 +159,7 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
             pointer-events: none;
             z-index: -1;
         }
-        
+
         .playing-indicator svg,
         .playing-indicator img {
             width: 2rem;
@@ -328,8 +329,6 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     // y 从 0 开始无限增长，x 从 0 到 columns-1
     let y = 0
     while (placedCount < totalItems) {
-      const _rowHasEmpty = false
-
       for (let x = 0; x < layoutColumns; x++) {
         if (isOccupied(x, y))
           continue

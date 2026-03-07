@@ -4,7 +4,7 @@
 
 import AnimatedView from '../components/AnimatedView'
 import LoginForm from '../components/LoginForm'
-import { useLoginScheduler } from '../hooks/animation/pages/simple'
+import { useLoginScheduler } from '../hooks/animation'
 
 export default function Login() {
   // 🆕 初始化页面级调度器

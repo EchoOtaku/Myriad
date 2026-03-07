@@ -596,13 +596,6 @@ export default function BrewSourceGrid({
     })
   }, [isEditMode, sources])
 
-  // 尺寸对应的 row-span 高度（与 SourceCard 中一致）
-  const _SIZE_TO_ROWS: Record<CardSize, number> = {
-    full: 8, // 8 × 24px = 192px
-    mini: 4, // 4 × 24px = 96px
-    tiny: 2, // 2 × 24px = 48px
-  }
-
   // 拖拽移动处理 - 更新预览尺寸并触发 FLIP 动画
   useEffect(() => {
     if (!resizingSource)

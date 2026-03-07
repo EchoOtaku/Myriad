@@ -4,9 +4,11 @@
  */
 
 import { FaGithub, FaSteam, FaSyncAlt, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+
 import { motionShim as motion } from '@lib/motionShim'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import AnimatedView from '../components/AnimatedView'
 import { ButtonSpinner } from '../components/Spinner'
 import { TaskStatus } from '../components/TaskStatus'
@@ -14,8 +16,7 @@ import Toast from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { usePageReady } from '../hooks/animation'
-import { useDataManagementScheduler } from '../hooks/animation/pages/simple'
+import { useDataManagementScheduler, usePageReady } from '../hooks/animation'
 import { useBackgroundTasks } from '../hooks/useBackgroundTasks'
 import { getCSRFToken } from '../utils/csrf'
 import { hasSessionHint } from '../utils/sessionDetection'

@@ -7,10 +7,10 @@
  * - 处理一二级导航的切换动画
  */
 
-import { SiAppstore } from '@lib/icons'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-
 import { useLocation, useNavigate } from 'react-router-dom'
+
+import { SiAppstore } from '@lib/icons'
 import { useI18n } from '../contexts/I18nContext'
 import { useNavigation } from '../contexts/NavigationContext'
 
@@ -638,7 +638,7 @@ export function NavigationIsland() {
             <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="primary-mode">
               {/* 主页按钮 */}
               <div className="nav-group" data-group="main">
-                <a href="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} title={t.nav.home} aria-label={t.nav.backToHome} onClick={(e) => { e.preventDefault(); navigate('/') }}>
+                <a href="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} title={t.nav.home} aria-label={t.nav.backToHome} aria-current={location.pathname === '/' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); navigate('/') }}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                   </svg>
@@ -651,6 +651,7 @@ export function NavigationIsland() {
                   className={`nav-item ${location.pathname === '/library' ? 'active' : ''}`}
                   title={t.nav.library}
                   aria-label={t.nav.library}
+                  aria-current={location.pathname === '/library' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/library')}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -665,6 +666,7 @@ export function NavigationIsland() {
                   className={`nav-item ${location.pathname === '/brew' ? 'active' : ''}`}
                   title={t.nav.brewReading}
                   aria-label={t.nav.brewReading}
+                  aria-current={location.pathname === '/brew' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/brew')}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -679,6 +681,7 @@ export function NavigationIsland() {
                   className={`nav-item ${location.pathname === '/reports' ? 'active' : ''}`}
                   title={t.nav.reports}
                   aria-label={t.nav.reports}
+                  aria-current={location.pathname === '/reports' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/reports')}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -694,6 +697,7 @@ export function NavigationIsland() {
                   className={`nav-item ${location.pathname === '/tapp' || location.pathname.startsWith('/tapp/') ? 'active' : ''}`}
                   title={t.nav.tappStore}
                   aria-label={t.nav.openTappStore}
+                  aria-current={location.pathname === '/tapp' || location.pathname.startsWith('/tapp/') ? 'page' : undefined}
                   onClick={(e) => { e.preventDefault(); navigate('/tapp') }}
                 >
                   <SiAppstore className="w-5 h-5" />

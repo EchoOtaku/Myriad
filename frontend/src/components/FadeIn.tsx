@@ -16,6 +16,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { useElementAnimation } from '../hooks/animation'
 
 interface FadeInProps {
@@ -255,7 +256,7 @@ export default function FadeIn({
 }
 
 // 向后兼容导出
-export { resetPageAnimationState } from '../hooks/usePageReady'
+export { resetPageAnimationState } from '../hooks/animation'
 
 /** 动画状态类型（用于 FadeInWithSkeleton） */
 enum SkeletonPhase {

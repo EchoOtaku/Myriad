@@ -4,35 +4,26 @@
  * 用于渲染 Tapp 的页面模式（全屏应用）
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
-import type { TappInstance } from '../types'
 import type { AnimationConfigRef, SafeInsets, TappNotificationOptions } from './sandbox'
-import type { TappBridge } from './TappBridge'
-import type { TappPermissionController } from './TappPermission'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
-import { isPageVisible, onVisibility } from '../../hooks/animation/core'
-
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
-import { getIsDarkMode, subscribeToTheme } from '../../utils/themeSubscriber'
-import { getCodeForMode } from '../examples/tapps/types'
-import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 // 核心模块
 import {
+  IFRAME_SANDBOX_ATTRS,
+  PAGE_STATIC_CSS,
   generateCSP,
   generateFullSDK,
   generateNonce,
   generateSecurityWrapper,
   generateSessionToken,
   generateThemeCSS,
-  IFRAME_SANDBOX_ATTRS,
-  PAGE_STATIC_CSS,
 } from './sandbox'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getIsDarkMode, subscribeToTheme } from '../../utils/themeSubscriber'
+import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
+import { isPageVisible, onVisibility } from '../../hooks/animation'
 // 处理器
 import {
-  registerAdvancedHandlers,
   registerAIHandlers,
+  registerAdvancedHandlers,
   registerAnimationHandlers,
   registerBackgroundHandlers,
   registerContextHandlers,
@@ -47,8 +38,17 @@ import {
   registerUserHandlers,
   registerWidgetHandlers,
 } from './sandbox/handlers'
-import { createTappBridge } from './TappBridge'
+import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
+
+import type { TappBridge } from './TappBridge'
+import type { TappCodeStructure } from '../examples/tapps/types'
+import type { TappInstance } from '../types'
+import type { TappPermissionController } from './TappPermission'
 import { createPermissionController } from './TappPermission'
+import { createTappBridge } from './TappBridge'
+import { getCodeForMode } from '../examples/tapps/types'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { useI18n } from '../../contexts/I18nContext'
 
 export interface TappPageSandboxProps {
   /** Tapp 实例 */

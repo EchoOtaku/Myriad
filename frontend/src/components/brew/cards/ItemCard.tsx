@@ -8,22 +8,23 @@
  * - useMemo 缓存计算
  */
 
-import type { ItemCardProps, TimeTranslations } from '../types'
 import {
   LuExternalLink as ExternalLink,
   LuMic as Mic,
   LuSparkles as Sparkles,
   LuStar as Star,
 } from '@lib/icons'
+import type { ItemCardProps, TimeTranslations } from '../types'
 import React, { useCallback, useMemo, useState } from 'react'
-import { useBrewCardStagger } from '../../../hooks/animation/pages/brew'
 import {
+  SHORT_CONTENT_THRESHOLD,
   getFullPlainText,
   getIconUrl,
   getImageUrl,
   getPlainText,
-  SHORT_CONTENT_THRESHOLD,
 } from '../constants'
+
+import { useBrewCardStagger } from '../../../hooks/animation'
 
 // 格式化时间
 function formatTime(timestamp: number | null, translations: TimeTranslations, locale: string) {

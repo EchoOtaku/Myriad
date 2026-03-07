@@ -19,14 +19,12 @@ import type { TappCodeStructure } from '../../tapp/examples/tapps/types'
 import type { RegisteredWidget, TappInstance } from '../../tapp/types'
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
+import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
-import { isPageVisible, onVisibility } from '../../hooks/animation/core'
+import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { TappIcon } from '../../tapp/components/TappIcon'
-import { getTappRuntime, TappWidgetSandbox } from '../../tapp/runtime'
-import { getResourceLoader, loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
+import { getResourceLoader, getTappRuntime, loadWidgetResources, TappIcon, TappWidgetSandbox } from '../../tapp'
 import { GlowBackground } from './shared/GlowBackground'
 
 export interface TappWidgetProps extends WidgetComponentProps {

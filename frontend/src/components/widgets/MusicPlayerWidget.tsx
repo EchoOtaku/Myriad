@@ -6,8 +6,9 @@
 import type { AnimationConfig } from '../../hooks/useAnimationLevel'
 import type { LyricLine } from '../../utils/musicPlayer'
 import type { WidgetConfig } from '../WidgetGrid'
+
 import { motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext'
 import { isPageVisible, onVisibility, useLoopAnimation } from '../../hooks/animation'
@@ -27,7 +28,7 @@ interface FloatingChar {
 // 漂浮歌词显示组件 - 逐字淡入，分批显示
 const FloatingLyrics = memo(({
   lyrics,
-  _currentLyricIndex,
+  currentLyricIndex: _currentLyricIndex,
   isPlaying,
   themeColor,
   fontScale,
@@ -187,7 +188,7 @@ const FloatingLyrics = memo(({
   }, [isPlaying])
 
   // 计算当前应该显示的字符批次 - 使用节流的 batchTrigger
-  const { visibleChars, _batchStartTime, _batchEndTime } = useMemo(() => {
+  const { visibleChars } = useMemo(() => {
     if (allCharsWithTime.length === 0) {
       return { visibleChars: [], batchStartTime: 0, batchEndTime: 0 }
     }
@@ -253,7 +254,6 @@ const FloatingLyrics = memo(({
 
     // 计算累积的随机间隔
     let cumulativeX = 4 // 起始位置
-    const _totalChars = visibleChars.length
     const availableWidth = 92 // 可用宽度百分比 (4% ~ 96%)
 
     // 先计算所有权重 - 英文单词根据长度加权
@@ -521,54 +521,6 @@ const INDICATOR_INITIAL = { opacity: 0, scale: 0.8 }
 const INDICATOR_ANIMATE = { opacity: 1, scale: 1 }
 const INDICATOR_TRANSITION = { duration: 0.3 }
 
-const _BAR_ANIMATE_1 = { height: ['30%', '100%', '30%'] }
-const _BAR_ANIMATE_2 = { height: ['60%', '100%', '60%'] }
-const _BAR_ANIMATE_3 = { height: ['40%', '100%', '40%'] }
-const _BAR_TRANSITION_LOOP = (delay: number) => ({ duration: 0.6, repeat: 6, ease: 'easeInOut' as const, delay }) // 6轮≈4s
-const _BAR_TRANSITION_ONCE = (delay: number) => ({ duration: 0.6, repeat: 0, ease: 'easeInOut' as const, delay })
-
-// 背景光效动画 - 有限次数
-const _BG_GLOW_ANIMATE = { opacity: [0.1, 0.2, 0.1], scale: [1, 1.15, 1] }
-const _BG_GLOW_TRANSITION = { duration: 3, repeat: 1, ease: 'easeInOut' as const } // 1轮=3s
-
-// 光斑动画 - 有限次数
-const _LIGHT_SPOT_ANIMATE = { scale: [0.8, 1.1, 0.8], opacity: [0.2, 0.4, 0.2] }
-const _LIGHT_SPOT_TRANSITION = { duration: 4, repeat: 0, ease: 'easeInOut' as const } // 1轮
-
-// 封面浮动动画 - 有限次数
-const _COVER_FLOAT_ANIMATE_PLAYING = { y: [0, -4, 0] }
-const _COVER_FLOAT_ANIMATE_STATIC = { y: 0 }
-const _COVER_FLOAT_TRANSITION_LOOP = { y: { duration: 4, repeat: 0, ease: 'easeInOut' as const } }
-const _COVER_FLOAT_TRANSITION_ONCE = { y: { duration: 4, repeat: 0, ease: 'easeInOut' as const } }
-
-// 歌曲切换动画
-const _SONG_SLIDE_INITIAL = { opacity: 0, x: -10 }
-const _SONG_SLIDE_ANIMATE = { opacity: 1, x: 0 }
-const _SONG_SLIDE_TRANSITION = { duration: 0.4, ease: 'easeOut' as const }
-const _SONG_SLIDE_TRANSITION_DELAY = { duration: 0.4, delay: 0.1, ease: 'easeOut' as const }
-
-// 歌词切换动画
-const _LYRIC_INITIAL = { opacity: 0, y: 10, scale: 0.95 }
-const _LYRIC_ANIMATE = { opacity: 1, y: 0, scale: 1 }
-const _LYRIC_EXIT = { opacity: 0, y: -10, scale: 0.95 }
-const _LYRIC_TRANSITION = { duration: 0.4 }
-
-// 底部控制区入场
-const _CONTROL_INITIAL = { y: 10, opacity: 0 }
-const _CONTROL_ANIMATE = { y: 0, opacity: 1 }
-const _CONTROL_TRANSITION = { duration: 0.4, delay: 0.4 }
-
-// 音乐图标入场
-const _MUSIC_ICON_INITIAL = { scale: 0.5, opacity: 0, rotate: -15 }
-const _MUSIC_ICON_ANIMATE_STATIC = { scale: 1, opacity: 1, rotate: 0 }
-const _MUSIC_ICON_ANIMATE_PLAYING = { scale: 1, opacity: 1, rotate: [0, 5, 0, -5, 0] }
-
-// 歌曲信息入场
-const _INFO_INITIAL = { x: -20, opacity: 0 }
-const _INFO_ANIMATE = { x: 0, opacity: 1 }
-const _INFO_TRANSITION_1 = { duration: 0.6, delay: 0.2, ease: [0.34, 1.56, 0.64, 1] }
-const _INFO_TRANSITION_2 = { duration: 0.6, delay: 0.3, ease: [0.34, 1.56, 0.64, 1] }
-
 export interface MusicPlayerWidgetProps {
   config: WidgetConfig
   isEditMode: boolean
@@ -764,11 +716,10 @@ const PlayingIndicator = memo(({
 
 PlayingIndicator.displayName = 'PlayingIndicator'
 
-export const MusicPlayerWidget = memo(({ config, _isEditMode, isPreview }: MusicPlayerWidgetProps) => {
+export const MusicPlayerWidget = memo(({ config, isEditMode: _isEditMode, isPreview }: MusicPlayerWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const playerControl = useMusicPlayerControl()
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
   const { t } = useI18n()
 
   const currentSong = isPreview

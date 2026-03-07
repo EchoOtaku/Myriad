@@ -2,7 +2,6 @@
  * 综合报告卡片组件
  */
 
-import type { ComprehensiveAnalysis } from './types'
 import {
   FaBrain,
   FaCode,
@@ -14,11 +13,13 @@ import {
   FaRobot,
   FaRocket,
 } from '@lib/icons'
+import { memo, useCallback } from 'react'
+
+import type { ComprehensiveAnalysis } from './types'
 import { motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useId } from 'react'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 
 // 图标组件
 const ThemeIcon = memo(({ iconImageUrl, iconPrompt, iconName }: {
@@ -71,7 +72,6 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
   onOpen,
 }) => {
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
   const { t } = useI18n()
 
   // 🆕 使用触发式动画 - 组件挂载时播放一次装饰动画

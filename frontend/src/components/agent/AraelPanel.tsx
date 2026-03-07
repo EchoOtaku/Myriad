@@ -18,23 +18,23 @@ import type {
   StepStartedEvent,
   TaskPreset,
 } from '../../services/agent'
+
 import type { ExecutionStep, LogEntry, PanelVisibility, PendingQuestion, TaskItem } from './types'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import {
   agentService,
   executeFrontendAction,
 } from '../../services/agent'
 import { audioToBase64, getSpeechStatus, speechToText } from '../../services/speechApi'
+
 import { AraelHistory } from './components/AraelHistory'
 import { AraelInput } from './components/AraelInput'
 import { AraelPresets } from './components/AraelPresets'
 import { AraelTaskItem } from './components/AraelTaskItem'
 import {
-
   LONG_PRESS_DURATION,
   SPRING_SNAPPY,
 } from './types'
@@ -90,7 +90,6 @@ function getSmartGreeting(pathname: string, _historyCount: number): string {
 
 export const AraelPanel: React.FC = () => {
   const location = useLocation()
-  const { _t } = useI18n()
 
   // 页面内容上下文 - 用于获取当前阅读的文章等内容
   const pageContentContext = usePageContentOptional()
@@ -129,9 +128,9 @@ export const AraelPanel: React.FC = () => {
   const audioChunksRef = useRef<Blob[]>([])
 
   // handleSend 的 ref，用于在 stopRecording 中调用（避免循环依赖）
-  const handleSendRef = useRef<(text?: string) => Promise<void>>()
+  const handleSendRef = useRef<(text?: string) => Promise<void>>(null)
   // handleAgentResponse 的 ref，用于在 answerQuestion 中调用（避免循环依赖）
-  const handleAgentResponseRef = useRef<(taskId: string, response: AgentResponse) => Promise<void>>()
+  const handleAgentResponseRef = useRef<(taskId: string, response: AgentResponse) => Promise<void>>(null)
 
   // 长按检测
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -232,9 +231,9 @@ export const AraelPanel: React.FC = () => {
   }, [loadPresets, addLog])
 
   // 使用预设 - 使用 ref 避免循环依赖
-  const createProgressHandlerRef = useRef<(taskId: string) => (event: ProgressEvent) => void>()
-  const handleAgentResponseRef2 = useRef<(taskId: string, response: AgentResponse) => Promise<void>>()
-  const updateTaskRef = useRef<(taskId: string, updates: Partial<TaskItem>) => void>()
+  const createProgressHandlerRef = useRef<(taskId: string) => (event: ProgressEvent) => void>(null)
+  const handleAgentResponseRef2 = useRef<(taskId: string, response: AgentResponse) => Promise<void>>(null)
+  const updateTaskRef = useRef<(taskId: string, updates: Partial<TaskItem>) => void>(null)
 
   const usePreset = useCallback(async (preset: TaskPreset) => {
     // 关闭预设面板

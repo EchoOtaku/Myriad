@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isPageVisible, onVisibility } from '../core'
+import { getPageIntervalManager, getPageResizeManager, isPageVisible, onVisibility, registerPageCleanup } from '../core'
 import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'home'
@@ -64,8 +64,10 @@ export function useHomeVisibility(): boolean {
   return visible
 }
 
-// 活跃的 interval 追踪
-const _homeIntervals = new Set<ReturnType<typeof setInterval>>()
+// 活跃的 interval 管理器
+function getIntervalManager() {
+  return getPageIntervalManager(PAGE_ID)
+}
 
 /**
  * 首页可见性感知定时器
@@ -99,13 +101,12 @@ export function useHomeVisibilityInterval(
       intervalRef.current = setInterval(() => {
         savedCallback.current()
       }, delay)
-      _homeIntervals.add(intervalRef.current)
+      getIntervalManager().add(intervalRef.current)
     }
 
     return () => {
       if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current)
-        _homeIntervals.delete(intervalRef.current)
+        getIntervalManager().remove(intervalRef.current)
         intervalRef.current = null
       }
     }
@@ -114,21 +115,9 @@ export function useHomeVisibilityInterval(
 
 // ==================== Resize Hooks ====================
 
-// 共享的 ResizeObserver（首页内复用）
-let _homeResizeObserver: ResizeObserver | null = null
-const _homeResizeCallbacks = new Map<Element, (entry: ResizeObserverEntry) => void>()
-
-function getHomeResizeObserver(): ResizeObserver {
-  if (!_homeResizeObserver) {
-    _homeResizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const cb = _homeResizeCallbacks.get(entry.target)
-        if (cb)
-          cb(entry)
-      }
-    })
-  }
-  return _homeResizeObserver
+/** 获取首页 Resize 管理器 */
+function getResizeManager() {
+  return getPageResizeManager(PAGE_ID)
 }
 
 /**
@@ -150,7 +139,7 @@ export function useHomeResize<T extends Element>(
     if (!el)
       return
 
-    const observer = getHomeResizeObserver()
+    const observer = getResizeManager()
     const callback = (entry: ResizeObserverEntry) => {
       const { width, height } = entry.contentRect
       setSize((prev) => {
@@ -162,15 +151,13 @@ export function useHomeResize<T extends Element>(
       })
     }
 
-    _homeResizeCallbacks.set(el, callback)
-    observer.observe(el)
+    observer.observe(el, callback)
 
     // 立即测量
     const rect = el.getBoundingClientRect()
     setSize({ width: rect.width, height: rect.height })
 
     return () => {
-      _homeResizeCallbacks.delete(el)
       observer.unobserve(el)
     }
   }, [ref])
@@ -198,19 +185,15 @@ export function useHomeResizeObserver(): {
     if (!hasFeature(PAGE_ID, Feature.Resize)) {
       return
     }
-    const observer = getHomeResizeObserver()
-    _homeResizeCallbacks.set(el, callback)
-    observer.observe(el)
+    const manager = getResizeManager()
+    manager.observe(el, callback)
     // 立即触发一次
     const rect = el.getBoundingClientRect()
     callback({ contentRect: rect } as ResizeObserverEntry)
   }, [])
 
   const unobserveHomeResize = useCallback((el: Element) => {
-    _homeResizeCallbacks.delete(el)
-    if (_homeResizeObserver) {
-      _homeResizeObserver.unobserve(el)
-    }
+    getResizeManager().unobserve(el)
   }, [])
 
   return { observeHomeResize, unobserveHomeResize }
@@ -287,15 +270,9 @@ export function useHomeIdle(
  * 清理首页资源（路由离开时自动调用）
  */
 export function cleanupHome(): void {
-  // 清理所有 interval
-  for (const id of _homeIntervals) {
-    clearInterval(id)
-  }
-  _homeIntervals.clear()
-
-  if (_homeResizeObserver) {
-    _homeResizeObserver.disconnect()
-    _homeResizeObserver = null
-  }
-  _homeResizeCallbacks.clear()
+  getPageIntervalManager(PAGE_ID).cleanup()
+  getPageResizeManager(PAGE_ID).cleanup()
 }
+
+// 自注册清理函数
+registerPageCleanup(PAGE_ID, cleanupHome)

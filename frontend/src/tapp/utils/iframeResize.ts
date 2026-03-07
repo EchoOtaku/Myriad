@@ -20,7 +20,7 @@
  */
 
 import { useLayoutEffect, useRef, useState } from 'react'
-import { isPageVisible, observeResize } from '../../hooks/animation/core'
+import { isPageVisible, observeResizeAtomic as observeResize } from '../../hooks/animation'
 
 /** iframe 容器尺寸信息 */
 export interface IframeDimensions {

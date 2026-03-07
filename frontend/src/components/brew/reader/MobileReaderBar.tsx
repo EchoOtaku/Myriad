@@ -3,7 +3,8 @@
  * 在小屏设备上替代左右两侧的控制栏
  */
 
-import type { MobileReaderBarProps } from './types'
+import * as brewliaApi from '../../../services/brewliaApi'
+
 import {
   LuAlignJustify as AlignJustify,
   LuArrowRight as ArrowRight,
@@ -33,10 +34,11 @@ import {
   LuType as Type,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useState } from 'react'
-import * as brewliaApi from '../../../services/brewliaApi'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { STYLE_MAX_HEIGHT_60VH, THEMES } from './constants'
+
+import type { MobileReaderBarProps } from './types'
+import { useState } from 'react'
 
 export function MobileReaderBar({
   item,

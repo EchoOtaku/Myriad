@@ -29,7 +29,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isPageVisible, onVisibility } from '../core'
+import { getPageIntervalManager, isPageVisible, onVisibility, registerPageCleanup } from '../core'
 import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'reports'
@@ -64,8 +64,10 @@ export function useReportsVisibility(): boolean {
 
 // ==================== Interval Hooks ====================
 
-// 活跃的 interval 追踪
-const _reportsIntervals = new Set<ReturnType<typeof setInterval>>()
+/** 获取报告页 Interval 管理器 */
+function getIntervalManager() {
+  return getPageIntervalManager(PAGE_ID)
+}
 
 /**
  * 报告页可见性感知定时器
@@ -97,13 +99,12 @@ export function useReportsVisibilityInterval(
       intervalRef.current = setInterval(() => {
         savedCallback.current()
       }, delay)
-      _reportsIntervals.add(intervalRef.current)
+      getIntervalManager().add(intervalRef.current)
     }
 
     return () => {
       if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current)
-        _reportsIntervals.delete(intervalRef.current)
+        getIntervalManager().remove(intervalRef.current)
         intervalRef.current = null
       }
     }
@@ -129,11 +130,10 @@ export function useReportsInterval(
     }
 
     const id = setInterval(() => savedCallback.current(), delay)
-    _reportsIntervals.add(id)
+    getIntervalManager().add(id)
 
     return () => {
-      clearInterval(id)
-      _reportsIntervals.delete(id)
+      getIntervalManager().remove(id)
     }
   }, [delay])
 }
@@ -304,10 +304,7 @@ export function useReportsBatchDom(): {
 
 export function cleanupReports(): void {
   // 清理所有 interval
-  for (const id of _reportsIntervals) {
-    clearInterval(id)
-  }
-  _reportsIntervals.clear()
+  getPageIntervalManager(PAGE_ID).cleanup()
 
   // 清理 RAF
   if (_reportsRafId !== null) {
@@ -321,3 +318,6 @@ export function cleanupReports(): void {
   _reportsWriteQueue = []
   _reportsBatchScheduled = false
 }
+
+// 自注册清理函数
+registerPageCleanup(PAGE_ID, cleanupReports)

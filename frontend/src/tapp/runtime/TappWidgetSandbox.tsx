@@ -11,29 +11,22 @@
  * - 响应式主题：实时响应主题和主色调变化
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
-
-import type { TappInstance } from '../types'
-import type { WidgetRenderProps } from './sandbox'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { isPageVisible, onVisibility } from '../../hooks/animation/core'
-import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
-import { subscribeToTheme } from '../../utils/themeSubscriber'
-
-import { getCodeForMode } from '../examples/tapps/types'
-import { getQuotaManager } from '../services/QuotaManager'
 import * as TappApiService from '../services/TappApiService'
-import { calculateWidgetDimensions, sendResizeMessage, useIframeResize } from '../utils/iframeResize'
+
 // 核心模块
 import {
+  IFRAME_SANDBOX_ATTRS,
+  WIDGET_STATIC_CSS,
   generateCSP,
   generateNonce,
   generateSessionToken,
   generateThemeCSS,
   generateWidgetSDK,
-  IFRAME_SANDBOX_ATTRS,
-  WIDGET_STATIC_CSS,
 } from './sandbox'
+import { calculateWidgetDimensions, sendResizeMessage, useIframeResize } from '../utils/iframeResize'
+import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
+import { isPageVisible, onVisibility } from '../../hooks/animation'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 // 处理器（Widget 只需要基础处理器）
 import {
   registerContextHandlers,
@@ -42,8 +35,15 @@ import {
   registerStorageHandlers,
   registerUIHandlers,
 } from './sandbox/handlers'
+
 import { TappBridge } from './TappBridge'
+import type { TappCodeStructure } from '../examples/tapps/types'
+import type { TappInstance } from '../types'
 import { TappPermissionController } from './TappPermission'
+import type { WidgetRenderProps } from './sandbox'
+import { getCodeForMode } from '../examples/tapps/types'
+import { getQuotaManager } from '../services/QuotaManager'
+import { subscribeToTheme } from '../../utils/themeSubscriber'
 
 export interface TappWidgetSandboxProps {
   /** Tapp 实例 */

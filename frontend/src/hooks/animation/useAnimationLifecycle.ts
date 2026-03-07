@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { coordinator } from './coordinator'
+
 import { AnimationPriority, AnimationState } from './types'
 
 /** 动画生命周期阶段 */
@@ -364,7 +365,6 @@ export function useBatchAnimationLifecycle(
     staggerDelay = 50,
     duration = 300,
     autoStart = true,
-    _groupId = 'batch',
   } = options
 
   // 存储每个元素的完成状态

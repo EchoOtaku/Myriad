@@ -3,7 +3,7 @@
  * 动态提示 + 排序 + 功能按钮
  */
 
-import type { ControlMode, DynamicTip, SortMode, SortOption } from './types'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import {
   LuArrowUpDown as ArrowUpDown,
   LuCheck as Check,
@@ -13,7 +13,7 @@ import {
   LuPlus as Plus,
   LuSearch as Search,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
+import type { ControlMode, DynamicTip, SortMode, SortOption } from './types'
 import { SPRING_SNAPPY, TRANSITION_NORMAL, TRANSITION_SLOW } from './constants'
 
 export interface DefaultModeProps {

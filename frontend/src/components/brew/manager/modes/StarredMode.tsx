@@ -2,14 +2,15 @@
  * StarredMode - 收藏文章模式
  */
 
-import type { StarredModeConfig } from './types'
 import {
   LuChevronLeft as ChevronLeft,
   LuEdit3 as Edit3,
   LuStar as Star,
 } from '@lib/icons'
-import { motion } from 'framer-motion'
+
 import { SPRING_SNAPPY } from './constants'
+import type { StarredModeConfig } from './types'
+import { motionShim as motion } from '@lib/motionShim'
 
 export interface StarredModeProps {
   variant: 'mobile' | 'desktop'

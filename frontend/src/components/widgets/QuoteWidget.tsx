@@ -3,16 +3,17 @@
  * 现代化Glass风格设计
  */
 
+import { memo, useCallback, useEffect, useState } from 'react'
+
+import { GlowBackground } from './shared/GlowBackground'
 import type { QuoteData } from '../../utils/dynamicContent'
 import type { WidgetConfig } from '../WidgetGrid'
-import { motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
-import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getRandomQuote } from '../../utils/dynamicContent'
-import { GlowBackground } from './shared/GlowBackground'
+import { motionShim as motion } from '@lib/motionShim'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { useHomeVisibilityInterval } from '../../hooks/animation'
+import { useI18n } from '../../contexts/I18nContext'
+import { useWidgetSize } from '../../hooks/useWidgetSize'
 
 // 缓存配置
 const CACHE_KEY = 'quote_data_cache'
@@ -24,7 +25,7 @@ export interface QuoteWidgetProps {
   isPreview?: boolean
 }
 
-export const QuoteWidget = memo(({ config, _isEditMode, isPreview }: QuoteWidgetProps) => {
+export const QuoteWidget = memo(({ config, isEditMode: _isEditMode, isPreview }: QuoteWidgetProps) => {
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const anim = useAnimationLevel()
   const { t } = useI18n()

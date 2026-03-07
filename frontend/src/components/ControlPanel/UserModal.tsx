@@ -1,21 +1,15 @@
-import type { RecentTappItem, TappListItem } from '../../tapp/services/TappApiService'
-import { SiAppstore } from '@lib/icons'
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { API_URL } from '../../config'
-import { useI18n } from '../../contexts/I18nContext'
-import { TappIcon } from '../../tapp/components/TappIcon'
-import { getRecentTapps, listTapps } from '../../tapp/services/TappApiService'
-import { getCSRFToken } from '../../utils/csrf'
 import '../UserModal.css'
 
-interface User {
-  username: string
-  is_admin: boolean
-  auth_provider: string
-  display_name?: string
-  linked_github_id?: string
-}
+import React, { useEffect, useState } from 'react'
+import type { RecentTappItem, TappListItem } from '../../tapp'
+import { TappIcon, getRecentTapps, listTapps } from '../../tapp'
+
+import { API_URL } from '../../config'
+import { SiAppstore } from '@lib/icons'
+import type { User } from '../../contexts/AuthContext'
+import { getCSRFToken } from '../../utils/csrf'
+import { useI18n } from '../../contexts/I18nContext'
+import { useNavigate } from 'react-router-dom'
 
 interface UserInfo {
   name: string

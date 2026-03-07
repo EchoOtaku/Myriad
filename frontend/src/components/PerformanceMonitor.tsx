@@ -5,11 +5,13 @@
  * 🔧 优化：FPS 数据统一从 AnimationCoordinator 获取，避免重复 RAF 循环
  */
 
-import { useCallback, useEffect, useState } from 'react'
-import { configureAnimationCoordinator, coordinator, getFrameStats } from '../hooks/animation'
-import { clearLyricsCache, clearPlaylistCache } from '../utils/musicPlayer'
-import { globalResourceLoader } from '../utils/resourceLoader'
 import './PerformanceMonitor.css'
+
+import { clearLyricsCache, clearPlaylistCache } from '../utils/musicPlayer'
+import { configureAnimationCoordinator, coordinator, getFrameStats } from '../hooks/animation'
+import { useCallback, useEffect, useState } from 'react'
+
+import { globalResourceLoader } from '../utils/resourceLoader'
 
 interface PerformanceMetrics {
   fps: number
@@ -109,11 +111,7 @@ function installAnimationTracker() {
 
   // 保存原始函数
   const originalRAF = window.requestAnimationFrame.bind(window)
-  const originalCAF = window.cancelAnimationFrame.bind(window)
-  const _originalSetInterval = window.setInterval.bind(window)
-  const _originalClearInterval = window.clearInterval.bind(window)
-  const _originalSetTimeout = window.setTimeout.bind(window)
-  const _originalClearTimeout = window.clearTimeout.bind(window);
+  const originalCAF = window.cancelAnimationFrame.bind(window);
 
   // 包装 requestAnimationFrame
   (window as Window).requestAnimationFrame = function (callback: FrameRequestCallback): number {
@@ -278,40 +276,6 @@ const OPTIMIZED_ANIMATIONS = new Set([
   'perf-pulse',
   'perf-slide-in',
 ])
-
-/** 检测动画是否可能造成性能问题 */
-function _isExpensiveAnimation(el: Element, style: CSSStyleDeclaration): boolean {
-  const animationName = style.animationName || ''
-  const willChange = style.willChange || ''
-  const transform = style.transform || ''
-
-  // 跳过已知的优化过的动画
-  const animNames = animationName.split(',').map(n => n.trim())
-  if (animNames.every(name => OPTIMIZED_ANIMATIONS.has(name))) {
-    return false
-  }
-
-  // 检查是否使用了触发重排的属性名称
-  const expensiveProps = ['width', 'height', 'top', 'left', 'right', 'bottom', 'margin', 'padding']
-  const animatedProps = animationName.toLowerCase()
-  if (expensiveProps.some(p => animatedProps.includes(p))) {
-    return true
-  }
-
-  // 无限循环动画
-  const isInfinite = style.animationIterationCount === 'infinite'
-
-  // 检查是否使用了 GPU 优化
-  const hasWillChange = willChange.includes('transform') || willChange.includes('opacity')
-  const hasGpuHint = transform.includes('translateZ') || transform.includes('translate3d') || transform.includes('matrix')
-  const isOptimized = hasWillChange || hasGpuHint
-
-  // 长时间运行的动画（> 10秒）且未优化 - 可能是问题
-  const duration = Number.parseFloat(style.animationDuration) || 0
-  const isVeryLongRunning = duration > 10
-
-  return isVeryLongRunning && !isOptimized && isInfinite
-}
 
 export default function PerformanceMonitor() {
   const [metrics, setMetrics] = useState<PerformanceMetrics>({

@@ -17,6 +17,15 @@ import type {
   Unsubscribe,
 } from './types'
 import {
+  batchRead as coreBatchRead,
+  batchWrite as coreBatchWrite,
+  isPageVisible as coreIsPageVisible,
+  now as coreNow,
+  refreshNow as coreRefreshNow,
+  onVisibility,
+  scheduleTask,
+} from './core'
+import {
   AnimationPriority,
   AnimationState,
   DEFAULT_CONFIG,
@@ -62,20 +71,14 @@ class AnimationCoordinator {
   private listeners = new Map<string, Set<AnimationListener>>()
 
   // ==================== 高效任务调度 ====================
-  // 🔧 使用 MessageChannel 替代 setTimeout(0)，更高效的微任务调度
-  private messageChannel: MessageChannel | null = null
-  private pendingYieldCallbacks: Array<() => void> = []
+  // 🔧 已委托给 core.ts 的 scheduleTask()
 
   // ==================== 页面可见性优化 ====================
-  // 🔧 页面是否可见，不可见时暂停非关键操作
-  private isPageVisible: boolean = true
-  private visibilityHandler: (() => void) | null = null
+  // 🔧 已委托给 core.ts 的 isPageVisible() / onVisibility()
+  private visibilityUnsubscribe: (() => void) | null = null
 
-  // ==================== 时间戳缓存（减少 performance.now 调用）====================
-  // 当前帧缓存的时间戳
-  private cachedNow: number = 0
-  // 时间戳是否有效（每帧开始时重置）
-  private nowCacheValid: boolean = false
+  // ==================== 时间戳缓存 ====================
+  // 🔧 已委托给 core.ts 的 now() / refreshNow()
 
   // 页面就绪状态
   private currentPageId: string | null = null
@@ -189,10 +192,7 @@ class AnimationCoordinator {
    */
   private lowFpsThreshold: number = 45
 
-  // DOM 批量读写队列
-  private domReadQueue: (() => void)[] = []
-  private domWriteQueue: (() => void)[] = []
-  private domBatchScheduled: boolean = false
+  // DOM 批量读写 - 🔧 已委托给 core.ts 的 batchRead() / batchWrite()
 
   // ==================== ResizeObserver 管理器 ====================
   /** 共享的 ResizeObserver 实例（单一观察者，多元素） */
@@ -262,10 +262,20 @@ class AnimationCoordinator {
 
   constructor(config: Partial<CoordinatorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
-    // 🔧 初始化 MessageChannel（比 setTimeout(0) 更高效）
-    this.initMessageChannel()
-    // 🔧 初始化页面可见性监听
-    this.initVisibilityListener()
+    // 🔧 订阅 core.ts 的页面可见性变化（用于 processWaitQueue 触发和通知订阅者）
+    this.visibilityUnsubscribe = onVisibility((visible) => {
+      if (visible) {
+        this.processWaitQueue()
+      }
+      for (const subscriber of this.visibilitySubscribers) {
+        try {
+          subscriber(visible)
+        }
+        catch (e) {
+          console.error('[Coordinator] Visibility subscriber error:', e)
+        }
+      }
+    })
     // 🔧 初始化共享 ResizeObserver
     this.initSharedResizeObserver()
     // 启动超时检查器
@@ -276,95 +286,11 @@ class AnimationCoordinator {
     this.initFinalizationRegistry()
   }
 
-  // ==================== MessageChannel 优化 ====================
-
-  /**
-   * 🔧 初始化 MessageChannel
-   * MessageChannel 比 setTimeout(fn, 0) 更高效，因为：
-   * 1. 不受最小 4ms 延迟限制
-   * 2. 不会被浏览器节流
-   * 3. 在微任务之后、下一个任务之前执行
-   */
-  private initMessageChannel() {
-    if (typeof MessageChannel !== 'undefined') {
-      this.messageChannel = new MessageChannel()
-      this.messageChannel.port1.onmessage = () => {
-        // 批量处理所有待执行的回调
-        const callbacks = this.pendingYieldCallbacks
-        this.pendingYieldCallbacks = []
-        for (let i = 0; i < callbacks.length; i++) {
-          callbacks[i]()
-        }
-      }
-    }
-  }
-
-  /**
-   * 🔧 高效的任务让出（替代 setTimeout(fn, 0)）
-   */
-  private scheduleYield(callback: () => void) {
-    if (this.messageChannel) {
-      this.pendingYieldCallbacks.push(callback)
-      // 只在队列从空变非空时发送消息
-      if (this.pendingYieldCallbacks.length === 1) {
-        this.messageChannel.port2.postMessage(null)
-      }
-    }
-    else {
-      // 降级方案
-      setTimeout(callback, 0)
-    }
-  }
-
-  // ==================== 页面可见性优化 ====================
-
-  /**
-   * 🔧 初始化页面可见性监听
-   * 页面不可见时暂停非关键操作，节省 CPU
-   */
-  private initVisibilityListener() {
-    if (typeof document === 'undefined')
-      return
-
-    this.visibilityHandler = () => {
-      this.isPageVisible = !document.hidden
-
-      // 页面变为可见时，触发等待队列处理
-      if (this.isPageVisible) {
-        this.processWaitQueue()
-      }
-
-      // 🔧 通知所有可见性订阅者
-      for (const subscriber of this.visibilitySubscribers) {
-        try {
-          subscriber(this.isPageVisible)
-        }
-        catch (e) {
-          console.error('[Coordinator] Visibility subscriber error:', e)
-        }
-      }
-    }
-
-    document.addEventListener('visibilitychange', this.visibilityHandler)
-  }
+  // ==================== 页面可见性（委托 core.ts） ====================
 
   /**
    * 🔧 订阅页面可见性变化
-   * 组件可以使用此方法来响应页面可见性变化，无需各自添加事件监听器
-   *
-   * @param callback 可见性变化回调 (isVisible: boolean) => void
-   * @returns 取消订阅函数
-   *
-   * @example
-   * ```ts
-   * // 在组件中使用
-   * useEffect(() => {
-   *   return coordinator.onVisibilityChange((isVisible) => {
-   *     if (isVisible) startPolling();
-   *     else stopPolling();
-   *   });
-   * }, []);
-   * ```
+   * 委托给 core.ts 的 onVisibility()
    */
   onVisibilityChange(callback: (isVisible: boolean) => void): () => void {
     this.visibilitySubscribers.add(callback)
@@ -377,36 +303,7 @@ class AnimationCoordinator {
    * 🔧 获取当前页面可见性状态
    */
   getPageVisibility(): boolean {
-    return this.isPageVisible
-  }
-
-  // ==================== 时间戳缓存优化 ====================
-
-  /**
-   * 🔧 获取缓存的时间戳
-   * 同一帧内多次调用只执行一次 performance.now()
-   * 大幅减少 performance.now() 的调用开销
-   */
-  private getNow(): number {
-    if (!this.nowCacheValid) {
-      this.cachedNow = performance.now()
-      this.nowCacheValid = true
-      // 在下一个微任务中失效缓存，确保下一帧获取新时间
-      queueMicrotask(() => {
-        this.nowCacheValid = false
-      })
-    }
-    return this.cachedNow
-  }
-
-  /**
-   * 🔧 强制刷新时间戳缓存
-   * 用于需要精确时间的场景
-   */
-  private refreshNow(): number {
-    this.cachedNow = performance.now()
-    this.nowCacheValid = true
-    return this.cachedNow
+    return coreIsPageVisible()
   }
 
   // ==================== WeakRef 元素追踪 ====================
@@ -596,14 +493,14 @@ class AnimationCoordinator {
    */
   private cleanupTimedOutSlots() {
     // 🔧 页面不可见时跳过清理（节省 CPU）
-    if (!this.isPageVisible)
+    if (!coreIsPageVisible())
       return
 
     // 快速返回：无活动槽位
     if (this.activeSlots.size === 0)
       return
 
-    const now = this.refreshNow() // 使用刷新的时间戳确保准确
+    const now = coreRefreshNow() // 使用刷新的时间戳确保准确
     let hasTimedOut = false
 
     for (const [id, slot] of this.activeSlots) {
@@ -633,7 +530,7 @@ class AnimationCoordinator {
     }
 
     // 爆发模式：检查是否到期
-    const elapsed = this.getNow() - this.burstStartTime
+    const elapsed = coreNow() - this.burstStartTime
     if (elapsed < this.currentBurstDuration) {
       return this.config.burstConcurrent
     }
@@ -662,7 +559,7 @@ class AnimationCoordinator {
    */
   private activateBurstMode(duration: number) {
     this.inBurstMode = true
-    this.burstStartTime = this.refreshNow()
+    this.burstStartTime = coreRefreshNow()
     this.currentBurstDuration = duration
   }
 
@@ -733,7 +630,7 @@ class AnimationCoordinator {
           }
           if (index < callbacks.length) {
             // 🔧 使用 MessageChannel 替代 setTimeout
-            this.scheduleYield(processBatch)
+            scheduleTask(processBatch)
           }
         }
         queueMicrotask(processBatch)
@@ -882,7 +779,7 @@ class AnimationCoordinator {
    * 获取槽位 - 优化版：使用缓存时间戳
    */
   private acquireSlot(id: string, priority: AnimationPriority) {
-    const now = this.getNow()
+    const now = coreNow()
     this.activeSlots.set(id, {
       id,
       priority,
@@ -956,7 +853,7 @@ class AnimationCoordinator {
       priority,
       delay: 0,
       index: 0,
-      registeredAt: this.getNow(),
+      registeredAt: coreNow(),
     }
 
     // 🔧 快速路径：队列为空或应该插入末尾
@@ -1038,7 +935,7 @@ class AnimationCoordinator {
     // 如果还有剩余且有槽位，延迟继续处理
     if (this.waitingQueue.length > 0 && this.activeSlots.size < maxConcurrent) {
       // 🔧 使用 MessageChannel 替代 setTimeout
-      this.scheduleYield(() => this.processWaitQueue())
+      scheduleTask(() => this.processWaitQueue())
     }
   }
 
@@ -1046,7 +943,7 @@ class AnimationCoordinator {
    * 添加到延迟队列 - 优化版：二分插入避免排序，使用缓存时间戳
    */
   private addToDelayedQueue(id: string, delay: number, priority: AnimationPriority = AnimationPriority.COMPONENT) {
-    const executeAt = this.getNow() + delay
+    const executeAt = coreNow() + delay
     const item = { id, executeAt, priority }
 
     // 🔧 快速路径：队列为空或应该插入末尾
@@ -1083,7 +980,7 @@ class AnimationCoordinator {
       return
 
     const next = this.delayedQueue[0]
-    const wait = Math.max(0, next.executeAt - this.getNow())
+    const wait = Math.max(0, next.executeAt - coreNow())
 
     this.delayTimerId = setTimeout(() => {
       this.delayTimerId = null
@@ -1095,7 +992,7 @@ class AnimationCoordinator {
    * 处理延迟队列 - 优化版：使用刷新的时间戳确保精确
    */
   private processDelayedQueue() {
-    const now = this.refreshNow()
+    const now = coreRefreshNow()
 
     // 处理所有到期项
     while (this.delayedQueue.length > 0) {
@@ -1215,7 +1112,7 @@ class AnimationCoordinator {
 
       if (index < ids.length) {
         // 🔧 使用 MessageChannel 替代 setTimeout
-        this.scheduleYield(processBatch)
+        scheduleTask(processBatch)
       }
     }
 
@@ -1320,10 +1217,8 @@ class AnimationCoordinator {
       delayedQueueLength: this.delayedQueue.length,
       // 🔧 新增：WeakRef 追踪的元素数量
       trackedElementsCount: this.elementRefs.size,
-      // 🔧 新增：待执行的 yield 回调数量
-      pendingYieldCallbacksCount: this.pendingYieldCallbacks.length,
-      // 🔧 新增：页面可见性状态
-      isPageVisible: this.isPageVisible,
+      // 🔧 页面可见性状态（委托 core.ts）
+      isPageVisible: coreIsPageVisible(),
       // 总计：超过 500 可能有泄漏
       totalEntries: this.states.size + this.listeners.size + this.activeSlots.size
         + this.waitingQueue.length + this.delayedQueue.length
@@ -1344,7 +1239,7 @@ class AnimationCoordinator {
       maxConcurrent,
       inBurstMode: this.inBurstMode,
       burstTimeRemaining: this.inBurstMode
-        ? Math.max(0, this.currentBurstDuration - (this.getNow() - this.burstStartTime))
+        ? Math.max(0, this.currentBurstDuration - (coreNow() - this.burstStartTime))
         : 0,
       waitingQueue: this.waitingQueue.length,
       delayedQueue: this.delayedQueue.length,
@@ -1612,69 +1507,28 @@ class AnimationCoordinator {
     // 注意：不重置 detectedRefreshRate，保留之前的检测结果
   }
 
-  // ==================== DOM 批量操作 ====================
+  // ==================== DOM 批量操作（委托 core.ts）====================
 
   /**
-   * 批量 DOM 读取
-   * 将读取操作收集到队列，在下一帧统一执行，避免强制重排
+   * 批量 DOM 读取 - 委托给 core.ts
    */
   batchRead(callback: () => void): void {
-    this.domReadQueue.push(callback)
-    this.scheduleDomBatch()
+    coreBatchRead(callback)
   }
 
   /**
-   * 批量 DOM 写入
-   * 将写入操作收集到队列，在读取之后统一执行
+   * 批量 DOM 写入 - 委托给 core.ts
    */
   batchWrite(callback: () => void): void {
-    this.domWriteQueue.push(callback)
-    this.scheduleDomBatch()
+    coreBatchWrite(callback)
   }
 
   /**
-   * 调度 DOM 批量处理
-   */
-  private scheduleDomBatch(): void {
-    if (this.domBatchScheduled)
-      return
-    this.domBatchScheduled = true
-
-    requestAnimationFrame(() => {
-      this.domBatchScheduled = false
-      this.flushDomBatch()
-    })
-  }
-
-  /**
-   * 执行 DOM 批量操作
-   * 先读后写，避免布局抖动
-   */
-  private flushDomBatch(): void {
-    // 先执行所有读取
-    const reads = this.domReadQueue
-    this.domReadQueue = []
-    for (const read of reads) {
-      try { read() }
-      catch (e) { console.error('DOM read error:', e) }
-    }
-
-    // 再执行所有写入
-    const writes = this.domWriteQueue
-    this.domWriteQueue = []
-    for (const write of writes) {
-      try { write() }
-      catch (e) { console.error('DOM write error:', e) }
-    }
-  }
-
-  /**
-   * 让出主线程
-   * 用于长任务中断
+   * 让出主线程 - 委托给 core.ts 的 scheduleTask
    */
   yieldToMain(): Promise<void> {
     return new Promise((resolve) => {
-      this.scheduleYield(resolve)
+      scheduleTask(resolve)
     })
   }
 
@@ -1697,7 +1551,7 @@ class AnimationCoordinator {
 
     this.sharedResizeObserver = new ResizeObserver((entries) => {
       // 页面不可见时跳过处理
-      if (!this.isPageVisible)
+      if (!coreIsPageVisible())
         return
 
       // 批量收集变化
@@ -1739,7 +1593,7 @@ class AnimationCoordinator {
     if (this.resizeBatchScheduled || this.resizeBatchQueue.length === 0)
       return
 
-    const now = this.getNow()
+    const now = coreNow()
     const timeSinceLastProcess = now - this.lastResizeProcessTime
 
     if (timeSinceLastProcess >= this.RESIZE_THROTTLE_MS) {
@@ -1765,7 +1619,7 @@ class AnimationCoordinator {
    */
   private flushResizeBatch(): void {
     this.resizeBatchScheduled = false
-    this.lastResizeProcessTime = this.getNow()
+    this.lastResizeProcessTime = coreNow()
 
     // 取出所有待处理项
     const batch = this.resizeBatchQueue
@@ -1878,7 +1732,7 @@ class AnimationCoordinator {
       observer = new IntersectionObserver(
         (entries) => {
           // 页面不可见时跳过
-          if (!this.isPageVisible)
+          if (!coreIsPageVisible())
             return
 
           // 批量收集
@@ -2077,7 +1931,7 @@ class AnimationCoordinator {
       return
 
     // 页面不可见时暂停
-    if (!this.isPageVisible)
+    if (!coreIsPageVisible())
       return
 
     const scheduleIdle = typeof requestIdleCallback !== 'undefined'
@@ -2149,25 +2003,15 @@ class AnimationCoordinator {
       clearInterval(this.weakRefCheckerId)
       this.weakRefCheckerId = null
     }
-    // 🔧 清理 MessageChannel
-    if (this.messageChannel) {
-      this.messageChannel.port1.close()
-      this.messageChannel.port2.close()
-      this.messageChannel = null
-    }
-    this.pendingYieldCallbacks.length = 0
-    // 🔧 移除 visibility 监听器
-    if (this.visibilityHandler && typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', this.visibilityHandler)
-      this.visibilityHandler = null
+    // 🔧 取消订阅 core.ts 的可见性变化
+    if (this.visibilityUnsubscribe) {
+      this.visibilityUnsubscribe()
+      this.visibilityUnsubscribe = null
     }
     // 🔧 清理可见性订阅者
     this.visibilitySubscribers.clear()
     // 清理 elementRefs
     this.elementRefs.clear()
-    // 清理 DOM 批量队列
-    this.domReadQueue.length = 0
-    this.domWriteQueue.length = 0
     // 🔧 清理 ResizeObserver
     if (this.sharedResizeObserver) {
       this.sharedResizeObserver.disconnect()

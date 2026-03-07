@@ -9,35 +9,17 @@
  * - 动画统一接入调度器，根据设备性能自适应
  */
 
-import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi'
-
-import type { BrewItem, SourceType } from '../../types/brew'
-import {
-  LuCalendar as Calendar,
-  LuClock as Clock,
-  LuUser as User,
-} from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
-import { useNavigation } from '../../contexts/NavigationContext'
-import { usePageContentOptional } from '../../contexts/PageContentContext'
-import { useReadingListOptional } from '../../contexts/ReadingListContext'
-
-import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation/pages/brew'
 import * as brewliaApi from '../../services/brewliaApi'
-import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
-import { processRssContent } from '../../utils/rssContentProcessor'
+
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi'
 import {
   AnnotationTooltip,
   CommentInputPopup,
-  CommentsListPanel,
   CommentTooltip,
+  CommentsListPanel,
   Lightbox,
   MobileReaderBar,
-  FONT_OPTIONS as READER_FONT_OPTIONS,
-  LAYOUT_OPTIONS as READER_LAYOUT_OPTIONS,
-  THEMES as READER_THEMES,
   ReaderLeftPanel,
   ReaderRightPanel,
   STYLE_READER_CONTAINER,
@@ -48,6 +30,21 @@ import {
   usePodcast,
   useReaderSettings,
 } from './reader'
+import type { BrewItem, SourceType } from '../../types/brew'
+import {
+  LuCalendar as Calendar,
+  LuClock as Clock,
+  LuUser as User,
+} from '@lib/icons'
+import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation'
+import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { processRssContent } from '../../utils/rssContentProcessor'
+import { useI18n } from '../../contexts/I18nContext'
+import { useNavigation } from '../../contexts/NavigationContext'
+import { usePageContentOptional } from '../../contexts/PageContentContext'
+import { useReadingListOptional } from '../../contexts/ReadingListContext'
 
 // API URL
 const API_URL = import.meta.env.PUBLIC_API_URL || ''
@@ -84,11 +81,6 @@ interface TocItem {
   text: string
   level: number
 }
-
-// 使用导入的常量
-const _FONT_OPTIONS = READER_FONT_OPTIONS
-const _THEMES = READER_THEMES
-const _LAYOUT_OPTIONS = READER_LAYOUT_OPTIONS
 
 export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType, onNavigateToArticle }: BrewReaderProps) {
   const { t } = useI18n()

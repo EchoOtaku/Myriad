@@ -2,13 +2,14 @@
  * CategoryFeedMode - 分类合并文章列表模式
  */
 
-import type { CategoryFeedModeConfig } from './types'
 import {
   LuCheckCircle as CheckCircle,
   LuChevronLeft as ChevronLeft,
 } from '@lib/icons'
-import { motion } from 'framer-motion'
+
+import type { CategoryFeedModeConfig } from './types'
 import { SPRING_SNAPPY } from './constants'
+import { motionShim as motion } from '@lib/motionShim'
 
 export interface CategoryFeedModeProps {
   variant: 'mobile' | 'desktop'

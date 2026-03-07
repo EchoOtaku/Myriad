@@ -2,7 +2,6 @@
  * Feed 模式组件 - 单个订阅源文章列表视图
  */
 
-import type { FeedModeConfig } from './types'
 import {
   LuCheckCircle as CheckCircle,
   LuChevronLeft as ChevronLeft,
@@ -10,8 +9,10 @@ import {
   LuRefreshCw as RefreshCw,
   LuRss as Rss,
 } from '@lib/icons'
-import { motion } from 'framer-motion'
+
+import type { FeedModeConfig } from './types'
 import { SPRING_SNAPPY } from './constants'
+import { motionShim as motion } from '@lib/motionShim'
 
 export interface FeedModeProps {
   variant: 'mobile' | 'desktop'

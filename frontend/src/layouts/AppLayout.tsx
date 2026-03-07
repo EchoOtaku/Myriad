@@ -10,20 +10,19 @@ import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
 import { SiteFooter } from '../components/SiteFooter'
 import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget'
-import { API_URL } from '../config'
 
-import { useAuth } from '../contexts/AuthContext'
+import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { useNotification } from '../contexts/NotificationContext'
+import { useIdleEffect, useVisibilityInterval } from '../hooks/animation/atomicHooks'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper'
-import { useIdleEffect, useIdleInterval } from '../hooks/useIdleCallback'
+import { useNavAutoHide } from '../hooks/useNavAutoHide'
 import { useScrollOptimization } from '../hooks/useScrollOptimization'
 import { useSystemSetupCheck } from '../hooks/useSystemSetupCheck'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { applyColorPalette, extractColorsFromImage } from '../utils/colorExtractor'
 import { startFpsMonitor, stopFpsMonitor } from '../utils/performance'
-import { getUserAvatarWithCache, invalidateAuthCache } from '../utils/userInfoCache'
 import {
   getColorFromCache,
   saveColorToCache,
@@ -38,9 +37,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation()
-  const { _isAuthenticated, _isAdmin, user, checkAuth: checkAuthFromContext } = useAuth()
   const { t } = useI18n()
-  const [_userAvatar, setUserAvatar] = useState('')
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null)
   const [hasEverConnected, setHasEverConnected] = useState(false)
   const { notifications } = useNotification()
@@ -94,29 +91,41 @@ export function AppLayout({ children }: AppLayoutProps) {
     rippleQuality: evocativeRippleQuality,
   })
 
-  // 获取用户头像
-  useEffect(() => {
-    if (user?.username) {
-      getUserAvatarWithCache(user.username).then(setUserAvatar).catch(() => {
-        setUserAvatar(`https://ui-avatars.com/api/?name=${user.username}`)
-      })
-    }
-    else {
-      setUserAvatar('')
-    }
-  }, [user])
+  // 🎨 壁纸颜色提取 —— 缓存 → 验证 → 提取 → 应用
+  const extractAndApplyColors = useCallback(async (url: string) => {
+    if (!wallpaperState.isUrlActive(url))
+      return
 
-  // 加载壁纸和颜色（使用 Hook）
-  const loadWallpaper = useCallback(async () => {
-    console.debug('[AppLayout] loadWallpaper starting...')
-    const wallpaperResult = await loadWallpaperFromHook()
-
-    if (!wallpaperResult) {
-      console.debug('[AppLayout] No wallpaper result from hook')
+    // 先检查缓存
+    const cachedColors = getColorFromCache(url)
+    if (cachedColors) {
+      if (wallpaperState.isUrlActive(url))
+        applyColorPalette(cachedColors)
       return
     }
 
-    console.debug('[AppLayout] Wallpaper loaded:', wallpaperResult.actualUrl.substring(0, 80))
+    // 检查是否为有效壁纸（包含一致性验证）
+    const checkResult = await shouldApplyColorExtraction(url)
+    if (!checkResult.shouldApply)
+      return
+
+    try {
+      const colors = await extractColorsFromImage(url, { context: 'wallpaper' })
+      if (wallpaperState.isUrlActive(url)) {
+        applyColorPalette(colors)
+        saveColorToCache(url, colors)
+      }
+    }
+    catch (error) {
+      console.error('颜色提取失败:', error)
+    }
+  }, [])
+
+  // 加载壁纸和颜色（使用 Hook）
+  const loadWallpaper = useCallback(async () => {
+    const wallpaperResult = await loadWallpaperFromHook()
+    if (!wallpaperResult)
+      return
 
     // 更新 Evocative 动效配置
     if (wallpaperResult.evocative) {
@@ -127,101 +136,15 @@ export function AppLayout({ children }: AppLayoutProps) {
       setEvocativeRippleQuality(wallpaperResult.evocative.rippleQuality)
     }
     else {
-      // 向后兼容：使用旧字段
       setEvocativeParallax(wallpaperResult.parallaxEnabled)
     }
-    // 更新模糊度配置
     setWallpaperBlur(wallpaperResult.blur)
 
-    if (wallpaperResult) {
-      const { actualUrl, verified } = wallpaperResult
-
-      // 如果URL未通过验证，记录警告但继续尝试
-      if (!verified) {
-        console.warn('壁纸URL验证失败，尝试使用返回的URL进行颜色提取')
-      }
-
-      // 🔒 再次验证：确保当前活跃壁纸与要提取颜色的URL一致
-      if (!wallpaperState.isUrlActive(actualUrl)) {
-        console.warn('壁纸URL在加载期间已变更，跳过颜色提取')
-        return
-      }
-
-      // 先检查缓存
-      const cachedColors = getColorFromCache(actualUrl)
-      if (cachedColors) {
-        // 🔒 应用缓存颜色前再次验证
-        if (wallpaperState.isUrlActive(actualUrl)) {
-          applyColorPalette(cachedColors)
-          console.debug('[AppLayout] Applied cached colors')
-        }
-        return
-      }
-
-      // 检查是否为有效壁纸（包含一致性验证）
-      const checkResult = await shouldApplyColorExtraction(actualUrl)
-      if (!checkResult.shouldApply) {
-        console.debug('[AppLayout] Color extraction skipped:', checkResult.reason)
-        return
-      }
-
-      // 提取颜色
-      try {
-        console.debug('[AppLayout] Starting color extraction for:', actualUrl.substring(0, 80))
-        const colors = await extractColorsFromImage(actualUrl, { context: 'wallpaper' })
-
-        // 🔒 应用颜色前验证壁纸是否仍然一致
-        if (wallpaperState.isUrlActive(actualUrl)) {
-          applyColorPalette(colors)
-          saveColorToCache(actualUrl, colors)
-          console.debug('[AppLayout] Color extraction completed and applied')
-        }
-        else {
-          console.warn('颜色提取完成，但壁纸已变更，放弃应用')
-        }
-      }
-      catch (error) {
-        console.error('颜色提取失败:', error)
-      }
-    }
-  }, [loadWallpaperFromHook])
-
-  // 设置当前导航项
-  const setActiveNav = useCallback(() => {
-    const navItems = document.querySelectorAll('.nav-item')
-    navItems.forEach((item) => {
-      const href = item.getAttribute('href')
-      const ariaLabel = item.getAttribute('aria-label')
-      let isActive = false
-
-      // 处理链接元素（通过 href 匹配）
-      if (href) {
-        isActive = href === location.pathname || (location.pathname === '/' && href === '/')
-      }
-      // 处理按钮元素（通过 aria-label 匹配路径）
-      else if (ariaLabel) {
-        const labelToPathMap: Record<string, string> = {
-          [t.nav.library]: '/library',
-          [t.nav.reports]: '/reports',
-          [t.nav.backToHome]: '/',
-        }
-        const targetPath = labelToPathMap[ariaLabel]
-        if (targetPath) {
-          isActive = location.pathname === targetPath
-        }
-      }
-
-      if (isActive) {
-        item.setAttribute('aria-current', 'page')
-      }
-      else {
-        item.removeAttribute('aria-current')
-      }
-    })
-  }, [location, t.nav.library, t.nav.reports, t.nav.backToHome])
+    await extractAndApplyColors(wallpaperResult.actualUrl)
+  }, [loadWallpaperFromHook, extractAndApplyColors])
 
   // 检查后端连接状态 - 使用 useIdleInterval 降低主线程占用
-  const checkBackendRef = useRef<() => Promise<void>>()
+  const checkBackendRef = useRef<() => Promise<void>>(undefined)
   checkBackendRef.current = async () => {
     try {
       const response = await fetch(`${API_URL}/health`, {
@@ -241,16 +164,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 首次检查延迟到主线程空闲时执行
   useIdleEffect(() => {
     checkBackendRef.current?.()
-  }, [], { timeout: 2000 })
+  }, [], { priority: 'high' })
 
-  // 每30秒检查一次，使用空闲回调
-  useIdleInterval(() => {
+  // 每30秒检查一次，页面隐藏时自动暂停
+  useVisibilityInterval(() => {
     checkBackendRef.current?.()
-  }, 30000, {
-    enabled: true,
-    pauseWhenHidden: true, // 页面隐藏时暂停
-    timeout: 5000,
-  })
+  }, { delay: 30000, enabled: true })
 
   // 初始化：加载壁纸（仅首次挂载执行）
   const hasInitializedRef = useRef(false)
@@ -276,52 +195,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 监听壁纸变化事件（由 GlobalControlPanel 触发）
   useEffect(() => {
     const handleWallpaperChanged = async (e: Event) => {
-      const customEvent = e as CustomEvent
-      const newUrl = customEvent.detail?.url
-
-      if (!newUrl)
-        return
-
-      console.debug('[AppLayout] wallpaperChanged event received:', newUrl.substring(0, 80))
-
-      // 🔒 验证URL与当前活跃壁纸一致
-      if (!wallpaperState.isUrlActive(newUrl)) {
-        console.debug('[AppLayout] wallpaperChanged: URL not active, skipping')
-        return
-      }
-
-      // 先检查缓存
-      const cachedColors = getColorFromCache(newUrl)
-      if (cachedColors) {
-        // 🔒 应用前再次验证
-        if (wallpaperState.isUrlActive(newUrl)) {
-          applyColorPalette(cachedColors)
-          console.debug('[AppLayout] wallpaperChanged: Applied cached colors')
-        }
-        return
-      }
-
-      // 检查是否为有效壁纸（包含一致性验证）
-      const checkResult = await shouldApplyColorExtraction(newUrl)
-      if (!checkResult.shouldApply) {
-        console.debug('[AppLayout] wallpaperChanged: Extraction skipped:', checkResult.reason)
-        return
-      }
-
-      // 提取颜色
-      try {
-        const colors = await extractColorsFromImage(newUrl, { context: 'wallpaper' })
-
-        // 🔒 应用颜色前验证壁纸是否仍然一致
-        if (wallpaperState.isUrlActive(newUrl)) {
-          applyColorPalette(colors)
-          saveColorToCache(newUrl, colors)
-          console.debug('[AppLayout] wallpaperChanged: Colors extracted and applied')
-        }
-      }
-      catch (error) {
-        console.error('颜色提取失败:', error)
-      }
+      const newUrl = (e as CustomEvent).detail?.url
+      if (newUrl)
+        await extractAndApplyColors(newUrl)
     }
 
     window.addEventListener('wallpaperChanged', handleWallpaperChanged)
@@ -330,244 +206,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, [])
 
-  // 路由变化时更新导航状态
-  useEffect(() => {
-    setActiveNav()
-    // 注意：不在这里自动设置 showLibraryFilters，由按钮点击触发
-    // 防止与 handleEnterFilters 冲突导致重复加载
-  }, [location.pathname, setActiveNav])
-
-  // 监听认证状态变化
-  useEffect(() => {
-    const handleAuthChange = (e: CustomEvent) => {
-      const isAuth = e.detail?.isAuthenticated ?? false
-
-      if (isAuth) {
-        // 登录成功，清除缓存并重新检查认证
-        invalidateAuthCache()
-        checkAuthFromContext()
-      }
-      // 退出登录时，AuthContext 会自动更新状态
-    }
-
-    window.addEventListener('auth-state-changed', handleAuthChange as EventListener)
-    return () => {
-      window.removeEventListener('auth-state-changed', handleAuthChange as EventListener)
-    }
-  }, [checkAuthFromContext])
-
-  // 导航岛自动隐藏逻辑
-  useEffect(() => {
-    const navContainer = document.querySelector('.nav-container') as HTMLElement
-    if (!navContainer)
-      return
-
-    // ===== 状态 =====
-    let lastScrollY = window.scrollY
-    let rafId = 0
-    let inactivityTimeoutId = 0
-    let isHovering = false
-    let isNavVisible = true
-    let hiddenByScroll = false // 是否因滚动而隐藏
-    let cachedIsDesktop = window.innerWidth >= 768
-    let cachedWindowHeight = window.innerHeight
-
-    // ===== 配置 =====
-    const INACTIVITY_DELAY = 5000
-    const SCROLL_THRESHOLD = 50
-    const PAGE_TOP_THRESHOLD = 100
-    const EDGE_THRESHOLD = 100
-
-    // ===== 预计算 CSS 变换 =====
-    const TRANSFORM_SHOW_DESKTOP = 'translateY(-50%)'
-    const TRANSFORM_SHOW_MOBILE = 'translateX(-50%)'
-    const TRANSFORM_HIDE_DESKTOP = 'translateY(-50%) translateX(-20px)'
-    const TRANSFORM_HIDE_MOBILE = 'translateX(-50%) translateY(20px)'
-
-    // ===== CSS 样式应用 =====
-    const applyVisibility = (visible: boolean) => {
-      if (visible) {
-        navContainer.style.cssText = `
-          opacity: 1;
-          transform: ${cachedIsDesktop ? TRANSFORM_SHOW_DESKTOP : TRANSFORM_SHOW_MOBILE};
-          pointer-events: auto;
-          transition: opacity 0.3s ease, transform 0.3s ease;
-        `
-      }
-      else {
-        navContainer.style.cssText = `
-          opacity: 0;
-          transform: ${cachedIsDesktop ? TRANSFORM_HIDE_DESKTOP : TRANSFORM_HIDE_MOBILE};
-          pointer-events: none;
-          transition: opacity 0.3s ease, transform 0.3s ease;
-        `
-      }
-    }
-
-    // ===== 核心显示/隐藏函数 =====
-    const showNav = () => {
-      if (isNavVisible)
-        return
-      isNavVisible = true
-      hiddenByScroll = false
-      applyVisibility(true)
-    }
-
-    const hideNav = () => {
-      if (!isNavVisible || isHovering)
-        return
-      isNavVisible = false
-      applyVisibility(false)
-    }
-
-    // 因滚动隐藏（标记状态）
-    const hideNavByScroll = () => {
-      if (!isNavVisible || isHovering)
-        return
-      isNavVisible = false
-      hiddenByScroll = true
-      applyVisibility(false)
-    }
-
-    // ===== 无操作计时器 =====
-    const clearInactivityTimer = () => {
-      if (inactivityTimeoutId) {
-        clearTimeout(inactivityTimeoutId)
-        inactivityTimeoutId = 0
-      }
-    }
-
-    const startInactivityTimer = () => {
-      clearInactivityTimer()
-      // 只有导航岛可见时才启动无操作计时
-      if (isNavVisible) {
-        inactivityTimeoutId = window.setTimeout(hideNav, INACTIVITY_DELAY)
-      }
-    }
-
-    // ===== 滚动处理 =====
-    const processScroll = () => {
-      const currentScrollY = window.scrollY
-      const delta = currentScrollY - lastScrollY
-      const isDown = delta > 0
-
-      // 向下滚动：隐藏（标记为滚动隐藏）
-      if (isDown && delta > SCROLL_THRESHOLD && currentScrollY > PAGE_TOP_THRESHOLD) {
-        clearInactivityTimer()
-        hideNavByScroll()
-      }
-      // 向上滚动或页面顶部：显示
-      else if (!isDown || currentScrollY < PAGE_TOP_THRESHOLD) {
-        showNav()
-        startInactivityTimer()
-      }
-
-      lastScrollY = currentScrollY
-      rafId = 0
-    }
-
-    const handleScroll = () => {
-      if (!rafId) {
-        rafId = requestAnimationFrame(processScroll)
-      }
-    }
-
-    // ===== 鼠标移动处理 =====
-    let pendingMouseMove: MouseEvent | null = null
-    let mouseRafId = 0
-
-    const processMouseMove = () => {
-      if (!pendingMouseMove)
-        return
-      const e = pendingMouseMove
-      pendingMouseMove = null
-      mouseRafId = 0
-
-      const isNearEdge = cachedIsDesktop
-        ? e.clientX < EDGE_THRESHOLD
-        : e.clientY > cachedWindowHeight - EDGE_THRESHOLD
-
-      // 靠近边缘时显示（即使因滚动隐藏也显示）
-      if (isNearEdge) {
-        showNav()
-        startInactivityTimer()
-      }
-    }
-
-    const handleMouseMove = (e: MouseEvent) => {
-      pendingMouseMove = e
-      if (!mouseRafId) {
-        mouseRafId = requestAnimationFrame(processMouseMove)
-      }
-    }
-
-    // ===== 交互处理 =====
-    const handleInteraction = () => {
-      // 只有非滚动隐藏状态才响应交互显示
-      // 滚动隐藏需要向上滚动或移到边缘才能恢复
-      if (!hiddenByScroll) {
-        showNav()
-        startInactivityTimer()
-      }
-    }
-
-    // ===== 导航岛悬停 =====
-    const handleNavEnter = () => {
-      isHovering = true
-      clearInactivityTimer()
-      showNav()
-    }
-
-    const handleNavLeave = () => {
-      isHovering = false
-      startInactivityTimer()
-    }
-
-    // ===== 响应式处理 =====
-    const mediaQuery = window.matchMedia('(min-width: 768px)')
-    const handleMediaChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      cachedIsDesktop = e.matches
-      if (isNavVisible) {
-        applyVisibility(true)
-      }
-    }
-
-    const handleResize = () => {
-      cachedWindowHeight = window.innerHeight
-    }
-
-    // ===== 初始化 =====
-    applyVisibility(true)
-
-    // ===== 事件注册 =====
-    const controller = new AbortController()
-    const { signal } = controller
-    const passive = { passive: true, signal }
-
-    window.addEventListener('scroll', handleScroll, passive)
-    window.addEventListener('mousemove', handleMouseMove, passive)
-    window.addEventListener('keydown', handleInteraction, passive)
-    window.addEventListener('click', handleInteraction, passive)
-    window.addEventListener('touchstart', handleInteraction, passive)
-    window.addEventListener('resize', handleResize, passive)
-    navContainer.addEventListener('mouseenter', handleNavEnter, { signal })
-    navContainer.addEventListener('mouseleave', handleNavLeave, { signal })
-    mediaQuery.addEventListener('change', handleMediaChange, { signal })
-
-    // 初始化媒体查询状态
-    handleMediaChange(mediaQuery)
-    startInactivityTimer()
-
-    // ===== 清理 =====
-    return () => {
-      controller.abort()
-      if (rafId)
-        cancelAnimationFrame(rafId)
-      if (mouseRafId)
-        cancelAnimationFrame(mouseRafId)
-      clearInactivityTimer()
-    }
-  }, [])
+  // 导航岛自动隐藏
+  useNavAutoHide()
 
   return (
     <>

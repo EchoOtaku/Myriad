@@ -10,20 +10,19 @@
  * - 静态动画配置提取到组件外部
  */
 
-import type { TranslationKeys } from '../../i18n'
-
-import type { WidgetComponentProps } from '../WidgetGrid'
-import { motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+
 import { API_URL } from '../../config'
+import type { TranslationKeys } from '../../i18n'
+import type { WidgetComponentProps } from '../WidgetGrid'
+import { hasSessionHint } from '../../utils/sessionDetection'
+import { motionShim as motion } from '@lib/motionShim'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { hasSessionHint } from '../../utils/sessionDetection'
 
 // 缓存配置
 const CACHE_KEY = 'recent_activities_cache'
 const CACHE_DURATION = 5 * 60 * 1000 // 5分钟
-const _DEBOUNCE_DELAY = 300 // 300ms 防抖
 
 // 全局请求状态 - 避免多实例重复请求
 let globalFetchPromise: Promise<Activity[]> | null = null
@@ -314,7 +313,7 @@ const ActivityItem = memo(({ activity, index, t }: { activity: Activity, index: 
 
 ActivityItem.displayName = 'ActivityItem'
 
-export const RecentActivityWidget = memo(({ _config, isEditMode, isPreview }: WidgetComponentProps) => {
+export const RecentActivityWidget = memo(({ config: _config, isEditMode, isPreview }: WidgetComponentProps) => {
   const { isAuthenticated, isLoading: authLoading, hasChecked, checkAuth } = useAuth()
   const { t } = useI18n()
   const [activities, setActivities] = useState<Activity[]>([])

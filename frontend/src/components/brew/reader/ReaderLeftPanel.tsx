@@ -3,7 +3,9 @@
  * 包含: 返回、来源、进度、目录、收藏、AI注释、AI播客、外部链接
  */
 
-import type { ReaderLeftPanelProps } from './types'
+import * as brewliaApi from '../../../services/brewliaApi'
+
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import {
   LuArrowRight as ArrowRight,
   LuChevronLeft as ChevronLeft,
@@ -29,9 +31,9 @@ import {
   LuVolume2 as Volume2,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
 import { useMemo, useRef } from 'react'
-import * as brewliaApi from '../../../services/brewliaApi'
+
+import type { ReaderLeftPanelProps } from './types'
 import {
   STYLE_MAX_HEIGHT_320,
 } from './constants'

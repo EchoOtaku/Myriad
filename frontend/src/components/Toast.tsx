@@ -13,11 +13,11 @@
  * - 可选标题和消息组合
  */
 
+import './Toast.css'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { TappIcon } from '../tapp/components/TappIcon'
-
-import './Toast.css'
+import { TappIcon } from '../tapp'
 
 /** Toast 消息类型 */
 export type ToastType = 'success' | 'error' | 'warning' | 'info'

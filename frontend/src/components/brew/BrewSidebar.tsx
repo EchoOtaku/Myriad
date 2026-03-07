@@ -65,13 +65,6 @@ export default memo(({
   const { t } = useI18n()
   const [contextMenu, setContextMenu] = useState<{ sourceId: number, x: number, y: number } | null>(null)
 
-  // 获取分类列表 - 支持多分类（逗号分隔）- useMemo 缓存
-  const _categories = useMemo(() => [...new Set(
-    sources
-      .filter(s => s.category)
-      .flatMap(s => s.category!.split(',').map(c => c.trim()).filter(Boolean)),
-  )], [sources])
-
   // 按分类分组订阅源 - 支持多分类（一个源可能出现在多个分类下）- useMemo 缓存
   const sourcesByCategory = useMemo(() => sources.reduce((acc, source) => {
     if (source.category) {

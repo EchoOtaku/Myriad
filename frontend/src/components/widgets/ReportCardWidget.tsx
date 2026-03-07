@@ -6,7 +6,8 @@
 import type { WidgetConfig } from '../WidgetGrid'
 import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
@@ -81,10 +82,9 @@ const DanmakuWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: { d
   const { t } = useI18n()
   const defaultDanmaku = t.reportCard.danmakuDefault as unknown as string[]
   const texts = useMemo(() => data?.danmaku || defaultDanmaku, [data?.danmaku, defaultDanmaku])
-  const _uniqueId = useId()
 
   // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
-  const { _isAnimating } = useLoopAnimation({
+  useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
     trigger: triggerKey, // 状态切换时触发
     enabled: allowLoop, // 低端设备禁用
@@ -451,7 +451,6 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
 // ==================== Netease组件（完整版）====================
 const MusicStatsWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: any, allowLoop?: boolean, triggerKey?: unknown }) => {
   const { t } = useI18n()
-  const _uniqueId = useId()
 
   // 🆕 使用触发式动画 - triggerKey 变化时播放一轮，完成后自动释放
   const { isAnimating } = useLoopAnimation({
@@ -462,7 +461,6 @@ const MusicStatsWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: 
 
   const canAnimate = allowLoop && isAnimating
 
-  const _color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords])
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count])
   const playlistCount = useMemo(() => data?.playlist_count || 0, [data?.playlist_count])
@@ -722,7 +720,7 @@ const PLATFORM_CONFIG: Record<string, { icon: React.ReactNode, color: string, bg
 }
 
 // ==================== 主组件 ====================
-export const ReportCardWidget = memo(({ config, _isEditMode, isPreview }: ReportCardWidgetProps) => {
+export const ReportCardWidget = memo(({ config, isEditMode: _isEditMode, isPreview }: ReportCardWidgetProps) => {
   const animLevel = useAnimationLevel()
   const { t } = useI18n()
   const platformId = (config.config?.platformId || 'bilibili') as string
@@ -730,12 +728,6 @@ export const ReportCardWidget = memo(({ config, _isEditMode, isPreview }: Report
   const [loading, setLoading] = useState(true)
   const [showOverview, setShowOverview] = useState(true)
   const [cardContent, setCardContent] = useState<{ title: string, type?: string, titles?: string[] } | null>(null)
-
-  // 翻译的平台标签
-  const _translatedPlatformLabels = useMemo(() => ({
-    bilibili: t.reportCardWidget.bilibili,
-    netease: t.reportCardWidget.neteaseMusic,
-  }), [t])
 
   useEffect(() => {
     if (isPreview) {

@@ -17,9 +17,9 @@
 import type { SecondaryNavItem } from '../contexts/NavigationContext'
 
 import type { BrewItem, BrewSource, BrewStats } from '../types/brew'
-import { AnimatePresence } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import BrewFeedList from '../components/brew/BrewFeedList'
 import BrewReader from '../components/brew/BrewReader'
@@ -29,7 +29,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
-import { useBrewAnimationConfig, useBrewScheduler } from '../hooks/animation/pages/brew'
+import { useBrewScheduler } from '../hooks/animation'
 import { useBrewKeyboard } from '../hooks/useBrewKeyboard'
 import * as brewApi from '../services/brewApi'
 
@@ -73,7 +73,6 @@ const PRESET_CATEGORY_DB_VALUES: Record<PresetCategoryId, string> = {
 }
 
 // 需要合并展示文章的特殊分类（不显示网站卡片）
-const _MERGED_FEED_CATEGORIES: PresetCategoryId[] = ['mine']
 
 type CategoryKey = PresetCategoryId | 'all'
 
@@ -87,7 +86,6 @@ type ViewMode = 'sources' | 'items' | 'starred' | 'category-feed'
 export default function Brew() {
   // 初始化动画调度器
   useBrewScheduler()
-  const _animConfig = useBrewAnimationConfig()
   const { t } = useI18n()
 
   // 获取预置分类的显示名称（国际化）

@@ -3,16 +3,18 @@
  * 包含: AI注释Tooltip、评论Tooltip、评论输入弹窗
  */
 
-import type { CommentItem } from '../../../services/brewApi'
-import type { AnnotationType } from '../../../services/brewliaApi'
-import type { ThemeConfig } from './types'
-import { LuCheck as Check, LuCopy as Copy, LuMessageSquare as MessageSquare, LuSend as Send } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
 import * as brewliaApi from '../../../services/brewliaApi'
+
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import { LuCheck as Check, LuCopy as Copy, LuMessageSquare as MessageSquare, LuSend as Send } from '@lib/icons'
+import { useEffect, useState } from 'react'
+
+import type { AnnotationType } from '../../../services/brewliaApi'
+import type { CommentItem } from '../../../services/brewApi'
 import {
   DATE_FORMAT_SHORT,
 } from './constants'
+import type { ThemeConfig } from './types'
 
 // ================== AI 注释 Tooltip ==================
 

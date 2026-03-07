@@ -6,11 +6,11 @@
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { SiAppstore } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react'
+
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
-import { useLoopAnimation } from '../../hooks/animation'
-import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home'
+import { useHomeVisibilityInterval, useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { GlowBackground } from './shared/GlowBackground'
@@ -28,7 +28,6 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   // 如果是预览模式，强制 scale 为 1，因为外部容器已经进行了缩放
   const { containerRef, scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
   const { t, locale } = useI18n()
 
   // 非中文语言时减小标题字体（英文等语言单词较长）

@@ -4,11 +4,11 @@
  * 支持多任务模式（无需指定 tappId）
  */
 
-import React from 'react'
+import { TappRunPage, TappWindowManager } from '../tapp'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+
+import React from 'react'
 import { useBreakpoints } from '../hooks/useSharedEventListener'
-import { TappWindowManager } from '../tapp/components/TappWindowManager'
-import { TappRunPage } from '../tapp/pages'
 
 const TappRunView: React.FC = () => {
   // 从路由参数中获取 tappId

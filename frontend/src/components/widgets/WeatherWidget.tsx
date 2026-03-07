@@ -5,11 +5,11 @@
 
 import type { TranslationKeys } from '../../i18n'
 import type { WeatherData } from '../../utils/dynamicContent'
+
 import type { WidgetConfig } from '../WidgetGrid'
-import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { useLoopAnimation } from '../../hooks/animation'
-import { useHomeVisibilityInterval } from '../../hooks/animation/pages/home'
+import { useHomeVisibilityInterval, useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
@@ -94,19 +94,16 @@ export interface WeatherWidgetProps {
   isPreview?: boolean
 }
 
-export const WeatherWidget = memo(({ config, _isEditMode, isPreview }: WeatherWidgetProps) => {
-  const { containerRef, _scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
+export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview }: WeatherWidgetProps) => {
+  const { containerRef, scale: _scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
   const { t, locale } = useI18n()
   // framer-motion 动态模块（仅在需要动画时加载）
   const [FM, setFM] = useState<null | { motion: any }>(null)
 
   // 非中文语言时减小标题字体（英文等语言单词较长）
   const isNonChinese = !locale.startsWith('zh')
-  const _titleFontScale = isNonChinese ? fontScale * 0.9 : fontScale // 温度等标题减少约6-8px
-  const _infoFontScale = isNonChinese ? fontScale * 0.8 : fontScale // 城市等信息减少约4px
 
   // 🆕 使用触发式动画 - 组件挂载时播放一次天气图标动画
   const { isAnimating } = useLoopAnimation({

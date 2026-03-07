@@ -3,8 +3,6 @@
  * 包含: 评论、主题、字体、布局、字号、行高
  */
 
-import type { CommentItem } from '../../../services/brewApi'
-import type { ReaderRightPanelProps } from './types'
 import {
   LuAlignJustify as AlignJustify,
   LuMessageSquare as MessageSquare,
@@ -12,7 +10,10 @@ import {
   LuPalette as Palette,
   LuPlus as Plus,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+
+import type { CommentItem } from '../../../services/brewApi'
+import type { ReaderRightPanelProps } from './types'
 import { THEMES } from './constants'
 
 interface ExtendedReaderRightPanelProps extends ReaderRightPanelProps {

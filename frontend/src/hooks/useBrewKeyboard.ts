@@ -17,6 +17,7 @@
  */
 
 import type { BrewItem } from '../types/brew'
+
 import { useCallback, useEffect, useRef } from 'react'
 
 interface UseBrewKeyboardOptions {
@@ -108,18 +109,6 @@ export function useBrewKeyboard({
       onSelectItem(items[0])
     }
   }, [getCurrentIndex, items, onSelectItem])
-
-  // 切换阅读器
-  const _toggleReader = useCallback(() => {
-    if (selectedItem) {
-      // 如果已有选中项，关闭阅读器
-      onCloseReader?.()
-    }
-    else if (items.length > 0) {
-      // 如果没有选中项，选择第一篇
-      onSelectItem(items[0])
-    }
-  }, [selectedItem, items, onSelectItem, onCloseReader])
 
   // 键盘事件处理
   const handleKeyDown = useCallback((e: KeyboardEvent) => {

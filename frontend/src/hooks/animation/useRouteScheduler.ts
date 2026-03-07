@@ -17,12 +17,8 @@
 
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { isPageVisible, pauseScheduler, startPage } from './index'
-import { cleanupBrew } from './pages/brew'
-import { cleanupHome } from './pages/home'
-import { cleanupLibrary } from './pages/library'
-import { cleanupReports } from './pages/reports'
-import { cleanupTapp } from './pages/tapp'
+
+import { isPageVisible, pauseScheduler, runPageCleanup, startPage } from './index'
 
 // 路径到页面 ID 的映射
 const pathToPageId: Record<string, string> = {
@@ -36,15 +32,6 @@ const pathToPageId: Record<string, string> = {
   '/login': 'login',
   '/details': 'details',
   '/setup': 'setup',
-}
-
-// 页面清理函数映射
-const pageCleanupMap: Record<string, () => void> = {
-  home: cleanupHome,
-  library: cleanupLibrary,
-  reports: cleanupReports,
-  brew: cleanupBrew,
-  tapp: cleanupTapp,
 }
 
 /**
@@ -92,10 +79,7 @@ export function useRouteScheduler(): void {
 
     // 清理旧页面的专用资源
     if (lastPageIdRef.current) {
-      const cleanup = pageCleanupMap[lastPageIdRef.current]
-      if (cleanup) {
-        cleanup()
-      }
+      runPageCleanup(lastPageIdRef.current)
     }
 
     lastPathRef.current = currentPath
@@ -117,9 +101,7 @@ export function useRouteScheduler(): void {
     // 组件卸载时清理最后一个页面
     return () => {
       if (lastPageIdRef.current) {
-        const cleanup = pageCleanupMap[lastPageIdRef.current]
-        if (cleanup)
-          cleanup()
+        runPageCleanup(lastPageIdRef.current)
       }
     }
   }, [])
@@ -147,9 +129,7 @@ export function usePageScheduler(pageId: string): void {
 
     // 组件卸载时清理页面专用资源
     return () => {
-      const cleanup = pageCleanupMap[pageId]
-      if (cleanup)
-        cleanup()
+      runPageCleanup(pageId)
     }
   }, [pageId])
 }

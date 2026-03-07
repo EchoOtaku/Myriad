@@ -7,8 +7,8 @@ import type { WidgetConfig, WidgetType } from '../components/WidgetGrid'
 import type { UserInfo } from '../utils/userInfoCache'
 import { FaEdit } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
+
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
 import { TitleFontSelector } from '../components/TitleFontSelector'
 import WidgetGrid from '../components/WidgetGrid'
@@ -23,8 +23,7 @@ import { WelcomeWidget } from '../components/widgets/WelcomeWidget'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { usePageReady } from '../hooks/animation'
-import { useHomeScheduler } from '../hooks/animation/pages/home'
+import { useHomeScheduler, usePageReady } from '../hooks/animation'
 import { useTappWidgets } from '../hooks/useTappWidgets'
 import { useTitleFont } from '../hooks/useTitleFont'
 import { getUIConfigDeduped } from '../utils/requestDedup'
@@ -35,7 +34,6 @@ export default function Home() {
   // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
   useHomeScheduler()
 
-  const _navigate = useNavigate()
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth()
   const { t } = useI18n()
   const isPageReady = usePageReady()

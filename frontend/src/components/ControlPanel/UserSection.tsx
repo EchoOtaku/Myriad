@@ -1,24 +1,16 @@
+import type { User } from '../../contexts/AuthContext'
 import React, { useCallback, useEffect, useState } from 'react'
+
 import { createPortal } from 'react-dom'
 import { API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { cleanupTemporaryTapps } from '../../tapp/services/TappApiService'
+import { cleanupTemporaryTapps } from '../../tapp'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
-import { clearAllUserCache, invalidateAuthCache, invalidateUserInfoCache } from '../../utils/userInfoCache'
+import { clearAllUserCache, invalidateUserInfoCache } from '../../utils/userInfoCache'
 import LoginForm from '../LoginForm'
 import { UserModal } from './UserModal'
-
-interface User {
-  username: string
-  is_admin: boolean
-  auth_provider: string
-  display_name?: string
-  linked_github_id?: string
-  avatar_url?: string
-  bio?: string
-}
 
 interface UserInfo {
   name: string
@@ -153,7 +145,6 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
   useEffect(() => {
     const handleLoginSuccess = () => {
       closeModal()
-      invalidateAuthCache()
       invalidateUserInfoCache()
       getCSRFToken(true).catch(console.warn)
     }
@@ -310,6 +301,6 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
 }
 
 // 导出用户和用户信息类型供外部使用
-export type { User, UserInfo }
+export type { UserInfo }
 
 export default UserSection

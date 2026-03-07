@@ -1,8 +1,10 @@
 import type { WidgetConfig, WidgetSize, WidgetType } from '../WidgetGrid'
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../contexts/I18nContext'
-import { useHomeResizeObserver, useHomeVisibilityInterval } from '../../hooks/animation/pages/home'
+
+import { useHomeResizeObserver, useHomeVisibilityInterval } from '../../hooks/animation'
 import { getCSRFToken } from '../../utils/csrf'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import WidgetGrid from '../WidgetGrid'

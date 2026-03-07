@@ -3,8 +3,9 @@
  */
 
 import { LuSearch as Search, LuX as X } from '@lib/icons'
-import { motion } from 'framer-motion'
+
 import { SPRING_SNAPPY } from './constants'
+import { motionShim as motion } from '@lib/motionShim'
 
 export interface SearchModeProps {
   variant: 'mobile' | 'desktop'

@@ -4,12 +4,13 @@
  */
 
 import { FaTimes } from '@lib/icons'
+
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../contexts/I18nContext'
-import { useStaggerAnimation } from '../hooks/animation'
-import { useHomeResizeObserver } from '../hooks/animation/pages/home'
+
+import { useHomeResizeObserver, useStaggerAnimation } from '../hooks/animation'
 import { getPerformanceProfileSync, usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
 import './WidgetGrid.css'

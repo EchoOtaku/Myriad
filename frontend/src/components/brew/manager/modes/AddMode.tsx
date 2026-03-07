@@ -3,7 +3,6 @@
  * 包含单个添加和 OPML 导入两个标签页
  */
 
-import type { ChangeEvent, FormEvent } from 'react'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -15,16 +14,17 @@ import {
   LuLink as Link,
   LuLoader2 as Loader2,
   NotionIcon,
-  LuRss as Rss,
   RSSHubIcon,
+  LuRss as Rss,
   LuSparkles as Sparkles,
   LuStar as Star,
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useRef, useState } from 'react'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type { ChangeEvent, FormEvent } from 'react'
 import { SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
+import { useRef, useState } from 'react'
 
 interface DiscoveredFeed {
   title: string

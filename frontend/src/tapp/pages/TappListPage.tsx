@@ -4,6 +4,7 @@
  */
 
 import type { TappInstance, TappManifest } from '../types'
+
 import type { IconStyle } from '../utils/tappColors'
 import {
   FaCog,
@@ -22,11 +23,12 @@ import {
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import AnimatedView from '../../components/AnimatedView'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { useTappScheduler, useTappStagger } from '../../hooks/animation/pages/tapp'
+import { useTappScheduler, useTappStagger } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'

@@ -3,8 +3,8 @@
  * 支持深浅双模式，优雅的动画效果
  */
 
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { LuDownload as Download, LuRotateCw as RotateCw, LuX as X, LuZoomIn as ZoomIn, LuZoomOut as ZoomOut } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
 
 interface LightboxProps {

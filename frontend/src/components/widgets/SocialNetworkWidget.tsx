@@ -12,10 +12,10 @@
  */
 
 import type { WidgetComponentProps } from '../WidgetGrid'
-// 使用内联 SVG 图标，避免 react-icons 全量导入
 import { FaGithub, FaSteam, FaTimes, getIconByName, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
@@ -25,6 +25,8 @@ import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import { useThemeMode } from '../../utils/themeSubscriber'
 import { GlowBackground } from './shared/GlowBackground'
+
+// 使用内联 SVG 图标，避免 react-icons 全量导入
 
 // ========== 安全验证工具函数 ==========
 
@@ -1228,7 +1230,6 @@ PlatformButton.displayName = 'PlatformButton'
 export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
   const { containerRef, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
   const { t } = useI18n()
 
   // 🆕 使用触发式动画 - 组件挂载时播放一次hover动画

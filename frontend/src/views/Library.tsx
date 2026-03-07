@@ -4,12 +4,13 @@
  */
 
 import type { SecondaryNavItem } from '../contexts/NavigationContext'
+
 import { useEffect, useMemo } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import LibraryGrid from '../components/LibraryGrid'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
-import { useLibraryScheduler } from '../hooks/animation/pages/library'
+import { useLibraryScheduler } from '../hooks/animation'
 
 // 资料库筛选图标
 const FilterIcons = {

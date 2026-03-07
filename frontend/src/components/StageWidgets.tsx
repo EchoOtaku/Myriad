@@ -1,9 +1,9 @@
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { memo, useEffect, useId, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../config'
+
 import { useI18n } from '../contexts/I18nContext'
-import { useLoopAnimation } from '../hooks/animation'
-import { useReportsVisibilityInterval } from '../hooks/animation/pages/reports'
+import { useLoopAnimation, useReportsVisibilityInterval } from '../hooks/animation'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 
 // 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
@@ -29,10 +29,9 @@ export const DanmakuWidget = memo(({ data }: { data?: { danmaku?: string[] } }) 
   const { t } = useI18n()
   const texts = useMemo(() => data?.danmaku || t.reportsPage.danmakuDefaults, [data?.danmaku, t.reportsPage.danmakuDefaults])
   const anim = useAnimationLevel()
-  const _uniqueId = useId()
 
   // 使用触发式循环动画（弹幕核心动画）
-  const { _isAnimating } = useLoopAnimation({
+  useLoopAnimation({
     duration: 11000, // 弹幕滚动约8秒 + 额外保持3秒
     enabled: anim.loop,
   })
@@ -621,7 +620,6 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
 } }) => {
   const { t } = useI18n()
   const animConfig = useAnimationLevel()
-  const _uniqueId = useId()
 
   // 使用触发式循环动画（音乐气泡核心动画）
   const { isAnimating } = useLoopAnimation({
@@ -631,7 +629,6 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
 
   const canAnimate = animConfig.loop && isAnimating
 
-  const _color = useMemo(() => data?.soul_color || '#ef4444', [data?.soul_color])
   const moodKeywords = useMemo(() => data?.mood_keywords || [], [data?.mood_keywords])
   const followerCount = useMemo(() => data?.follower_count || 0, [data?.follower_count])
   const playlistCount = useMemo(() => data?.playlist_count || 0, [data?.playlist_count])
@@ -747,7 +744,7 @@ export const MusicStatsWidget = memo(({ data }: { data?: {
                 opacity: 1,
                 y: canAnimate ? [0, -8, 0, 8, 0] : 0,
                 boxShadow: `
-                  0 8px 20px -6px ${bubble.color}60, 
+                  0 8px 20px -6px ${bubble.color}60,
                   inset 0 4px 10px rgba(255,255,255,0.3),
                   inset 0 -5px 15px ${bubble.color}30
                 `,

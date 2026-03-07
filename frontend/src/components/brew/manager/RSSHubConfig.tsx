@@ -3,7 +3,6 @@
  * 统一使用后端 API 管理实例，支持健康检查和故障转移
  */
 
-import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew'
 import {
   LuActivity as Activity,
   LuAlertCircle as AlertCircle,
@@ -22,11 +21,12 @@ import {
   LuX as X,
   LuZap as Zap,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
-
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew'
 import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { useI18n } from '../../../contexts/I18nContext'
 
 // Framer Motion transition 配置常量
 const TRANSITION_NORMAL = { duration: 0.15 } as const
@@ -651,7 +651,7 @@ export default function RSSHubConfigComponent({
     setTesting(true)
     setTestResult(null)
     try {
-      const _response = await fetch(fullUrl, {
+      await fetch(fullUrl, {
         method: 'HEAD',
         mode: 'no-cors',
       })

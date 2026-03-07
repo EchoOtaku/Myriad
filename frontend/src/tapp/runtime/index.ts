@@ -14,6 +14,9 @@ export { createTappBridge, TappBridge } from './TappBridge'
 export { TappPageSandbox } from './TappPageSandbox'
 export type { TappPageSandboxProps } from './TappPageSandbox'
 
+// 资源加载
+export { getResourceLoader, loadWidgetResources } from './sandbox/resourceLoader'
+
 // 兼容性导出（保持向后兼容，TappSandbox 作为 TappPageSandbox 的别名）
 export { TappPageSandbox as TappSandbox } from './TappPageSandbox'
 export { createPermissionController, TappPermissionController } from './TappPermission'

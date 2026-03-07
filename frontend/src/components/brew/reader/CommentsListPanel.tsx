@@ -3,8 +3,7 @@
  * 包含: 评论列表、回复功能、删除功能
  */
 
-import type { CommentItem } from '../../../services/brewApi'
-import type { ThemeConfig } from './types'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import {
   LuChevronDown as ChevronDown,
   LuChevronUp as ChevronUp,
@@ -14,11 +13,13 @@ import {
   LuTrash2 as Trash2,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
 import {
   DATE_FORMAT_FULL,
   STYLE_MAX_HEIGHT_60VH,
 } from './constants'
+
+import type { CommentItem } from '../../../services/brewApi'
+import type { ThemeConfig } from './types'
 
 interface CommentsListPanelProps {
   // 主题

@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+
 import { observeResize } from '../hooks/animation'
 import { useSharedResize, useSharedScroll } from '../hooks/useSharedEventListener'
 
@@ -274,12 +275,7 @@ function CustomScrollbarInner() {
 
   // 显示/隐藏滚动条 + 滚动状态检测
   useEffect(() => {
-    const _lastScrollTime = Date.now()
-
     const handleScroll = () => {
-      const now = Date.now()
-      lastScrollTime = now
-
       setIsVisible(true)
       setIsScrolling(true)
 
@@ -414,26 +410,6 @@ function CustomScrollbarInner() {
       document.body.style.userSelect = ''
     }
   }, [isDragging, updateThumb])
-
-  // 点击轨道跳转
-  const _handleTrackClick = (e: React.MouseEvent) => {
-    if (e.target !== e.currentTarget)
-      return // 只响应轨道点击，不响应thumb点击
-
-    const rect = e.currentTarget.getBoundingClientRect()
-    const clickY = e.clientY - rect.top
-    const trackHeight = rect.height
-    const percentage = clickY / trackHeight
-
-    const windowHeight = window.innerHeight
-    const documentHeight = document.documentElement.scrollHeight
-    const scrollableHeight = documentHeight - windowHeight
-
-    window.scrollTo({
-      top: percentage * scrollableHeight,
-      behavior: 'smooth',
-    })
-  }
 
   // SSR 安全检查 - 在服务端渲染时不渲染此组件
   if (typeof window === 'undefined' || typeof document === 'undefined') {

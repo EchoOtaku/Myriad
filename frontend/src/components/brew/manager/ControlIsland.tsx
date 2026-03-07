@@ -14,8 +14,20 @@
  * - starred-edit: 收藏编辑模式
  */
 
+import * as brewApi from '../../../services/brewApi'
+
+import {
+  AddMode,
+  CategoryFeedMode,
+  DefaultMode,
+  EditMode,
+  FeedMode,
+  KeyboardMode,
+  SearchMode,
+  StarredEditMode,
+  StarredMode,
+} from './modes'
 import type { BrewSource, CardSize, FeedType, SourceType } from '../../../types/brew'
-import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
 import {
   LuClock as Clock,
   LuFolderOpen as FolderOpen,
@@ -23,30 +35,19 @@ import {
   LuShuffle as Shuffle,
   LuSortAsc as SortAsc,
 } from '@lib/icons'
-import { AnimatePresence } from 'framer-motion'
-import JSZip from 'jszip'
+import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
-import { useBrewAnimationConfig } from '../../../hooks/animation/pages/brew'
+
+import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
-
-import * as brewApi from '../../../services/brewApi'
-// 导入模式组件
-import {
-  AddMode,
-  CategoryFeedMode,
-
-  DefaultMode,
-
-  EditMode,
-  FeedMode,
-  KeyboardMode,
-  SearchMode,
-
-  StarredEditMode,
-  StarredMode,
-} from './modes'
+import JSZip from 'jszip'
 import RSSHubConfigComponent from './RSSHubConfig'
+import { useBrewAnimationConfig } from '../../../hooks/animation'
+import { useI18n } from '../../../contexts/I18nContext'
+
+// 导入模式组件
+
+
 
 // API URL
 const API_URL = import.meta.env.PUBLIC_API_URL || ''

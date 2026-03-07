@@ -1,8 +1,9 @@
-import type { AxiosError } from 'axios'
-import axios from 'axios'
+import { RateLimitError, checkRateLimit } from '../utils/rateLimiter'
 import { clearCSRFToken, getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
-import { checkRateLimit, RateLimitError } from '../utils/rateLimiter'
+
+import type { AxiosError } from 'axios'
 import TokenManager from '../utils/tokenManager'
+import axios from 'axios'
 
 // 智能 API URL 检测（与 config.ts 保持一致）
 // 生产环境使用相对路径（空字符串），开发环境使用 localhost
@@ -37,14 +38,6 @@ const api = axios.create({
   validateStatus: status => status < 500, // 只有5xx才算网络错误
   withCredentials: true, // ✅ 自动发送 HttpOnly Cookie
 })
-
-// 验证 JWT token 格式
-function _isValidToken(token: string): boolean {
-  if (!token || typeof token !== 'string')
-    return false
-  const parts = token.split('.')
-  return parts.length === 3 && parts.every(part => part.length > 0)
-}
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(

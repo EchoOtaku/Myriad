@@ -3,13 +3,13 @@
  * 统一管理用户登录状态，避免重复的认证请求
  */
 
-import type { ReactNode } from 'react'
-
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+
 import { API_URL } from '../config'
+import type { ReactNode } from 'react'
 import { clearSessionHint } from '../utils/sessionDetection'
 
-interface User {
+export interface User {
   username: string
   display_name?: string
   is_admin: boolean
@@ -108,6 +108,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       checkAuth()
     }
   }, [])
+
+  // 监听全局认证状态变化事件（由 LoginForm、api.ts、UserSection 触发）
+  useEffect(() => {
+    const handleAuthChange = (e: Event) => {
+      const isAuth = (e as CustomEvent).detail?.isAuthenticated ?? false
+      if (isAuth) {
+        checkAuth()
+      }
+    }
+    window.addEventListener('auth-state-changed', handleAuthChange)
+    return () => window.removeEventListener('auth-state-changed', handleAuthChange)
+  }, [checkAuth])
 
   // 🔧 性能优化：使用 useMemo 缓存 context value，避免不必要的重渲染
   const value = useMemo(() => ({

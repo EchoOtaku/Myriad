@@ -13,8 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-
-import { coordinator } from './coordinator'
+import { isPageVisible, onVisibility } from './core'
 
 interface UseVisibilityIntervalOptions {
   /** 定时器间隔（ms） */
@@ -64,11 +63,11 @@ export function useVisibilityInterval(
 
   // 调度下一次执行
   const scheduleNext = useCallback(() => {
-    if (cancelledRef.current || !coordinator.getPageVisibility())
+    if (cancelledRef.current || !isPageVisible())
       return
 
     timeoutIdRef.current = window.setTimeout(() => {
-      if (cancelledRef.current || !coordinator.getPageVisibility())
+      if (cancelledRef.current || !isPageVisible())
         return
       savedCallback.current()
       scheduleNext()
@@ -82,7 +81,7 @@ export function useVisibilityInterval(
     cancelledRef.current = false
 
     // 立即执行一次
-    if (immediate && coordinator.getPageVisibility()) {
+    if (immediate && isPageVisible()) {
       savedCallback.current()
     }
 
@@ -90,7 +89,7 @@ export function useVisibilityInterval(
     scheduleNext()
 
     // 订阅可见性变化
-    const unsubscribe = coordinator.onVisibilityChange((isVisible) => {
+    const unsubscribe = onVisibility((isVisible) => {
       if (isVisible) {
         // 页面变为可见，恢复定时
         if (timeoutIdRef.current === null && !cancelledRef.current) {
@@ -180,12 +179,12 @@ export function useVisibilityTimeout(
     }
 
     // 如果页面可见，开始计时
-    if (coordinator.getPageVisibility()) {
+    if (isPageVisible()) {
       startTimer()
     }
 
     // 订阅可见性变化
-    const unsubscribe = coordinator.onVisibilityChange((isVisible) => {
+    const unsubscribe = onVisibility((isVisible) => {
       if (isVisible) {
         startTimer()
       }

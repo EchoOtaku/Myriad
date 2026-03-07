@@ -8,9 +8,15 @@
  * - useMemo 缓存样式计算
  */
 
-import type { TranslationKeys } from '../../../i18n'
+import {
+  API_URL,
+  DEFAULT_THEME_COLOR,
+  SIZE_TO_ROWS,
+  getIconUrl,
+  getSourceColor,
+  stripHtml,
+} from '../constants'
 import type { BrewSource, CardSize, SourceType } from '../../../types/brew'
-import type { SortMode } from '../types'
 import {
   LuEdit3 as Edit3,
   LuExternalLink as ExternalLink,
@@ -19,17 +25,12 @@ import {
   LuSparkles as Sparkles,
 } from '@lib/icons'
 import React, { forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
-import { useBrewCardStagger } from '../../../hooks/animation/pages/brew'
+
+import type { SortMode } from '../types'
+import type { TranslationKeys } from '../../../i18n'
 import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
-import {
-  API_URL,
-  DEFAULT_THEME_COLOR,
-  getIconUrl,
-  getSourceColor,
-  SIZE_TO_ROWS,
-  stripHtml,
-} from '../constants'
+import { useBrewCardStagger } from '../../../hooks/animation'
+import { useI18n } from '../../../contexts/I18nContext'
 
 export interface SourceCardProps {
   source: BrewSource
@@ -211,12 +212,6 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
     e.stopPropagation()
     onEdit?.()
   }, [onEdit])
-
-  // 处理删除点击
-  const _handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    onDelete?.()
-  }, [onDelete])
 
   // 处理拉伸开始
   const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {

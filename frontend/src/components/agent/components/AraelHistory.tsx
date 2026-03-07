@@ -10,7 +10,7 @@
  */
 
 import type { TaskPreset } from '../../../services/agent'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 
 import React, { useCallback, useMemo } from 'react'
 

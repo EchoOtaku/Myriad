@@ -13,22 +13,22 @@ import {
   FaWrench,
   LuSparkles,
 } from '@lib/icons'
+
 import { motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../contexts/I18nContext'
+
 import { useDebounce } from '../hooks/useDebounce'
 import {
   checkSpeechStatus,
   fetchConfig,
   fetchPermissionsConfig,
   reloadSystemConfig,
-  testPlatformConfig,
   updateConfig,
   updatePermissionsConfig,
 } from '../lib/api'
 import { getCSRFToken } from '../utils/csrf'
-// 导入迁移后的配置区块组件
 import {
   AdvancedConfigSection,
   AiConfigSection,
@@ -40,8 +40,9 @@ import {
 } from './config'
 import PlatformIcon from './PlatformIcon'
 import Toast from './Toast'
-
 import './ConfigForm.css'
+
+// 导入迁移后的配置区块组件
 
 interface ConfigField {
   key: string
@@ -151,7 +152,6 @@ const ModernConfigForm: React.FC = () => {
   const [config, setConfig] = useState<Config | null>(null)
   const [initialConfig, setInitialConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)
-  const [_testing, setTesting] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [activeSection, setActiveSection] = useState<string>('platforms')
   const [platformModalOpen, setPlatformModalOpen] = useState<string | null>(null)
@@ -621,36 +621,6 @@ const ModernConfigForm: React.FC = () => {
       window.removeEventListener('config-reset', handleResetEvent)
     }
   }, [handleSave, handleReset])
-
-  const _handleTest = React.useCallback(async (platformName: string) => {
-    const platform = config?.platforms.find(p => p.name === platformName)
-    if (!platform)
-      return
-
-    setTesting(platformName)
-    setMessage('')
-
-    try {
-      const configObj: any = {}
-      platform.config_fields.forEach((field) => {
-        configObj[field.key] = field.value
-      })
-
-      // 获取 CSRF Token
-      await getCSRFToken(true)
-
-      const result = await testPlatformConfig(platformName, configObj)
-
-      setMessage(result.message)
-      setTimeout(() => setMessage(''), 5000)
-    }
-    catch (_error) {
-      setMessage(`✗ ${t.config.testFailed}`)
-    }
-    finally {
-      setTesting(null)
-    }
-  }, [config])
 
   // 测试语音服务可用性（返回 Promise 供组件使用）
   const handleSpeechTest = React.useCallback(async (): Promise<{ success: boolean, message: string }> => {

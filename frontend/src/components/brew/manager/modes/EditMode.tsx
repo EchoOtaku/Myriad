@@ -2,7 +2,6 @@
  * 编辑模式组件
  */
 
-import type { ImportProgress } from './types'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -17,7 +16,9 @@ import {
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+
+import type { ImportProgress } from './types'
 import { SPRING_SNAPPY } from './constants'
 
 export interface EditModeProps {

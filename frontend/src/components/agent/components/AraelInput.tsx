@@ -35,7 +35,7 @@ export interface AraelInputProps {
   onToggleRecording?: () => void
 
   /** input ref */
-  inputRef?: React.RefObject<HTMLInputElement>
+  inputRef?: React.RefObject<HTMLInputElement | null>
 }
 
 /**

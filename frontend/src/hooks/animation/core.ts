@@ -11,7 +11,7 @@
  * @module animation/core
  */
 
-import { Feature, getFeatureList, hasFeature, PAGE_FEATURES } from './pageFeatures'
+import { Feature, getFeatureList, hasFeature } from './pageFeatures'
 
 // ==================== 类型定义 ====================
 
@@ -20,9 +20,6 @@ export type Unsubscribe = () => void
 
 /** 页面上下文 ID */
 let currentPageId: string | null = null
-
-/** 当前页面启用的功能 */
-let currentFeatures: number = 0
 
 /** 是否处于活动状态 */
 let isActive = true
@@ -395,6 +392,21 @@ export function batchWrite(callback: () => void): void {
   }
 }
 
+// ==================== 页面清理注册表（自注册模式） ====================
+
+/** 页面级清理函数注册表 - 各 pages/*.ts 模块自行注册 */
+const _pageCleanupRegistry = new Map<string, () => void>()
+
+/** 注册页面清理函数（由各页面模块调用） */
+export function registerPageCleanup(pageId: string, cleanup: () => void): void {
+  _pageCleanupRegistry.set(pageId, cleanup)
+}
+
+/** 执行指定页面的清理函数 */
+export function runPageCleanup(pageId: string): void {
+  _pageCleanupRegistry.get(pageId)?.()
+}
+
 // ==================== 页面生命周期（SPA 优化） ====================
 
 /**
@@ -411,7 +423,6 @@ export function startPage(pageId: string): void {
   }
 
   currentPageId = pageId
-  currentFeatures = PAGE_FEATURES[pageId] ?? 0
   isActive = true
 
   // 根据页面配置预初始化必要模块
@@ -469,6 +480,97 @@ export function getCurrentPageId(): string | null {
 /** 是否处于活动状态 */
 export function isSchedulerActive(): boolean {
   return isActive && _isPageVisible
+}
+
+// ==================== 页面级 ResizeObserver 工厂（消除 pages 间重复代码） ====================
+
+interface PageResizeManager {
+  observe: (element: Element, callback: (entry: ResizeObserverEntry) => void) => void
+  unobserve: (element: Element) => void
+  cleanup: () => void
+}
+
+const _pageResizeManagers = new Map<string, PageResizeManager>()
+
+/**
+ * 获取页面级 ResizeObserver 管理器
+ * 每个页面一个独立的 Observer，切换页面时清理
+ */
+export function getPageResizeManager(pageId: string): PageResizeManager {
+  let manager = _pageResizeManagers.get(pageId)
+  if (manager)
+    return manager
+
+  let observer: ResizeObserver | null = null
+  const callbacks = new Map<Element, (entry: ResizeObserverEntry) => void>()
+
+  function getObserver(): ResizeObserver {
+    if (!observer) {
+      observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const cb = callbacks.get(entry.target)
+          if (cb)
+            cb(entry)
+        }
+      })
+    }
+    return observer
+  }
+
+  manager = {
+    observe(element, callback) {
+      callbacks.set(element, callback)
+      getObserver().observe(element)
+    },
+    unobserve(element) {
+      callbacks.delete(element)
+      observer?.unobserve(element)
+    },
+    cleanup() {
+      observer?.disconnect()
+      observer = null
+      callbacks.clear()
+      _pageResizeManagers.delete(pageId)
+    },
+  }
+
+  _pageResizeManagers.set(pageId, manager)
+  return manager
+}
+
+// ==================== 页面级 Interval 管理（消除 pages 间重复代码） ====================
+
+interface PageIntervalManager {
+  add: (id: ReturnType<typeof setInterval>) => void
+  remove: (id: ReturnType<typeof setInterval>) => void
+  cleanup: () => void
+}
+
+const _pageIntervalManagers = new Map<string, PageIntervalManager>()
+
+/**
+ * 获取页面级 Interval 管理器
+ * 统一追踪和清理 setInterval
+ */
+export function getPageIntervalManager(pageId: string): PageIntervalManager {
+  let manager = _pageIntervalManagers.get(pageId)
+  if (manager)
+    return manager
+
+  const intervals = new Set<ReturnType<typeof setInterval>>()
+
+  manager = {
+    add(id) { intervals.add(id) },
+    remove(id) { clearInterval(id); intervals.delete(id) },
+    cleanup() {
+      for (const id of intervals) clearInterval(id)
+      intervals.clear()
+      _pageIntervalManagers.delete(pageId)
+    },
+  }
+
+  _pageIntervalManagers.set(pageId, manager)
+  return manager
 }
 
 // ==================== 统计信息（调试用） ====================
@@ -537,6 +639,5 @@ export function destroy(): void {
   intersectionInitialized = false
 
   currentPageId = null
-  currentFeatures = 0
   isActive = true
 }

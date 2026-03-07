@@ -2,6 +2,10 @@
  * Tapp 模块主入口
  */
 
+// 组件导出
+export { TappIcon } from './components/TappIcon'
+export { TappWindowManager } from './components/TappWindowManager'
+
 // 示例 Tapp 导出
 export { EXAMPLE_TAPPS, helloWorldTapp } from './examples'
 
@@ -15,13 +19,16 @@ export {
 export {
   createPermissionController,
   createTappBridge,
+  getResourceLoader,
   getTappRuntime,
   getTappScheduler,
+  loadWidgetResources,
   TappBridge,
   TappPermissionController,
   TappRuntime,
   TappSandbox,
   TappScheduler,
+  TappWidgetSandbox,
 } from './runtime'
 
 export type {
@@ -39,13 +46,15 @@ export type {
 } from './runtime'
 
 // 服务导出
-export { OFFICIAL_STORE, RemoteStoreService } from './services/RemoteStoreService'
+export { cleanupTemporaryTapps, getRecentTapps, listTapps, OFFICIAL_STORE, RemoteStoreService } from './services'
 
 export type {
+  RecentTappItem,
   RemoteApp,
   RemoteCategory,
   RemoteStoreIndex,
   RemoteStoreSource,
-} from './services/RemoteStoreService'
+  TappListItem,
+} from './services'
 // 类型导出
 export * from './types'

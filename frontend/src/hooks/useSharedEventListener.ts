@@ -9,7 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { rafThrottle } from '../utils/performance'
-import { coordinator } from './animation/coordinator'
+
+import { isPageVisible, onVisibility } from './animation/core'
 
 type EventCallback = (event: Event) => void
 
@@ -378,10 +379,10 @@ export function useBreakpoints() {
  * 🔧 使用统一的 coordinator 可见性管理，避免重复的事件监听器
  */
 export function usePageVisibility(): boolean {
-  const [isVisible, setIsVisible] = useState(() => coordinator.getPageVisibility())
+  const [isVisible, setIsVisible] = useState(() => isPageVisible())
 
   useEffect(() => {
-    return coordinator.onVisibilityChange(setIsVisible)
+    return onVisibility(setIsVisible)
   }, [])
 
   return isVisible

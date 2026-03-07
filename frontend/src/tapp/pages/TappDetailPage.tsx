@@ -4,6 +4,7 @@
  */
 
 import type { TappInstance, TappPermission, TappSettingItem } from '../types'
+
 import {
   FaArrowLeft,
   FaBell,
@@ -26,11 +27,10 @@ import {
 } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import AnimatedView from '../../components/AnimatedView'
 import Toast from '../../components/Toast'
 import { useI18n } from '../../contexts/I18nContext'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { getTappRuntime } from '../runtime'
@@ -202,10 +202,6 @@ const PERMISSION_CONFIG: Record<TappPermission, {
 export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const navigate = useNavigate()
   const { t, format } = useI18n()
-
-  // 🎬 动画和性能配置
-  const _animConfig = useAnimationLevel()
-  const _perf = usePerformanceProfile()
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [loading, setLoading] = useState(true)

@@ -31,7 +31,8 @@
 
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { coordinator } from '../coordinator'
-import { isPageVisible } from '../core'
+import { isPageVisible, onVisibility, registerPageCleanup } from '../core'
+
 import { AnimationPriority, AnimationState } from '../types'
 
 const _PAGE_ID = 'tapp'
@@ -153,14 +154,9 @@ export function useTappVisibility(): boolean {
   const [visible, setVisible] = useReducer(() => isPageVisible(), isPageVisible())
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    return onVisibility(() => {
       setVisible()
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
+    })
   }, [])
 
   return visible
@@ -171,3 +167,6 @@ export function useTappVisibility(): boolean {
 export function cleanupTapp(): void {
   staggerIdCounter = 0
 }
+
+// 自注册清理函数
+registerPageCleanup(_PAGE_ID, cleanupTapp)

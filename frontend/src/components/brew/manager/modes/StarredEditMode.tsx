@@ -2,7 +2,6 @@
  * StarredEditMode - 收藏编辑模式
  */
 
-import type { StarredModeConfig } from './types'
 import {
   LuCheckSquare as CheckSquare,
   LuLoader2 as Loader2,
@@ -11,8 +10,10 @@ import {
   LuStar as Star,
   LuX as X,
 } from '@lib/icons'
-import { motion } from 'framer-motion'
+
 import { SPRING_SNAPPY } from './constants'
+import type { StarredModeConfig } from './types'
+import { motionShim as motion } from '@lib/motionShim'
 
 export interface StarredEditModeProps {
   variant: 'mobile' | 'desktop'

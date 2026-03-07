@@ -232,14 +232,6 @@ export function invalidateUserInfoCache(): void {
 }
 
 /**
- * 认证缓存清除（兼容性保留）
- * 认证状态不缓存，此方法保留用于 API 兼容
- */
-export function invalidateAuthCache(): void {
-  // 认证状态不缓存，无需操作
-}
-
-/**
  * 清除所有用户相关缓存
  */
 export function clearAllUserCache(): void {

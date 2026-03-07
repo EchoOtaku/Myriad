@@ -32,7 +32,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 // 统一动画调度器
-import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation/core'
+import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 // Agent 服务 - 前端操作处理器
 import {
@@ -108,9 +108,6 @@ interface WindowScheme {
 
 /** 最小窗口尺寸 */
 const MIN_WINDOW_SIZE = { width: 320, height: 240 }
-
-/** 窗口头部高度 */
-const _WINDOW_HEADER_HEIGHT = 40
 
 /**
  * 生成唯一窗口ID

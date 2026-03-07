@@ -6,8 +6,9 @@ import {
   LuKeyboard as Keyboard,
   LuX as X,
 } from '@lib/icons'
-import { motion } from 'framer-motion'
+
 import { SPRING_SMOOTH } from './constants'
+import { motionShim as motion } from '@lib/motionShim'
 
 interface KeyboardShortcut {
   key: string

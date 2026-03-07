@@ -3,7 +3,6 @@
  * 使用 Portal 渲染到 document.body，确保全局层叠上下文
  */
 
-import type { BrewSource, SourceType } from '../../../types/brew'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -18,11 +17,13 @@ import {
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useState } from 'react'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type { BrewSource, SourceType } from '../../../types/brew'
+
 import { createPortal } from 'react-dom'
-import { useI18n } from '../../../contexts/I18nContext'
 import { generateStyleTags } from '../../../services/brewApi'
+import { useI18n } from '../../../contexts/I18nContext'
+import { useState } from 'react'
 
 // Framer Motion transition 配置常量
 const TRANSITION_FAST = { duration: 0.1 } as const
@@ -151,13 +152,6 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
     setIconPreview(null)
     // 清除图标时也清除主题色
     setThemeColor('')
-  }
-
-  const _handleRestoreIcon = () => {
-    setCustomIcon(null)
-    setIconPreview(source.icon)
-    // 恢复原始图标时恢复原始主题色
-    setThemeColor(source.theme_color || '#f97316')
   }
 
   // 生成 AI 风格标签

@@ -29,10 +29,13 @@
  * ```
  */
 
-import type { AnimationConfig } from '../../useAnimationLevel'
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { registerPageCleanup } from '../core'
 import { useAnimationLevel } from '../../useAnimationLevel'
+
+/** 动画级别配置类型（派生自 useAnimationLevel 返回值，避免越层类型导入） */
+type AnimationConfig = ReturnType<typeof useAnimationLevel>
 
 const _PAGE_ID = 'brew'
 
@@ -310,3 +313,6 @@ export function cleanupBrew(): void {
   // 这样每次进入页面都是新的批次，卡片会重新动画
   ANIM_CONFIG_CACHE.clear()
 }
+
+// 自注册清理函数
+registerPageCleanup(_PAGE_ID, cleanupBrew)

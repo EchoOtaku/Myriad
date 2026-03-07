@@ -174,19 +174,6 @@ export async function generateCardIllustration(
     return cachedIll.url
   }
 
-  // 从公开配置读取参数 - 注意：图片生成配置目前不在公开API中
-  // 这里暂时使用默认值，如果需要从配置读取，需要将相关配置添加到 /api/config/ui
-  const _config: any = {}
-  try {
-    const response = await fetch(`${API_URL}/api/config/ui`)
-    const data = await response.json()
-    // 注意：目前 /api/config/ui 不包含 image_gen 配置，使用默认值
-    _config = data || {}
-  }
-  catch (_e) {
-    // 使用默认配置
-  }
-
   // 默认启用图片生成（因为公开配置中没有此字段）
   const enabled = true
   if (!enabled) {

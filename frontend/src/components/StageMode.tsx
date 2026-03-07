@@ -2,7 +2,8 @@ import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { useReportsVisibilityInterval } from '../hooks/animation/pages/reports'
+
+import { useReportsVisibilityInterval } from '../hooks/animation'
 import { BilibiliWidget, GithubWidget, NeteaseWidget, SteamWidget } from './StageWidgets'
 
 const DARK_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(10, 10, 10, 0.3) 45%, rgba(10, 10, 10, 0.5) 55%, rgba(10, 10, 10, 0.75) 70%, rgba(10, 10, 10, 0.9) 85%, rgba(10, 10, 10, 0.95) 100%)'
@@ -457,7 +458,7 @@ function parseReportToChapters(reportData: {
 }
 
 // 舞台模式主组件
-export default function StageMode({ isOpen, onClose, reportData, _onRefresh, playAllMode = false }: StageModeProps) {
+export default function StageMode({ isOpen, onClose, reportData, onRefresh: _onRefresh, playAllMode = false }: StageModeProps) {
   const { t } = useI18n()
   const [currentChapter, setCurrentChapter] = useState(0)
   const [chapters, setChapters] = useState<StageChapter[]>([])
