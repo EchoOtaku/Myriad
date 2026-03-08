@@ -4,11 +4,13 @@
  * 包含 Lifecycle, UI, Storage 等基础处理器
  */
 
-import type { TappInstance } from '../../../types'
-import type { TappBridge } from '../../TappBridge'
-import type { TappNotificationOptions } from '../types'
 import * as TappApiService from '../../../services/TappApiService'
+
 import { sanitizeStorageValue, validateStorageKey } from '../security'
+
+import type { TappBridge } from '../../TappBridge'
+import type { TappInstance } from '../../../types'
+import type { TappNotificationOptions } from '../types'
 
 /**
  * 注册生命周期处理器
@@ -17,6 +19,7 @@ export function registerLifecycleHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance,
   onReady?: () => void,
+  onError?: (error: Error) => void,
 ): void {
   bridge.registerHandler('lifecycle.ready', async () => {
     onReady?.()
@@ -24,7 +27,10 @@ export function registerLifecycleHandlers(
   })
 
   bridge.registerHandler('lifecycle.error', async (message) => {
-    console.error(`[Sandbox] Tapp ${tappInstance.id} error:`, message.payload)
+    const payload = message.payload
+    const errorMsg = typeof payload === 'string' ? payload : (payload as Record<string, unknown>)?.message || 'Unknown error'
+    console.error(`[Sandbox] Tapp ${tappInstance.id} error:`, payload)
+    onError?.(new Error(String(errorMsg)))
     return { success: true, data: null }
   })
 

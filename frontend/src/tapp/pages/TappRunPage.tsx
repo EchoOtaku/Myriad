@@ -14,6 +14,7 @@ import type { ToastType } from '../../components/Toast'
 import type { TappCodeStructure } from '../examples/tapps/types'
 import type { TappNotificationOptions } from '../runtime/sandbox/types'
 import type { TappInstance } from '../types'
+
 import {
   FaArrowLeft,
   FaCog,
@@ -232,7 +233,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: -16, scale: 0.92 }}
             transition={transitions.elementEnter}
-            className="absolute top-4 left-4 z-[60] opacity-0 hover:opacity-100 transition-opacity duration-300"
+            className="fixed top-4 left-4 z-[60] opacity-0 hover:opacity-100 transition-opacity duration-300"
           >
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
               <div className="flex items-center gap-2">

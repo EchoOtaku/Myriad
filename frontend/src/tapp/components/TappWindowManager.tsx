@@ -597,6 +597,12 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const resizeTimeoutRef = useRef<number | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
+  // 🎯 用 ref 跟踪 windows 和 activeWindowId，避免 agent handler 的 useEffect 因 windows 变化频繁重注册
+  const windowsRef = useRef(windows)
+  windowsRef.current = windows
+  const activeWindowIdRef = useRef(activeWindowId)
+  activeWindowIdRef.current = activeWindowId
+
   // 注册页面到统一调度器（页面级生命周期管理）
   useEffect(() => {
     startPage('tapp-multi')
@@ -813,11 +819,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         return target.windowId
       }
       if (target.tappId) {
-        const win = windows.find(w => w.tappId === target.tappId)
+        const win = windowsRef.current.find(w => w.tappId === target.tappId)
         return win?.windowId || null
       }
       if (target.position === 'active') {
-        return activeWindowId
+        return activeWindowIdRef.current
       }
       return null
     }
@@ -867,11 +873,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               const windowId = resolveWindowTarget(target)
               if (windowId) {
                 // 向目标窗口的 iframe 发送填充数据消息
-                const targetWindow = windows.find(w => w.windowId === windowId)
+                const targetWindow = windowsRef.current.find(w => w.windowId === windowId)
                 if (targetWindow) {
                   // 通过 data-window-id 找到包装容器，然后获取内部的 iframe
                   const container = document.querySelector(
-                    `[data-window-id="${windowId}"]`,
+                    `[data-window-id="${CSS.escape(windowId)}"]`,
                   )
                   const iframe = container?.querySelector('iframe') as HTMLIFrameElement
                   if (iframe?.contentWindow) {
@@ -895,7 +901,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               const windowId = resolveWindowTarget(target)
               if (windowId) {
                 const container = document.querySelector(
-                  `[data-window-id="${windowId}"]`,
+                  `[data-window-id="${CSS.escape(windowId)}"]`,
                 )
                 const iframe = container?.querySelector('iframe') as HTMLIFrameElement
                 if (iframe?.contentWindow) {
@@ -928,7 +934,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     return () => {
       unregisterActionHandler(handleAgentAction)
     }
-  }, [windows, activeWindowId, openTappWindow, closeWindow, focusWindow])
+  }, [openTappWindow, closeWindow, focusWindow])
 
   // 保存方案到云端
   const saveToCloud = useCallback(async (schemes: WindowScheme[]) => {

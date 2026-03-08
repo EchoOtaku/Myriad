@@ -50,6 +50,22 @@ import { getCodeForMode } from '../examples/tapps/types'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useI18n } from '../../contexts/I18nContext'
 
+// 🎯 WebKit/Safari 检测（仅在模块加载时计算一次）
+// Safari 及 iOS 浏览器存在合成层 bug，需要将 iframe portal 到 body
+// 检测策略：UA + vendor 双重验证，避免单一信号误判
+const isWebKit: boolean = (() => {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  // UA 检测：包含 AppleWebKit 但排除桌面版 Chrome/Chromium
+  // iOS 上所有浏览器（CriOS、FxiOS 等）不含 Chrome/Chromium 标识，会被正确识别
+  const uaIsWebKit = /\bAppleWebKit\b/.test(ua) && !/\bChrom(e|ium)\b/.test(ua)
+  // vendor 检测：Apple 平台的 WebKit 浏览器 vendor 固定为 "Apple Computer, Inc."
+  // 包括 macOS Safari、iOS Safari/Chrome/Firefox 等
+  const isAppleVendor = navigator.vendor === 'Apple Computer, Inc.'
+  // 双重验证：UA + vendor 同时满足才启用 portal 模式
+  return uaIsWebKit && isAppleVendor
+})()
+
 export interface TappPageSandboxProps {
   /** Tapp 实例 */
   tappInstance: TappInstance
@@ -248,7 +264,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   tappInstance,
   code,
   onReady,
-  _onError,
+  onError,
   onDestroy,
   onNotification,
   className,
@@ -443,6 +459,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     onReady?.()
   }, [onReady])
 
+  const handleError = useCallback((error: Error) => {
+    onError?.(error)
+  }, [onError])
+
   // 初始化
   // 🎯 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
   // 🎯 Safari 兼容：使用 imperative iframe 创建，确保 srcdoc 在 DOM 插入前设置
@@ -459,13 +479,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // 生成 session token（独立于 Bridge，确保 HTML 生成和 Bridge 使用同一 token）
     const sessionToken = generateSessionToken()
 
-    // 🎯 Safari 兼容：iframe 直接挂载到 document.body
-    // Safari/WebKit 存在合成层 bug：当 iframe 嵌套在含 opacity 动画、overflow:hidden 的祖先链中时，
-    // iframe 内容无法被绘制到屏幕上（DOM 中存在、JS 正常执行，但视觉上不可见）。
-    // 解决方案：将 iframe 挂载到 body，使用 position:fixed + ResizeObserver 同步位置和尺寸。
+    // 创建 iframe
     const iframe = document.createElement('iframe')
     iframe.className = 'tapp-page-iframe'
-    iframe.style.cssText = 'position:fixed;border:none;display:block;z-index:40;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
     iframe.setAttribute('sandbox', IFRAME_SANDBOX_ATTRS)
     iframe.setAttribute('referrerpolicy', 'no-referrer')
     iframe.title = currentTappInstance.manifest.name
@@ -482,7 +498,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     bridge.initialize(iframe, currentTappInstance, sessionToken)
 
     // 注册所有处理器
-    registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
+    registerLifecycleHandlers(bridge, currentTappInstance, handleReady, handleError)
     registerUIHandlers(bridge, () => localeRef.current, onNotification)
     registerStorageHandlers(bridge, currentTappInstance.id)
     registerUserHandlers(bridge, currentTappInstance)
@@ -501,50 +517,72 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // 生成 HTML（使用预生成的 session token）
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
 
-    // 🎯 Portal 模式位置同步：iframe 跟随 container 的屏幕位置
-    // 类似 Radix UI Portal / Floating UI 的定位策略
-    let lastRect = ''
-    const syncPosition = () => {
-      if (!document.body.contains(iframe))
-        return
-      const rect = container.getBoundingClientRect()
-      // 避免不必要的 style 写入（性能优化）
-      const key = `${rect.top},${rect.left},${rect.width},${rect.height}`
-      if (key === lastRect)
-        return
-      lastRect = key
-      iframe.style.top = `${rect.top}px`
-      iframe.style.left = `${rect.left}px`
-      iframe.style.width = `${rect.width}px`
-      iframe.style.height = `${rect.height}px`
-    }
+    // 清理函数列表
+    const cleanups: (() => void)[] = []
 
-    // ResizeObserver 捕获尺寸变化
-    const resizeObserver = new ResizeObserver(syncPosition)
-    resizeObserver.observe(container)
-    // 同时观察容器的直接父元素（捕获全屏切换等位置变化）
-    if (container.parentElement) {
-      resizeObserver.observe(container.parentElement)
-    }
-    // 首次同步 + 持续轮询兜底（处理动画过程中的位置变化）
-    requestAnimationFrame(syncPosition)
-    const syncInterval = setInterval(syncPosition, 200)
-    // 动画结束后停止轮询（2秒足够覆盖所有 CSS transition）
-    const stopPolling = setTimeout(() => clearInterval(syncInterval), 2000)
+    if (isWebKit) {
+      // 🎯 Safari/WebKit Portal 模式
+      // WebKit 存在合成层 bug：当 iframe 嵌套在含 opacity 动画、overflow:hidden 的祖先链中时，
+      // iframe 内容无法被绘制到屏幕上。
+      // 解决方案：将 iframe 挂载到 body，使用 position:fixed + ResizeObserver 同步位置和尺寸。
+      iframe.style.cssText = 'position:fixed;border:none;display:block;z-index:40;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
 
-    // 挂载到 body 并设置内容
-    document.body.appendChild(iframe)
-    iframe.srcdoc = html
+      let lastRect = ''
+      const syncPosition = () => {
+        if (!document.body.contains(iframe))
+          return
+        const rect = container.getBoundingClientRect()
+        const key = `${rect.top},${rect.left},${rect.width},${rect.height}`
+        if (key === lastRect)
+          return
+        lastRect = key
+        iframe.style.top = `${rect.top}px`
+        iframe.style.left = `${rect.left}px`
+        iframe.style.width = `${rect.width}px`
+        iframe.style.height = `${rect.height}px`
+      }
+
+      const resizeObserver = new ResizeObserver(syncPosition)
+      resizeObserver.observe(container)
+      if (container.parentElement) {
+        resizeObserver.observe(container.parentElement)
+      }
+
+      requestAnimationFrame(syncPosition)
+      const syncInterval = setInterval(syncPosition, 200)
+      const stopPolling = setTimeout(() => clearInterval(syncInterval), 2000)
+
+      document.body.appendChild(iframe)
+      iframe.srcdoc = html
+
+      cleanups.push(() => {
+        resizeObserver.disconnect()
+        clearInterval(syncInterval)
+        clearTimeout(stopPolling)
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe)
+        }
+      })
+    }
+    else {
+      // 🎯 非 Safari 内联模式
+      // iframe 直接放在 container 内，位置/尺寸自然跟随父元素，无延迟
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;display:block;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
+
+      container.appendChild(iframe)
+      iframe.srcdoc = html
+
+      cleanups.push(() => {
+        if (container.contains(iframe)) {
+          container.removeChild(iframe)
+        }
+      })
+    }
 
     return () => {
-      resizeObserver.disconnect()
-      clearInterval(syncInterval)
-      clearTimeout(stopPolling)
+      cleanups.forEach(fn => fn())
       setIsReady(false)
       iframeRef.current = null
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe)
-      }
       bridge.destroy()
       onDestroy?.()
     }
@@ -568,8 +606,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       }}
       data-no-ripple
     >
-      {/* iframe 以 Portal 模式挂载到 document.body（Safari WebKit 合成层 bug workaround）
-          通过 ResizeObserver 同步 container 的位置和尺寸到 iframe */}
+      {/* iframe 挂载方式：
+          - Safari/WebKit: Portal 到 document.body（解决合成层 bug）
+          - 其他浏览器: 内联在 container 内（无位置同步延迟） */}
     </div>
   )
 }
