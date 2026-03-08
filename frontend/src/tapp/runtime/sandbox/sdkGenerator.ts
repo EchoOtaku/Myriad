@@ -68,7 +68,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
 
   // 会话 token（用于消息验证）
   const _SESSION_TOKEN = '${token}';
-  
+
   let messageIdCounter = 0;
   const pendingRequests = new Map();
   const eventListeners = new Map();
@@ -92,7 +92,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   };
 
   const generateId = () => \`tapp-\${++messageIdCounter}-\${Date.now()}\`;
-  
+
   ${generateStorageKeyValidator()}
 
   const sendRequest = (api, method, args = []) => {
@@ -140,7 +140,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
         eventListeners.get('agentFill')?.forEach((cb) => { try { cb(data); } catch (e) {} });
         // 自动填充表单字段
         Object.entries(data).forEach(([key, value]) => {
-          const el = document.querySelector(\`[name="\${key}"]\`) || 
+          const el = document.querySelector(\`[name="\${key}"]\`) ||
                      document.querySelector(\`#\${key}\`) ||
                      document.querySelector(\`[data-field="\${key}"]\`);
           if (el) {
@@ -161,7 +161,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       // 🤖 Agent 数据读取请求
       const fields = message.fields;
       const result = {};
-      
+
       // 收集表单数据
       const forms = document.querySelectorAll('form');
       forms.forEach(form => {
@@ -172,12 +172,12 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
           }
         });
       });
-      
+
       // 收集指定字段
       if (fields && Array.isArray(fields)) {
         fields.forEach(field => {
           if (result[field] === undefined) {
-            const el = document.querySelector(\`[name="\${field}"]\`) || 
+            const el = document.querySelector(\`[name="\${field}"]\`) ||
                        document.querySelector(\`#\${field}\`) ||
                        document.querySelector(\`[data-field="\${field}"]\`);
             if (el) {
@@ -190,7 +190,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
           }
         });
       }
-      
+
       // 回复数据给父窗口
       window.parent.postMessage({
         type: 'AGENT_READ_DATA_RESPONSE',
@@ -201,7 +201,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
     } else if (message.type === 'event') {
       const listeners = eventListeners.get(message.action);
       listeners?.forEach((cb) => { try { cb(message.payload); } catch (e) {} });
-      
+
       if (message.action === 'lifecycle:destroy') lifecycleCallbacks.destroy.forEach((cb) => cb());
       else if (message.action === 'lifecycle:pause') lifecycleCallbacks.pause.forEach((cb) => cb());
       else if (message.action === 'lifecycle:resume') lifecycleCallbacks.resume.forEach((cb) => cb());
@@ -346,13 +346,13 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
     },
 
     data: { transform: (r) => sendRequest('data', 'transform', [r]) },
-    
+
     // Tapp API 声明系统：调用 manifest 中声明的 API
     // 支持两种访问级别：
     // - public: 所有用户（包括游客）可调用
     // - protected: 需要 network:fetch 权限
     api: (name, params) => sendRequest('api', 'execute', [name, params]),
-    
+
     context: {
       getApp: () => sendRequest('context', 'getApp', []),
       getUser: () => sendRequest('context', 'getUser', []),
@@ -519,24 +519,24 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   Object.freeze(Tapp.background);
   Object.freeze(Tapp.dynamicContent);
   Object.freeze(Tapp.animation);
-  
+
   // 🔒 冻结 widgets 和 pages 容器（Tapp 代码可以添加内容，但不能替换整个对象）
   // 使用 Object.seal 允许添加属性但禁止删除
   Object.seal(Tapp.widgets);
   Object.seal(Tapp.pages);
-  
+
   // 防止通过原型链篡改
   Object.freeze(Object.getPrototypeOf(Tapp));
 
   window.Tapp = Tapp;
-  
+
   // 防止重新定义 Tapp
   Object.defineProperty(window, 'Tapp', {
     value: Tapp,
     writable: false,
     configurable: false
   });
-  
+
   setTimeout(() => Tapp.lifecycle._notifyReady(), 0);
 })();
 `
@@ -566,7 +566,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   var lifecycleCallbacks = { pause: [], resume: [] };
 
   var generateId = function() { return 'widget-' + (++messageIdCounter) + '-' + Date.now(); };
-  
+
   // 存储 key 验证
   var validateStorageKey = function(key) {
     if (!key || typeof key !== 'string') {
@@ -594,18 +594,18 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       var timeout = setTimeout(function() { pendingRequests.delete(id); reject(new Error('Request timeout')); }, 30000);
       pendingRequests.set(id, { resolve: resolve, reject: reject, timeout: timeout });
       try {
-        window.parent.postMessage({ 
-          type: 'request', 
-          id: id, 
-          action: api + '.' + method, 
-          payload: { api: api, method: method, args: args }, 
+        window.parent.postMessage({
+          type: 'request',
+          id: id,
+          action: api + '.' + method,
+          payload: { api: api, method: method, args: args },
           timestamp: Date.now(),
           _sessionToken: _SESSION_TOKEN
         }, '*');
       } catch (e) { clearTimeout(timeout); pendingRequests.delete(id); reject(e); }
     });
   };
-  
+
   var addEventListener = function(event, callback) {
     var listeners = eventListeners.get(event);
     if (!listeners) {
@@ -619,7 +619,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   window.addEventListener('message', function(event) {
     var msg = event.data;
     if (!msg) return;
-    
+
     // 处理响应
     if (msg.type === 'response') {
       var pending = pendingRequests.get(msg.id);
@@ -629,7 +629,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       var payload = msg.payload || {};
       if (payload.success) { pending.resolve(payload.data); } else { pending.reject(new Error(payload.error || 'Request failed')); }
     }
-    
+
     // 处理事件
     if (msg.type === 'event') {
       // 🎯 强制重绘辅助函数：WebKit 专用沙箱会设置 window._TAPP_DISABLE_TRANSFORM_REPAINT
@@ -647,7 +647,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
           // ignore
         }
       };
-      
+
       // 主题变化事件
       if (msg.action === 'theme:change') {
         var isDark = msg.payload === 'dark';
@@ -709,13 +709,13 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
     permissions: ${JSON.stringify(grantedPermissions || [])},
     widgets: {},
     pages: {},
-    
+
     // 🎯 生命周期 API（用于响应冻结/恢复）
     lifecycle: {
       onPause: function(cb) { lifecycleCallbacks.pause.push(cb); },
       onResume: function(cb) { lifecycleCallbacks.resume.push(cb); }
     },
-    
+
     storage: {
       get: function(k) { validateStorageKey(k); return sendRequest('storage', 'get', [k]); },
       set: function(k, v) { validateStorageKey(k); return sendRequest('storage', 'set', [k, v]); },
@@ -723,7 +723,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       keys: function() { return sendRequest('storage', 'keys', []); },
       clear: function() { return sendRequest('storage', 'clear', []); }
     },
-    
+
     settings: {
       get: function(k) { validateStorageKey(k); return sendRequest('storage', 'get', ['_settings.' + k]); },
       set: function(k, v) { validateStorageKey(k); return sendRequest('storage', 'set', ['_settings.' + k, v]); },
@@ -740,16 +740,16 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
         });
       }
     },
-    
+
     ai: { chat: function(m, c, o) { return sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]); } },
-    
+
     platform: {
       listEnabled: function() { return sendRequest('platform', 'listEnabled', []); },
       getData: function(p, o) { return sendRequest('platform', 'getData', [p, o]); },
       getStats: function(p) { return sendRequest('platform', 'getStats', [p]); },
       getDistribution: function(p, d) { return sendRequest('platform', 'getDistribution', [p, d]); }
     },
-    
+
     report: {
       listReports: function() { return sendRequest('report', 'listReports', []); },
       getReport: function(id) { return sendRequest('report', 'getReport', [id]); },
@@ -757,14 +757,14 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       list: function() { return sendRequest('report', 'list', []); },
       get: function(id) { return sendRequest('report', 'get', [{ reportId: id }]); }
     },
-    
+
     background: {
       require: function(r, reason) { return sendRequest('background', 'require', [r, reason]); },
       release: function(r) { return sendRequest('background', 'release', [r]); },
       list: function() { return sendRequest('background', 'list', []); },
       has: function(r) { return sendRequest('background', 'has', [r]); }
     },
-    
+
     animation: {
       getLevel: function() { return sendRequest('animation', 'getLevel', []); },
       shouldAnimate: function() { return sendRequest('animation', 'shouldAnimate', []); },
@@ -772,7 +772,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       getStaggerDelay: function(i, d) { return sendRequest('animation', 'getStaggerDelay', [i, d]); },
       onLevelChange: function(cb) { return addEventListener('animationLevelChange', cb); }
     },
-    
+
     ui: {
       getTheme: function() { return sendRequest('ui', 'getTheme', []); },
       getPrimaryColor: function() { return sendRequest('ui', 'getPrimaryColor', []); },
@@ -782,18 +782,18 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       onPrimaryColorChange: function(cb) { return addEventListener('primaryColorChange', cb); },
       onLocaleChange: function(cb) { return addEventListener('localeChange', cb); }
     },
-    
+
     // Tapp API 声明系统：调用 manifest 中声明的 API
     // 支持两种访问级别：
     // - public: 所有用户（包括游客）可调用
     // - protected: 需要 network:fetch 权限
     api: function(name, params) { return sendRequest('api', 'execute', [name, params]); },
-    
+
     // 获取上下文信息
     context: {
       getGeo: function() { return sendRequest('context', 'getGeo', []); }
     },
-    
+
     dom: {
       setText: function(el, text) { if (el) el.textContent = text; },
       setHtml: function(el, html) { if (el) el.innerHTML = html; },
@@ -801,11 +801,11 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       removeClass: function(el, cls) { if (el) el.classList.remove(cls); },
       toggleClass: function(el, cls) { if (el) el.classList.toggle(cls); }
     },
-    
+
     file: {
       download: function(content, filename, mimeType) { return sendRequest('file', 'download', [{ content: content, filename: filename, mimeType: mimeType }]); }
     },
-    
+
     lifecycle: {
       onReady: function(cb) { if (document.readyState === 'complete') setTimeout(cb, 0); else window.addEventListener('load', cb); },
       onDestroy: function(cb) { window.addEventListener('beforeunload', cb); }
@@ -826,11 +826,11 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   Object.freeze(Tapp.context);
   Object.freeze(Tapp.dom);
   Object.freeze(Tapp.file);
-  
+
   // 使用 seal 允许添加 widget/page 定义但禁止替换整个对象
   Object.seal(Tapp.widgets);
   Object.seal(Tapp.pages);
-  
+
   // 防止重新定义 Tapp
   Object.defineProperty(window, 'Tapp', {
     value: Tapp,

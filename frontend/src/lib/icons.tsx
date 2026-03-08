@@ -81,6 +81,7 @@ import {
   ZoomOut as LuZoomOut,
 } from 'lucide-react'
 
+import { BsNintendoSwitch } from 'react-icons/bs'
 // ============================================================
 // Font Awesome Icons (Fa*) - 通用图标
 // ============================================================
@@ -638,6 +639,16 @@ export {
 export const FaXTwitter = SiX
 
 // ============================================================
+// 品牌图标别名 - 来自其他图标库
+// ============================================================
+
+/**
+ * Nintendo Switch 品牌图标
+ * Simple Icons 已移除此图标，使用 Bootstrap Icons 的 BsNintendoSwitch 替代
+ */
+export const SiNintendoswitch = BsNintendoSwitch
+
+// ============================================================
 // 图标映射表 - 用于动态查找 (getIconByName)
 // ============================================================
 export const iconMap: Record<string, IconType> = {
@@ -686,6 +697,7 @@ export const iconMap: Record<string, IconType> = {
   SiBandcamp,
   SiItchdotio,
   SiPlaystation,
+  SiNintendoswitch,
   SiEpicgames,
   SiOrigin,
   SiAnilist,

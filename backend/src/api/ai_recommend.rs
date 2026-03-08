@@ -304,7 +304,7 @@ fn match_platform_icon(platform: &str) -> IconRecommendResponse {
             "https://{username}.itch.io",
         ),
         ("playstation", "SiPlaystation", "#003791", ""),
-        ("nintendo", "FaGamepad", "#E60012", ""),
+        ("nintendo", "SiNintendoswitch", "#E60012", ""),
         ("epic games", "SiEpicgames", "#313131", ""),
         ("origin", "SiOrigin", "#F56C2D", ""),
         (

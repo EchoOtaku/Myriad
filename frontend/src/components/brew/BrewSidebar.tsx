@@ -25,6 +25,7 @@ import {
   LuTrash2 as Trash2,
 } from '@lib/icons'
 import { memo, useCallback, useMemo, useState } from 'react'
+
 import { useI18n } from '../../contexts/I18nContext'
 
 interface BrewSidebarProps {
