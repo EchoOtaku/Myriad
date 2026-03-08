@@ -7,8 +7,9 @@
  * - 支持动画过渡和状态同步
  */
 
-import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+
+import type { ReactNode } from 'react'
 
 // 二级导航项配置
 export interface SecondaryNavItem {
@@ -128,50 +129,71 @@ export function useSecondaryNav(config: {
   expandHint?: string
 }) {
   const { registerSecondaryNav, unregisterSecondaryNav, updateSecondaryNav } = useNavigation()
-  const [activeId, setActiveId] = useState(config.defaultActiveId)
-  const [expanded, setExpanded] = useState(false)
+  const [activeId, setActiveIdLocal] = useState(config.defaultActiveId)
+  const [expanded, setExpandedLocal] = useState(false)
 
-  // 选中项变化处理
+  // 同步包装：状态变更同步更新到 Context，消除 effect 延迟造成的一帧闪烁
+  const setActiveId = useCallback((value: string | ((prev: string) => string)) => {
+    if (typeof value === 'function') {
+      setActiveIdLocal((prev) => {
+        const next = value(prev)
+        updateSecondaryNav({ activeId: next })
+        return next
+      })
+    }
+    else {
+      setActiveIdLocal(value)
+      updateSecondaryNav({ activeId: value })
+    }
+  }, [updateSecondaryNav])
+
+  const setExpanded = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof value === 'function') {
+      setExpandedLocal((prev) => {
+        const next = value(prev)
+        updateSecondaryNav({ expanded: next })
+        return next
+      })
+    }
+    else {
+      setExpandedLocal(value)
+      updateSecondaryNav({ expanded: value })
+    }
+  }, [updateSecondaryNav])
+
+  // 选中项变化处理（由导航岛的按钮点击触发）
   const handleChange = useCallback((id: string) => {
     setActiveId(id)
-  }, [])
+  }, [setActiveId])
 
-  // 展开/收起切换
+  // 展开/收起切换（由导航岛的 handleExpand/handleCollapse 触发）
   const handleToggleExpand = useCallback(() => {
     setExpanded(prev => !prev)
-  }, [])
+  }, [setExpanded])
 
-  // 注册二级导航
+  // 用 ref 保持回调引用稳定，避免注册 effect 因回调变化而重跑
+  const handleChangeRef = useRef(handleChange)
+  handleChangeRef.current = handleChange
+  const handleToggleExpandRef = useRef(handleToggleExpand)
+  handleToggleExpandRef.current = handleToggleExpand
+
+  // 注册/注销 — 仅在路由路径或导航项结构变化时执行
   useEffect(() => {
     registerSecondaryNav({
       routePath: config.routePath,
       items: config.items,
-      activeId,
-      onChange: handleChange,
-      expanded,
-      onToggleExpand: handleToggleExpand,
+      activeId: activeId,
+      onChange: (id: string) => handleChangeRef.current(id),
+      expanded: expanded,
+      onToggleExpand: () => handleToggleExpandRef.current(),
       expandHint: config.expandHint,
     })
 
     return () => {
       unregisterSecondaryNav(config.routePath)
     }
-  }, [
-    config.routePath,
-    config.items,
-    config.expandHint,
-    activeId,
-    expanded,
-    registerSecondaryNav,
-    unregisterSecondaryNav,
-    handleChange,
-    handleToggleExpand,
-  ])
-
-  // 同步更新到上下文
-  useEffect(() => {
-    updateSecondaryNav({ activeId, expanded })
-  }, [activeId, expanded, updateSecondaryNav])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 首次注册，后续通过 synced setters 直接更新 Context
+  }, [config.routePath, config.items, config.expandHint, registerSecondaryNav, unregisterSecondaryNav])
 
   return {
     activeId,

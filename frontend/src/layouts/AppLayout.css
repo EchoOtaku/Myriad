@@ -9,11 +9,11 @@
   /* 写死宽度，确保一致性 */
   width: 65px; /* 桌面端默认宽度 */
   overflow: hidden;
-  /* 高度/宽度统一回弹，保持流畅 */
+  /* 容器尺寸过渡：与内容退出同时启动，回弹曲线营造弹性感 */
   transition:
-    height 0.4s cubic-bezier(0.25, 1.3, 0.5, 1),
-    width 0.4s cubic-bezier(0.25, 1.3, 0.5, 1),
-    box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    height 0.45s cubic-bezier(0.25, 1.3, 0.5, 1),
+    width 0.45s cubic-bezier(0.25, 1.3, 0.5, 1),
+    box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: height, width;
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.08),
@@ -99,9 +99,9 @@ html.dark .dynamic-island:hover {
   }
 }
 
-/* 内容切换时的呼吸效果 - 快速轻微回弹 */
+/* 内容切换时的呼吸效果 - 与容器过渡同步 */
 .dynamic-island[data-transitioning='true'] .nav-island-content {
-  animation: breathe 0.4s cubic-bezier(0.25, 1.3, 0.5, 1);
+  animation: breathe 0.45s cubic-bezier(0.25, 1.3, 0.5, 1);
 }
 
 @keyframes breathe {
@@ -119,32 +119,55 @@ html.dark .dynamic-island:hover {
 /* 导航项组 - 统一动画，快速流畅的回弹效果 */
 .nav-group {
   opacity: 1;
-  transform: scale(1) translateY(0);
-  /* 确保动画平滑，不闪烁 */
+  transform: scale(1) translateY(0) translateZ(0);
   backface-visibility: hidden;
   -webkit-font-smoothing: antialiased;
-  /* 使用 transform 进行硬件加速 */
-  transform: translateZ(0);
 }
 
-/* 只在没有动画标记时应用过渡 */
+/* =============================================
+   导航项组动画系统
+
+   编排时序（桌面端 / 移动端）:
+   ┌─ 退出阶段 ──────────────────────────────┐
+   │ 容器高度变化    0.45s bounce             │
+   │ 各项交错退出    40ms/项 (桌面) ← 同时    │
+   │                 25ms/项 (移动)            │
+   │ 单项退出过渡    0.25s/0.32s (桌面)        │
+   │                 0.15s/0.2s  (移动)        │
+   └──────────────────────────────────────────┘
+            ↓ 等退出完全结束
+   ┌─ 切换阶段 ──────────────────────────────┐
+   │ DOM 卸载旧内容 → 挂载新内容              │
+   └──────────────────────────────────────────┘
+            ↓ 新内容挂载后
+   ┌─ 进入阶段 ──────────────────────────────┐
+   │ 呼吸动画        0.45s pulse              │
+   │ 各项交错进入    50ms/项 (桌面) ← 同时    │
+   │                 30ms/项 (移动)            │
+   │ 单项进入过渡    0.3s/0.4s (桌面 bounce)   │
+   │                 0.2s/0.28s (移动 bounce)  │
+   └──────────────────────────────────────────┘
+   ============================================= */
+
+/* --- 桌面端默认：从容优雅的节奏 --- */
+
+/* 正常态过渡（进入动画完成时、data-animation 被移除后触发） */
 .nav-group:not([data-animation]) {
   transition:
-    opacity 0.22s cubic-bezier(0.25, 1.2, 0.5, 1),
-    transform 0.32s cubic-bezier(0.25, 1.2, 0.5, 1);
+    opacity 0.3s cubic-bezier(0.25, 1.2, 0.5, 1),
+    transform 0.4s cubic-bezier(0.25, 1.2, 0.5, 1);
 }
 
-/* 进入动画初始状态 - 统一从下方进入，减少位移量 */
+/* 进入动画初始态 - 从下方缩放淡入 */
 .nav-group[data-animation='enter-initial'] {
   opacity: 0;
   transform: scale(0.88) translateY(8px) translateZ(0);
-  /* 进入时的过渡 */
   transition:
-    opacity 0.22s cubic-bezier(0.25, 1.2, 0.5, 1),
-    transform 0.32s cubic-bezier(0.25, 1.2, 0.5, 1);
+    opacity 0.3s cubic-bezier(0.25, 1.2, 0.5, 1),
+    transform 0.4s cubic-bezier(0.25, 1.2, 0.5, 1);
 }
 
-/* 保护机制：如果动画标记残留超过1秒，强制显示 */
+/* 保护机制：动画标记残留超过1秒时强制显示 */
 .nav-group[data-animation='enter-initial'] {
   animation: force-visible 1s 1s forwards;
 }
@@ -152,44 +175,62 @@ html.dark .dynamic-island:hover {
 @keyframes force-visible {
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1) translate(0, 0) translateZ(0);
   }
 }
 
-/* 退出动画目标状态 - 统一向下退出，快速简洁 */
+/* 退出动画目标态 - 向下缩放淡出，accelerate 曲线 */
 .nav-group[data-animation='exit'] {
   opacity: 0;
   transform: scale(0.88) translateY(8px) translateZ(0);
-  /* 退出时的过渡 - 更快速 */
-  transition:
-    opacity 0.18s cubic-bezier(0.4, 0, 1, 1),
-    transform 0.25s cubic-bezier(0.4, 0, 1, 1);
-}
-
-/* 分隔线动画 - 与其他元素保持一致 */
-.nav-group[data-group='divider'] {
   transition:
     opacity 0.25s cubic-bezier(0.4, 0, 1, 1),
-    transform 0.3s cubic-bezier(0.4, 0, 1, 1);
+    transform 0.32s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* 返回按钮和过滤标签使用统一动画 */
-.nav-group[data-group='back'],
-.nav-group[data-group='all'],
-.nav-group[data-group='game'],
-.nav-group[data-group='video'],
-.nav-group[data-group='music'] {
-  /* 使用默认的统一动画 */
+/* 分隔线 - 与退出动画对齐 */
+.nav-group[data-group='divider'] {
+  transition:
+    opacity 0.28s cubic-bezier(0.4, 0, 1, 1),
+    transform 0.35s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* 移动端横向布局调整 - 减少位移量 */
+/* --- 移动端覆盖：敏捷紧凑的节奏，水平方向 --- */
 @media (max-width: 767px) {
+  /* 基础态改为 translateX，与移动端动画方向一致，确保插值路径正确 */
+  .nav-group {
+    transform: scale(1) translateX(0) translateZ(0);
+  }
+
+  .nav-group:not([data-animation]) {
+    transition:
+      opacity 0.2s cubic-bezier(0.25, 1.2, 0.5, 1),
+      transform 0.28s cubic-bezier(0.25, 1.2, 0.5, 1);
+  }
+
   .nav-group[data-animation='enter-initial'] {
-    transform: scale(0.88) translateX(8px) translateZ(0);
+    transform: scale(0.92) translateX(6px) translateZ(0);
+    transition:
+      opacity 0.2s cubic-bezier(0.25, 1.2, 0.5, 1),
+      transform 0.28s cubic-bezier(0.25, 1.2, 0.5, 1);
   }
 
   .nav-group[data-animation='exit'] {
-    transform: scale(0.88) translateX(-8px) translateZ(0);
+    transform: scale(0.92) translateX(-6px) translateZ(0);
+    transition:
+      opacity 0.15s cubic-bezier(0.4, 0, 1, 1),
+      transform 0.2s cubic-bezier(0.4, 0, 1, 1);
+  }
+
+  .nav-group[data-group='divider'] {
+    transition:
+      opacity 0.18s cubic-bezier(0.4, 0, 1, 1),
+      transform 0.22s cubic-bezier(0.4, 0, 1, 1);
+  }
+
+  /* 移动端呼吸动画更紧凑 */
+  .dynamic-island[data-transitioning='true'] .nav-island-content {
+    animation: breathe 0.3s cubic-bezier(0.25, 1.3, 0.5, 1);
   }
 }
 

@@ -7,7 +7,7 @@
  * - 处理一二级导航的切换动画
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { SiAppstore } from '@lib/icons'
@@ -19,14 +19,29 @@ interface ModeMetrics {
   width?: number
 }
 
-// 常量提取，避免重复创建
+// 常量
 const ITEM_HEIGHT = 40
-const ANIMATION_STAGGER = 20
-const ANIMATION_DURATION = 280
-const ENTER_STAGGER = 40
-const ENTER_DELAY = 50
-const MIN_ISLAND_HEIGHT = 48 // 最小高度，防止导航岛消失
-const MAX_ISLAND_HEIGHT = 800 // 最大高度，防止异常值
+const MIN_ISLAND_HEIGHT = 48
+const MAX_ISLAND_HEIGHT = 800
+
+/**
+ * 设备感知的动画时序配置
+ * 桌面端：从容优雅，给用户充分感知动画层次
+ * 移动端：敏捷紧凑，触控反馈要快
+ */
+function getAnimationTiming() {
+  const isMobile = window.innerWidth < 768
+  return {
+    /** 退出动画各项间隔 (ms) */
+    exitStagger: isMobile ? 25 : 40,
+    /** 退出阶段持续 (ms) - 需覆盖 CSS transition 最长时长 */
+    exitDuration: isMobile ? 240 : 380,
+    /** 进入动画各项间隔 (ms) */
+    enterStagger: isMobile ? 30 : 50,
+    /** 进入首项延迟 (ms) - 等新 DOM 布局稳定 */
+    enterDelay: isMobile ? 40 : 70,
+  }
+}
 
 // 工具函数：获取设备类型
 const getVariant = () => (window.innerWidth >= 768 ? 'desktop' : 'mobile')
@@ -88,8 +103,6 @@ export function NavigationIsland() {
   const lastModeRef = useRef<'normal' | 'secondary'>('normal')
   const islandMetricsRef = useRef<Record<string, ModeMetrics>>({})
   const prevPathnameRef = useRef(location.pathname)
-  // 基础导航高度（不含指示器），用于指示器退出时恢复
-  const baseNavHeightRef = useRef<number | null>(null)
 
   // 当前是否显示二级导航
   const showSecondary = secondaryNav?.expanded && secondaryNav.routePath === location.pathname
@@ -99,13 +112,6 @@ export function NavigationIsland() {
 
   // 记录是否已自动展开过（避免重复触发）
   const autoExpandedRef = useRef<string | null>(null)
-
-  // 是否应该显示二级导航指示器（一级导航末尾的图标）
-  const shouldShowIndicator = secondaryNav && secondaryNav.routePath === location.pathname && !secondaryNav.expanded
-  // 用于动画：实际渲染的指示器状态（在退出动画期间保持显示）
-  const [indicatorVisible, setIndicatorVisible] = useState(false)
-  const [indicatorExiting, setIndicatorExiting] = useState(false)
-  const indicatorDataRef = useRef<{ icon: React.ReactNode, expandHint?: string } | null>(null)
 
   // 缓存 metrics key 构建函数
   const buildMetricsKey = useCallback((mode: 'normal' | 'secondary', variant: 'desktop' | 'mobile') =>
@@ -145,60 +151,6 @@ export function NavigationIsland() {
       island.style.removeProperty('height')
     }
   }, [buildMetricsKey])
-
-  // 处理指示器的显示/隐藏动画
-  useEffect(() => {
-    if (shouldShowIndicator) {
-      // 进入：保存指示器数据并显示
-      const activeItem = secondaryNav?.items.find(item => item.id === secondaryNav.activeId)
-      indicatorDataRef.current = {
-        icon: activeItem?.icon || null,
-        expandHint: secondaryNav?.expandHint,
-      }
-      setIndicatorExiting(false)
-      setIndicatorVisible(true)
-    }
-    else if (indicatorVisible && !indicatorExiting) {
-      // 退出：触发退出动画
-      setIndicatorExiting(true)
-
-      // 立即开始高度变化动画（与元素退出动画同步）
-      const content = navContentRef.current
-      const island = content?.closest('.dynamic-island') as HTMLElement | null
-      if (island && window.innerWidth >= 768) {
-        // 计算不含指示器的目标高度
-        let targetHeight = baseNavHeightRef.current
-
-        // 如果没有记录过基础高度，通过减去指示器高度来估算
-        if (!targetHeight && content) {
-          const indicatorGroups = content.querySelectorAll('[data-group="divider"], [data-group="current-secondary"]')
-          let indicatorHeight = 0
-          indicatorGroups.forEach((el) => {
-            const elHeight = (el as HTMLElement).offsetHeight
-            if (Number.isFinite(elHeight) && elHeight > 0) {
-              indicatorHeight += elHeight + 8 // 8px gap
-            }
-          })
-          const paddingVertical = getPaddingVertical(island)
-          const scrollHeight = content.scrollHeight
-          if (Number.isFinite(scrollHeight) && scrollHeight > 0) {
-            targetHeight = scrollHeight - indicatorHeight + paddingVertical
-          }
-        }
-
-        // 使用安全设置函数，确保高度有效
-        safeSetHeight(island, targetHeight)
-      }
-
-      // 退出动画完成后隐藏元素
-      const timer = setTimeout(() => {
-        setIndicatorVisible(false)
-        setIndicatorExiting(false)
-        indicatorDataRef.current = null
-      }, 300)
-      return () => clearTimeout(timer)
-    }
-  }, [shouldShowIndicator, indicatorVisible, indicatorExiting, secondaryNav])
 
   // 路由切换时重置状态
   useEffect(() => {
@@ -263,16 +215,17 @@ export function NavigationIsland() {
       }
     }
 
-    // 退出动画
+    // 退出动画 - 交错标记各项退出
+    const timing = getAnimationTiming()
     groups.forEach((group, index) => {
       const el = group as HTMLElement
       el.removeAttribute('data-animation')
       setTimeout(() => {
         el.setAttribute('data-animation', 'exit')
-      }, index * ANIMATION_STAGGER)
+      }, index * timing.exitStagger)
     })
 
-    // 切换状态
+    // 等退出阶段完全结束后切换状态
     setTimeout(() => {
       groups.forEach((group) => {
         (group as HTMLElement).removeAttribute('data-animation')
@@ -280,7 +233,7 @@ export function NavigationIsland() {
       renderModeRef.current = 'secondary'
       secondaryNav.onToggleExpand()
       setIsAnimating(false)
-    }, groups.length * ANIMATION_STAGGER + ANIMATION_DURATION)
+    }, groups.length * timing.exitStagger + timing.exitDuration)
   }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef, updateModeMetrics])
 
   // 处理收起二级导航（返回按钮）
@@ -300,28 +253,29 @@ export function NavigationIsland() {
     const groups = Array.from(content.querySelectorAll('.nav-group'))
     const island = content.closest('.dynamic-island') as HTMLElement
 
-    // 预计算正常模式尺寸（一级菜单 + 指示器：5主按钮 + 分隔符 + 指示器 = 7）
+    // 预计算正常模式尺寸（一级菜单：5主按钮）
     if (island && window.innerWidth >= 768) {
       const paddingVertical = getPaddingVertical(island)
-      const estimatedNormalHeight = 7 * ITEM_HEIGHT + paddingVertical
+      const estimatedNormalHeight = 5 * ITEM_HEIGHT + paddingVertical
       const validHeight = validateHeight(estimatedNormalHeight)
       if (validHeight !== null) {
         updateModeMetrics('normal', { height: validHeight })
-        // 立即应用高度变化
+        // 立即应用高度变化（容器和内容退出同时进行）
         island.style.height = `${validHeight}px`
       }
     }
 
-    // 退出动画
+    // 退出动画 - 交错标记各项退出
+    const timing = getAnimationTiming()
     groups.forEach((group, index) => {
       const el = group as HTMLElement
       el.removeAttribute('data-animation')
       setTimeout(() => {
         el.setAttribute('data-animation', 'exit')
-      }, index * ANIMATION_STAGGER)
+      }, index * timing.exitStagger)
     })
 
-    // 切换状态
+    // 等退出阶段完全结束后切换状态
     setTimeout(() => {
       groups.forEach((group) => {
         (group as HTMLElement).removeAttribute('data-animation')
@@ -329,7 +283,7 @@ export function NavigationIsland() {
       renderModeRef.current = 'normal'
       secondaryNav.onToggleExpand()
       setIsAnimating(false)
-    }, groups.length * ANIMATION_STAGGER + ANIMATION_DURATION)
+    }, groups.length * timing.exitStagger + timing.exitDuration)
   }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef, updateModeMetrics])
 
   // 导航到页面并展开二级导航
@@ -437,14 +391,11 @@ export function NavigationIsland() {
           updateModeMetrics(currentMode, metrics)
         }
 
-        // 在一级导航模式下，如果当前页面没有二级导航，记录为基础高度
-        if (currentMode === 'normal' && !secondaryNav && validHeight) {
-          baseNavHeightRef.current = validHeight
-        }
       })
     })
 
-    // 进入动画
+    // 进入动画 - 交错移除 enter-initial 标记，触发 CSS 过渡
+    const timing = getAnimationTiming()
     let rafId2: number
     const enterTimers: number[] = []
     let cleanupTimer: number
@@ -454,10 +405,11 @@ export function NavigationIsland() {
         groups.forEach((group, index) => {
           const timer = window.setTimeout(() => {
             (group as HTMLElement).removeAttribute('data-animation')
-          }, index * ENTER_STAGGER + ENTER_DELAY)
+          }, index * timing.enterStagger + timing.enterDelay)
           enterTimers.push(timer)
         })
 
+        // 安全兜底：所有进入动画应已完成后清理残留标记
         cleanupTimer = window.setTimeout(() => {
           if (island) {
             island.removeAttribute('data-transitioning')
@@ -465,7 +417,7 @@ export function NavigationIsland() {
           groups.forEach((group) => {
             (group as HTMLElement).removeAttribute('data-animation')
           })
-        }, groups.length * ENTER_STAGGER + ANIMATION_DURATION - 180)
+        }, groups.length * timing.enterStagger + timing.enterDelay + 150)
       })
     })
 
@@ -518,11 +470,6 @@ export function NavigationIsland() {
         if (validHeight !== null) {
           currentIsland.style.height = `${validHeight}px`
           updateModeMetrics('normal', { height: validHeight })
-
-          // 如果当前页面没有二级导航，记录为基础高度
-          if (!secondaryNav) {
-            baseNavHeightRef.current = validHeight
-          }
         }
       }
     }
@@ -580,14 +527,6 @@ export function NavigationIsland() {
       }
     }
   }, [applyModeMetrics])
-
-  // 获取当前选中的二级导航项图标 - 使用 useMemo 缓存
-  const activeSecondaryIcon = useMemo(() => {
-    if (!secondaryNav)
-      return null
-    const activeItem = secondaryNav.items.find(item => item.id === secondaryNav.activeId)
-    return activeItem?.icon || null
-  }, [secondaryNav])
 
   return (
     <nav
@@ -704,31 +643,6 @@ export function NavigationIsland() {
                 </a>
               </div>
 
-              {/* 分隔符 + 当前二级选中项指示器 - 仅在有二级导航的页面显示，支持退出动画 */}
-              {indicatorVisible && (
-                <>
-                  <div
-                    className="nav-group nav-group-spaced"
-                    data-group="divider"
-                    data-animation={indicatorExiting ? 'exit' : undefined}
-                  >
-                    <div className="w-px h-6 bg-gray-300/50 dark:bg-neutral-700/50 md:w-6 md:h-px md:my-0"></div>
-                  </div>
-                  <div
-                    className="nav-group"
-                    data-group="current-secondary"
-                    data-animation={indicatorExiting ? 'exit' : undefined}
-                  >
-                    <button
-                      className="nav-item opacity-60 hover:opacity-100 transition-opacity"
-                      title={indicatorDataRef.current?.expandHint || t.nav.expandFilters}
-                      onClick={handleExpand}
-                    >
-                      {indicatorDataRef.current?.icon || activeSecondaryIcon}
-                    </button>
-                  </div>
-                </>
-              )}
             </div>
           )}
         </div>

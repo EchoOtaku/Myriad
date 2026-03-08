@@ -577,7 +577,7 @@ export function TappListPage() {
   const navigate = useNavigate()
   const { t } = useI18n()
   const { isMobile } = useBreakpoints()
-  const { _isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
+  const { isAdmin, hasChecked, checkAuth } = useAuth()
   // 🆕 标题字体 Hook
   const { currentFont, titleFontSize, titleColor } = useTitleFont()
 

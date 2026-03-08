@@ -67,7 +67,7 @@ export default function Library() {
   ], [t])
 
   // 使用二级导航 Hook
-  const { activeId, _setActiveId, setExpanded } = useSecondaryNav({
+  const { activeId, setExpanded } = useSecondaryNav({
     routePath: '/library',
     items: navItems,
     defaultActiveId: 'all',
