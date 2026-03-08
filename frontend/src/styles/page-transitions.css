@@ -33,7 +33,7 @@ html {
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* CSS 变量 */
@@ -75,10 +75,9 @@ main.relative {
 
 /* 移动端滚动修复 */
 @media (max-width: 767px) {
-  .animated-view-container {
-    /* 确保容器不限制高度，允许内容自然扩展 */
-    min-height: 0;
-    height: auto;
+  /* 确保主内容区域在移动端不阻止滚动 */
+  main.relative {
+    overflow: visible;
   }
 }
 

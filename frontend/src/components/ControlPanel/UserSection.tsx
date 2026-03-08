@@ -56,16 +56,14 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     }
   }, [modalState])
 
-  // 滚动锁定
+  // 滚动锁定 - 保存并恢复原始 overflow 值
   useEffect(() => {
     if (modalState !== 'closed') {
+      const originalOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
-    }
-    else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
+      return () => {
+        document.body.style.overflow = originalOverflow
+      }
     }
   }, [modalState])
 

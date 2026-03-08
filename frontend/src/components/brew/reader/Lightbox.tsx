@@ -29,13 +29,18 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
 
     if (src) {
       document.addEventListener('keydown', handleKeyDown)
-      // 防止背景滚动
+      // 防止背景滚动 - 保存原始值以便正确恢复
+      const originalOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
+
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown)
+        document.body.style.overflow = originalOverflow
+      }
     }
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = ''
     }
   }, [src, onClose])
 

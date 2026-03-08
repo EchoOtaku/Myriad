@@ -1836,7 +1836,7 @@ export default function Reports() {
       : null, [selectedPlatform, report])
 
   return (
-    <AnimatedView className="h-screen overflow-hidden">
+    <AnimatedView className="min-h-screen md:h-screen md:overflow-hidden">
       {/* Toast提示 */}
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage('')} />}
 
@@ -1848,10 +1848,10 @@ export default function Reports() {
         onRefresh={refreshStageReport}
         playAllMode={playAllMode}
       />
-      <div className="h-full flex flex-col pt-20 pb-24 md:pb-6 px-3 xs:px-4 sm:px-6">
+      <div className="flex flex-col pt-20 pb-24 md:pb-6 px-3 xs:px-4 sm:px-6 min-h-dvh md:h-dvh">
         <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col gap-4 p-2">
-          {/* 上半部分：报告详情展示区域 (60%) - 保持占位但条件显示内容 */}
-          <div className="h-[60%] rounded-2xl relative overflow-hidden">
+          {/* 上半部分：报告详情展示区域 - 移动端弹性占位抨卡片到底部，桌面端60% */}
+          <div className="flex-1 md:flex-none md:h-[60%] rounded-2xl relative overflow-hidden">
 
             {/* 原有详情展示（舞台模式未激活时） */}
             { !isStageMode && activeTab === 'platform' && selectedReport ? (
@@ -1951,8 +1951,8 @@ export default function Reports() {
             ) : null}
           </div>
 
-          {/* 下半部分：卡片列表区域 (40%) - 固定高度 */}
-          <div className={`h-[40%] flex flex-col gap-3 relative ${isStageMode ? 'justify-end md:justify-start' : ''}`}>
+          {/* 下半部分：卡片列表区域 - 移动端/桌面端都在下半部分 */}
+          <div className="md:h-[40%] flex flex-col gap-3 relative justify-end md:justify-start">
             {activeTab === 'platform' && (
               <>
                 {/* 平台报告标题 - 绝对定位在整个区域 */}
