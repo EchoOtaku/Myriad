@@ -392,6 +392,10 @@ export interface TranslationKeys {
     // Platform configuration
     platformsConfigTitle: string
     platformsConfigDesc: string
+    platformDescGithub: string
+    platformDescBilibili: string
+    platformDescSteam: string
+    platformDescNetease: string
     configuredStatus: string
     unconfiguredStatus: string
     enablePlatform: string

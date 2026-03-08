@@ -270,6 +270,16 @@ const ModernConfigForm: React.FC = () => {
     }
   }, [])
 
+  const getPlatformDescription = useCallback((platform: PlatformConfig) => {
+    const descMap: Record<string, string> = {
+      'github': t.config.platformDescGithub,
+      'bilibili': t.config.platformDescBilibili,
+      'steam': t.config.platformDescSteam,
+      'netease music': t.config.platformDescNetease,
+    }
+    return descMap[platform.name.toLowerCase()] || platform.description
+  }, [t])
+
   const isPlatformConfigured = useCallback((platform: PlatformConfig) => {
     if (!platform.config_fields || platform.config_fields.length === 0)
       return true
@@ -334,7 +344,16 @@ const ModernConfigForm: React.FC = () => {
 
     const items: Array<{ type: string, section: string, title: string, description: string, keywords: string[] }> = []
 
-    // 平台配置
+    // 平台配置 - 区块描述
+    items.push({
+      type: 'section',
+      section: 'platforms',
+      title: t.config.platforms,
+      description: t.config.platformsDesc,
+      keywords: ['平台', '数据源', 'token', 'api', 'github', 'bilibili', 'steam', 'netease'],
+    })
+
+    // 平台配置 - 各平台
     config.platforms.forEach((platform) => {
       items.push({
         type: 'platform',
@@ -802,7 +821,7 @@ const ModernConfigForm: React.FC = () => {
                             {isPlatformConfigured(platform) ? `✓ ${t.config.configured}` : `⚠ ${t.config.notConfigured}`}
                           </span>
                         </div>
-                        <p className="platform-desc">{platform.description}</p>
+                        <p className="platform-desc">{getPlatformDescription(platform)}</p>
                       </div>
                     </div>
                     <div className="platform-actions">
@@ -1065,7 +1084,7 @@ const ModernConfigForm: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="modal-title">{platform.name}</h3>
-                    <p className="modal-subtitle">{platform.description}</p>
+                    <p className="modal-subtitle">{getPlatformDescription(platform)}</p>
                   </div>
                 </div>
                 <button

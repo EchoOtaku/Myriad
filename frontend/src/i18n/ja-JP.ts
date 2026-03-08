@@ -388,6 +388,10 @@ export const jaJP: TranslationKeys = {
     // プラットフォーム設定
     platformsConfigTitle: 'データプラットフォーム設定',
     platformsConfigDesc: '各データソースプラットフォームのアクセス認証情報を設定',
+    platformDescGithub: 'リポジトリ、スター、コントリビューションを追跡',
+    platformDescBilibili: 'お気に入り、アニメ、視聴履歴を追跡',
+    platformDescSteam: 'ゲームライブラリ、ウィッシュリスト、ゲーム統計を同期',
+    platformDescNetease: 'お気に入りの曲と音楽の好みを同期',
     configuredStatus: '✓ 設定済み',
     unconfiguredStatus: '⚠ 未設定',
     enablePlatform: '{platform}プラットフォームを有効化',

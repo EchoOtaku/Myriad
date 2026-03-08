@@ -388,6 +388,10 @@ export const zhCN: TranslationKeys = {
     // 平台配置
     platformsConfigTitle: '数据平台配置',
     platformsConfigDesc: '配置各个数据源平台的访问凭证',
+    platformDescGithub: '追踪你的仓库、Star 和贡献记录',
+    platformDescBilibili: '追踪你的收藏、追番和观看历史',
+    platformDescSteam: '同步你的游戏库、愿望单和游戏统计',
+    platformDescNetease: '同步你的喜欢歌曲和网易云音乐品味',
     configuredStatus: '✓ 已配置',
     unconfiguredStatus: '⚠ 未配置',
     enablePlatform: '启用 {platform} 平台',

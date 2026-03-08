@@ -388,6 +388,10 @@ export const enUS: TranslationKeys = {
     // Platform configuration
     platformsConfigTitle: 'Data Platform Configuration',
     platformsConfigDesc: 'Configure access credentials for data source platforms',
+    platformDescGithub: 'Track repositories, stars, and contributions',
+    platformDescBilibili: 'Track your Bilibili favorites, anime, and viewing history',
+    platformDescSteam: 'Sync your Steam library, wishlist, and gaming stats',
+    platformDescNetease: 'Sync your liked songs and music taste from Netease Cloud Music',
     configuredStatus: '✓ Configured',
     unconfiguredStatus: '⚠ Not Configured',
     enablePlatform: 'Enable {platform} platform',
