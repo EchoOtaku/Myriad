@@ -1,17 +1,18 @@
 import {
-  FaCog,
-  FaDatabase,
   FaExclamationTriangle,
-  FaGlobe,
-  FaLink,
-  FaLock,
-  FaMusic,
   FaSearch,
   FaStar,
   FaTimes,
-  FaUsers,
-  FaWrench,
+  LuDatabase,
+  LuGlobe,
+  LuLink,
+  LuLock,
+  LuMusic,
+  LuSettings,
+  LuSlidersHorizontal,
   LuSparkles,
+  LuUsers,
+  LuWrench,
 } from '@lib/icons'
 
 import { motionShim as motion } from '@lib/motionShim'
@@ -315,15 +316,15 @@ const ModernConfigForm: React.FC = () => {
 
   // 快速访问项（使用 useMemo 避免每次渲染重新创建数组）
   const quickAccessItems: QuickAccessItem[] = useMemo(() => [
-    { id: 'platforms', label: t.config.platforms, icon: <FaGlobe />, section: 'platforms' },
-    { id: 'data', label: t.config.data, icon: <FaDatabase />, section: 'data' },
-    { id: 'ai', label: t.config.ai, icon: <LuSparkles />, section: 'ai' },
-    { id: 'ui', label: t.config.basic, icon: <FaCog />, section: 'ui' },
-    { id: 'music', label: t.config.music, icon: <FaMusic />, section: 'music' },
-    { id: 'oauth', label: t.config.oauth, icon: <FaLock />, section: 'oauth' },
-    { id: 'network', label: t.config.network, icon: <FaLink />, section: 'network' },
-    { id: 'permissions', label: t.config.permissions, icon: <FaUsers />, section: 'permissions' },
-    { id: 'advanced', label: t.config.advanced, icon: <FaWrench />, section: 'advanced' },
+    { id: 'platforms', label: t.config.platforms, icon: <LuGlobe size={15} style={{ color: '#3b82f6' }} />, section: 'platforms' },
+    { id: 'data', label: t.config.data, icon: <LuDatabase size={15} style={{ color: '#10b981' }} />, section: 'data' },
+    { id: 'ai', label: t.config.ai, icon: <LuSparkles size={15} style={{ color: '#8b5cf6' }} />, section: 'ai' },
+    { id: 'ui', label: t.config.basic, icon: <LuSettings size={15} style={{ color: '#64748b' }} />, section: 'ui' },
+    { id: 'music', label: t.config.music, icon: <LuMusic size={15} style={{ color: '#ec4899' }} />, section: 'music' },
+    { id: 'oauth', label: t.config.oauth, icon: <LuLock size={15} style={{ color: '#f59e0b' }} />, section: 'oauth' },
+    { id: 'network', label: t.config.network, icon: <LuLink size={15} style={{ color: '#06b6d4' }} />, section: 'network' },
+    { id: 'permissions', label: t.config.permissions, icon: <LuUsers size={15} style={{ color: '#6366f1' }} />, section: 'permissions' },
+    { id: 'advanced', label: t.config.advanced, icon: <LuWrench size={15} style={{ color: '#ef4444' }} />, section: 'advanced' },
   ], [t])
 
   // 搜索功能
@@ -396,6 +397,15 @@ const ModernConfigForm: React.FC = () => {
       title: t.config.advanced,
       description: t.config.advancedDesc,
       keywords: ['advanced', '高级', 'danger', 'reset', '重置', '危险'],
+    })
+
+    // 权限管理
+    items.push({
+      type: 'section',
+      section: 'permissions',
+      title: t.config.permissions,
+      description: t.config.permissionsDesc,
+      keywords: ['权限', 'permission', 'elevated', '下放', '配额', 'quota', 'ai', '游客', 'guest'],
     })
 
     return items
@@ -744,6 +754,7 @@ const ModernConfigForm: React.FC = () => {
     return {
       title: item.label,
       icon: item.icon,
+      sectionId: item.id,
       description: searchableContent.find(c => c.section === sectionId)?.description || '',
     }
   }
@@ -872,6 +883,7 @@ const ModernConfigForm: React.FC = () => {
         return (
           <AdvancedConfigSection
             onReset={handleReset}
+            onMessage={setMessage}
             {...props}
           />
         )
@@ -913,37 +925,32 @@ const ModernConfigForm: React.FC = () => {
       >
         <div className="config-nav-header">
           <div className="nav-header-left">
-            <span className="nav-icon"><FaWrench /></span>
+            <span className="nav-icon"><LuSlidersHorizontal size={18} /></span>
             <div>
               <h3 className="nav-title">{t.config.title}</h3>
               <p className="nav-subtitle">{t.config.selectProject}</p>
             </div>
           </div>
-          <div className="nav-header-actions">
-            {/* 操作按钮已移至底部悬浮栏 */}
-          </div>
-        </div>
-
-        {/* 搜索栏 */}
-        <div className="config-search-bar">
-          <div className="search-input-wrapper">
-            <FaSearch className="search-icon" />
-            <input
-              type="text"
-              placeholder={t.config.searchConfig}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="search-input"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="search-clear"
-                aria-label="Clear search"
-              >
-                <FaTimes />
-              </button>
-            )}
+          <div className="nav-header-search">
+            <div className="search-input-wrapper">
+              <FaSearch className="search-icon" />
+              <input
+                type="text"
+                placeholder={t.config.searchConfig}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="search-input"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="search-clear"
+                  aria-label="Clear search"
+                >
+                  <FaTimes />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

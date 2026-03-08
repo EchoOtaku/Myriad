@@ -3,15 +3,17 @@
  * 带标题、图标和描述的设置容器
  */
 
-import type { SettingSectionConfig } from './types'
-import { motionShim as motion } from '@lib/motionShim'
+import './SettingSection.css'
+
 import React from 'react'
 import { SettingGroup } from './SettingGroup'
-import './SettingSection.css'
+import type { SettingSectionConfig } from './types'
+import { motionShim as motion } from '@lib/motionShim'
 
 export interface SettingSectionProps extends SettingSectionConfig {}
 
 export const SettingSection: React.FC<SettingSectionProps> = ({
+  sectionId,
   title,
   icon,
   description,
@@ -20,13 +22,15 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
   className = '',
   animated = true,
 }) => {
+  const iconClassName = sectionId ? `section-icon icon-${sectionId}` : 'section-icon'
+
   const renderIcon = () => {
     if (!icon)
       return null
     if (typeof icon === 'string') {
-      return <span className="section-icon">{icon}</span>
+      return <span className={iconClassName}>{icon}</span>
     }
-    return <span className="section-icon">{icon}</span>
+    return <span className={iconClassName}>{icon}</span>
   }
 
   const content = (

@@ -197,7 +197,7 @@ export interface SettingGroupConfig {
   /** 组图标 */
   icon?: ReactNode | string
   /** 组描述 */
-  description?: string
+  description?: ReactNode
   /** 子项 */
   items?: SettingItemConfig[]
   /** 子元素 */
@@ -212,6 +212,8 @@ export interface SettingGroupConfig {
 
 /** 设置区块配置 */
 export interface SettingSectionConfig {
+  /** 区块标识（用于图标背景色区分） */
+  sectionId?: string
   /** 区块标题 */
   title: string
   /** 区块图标 */

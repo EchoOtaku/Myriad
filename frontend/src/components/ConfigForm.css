@@ -446,14 +446,21 @@ html.dark .config-nav-card:hover {
 /* flex items-center gap-3 mb-3 md:mb-4 */
 .config-nav-header {
   display: flex;
-  align-items: center;
-  gap: 0.75rem; /* gap-3 */
-  margin-bottom: 0.75rem; /* mb-3 */
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .config-nav-header {
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
 @media (min-width: 768px) {
   .config-nav-header {
-    margin-bottom: 1rem; /* md:mb-4 */
+    margin-bottom: 1rem;
   }
 }
 
@@ -461,14 +468,52 @@ html.dark .config-nav-card:hover {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex: 1;
+  flex-shrink: 0;
 }
 
-/* 导航头部操作按钮 */
-.nav-header-actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
+/* 导航头部搜索栏 */
+.nav-header-search {
+  width: 100%;
+}
+
+.nav-header-search .search-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.nav-header-search .search-input {
+  width: 100%;
+  padding: 0.5rem 2.25rem 0.5rem 2.5rem;
+  border: 1px solid rgba(209, 213, 219, 0.3);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  background: rgba(255, 255, 255, 0.5);
+  color: #1f2937;
+  transition: all 0.2s;
+}
+
+.nav-header-search .search-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #3b82f6);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+html.dark .nav-header-search .search-input {
+  background: rgba(55, 65, 81, 0.3);
+  border-color: rgba(107, 114, 128, 0.3);
+  color: #f3f4f6;
+}
+
+html.dark .nav-header-search .search-input:focus {
+  border-color: var(--color-primary, #60a5fa);
+  background: rgba(55, 65, 81, 0.5);
+}
+
+@media (min-width: 640px) {
+  .nav-header-search {
+    max-width: 16rem;
+    margin-left: auto;
+  }
 }
 
 /* 导航操作按钮 - 继承统一基类 */
@@ -498,50 +543,72 @@ html.dark .config-nav-card:hover {
   /* 继承 btn-base + btn-primary */
 }
 
-/* 导航图标 - 增强设计 */
+/* 导航图标 - 精致设计 */
 .nav-icon {
-  width: 3rem; /* w-12 */
-  height: 3rem; /* h-12 */
+  width: 2.75rem;
+  height: 2.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 1rem; /* rounded-xl */
-  font-size: 1.5rem; /* text-2xl */
+  border-radius: 0.875rem;
   line-height: 1;
-  background: linear-gradient(135deg, rgba(156, 163, 175, 0.2), rgba(156, 163, 175, 0.1));
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.14), rgba(129, 140, 248, 0.06));
+  color: #6366f1;
+  box-shadow: 0 2px 8px -2px rgba(99, 102, 241, 0.15);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+}
+
+.nav-icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .nav-icon::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 50%);
   opacity: 0.5;
+  transition: opacity 0.35s ease;
 }
 
 .config-nav-card:hover .nav-icon {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px -3px rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.18), rgba(129, 140, 248, 0.08));
+}
+
+.config-nav-card:hover .nav-icon svg {
+  transform: scale(1.06);
+}
+
+.config-nav-card:hover .nav-icon::before {
+  opacity: 0.7;
 }
 
 html.dark .nav-icon {
-  background: linear-gradient(135deg, rgba(156, 163, 175, 0.25), rgba(156, 163, 175, 0.15));
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(129, 140, 248, 0.09));
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.25);
 }
 
 html.dark .config-nav-card:hover .nav-icon {
-  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 14px -3px rgba(99, 102, 241, 0.28);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(129, 140, 248, 0.12));
 }
 
 @media (min-width: 640px) {
   .nav-icon {
-    width: 3.5rem; /* sm:w-14 */
-    height: 3.5rem; /* sm:h-14 */
-    font-size: 1.75rem; /* sm:text-3xl */
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+  }
+
+  .nav-icon svg {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 }
 
@@ -574,42 +641,9 @@ html.dark .nav-subtitle {
   color: #9ca3af;
 }
 
-/* 卡片内搜索栏 */
+/* 卡片内搜索栏 - 已移入 nav-header-search */
 .config-search-bar {
-  margin-bottom: 0.75rem;
-}
-
-.config-search-bar .search-input-wrapper {
-  position: relative;
-  width: 100%;
-}
-
-.config-search-bar .search-input {
-  width: 100%;
-  padding: 0.5rem 2.25rem 0.5rem 2.5rem;
-  border: 1px solid rgba(209, 213, 219, 0.3);
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  background: rgba(255, 255, 255, 0.5);
-  color: #1f2937;
-  transition: all 0.2s;
-}
-
-.config-search-bar .search-input:focus {
-  outline: none;
-  border-color: var(--color-primary, #3b82f6);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-html.dark .config-search-bar .search-input {
-  background: rgba(55, 65, 81, 0.3);
-  border-color: rgba(107, 114, 128, 0.3);
-  color: #f3f4f6;
-}
-
-html.dark .config-search-bar .search-input:focus {
-  border-color: var(--color-primary, #60a5fa);
-  background: rgba(55, 65, 81, 0.5);
+  display: none;
 }
 
 /* 搜索结果 */
@@ -805,11 +839,16 @@ html.dark .quick-access-card.active {
 }
 
 .card-icon {
-  font-size: 1.125rem;
+  font-size: 0.875rem;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.card-icon svg {
+  width: 0.9375rem;
+  height: 0.9375rem;
 }
 
 .card-label {
@@ -956,6 +995,11 @@ html.dark .config-section:hover {
   overflow: hidden;
 }
 
+.section-icon svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
 .section-icon::before {
   content: '';
   position: absolute;
@@ -969,36 +1013,70 @@ html.dark .config-section:hover {
   box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.2);
 }
 
-/* 所有章节图标使用统一主题色渐变 */
-.section-icon.icon-platforms,
-.section-icon.icon-ai,
-.section-icon.icon-report,
-.section-icon.icon-ui,
-.section-icon.icon-oauth,
-.section-icon.icon-pet,
-.section-icon.icon-music,
+/* 各区块图标独立背景色 */
+.section-icon.icon-platforms {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.08));
+  color: #3b82f6;
+}
+.section-icon.icon-data {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.08));
+  color: #10b981;
+}
+.section-icon.icon-ai {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(139, 92, 246, 0.08));
+  color: #8b5cf6;
+}
+.section-icon.icon-ui {
+  background: linear-gradient(135deg, rgba(100, 116, 139, 0.18), rgba(100, 116, 139, 0.08));
+  color: #64748b;
+}
+.section-icon.icon-music {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.18), rgba(236, 72, 153, 0.08));
+  color: #ec4899;
+}
+.section-icon.icon-oauth {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.08));
+  color: #f59e0b;
+}
+.section-icon.icon-network {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(6, 182, 212, 0.08));
+  color: #06b6d4;
+}
 .section-icon.icon-permissions {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary) 40%, transparent),
-    color-mix(in srgb, var(--color-secondary) 40%, transparent)
-  );
-  color: var(--color-primary);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.08));
+  color: #6366f1;
+}
+.section-icon.icon-advanced {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08));
+  color: #ef4444;
 }
 
-html.dark .section-icon.icon-platforms,
-html.dark .section-icon.icon-ai,
-html.dark .section-icon.icon-report,
-html.dark .section-icon.icon-ui,
-html.dark .section-icon.icon-oauth,
-html.dark .section-icon.icon-pet,
-html.dark .section-icon.icon-music,
+html.dark .section-icon.icon-platforms {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(59, 130, 246, 0.10));
+}
+html.dark .section-icon.icon-data {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.10));
+}
+html.dark .section-icon.icon-ai {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.10));
+}
+html.dark .section-icon.icon-ui {
+  background: linear-gradient(135deg, rgba(100, 116, 139, 0.25), rgba(100, 116, 139, 0.10));
+}
+html.dark .section-icon.icon-music {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(236, 72, 153, 0.10));
+}
+html.dark .section-icon.icon-oauth {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(245, 158, 11, 0.10));
+}
+html.dark .section-icon.icon-network {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(6, 182, 212, 0.10));
+}
 html.dark .section-icon.icon-permissions {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary) 30%, transparent),
-    color-mix(in srgb, var(--color-secondary) 30%, transparent)
-  );
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(99, 102, 241, 0.10));
+}
+html.dark .section-icon.icon-advanced {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.10));
 }
 
 @media (min-width: 640px) {
@@ -1390,6 +1468,7 @@ html.dark .config-detail-footer {
   padding: 1rem; /* p-4 */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 16px -4px rgba(31, 38, 135, 0.08);
+  overflow: hidden;
 }
 
 .platform-card:hover {
@@ -1420,6 +1499,7 @@ html.dark .platform-card:hover {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .platform-info {
@@ -1462,6 +1542,7 @@ html.dark .platform-card:hover {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.125rem;
+  flex-wrap: wrap;
 }
 
 .platform-name {
@@ -1469,6 +1550,9 @@ html.dark .platform-card:hover {
   font-weight: 600;
   color: #1f2937;
   margin-bottom: 0.125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 html.dark .platform-name {
@@ -2032,21 +2116,21 @@ html.dark .status-sublabel {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
-  border-radius: 1rem;
-  padding: 1rem;
-  box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
 @media (min-width: 640px) {
   .info-card {
-    padding: 1.25rem;
+    padding: 0.875rem 1rem;
   }
 }
 
 html.dark .info-card {
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-  box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--color-primary) 15%, transparent);
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 /* 功能介绍区布局容器 - 左侧介绍右侧功能 */
@@ -2134,10 +2218,10 @@ html.dark .feature-intro-text {
 }
 
 .info-title {
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: #1f2937;
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.25rem;
 }
 
 html.dark .info-title {
@@ -2147,7 +2231,7 @@ html.dark .info-title {
 .info-text {
   font-size: 0.75rem;
   color: #6b7280;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 html.dark .info-text {
@@ -2356,7 +2440,7 @@ html.dark .section-subtitle {
 
 /* 带间距的信息卡片 */
 .info-card-spaced {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 /* 内联代码 */

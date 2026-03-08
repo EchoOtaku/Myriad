@@ -3,11 +3,13 @@
  * 显示版本号、备案号、云赞助商 Logo
  */
 
-import { SiCloudflare } from '@lib/icons'
-import React, { useEffect, useState } from 'react'
-import { API_URL } from '../config'
-import { fetchJson } from '../utils/apiHelper'
 import './SiteFooter.css'
+
+import React, { useEffect, useState } from 'react'
+
+import { API_URL } from '../config'
+import { SiCloudflare } from '@lib/icons'
+import { fetchJson } from '../utils/apiHelper'
 
 // Myriad 版本号 - 从 package.json 读取
 const MYRIAD_VERSION = __APP_VERSION__ || '0.1.0'
@@ -42,25 +44,10 @@ L282.639,281.223L282.639,281.223
   </svg>
 )
 
-// EdgeOne Logo（蓝色盾牌 + 闪电）
+// EdgeOne Logo
 const EdgeOneLogo: React.FC<{ className?: string }> = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className}>
-    <defs>
-      <linearGradient id="edgeone-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#00D4FF" />
-        <stop offset="100%" stopColor="#0066FF" />
-      </linearGradient>
-    </defs>
-    {/* 盾牌外形 */}
-    <path
-      fill="url(#edgeone-gradient)"
-      d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"
-    />
-    {/* 闪电 */}
-    <path
-      fill="#FFFFFF"
-      d="M13 6L8 13h3v5l5-7h-3V6z"
-    />
+  <svg viewBox="0 0 32 32" fill="none" className={className}>
+    <path d="M29.8101 18.138C29.9349 17.4442 30 16.7297 30 16C30 15.3831 29.9535 14.7772 29.8637 14.1854C29.829 13.9567 29.6296 13.792 29.3983 13.792H21.6802C21.4277 13.792 21.2439 13.5525 21.3093 13.3086L22.2229 9.89892C22.2904 9.6471 22.5185 9.472 22.7792 9.472H27.3634C27.668 9.472 27.8488 9.13574 27.6682 8.89047C25.4834 5.9244 21.9664 4 18 4C11.3726 4 6 9.37258 6 16C6 19.0173 7.11361 21.7745 8.95224 23.883C9.14804 24.1076 9.5076 24.0146 9.58436 23.7268L12.2394 13.7702C12.2882 13.5874 12.1504 13.408 11.9612 13.408H9.65504C9.40274 13.408 9.21899 13.1689 9.284 12.9251L10.0327 10.1174C10.0889 9.90673 10.28 9.76117 10.498 9.75666C13.0104 9.70465 15.493 9.04698 17.6975 7.84351C17.9253 7.71913 18.2007 7.92739 18.1338 8.1782L13.2499 26.4929C13.177 26.7664 13.313 27.0538 13.5761 27.1582C14.9451 27.7014 16.4377 28 18 28C21.7878 28 25.1656 26.2451 27.3649 23.5039C27.5597 23.2611 27.3809 22.912 27.0696 22.912H19.2365C18.984 22.912 18.8002 22.6725 18.8656 22.4286L19.7792 19.0189C19.8467 18.7671 20.0749 18.592 20.3356 18.592H29.2564C29.5268 18.592 29.7622 18.4042 29.8101 18.138Z" fill="#0055D2" />
   </svg>
 )
 

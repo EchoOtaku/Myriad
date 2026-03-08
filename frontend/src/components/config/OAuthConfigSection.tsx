@@ -4,13 +4,14 @@
  */
 
 import { FaCheck, FaClipboard } from '@lib/icons'
-import React, { useCallback, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
 import {
   InfoCard,
   InputItem,
   SettingSection,
 } from '../settings'
+import React, { useCallback, useState } from 'react'
+
+import { useI18n } from '../../contexts/I18nContext'
 
 interface ConfigField {
   key: string
@@ -25,6 +26,7 @@ interface OAuthConfigSectionProps {
   title: string
   icon: React.ReactNode
   description: string
+  sectionId?: string
 }
 
 export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
@@ -33,6 +35,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
   title,
   icon,
   description,
+  sectionId,
 }) => {
   const { t } = useI18n()
   const [copiedUrl, setCopiedUrl] = useState(false)
@@ -58,6 +61,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
+      sectionId={sectionId}
     >
       {/* OAuth 配置指南 */}
       <InfoCard
@@ -107,8 +111,6 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
             )
           : (
               <div className="callback-url-not-configured">
-                ⚠️
-                {' '}
                 {t.config.callbackUrlNotConfigured}
               </div>
             )}

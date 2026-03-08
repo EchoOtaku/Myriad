@@ -230,6 +230,15 @@ export interface TranslationKeys {
     resetConfig: string
     resetConfigDesc: string
     resetConfirmMessage: string
+    exportConfig: string
+    exportConfigDesc: string
+    importConfig: string
+    importConfigDesc: string
+    exportConfigSuccess: string
+    importConfigSuccess: string
+    importConfigFailed: string
+    importConfigInvalid: string
+    importConfirmMessage: string
     dangerZone: string
     searchConfig: string
     searchResults: string
@@ -261,6 +270,7 @@ export interface TranslationKeys {
     backgroundAndTheme: string
     parallaxHint: string
     // Evocative 壁纸动效
+    evocativeEffects: string
     evocativeTitle: string
     evocativeDesc: string
     fieldEvocativeParallax: string
@@ -336,6 +346,7 @@ export interface TranslationKeys {
     notConfigured: string
     aiConfigTitle: string
     aiConfigDesc: string
+    aiServiceTitle: string
     aiServiceInfoTitle: string
     aiServiceInfo: string
     aiProvider: string
@@ -462,7 +473,9 @@ export interface TranslationKeys {
     aiQuotaTitle: string
     aiQuotaDesc: string
     userAiQuota: string
+    userAiQuotaDesc: string
     guestAiQuota: string
+    guestAiQuotaDesc: string
     aiDailyCalls: string
     aiDailyCallsHint: string
     aiDailyTokens: string

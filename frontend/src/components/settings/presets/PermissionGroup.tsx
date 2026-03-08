@@ -1,13 +1,15 @@
 /**
  * 权限设置组组件
- * 预设组合：用于批量渲染权限开关
+ * 预设组合：使用 CheckboxGroupItem 卡片式渲染权限开关
  */
 
-import type { PermissionGroupConfig, PermissionItem } from '../types'
-import React, { useCallback } from 'react'
-import { SwitchItem } from '../items/SwitchItem'
-import '../SettingGroup.css'
 import './presets.css'
+
+import React, { useCallback, useMemo } from 'react'
+
+import { CheckboxGroupItem } from '../items/CheckboxGroupItem'
+import type { CheckboxGroupOption } from '../items/CheckboxGroupItem'
+import type { PermissionGroupConfig } from '../types'
 
 export interface PermissionGroupProps extends PermissionGroupConfig {}
 
@@ -18,47 +20,30 @@ export const PermissionGroup: React.FC<PermissionGroupProps> = ({
   values,
   onChange,
   disabled = false,
-  loading = false,
 }) => {
-  const handleChange = useCallback((key: string) => (value: boolean) => {
+  const handleChange = useCallback((key: string, value: boolean) => {
     onChange(key, value)
   }, [onChange])
 
-  const renderPermissionLabel = (permission: PermissionItem) => {
-    if (permission.code) {
-      return (
-        <>
-          <code>{permission.code}</code>
-          {' '}
-          {permission.label}
-        </>
-      )
-    }
-    return permission.label
-  }
+  const options: CheckboxGroupOption[] = useMemo(() =>
+    permissions.map(permission => ({
+      key: permission.key,
+      label: permission.code ? `${permission.label} ${permission.code}` : permission.label,
+      description: permission.hint,
+      value: values[permission.key] ?? false,
+    })),
+    [permissions, values],
+  )
 
   return (
-    <div className="permission-group">
-      {title && <h3 className="permission-group-title">{title}</h3>}
-      {description && <p className="permission-group-desc">{description}</p>}
-
-      <div className="permission-items">
-        {permissions.map(permission => (
-          <SwitchItem
-            key={permission.key}
-            itemKey={permission.key}
-            label={renderPermissionLabel(permission) as string}
-            description={permission.hint}
-            value={values[permission.key] ?? false}
-            onChange={handleChange(permission.key)}
-            disabled={disabled}
-            loading={loading}
-            layout="horizontal"
-            className="setting-item-permission"
-          />
-        ))}
-      </div>
-    </div>
+    <CheckboxGroupItem
+      label={title || ''}
+      description={description}
+      options={options}
+      onChange={handleChange}
+      disabled={disabled}
+      className="permission-checkbox-group"
+    />
   )
 }
 

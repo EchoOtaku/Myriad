@@ -377,7 +377,6 @@ html.dark .control-close-btn:hover {
 
 .info-card-wrapper {
   position: relative;
-  min-height: 120px;
 }
 
 .info-card {
@@ -386,7 +385,6 @@ html.dark .control-close-btn:hover {
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 0.875rem;
   transition: all 0.2s ease;
-  min-height: 120px;
   display: flex;
   flex-direction: column;
 }

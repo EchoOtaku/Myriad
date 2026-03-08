@@ -3,9 +3,6 @@
  * 使用通用设置组件重构
  */
 
-import { FaExchangeAlt, FaLightbulb } from '@lib/icons'
-import React, { useCallback } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
 import {
   InfoCard,
   InputItem,
@@ -13,6 +10,10 @@ import {
   SettingSection,
   SwitchItem,
 } from '../settings'
+import React, { useCallback } from 'react'
+
+import { FaExchangeAlt } from '@lib/icons'
+import { useI18n } from '../../contexts/I18nContext'
 
 interface ConfigField {
   key: string
@@ -27,6 +28,7 @@ interface NetworkConfigSectionProps {
   title: string
   icon: React.ReactNode
   description: string
+  sectionId?: string
 }
 
 export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
@@ -35,6 +37,7 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   title,
   icon,
   description,
+  sectionId,
 }) => {
   const { t } = useI18n()
 
@@ -50,11 +53,11 @@ export const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
+      sectionId={sectionId}
     >
       {/* 代理说明 */}
       <InfoCard
         title={t.config.networkProxyInfoTitle || '代理配置说明'}
-        icon={<FaLightbulb />}
         content={(
           <>
             {t.config.networkProxyInfo || '如果您的服务器位于中国大陆，可能需要配置代理才能正常访问 GitHub OAuth、Gemini AI 等外部服务。您可以选择以下方式：'}

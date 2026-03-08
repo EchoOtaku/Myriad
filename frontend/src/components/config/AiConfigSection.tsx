@@ -4,13 +4,13 @@
  */
 
 import type { SettingOption } from '../settings/types'
-import { FaFreeCodeCamp, FaMagic, FaMicrophone, FaPalette, FaVolumeUp, SiGooglegemini, SiOpenai } from '@lib/icons'
+import { FaFreeCodeCamp, FaMagic, FaMicrophone, FaVolumeUp, LuPalette, LuSparkles, SiGooglegemini, SiOpenai } from '@lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
+
 import { useI18n } from '../../contexts/I18nContext'
 import {
   ButtonItem,
   CompactSettingGroup,
-  InfoCard,
   InputItem,
   NumberItem,
   ProviderItem,
@@ -38,6 +38,7 @@ interface AiConfigSectionProps {
   title: string
   icon: React.ReactNode
   description: string
+  sectionId?: string
 }
 
 export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
@@ -47,6 +48,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   title,
   icon,
   description,
+  sectionId,
 }) => {
   const { t } = useI18n()
   const [speechTesting, setSpeechTesting] = useState(false)
@@ -139,157 +141,147 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
+      sectionId={sectionId}
     >
-      {/* AI 服务介绍 */}
-      <InfoCard
-        title={t.config.aiServiceInfoTitle}
-        content={(
+      {/* AI 服务 */}
+      <SettingGroup
+        title={t.config.aiServiceTitle}
+        icon={<LuSparkles />}
+        description={(
           <>
-            {t.config.aiServiceInfoDescription}
-            <br />
-            <strong>Google Gemini</strong>
-            :
+            Gemini
+            {' '}
             {t.config.geminiDescription}
+            {' '}
             <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">
               {t.config.getApiKey}
             </a>
-            <br />
-            <strong>{t.config.openaiCompatible}</strong>
-            :
+            {' · '}
+            {t.config.openaiCompatible}
+            ：
             {t.config.openaiDescription}
           </>
         )}
-      />
-
-      {/* AI Provider 选择 */}
-      <ProviderItem
-        itemKey="ai_provider"
-        label={t.config.aiProvider}
-        value={currentProvider}
-        onChange={v => updateValue('provider', v)}
-        options={aiProviderOptions}
-        hint={t.config.aiProviderHint}
-        layout="horizontal"
-      />
-
-      {/* Provider 配置字段 */}
-      {providerFields.map(field => (
-        <InputItem
-          key={field.key}
-          itemKey={field.key}
-          label={field.label}
-          required={field.required}
-          value={field.value}
-          onChange={v => updateValue(field.key, v)}
-          placeholder={field.placeholder}
-          inputType={field.field_type as 'text' | 'password'}
-          autoSelectOnMask
-          layout="vertical"
+      >
+        {/* AI Provider 选择 */}
+        <ProviderItem
+          itemKey="ai_provider"
+          label={t.config.aiProvider}
+          value={currentProvider}
+          onChange={v => updateValue('provider', v)}
+          options={aiProviderOptions}
+          hint={t.config.aiProviderHint}
+          layout="horizontal"
         />
-      ))}
 
-      {/* AI 图片生成配置 */}
-      <InfoCard
-        title={t.config.aiImageTitle}
-        icon={<FaPalette />}
-        content={(
-          <>
-            <strong>Pollinations AI</strong>
-            ：
-            {t.config.pollinationsDescription}
-            <br />
-            <strong>ImaginePro</strong>
-            ：
-            {t.config.imagineproDescription}
-          </>
-        )}
-        className="mt-6"
-      />
-
-      {/* 图片生成 Provider 选择 */}
-      <ProviderItem
-        itemKey="image_provider"
-        label={t.config.imageGenService}
-        value={currentImageProvider}
-        onChange={v => updateValue('ai_image_provider', v)}
-        options={imageProviderOptions}
-        layout="horizontal"
-      />
-
-      {/* Pollinations 配置 */}
-      {currentImageProvider === 'pollinations' && (
-        <>
-          <SelectItem
-            itemKey="ai_image_model"
-            label={t.config.aiModel}
-            value={getFieldValue('ai_image_model', 'flux-anime')}
-            onChange={v => updateValue('ai_image_model', v)}
-            options={pollinationsModelOptions}
-            layout="vertical"
-          />
-          <CompactSettingGroup>
-            <NumberItem
-              itemKey="ai_image_width_poll"
-              label={t.config.width}
-              value={Number.parseInt(getFieldValue('ai_image_width', '512'), 10)}
-              onChange={v => updateValue('ai_image_width', String(v))}
-              min={256}
-              max={1024}
-              step={64}
-              layout="vertical"
-            />
-            <NumberItem
-              itemKey="ai_image_height_poll"
-              label={t.config.height}
-              value={Number.parseInt(getFieldValue('ai_image_height', '768'), 10)}
-              onChange={v => updateValue('ai_image_height', String(v))}
-              min={256}
-              max={1024}
-              step={64}
-              layout="vertical"
-            />
-          </CompactSettingGroup>
-        </>
-      )}
-
-      {/* ImaginePro 配置 */}
-      {currentImageProvider === 'imaginepro' && (
-        <>
+        {/* Provider 配置字段 */}
+        {providerFields.map(field => (
           <InputItem
-            itemKey="imaginepro_api_key"
-            label="API Key"
-            required
-            value={getFieldValue('imaginepro_api_key')}
-            onChange={v => updateValue('imaginepro_api_key', v)}
-            placeholder={t.config.imagineproPlaceholder}
-            inputType="password"
+            key={field.key}
+            itemKey={field.key}
+            label={field.label}
+            required={field.required}
+            value={field.value}
+            onChange={v => updateValue(field.key, v)}
+            placeholder={field.placeholder}
+            inputType={field.field_type as 'text' | 'password'}
             autoSelectOnMask
             layout="vertical"
           />
-          <CompactSettingGroup>
-            <NumberItem
-              itemKey="ai_image_width_mj"
-              label={t.config.width}
-              value={Number.parseInt(getFieldValue('ai_image_width', '1024'), 10)}
-              onChange={v => updateValue('ai_image_width', String(v))}
-              min={512}
-              max={2048}
-              step={128}
+        ))}
+      </SettingGroup>
+
+      {/* AI 图片生成配置 */}
+      <SettingGroup
+        title={t.config.aiImageTitle}
+        icon={<LuPalette />}
+        description={t.config.aiImageDesc}
+      >
+        {/* 图片生成 Provider 选择 */}
+        <ProviderItem
+          itemKey="image_provider"
+          label={t.config.imageGenService}
+          value={currentImageProvider}
+          onChange={v => updateValue('ai_image_provider', v)}
+          options={imageProviderOptions}
+          layout="horizontal"
+        />
+
+        {/* Pollinations 配置 */}
+        {currentImageProvider === 'pollinations' && (
+          <>
+            <SelectItem
+              itemKey="ai_image_model"
+              label={t.config.aiModel}
+              value={getFieldValue('ai_image_model', 'flux-anime')}
+              onChange={v => updateValue('ai_image_model', v)}
+              options={pollinationsModelOptions}
               layout="vertical"
             />
-            <NumberItem
-              itemKey="ai_image_height_mj"
-              label={t.config.height}
-              value={Number.parseInt(getFieldValue('ai_image_height', '1536'), 10)}
-              onChange={v => updateValue('ai_image_height', String(v))}
-              min={512}
-              max={2048}
-              step={128}
+            <CompactSettingGroup>
+              <NumberItem
+                itemKey="ai_image_width_poll"
+                label={t.config.width}
+                value={Number.parseInt(getFieldValue('ai_image_width', '512'), 10)}
+                onChange={v => updateValue('ai_image_width', String(v))}
+                min={256}
+                max={1024}
+                step={64}
+                layout="vertical"
+              />
+              <NumberItem
+                itemKey="ai_image_height_poll"
+                label={t.config.height}
+                value={Number.parseInt(getFieldValue('ai_image_height', '768'), 10)}
+                onChange={v => updateValue('ai_image_height', String(v))}
+                min={256}
+                max={1024}
+                step={64}
+                layout="vertical"
+              />
+            </CompactSettingGroup>
+          </>
+        )}
+
+        {/* ImaginePro 配置 */}
+        {currentImageProvider === 'imaginepro' && (
+          <>
+            <InputItem
+              itemKey="imaginepro_api_key"
+              label="API Key"
+              required
+              value={getFieldValue('imaginepro_api_key')}
+              onChange={v => updateValue('imaginepro_api_key', v)}
+              placeholder={t.config.imagineproPlaceholder}
+              inputType="password"
+              autoSelectOnMask
               layout="vertical"
             />
-          </CompactSettingGroup>
-        </>
-      )}
+            <CompactSettingGroup>
+              <NumberItem
+                itemKey="ai_image_width_mj"
+                label={t.config.width}
+                value={Number.parseInt(getFieldValue('ai_image_width', '1024'), 10)}
+                onChange={v => updateValue('ai_image_width', String(v))}
+                min={512}
+                max={2048}
+                step={128}
+                layout="vertical"
+              />
+              <NumberItem
+                itemKey="ai_image_height_mj"
+                label={t.config.height}
+                value={Number.parseInt(getFieldValue('ai_image_height', '1536'), 10)}
+                onChange={v => updateValue('ai_image_height', String(v))}
+                min={512}
+                max={2048}
+                step={128}
+                layout="vertical"
+              />
+            </CompactSettingGroup>
+          </>
+        )}
+      </SettingGroup>
 
       {/* 语音服务配置 */}
       <SettingGroup

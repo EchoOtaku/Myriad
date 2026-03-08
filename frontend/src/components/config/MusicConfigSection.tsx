@@ -6,6 +6,7 @@
 import { FaHeadphones, FaTrash, SiNeteasecloudmusic } from '@lib/icons'
 import React, { useCallback } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import {
   ButtonItem,
@@ -32,6 +33,7 @@ interface MusicConfigSectionProps {
   title: string
   icon: React.ReactNode
   description: string
+  sectionId?: string
 }
 
 export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
@@ -41,6 +43,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
   title,
   icon,
   description,
+  sectionId,
 }) => {
   const { t } = useI18n()
 
@@ -63,6 +66,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
+      sectionId={sectionId}
     >
       {/* 使用说明 */}
       <InfoCard

@@ -3,7 +3,7 @@
  */
 
 .setting-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .setting-group:last-child {
@@ -18,7 +18,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.625rem;
+  padding-left: 0;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -54,21 +56,43 @@ html.dark .setting-group-header.collapsible:hover {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #1f2937;
-  margin: 0 0 0.25rem 0;
+  margin: 0;
 }
 
 .setting-group-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent), color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent));
   color: var(--color-primary, #3b82f6);
-  font-size: 1.125rem;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.setting-group-icon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 100%);
+  opacity: 0.4;
+}
+
+.setting-group-icon svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  position: relative;
 }
 
 html.dark .setting-group-icon {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #60a5fa) 22%, transparent), color-mix(in srgb, var(--color-primary, #60a5fa) 8%, transparent));
   color: var(--color-primary, #60a5fa);
 }
 
@@ -77,13 +101,26 @@ html.dark .setting-group-title {
 }
 
 .setting-group-description {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   color: #6b7280;
-  margin: 0;
+  margin: 0.125rem 0 0 0;
+}
+
+.setting-group-description a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.setting-group-description a:hover {
+  text-decoration: underline;
 }
 
 html.dark .setting-group-description {
   color: #9ca3af;
+}
+
+html.dark .setting-group-description a {
+  color: #60a5fa;
 }
 
 /* ==========================================
@@ -125,26 +162,4 @@ html.dark .setting-group-description {
 html.dark .setting-group.bordered .setting-group-content {
   background: rgba(31, 41, 55, 0.4);
   border-color: rgba(55, 65, 81, 0.5);
-}
-
-/* ==========================================
-   云赞助商开关组
-   ========================================== */
-
-.cloud-sponsors-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.cloud-sponsors-toggles .setting-item {
-  margin: 0;
-  padding: 0;
-}
-
-.cloud-sponsors-toggles .setting-item.horizontal {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.25rem;
 }

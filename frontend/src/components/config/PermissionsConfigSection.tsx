@@ -7,16 +7,12 @@
  */
 
 import type { PermissionItem, QuotaItem } from '../settings'
-import { FaLightbulb } from '@lib/icons'
 import React from 'react'
+
 import { useI18n } from '../../contexts/I18nContext'
 import {
-  InfoCard,
   PermissionGroup,
-
   QuotaGroup,
-
-  SettingGroup,
   SettingSection,
 } from '../settings'
 
@@ -54,6 +50,7 @@ interface PermissionsConfigSectionProps {
   title: string
   icon: React.ReactNode
   description: string
+  sectionId?: string
 }
 
 export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> = ({
@@ -63,6 +60,7 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
   title,
   icon,
   description,
+  sectionId,
 }) => {
   const { t } = useI18n()
 
@@ -120,15 +118,8 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
       title={title}
       icon={icon}
       description={description}
+      sectionId={sectionId}
     >
-      {/* 说明卡片 */}
-      <InfoCard
-        title={t.config.tappPermissionsInfoTitle}
-        icon={<FaLightbulb />}
-        content={t.config.tappPermissionsInfo}
-        className="info-card-spaced"
-      />
-
       {/* 普通用户权限 */}
       <PermissionGroup
         title={t.config.userElevatedPermissions}
@@ -149,30 +140,25 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
         loading={loading}
       />
 
-      {/* AI 使用配额 */}
-      <SettingGroup title={t.config.aiQuotaTitle} description={t.config.aiQuotaDesc}>
-        <QuotaGroup
-          title={t.config.userAiQuota}
-          quotas={quotaItems}
-          values={getUserQuotaValues()}
-          onChange={(key, value) => updatePermissionConfig(`user_ai_${key}`, value)}
-          loading={loading}
-        />
+      {/* 普通用户 AI 配额 */}
+      <QuotaGroup
+        title={t.config.userAiQuota}
+        description={t.config.userAiQuotaDesc}
+        quotas={quotaItems}
+        values={getUserQuotaValues()}
+        onChange={(key, value) => updatePermissionConfig(`user_ai_${key}`, value)}
+        loading={loading}
+      />
 
-        <QuotaGroup
-          title={t.config.guestAiQuota}
-          quotas={quotaItems}
-          values={getGuestQuotaValues()}
-          onChange={(key, value) => updatePermissionConfig(`guest_ai_${key}`, value)}
-          loading={loading}
-        />
-
-        <InfoCard
-          icon={<FaLightbulb />}
-          content={t.config.aiQuotaAdminNote}
-          className="info-card-spaced"
-        />
-      </SettingGroup>
+      {/* 游客 AI 配额 */}
+      <QuotaGroup
+        title={t.config.guestAiQuota}
+        description={t.config.guestAiQuotaDesc}
+        quotas={quotaItems}
+        values={getGuestQuotaValues()}
+        onChange={(key, value) => updatePermissionConfig(`guest_ai_${key}`, value)}
+        loading={loading}
+      />
     </SettingSection>
   )
 }
