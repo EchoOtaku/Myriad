@@ -7,7 +7,7 @@ import * as brewliaApi from '../../../services/brewliaApi'
 
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { LuCheck as Check, LuCopy as Copy, LuMessageSquare as MessageSquare, LuSend as Send } from '@lib/icons'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AnnotationType } from '../../../services/brewliaApi'
 import type { CommentItem } from '../../../services/brewApi'
@@ -39,16 +39,17 @@ export function AnnotationTooltip({
     <AnimatePresence>
       {hoveredAnnotation && (
         <motion.div
-          initial={enableAnimations ? { opacity: 0, y: 8, scale: 0.96 } : false}
-          animate={enableAnimations ? { opacity: 1, y: 0, scale: 1 } : undefined}
-          exit={enableAnimations ? { opacity: 0, y: 8, scale: 0.96 } : undefined}
+          initial={enableAnimations ? { opacity: 0, x: '-50%', y: 'calc(-100% + 8px)', scale: 0.96 } : false}
+          animate={enableAnimations ? { opacity: 1, x: '-50%', y: '-100%', scale: 1 } : undefined}
+          exit={enableAnimations ? { opacity: 0, x: '-50%', y: 'calc(-100% + 8px)', scale: 0.96 } : undefined}
           transition={enableAnimations ? { duration: 0.15, ease: [0.22, 1, 0.36, 1] } : undefined}
           className={`fixed z-50 max-w-xs px-3 py-2.5 rounded-xl shadow-xl border ${currentTheme.border} ${currentTheme.surfaceSolid}`}
           style={{
             left: Math.max(16, Math.min(tooltipPosition.x, window.innerWidth - 320)),
             top: Math.max(16, tooltipPosition.y),
-            transform: 'translate(-50%, -100%)',
-            pointerEvents: 'none',
+            x: '-50%',
+            y: '-100%',
+            pointerEvents: 'none' as const,
           }}
         >
           <div className="flex items-center gap-2 mb-1.5">
@@ -84,35 +85,41 @@ export function AnnotationTooltip({
 
 interface CommentTooltipProps {
   commentTooltip: { comment: CommentItem, x: number, y: number } | null
-  setCommentTooltip: (tooltip: { comment: CommentItem, x: number, y: number } | null) => void
   currentTheme: ThemeConfig
   isDark: boolean
+  enableAnimations: boolean
   t: Record<string, any>
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }
 
 export function CommentTooltip({
   commentTooltip,
-  setCommentTooltip,
   currentTheme,
   isDark,
+  enableAnimations,
   t,
+  onMouseEnter,
+  onMouseLeave,
 }: CommentTooltipProps) {
+
   return (
     <AnimatePresence>
       {commentTooltip && (
         <motion.div
-          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
+          initial={enableAnimations ? { opacity: 0, x: '-50%', y: 'calc(-100% + 10px)', scale: 0.95 } : false}
+          animate={enableAnimations ? { opacity: 1, x: '-50%', y: '-100%', scale: 1 } : undefined}
+          exit={enableAnimations ? { opacity: 0, x: '-50%', y: 'calc(-100% + 10px)', scale: 0.95 } : undefined}
+          transition={enableAnimations ? { duration: 0.2, ease: [0.22, 1, 0.36, 1] } : undefined}
           className={`comment-tooltip fixed z-[80] max-w-xs rounded-lg shadow-xl border ${currentTheme.border} ${currentTheme.surfaceSolid}`}
           style={{
             left: `${Math.max(16, Math.min(commentTooltip.x, window.innerWidth - 260))}px`,
             top: `${Math.max(16, commentTooltip.y - 12)}px`,
-            transform: 'translateX(-50%) translateY(-100%)',
+            x: '-50%',
+            y: '-100%',
           }}
-          onMouseEnter={() => {}} // 保持 tooltip 显示
-          onMouseLeave={() => setCommentTooltip(null)}
         >
           {/* 用户信息和时间 - 次要信息 */}
           <div className={`flex items-center gap-2 px-3 pt-2.5 pb-1.5 ${currentTheme.secondary}`}>
@@ -184,6 +191,8 @@ export function CommentInputPopup({
   const [showCommentInput, setShowCommentInput] = useState(false)
   // 复制成功反馈
   const [copySuccess, setCopySuccess] = useState(false)
+  // 复制成功后延迟关闭的定时器
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 当弹窗关闭时，重置内部状态
   useEffect(() => {
@@ -193,12 +202,23 @@ export function CommentInputPopup({
     }
   }, [showCommentPopup])
 
+  // 清理复制定时器
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current)
+      }
+    }
+  }, [])
+
   // 复制选中文本
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(selectedText)
       setCopySuccess(true)
-      setTimeout(() => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null
         setCopySuccess(false)
         // 复制后关闭弹窗
         setShowCommentPopup(false)
@@ -231,9 +251,9 @@ export function CommentInputPopup({
   }
 
   // 防止点击按钮时清除浏览器的文本选中状态
-  const preventSelectionClear = (e: React.MouseEvent) => {
+  const preventSelectionClear = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-  }
+  }, [])
 
   return (
     <AnimatePresence>

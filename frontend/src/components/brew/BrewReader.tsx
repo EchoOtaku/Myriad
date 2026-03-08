@@ -174,6 +174,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const cooldownRef = useRef(false) // 冷却期，防止刚隐藏就显示
   const lastScrollTopRef = useRef(0) // 上次滚动位置，用于判断滚动方向
   const isHoveringControlsRef = useRef(false) // 鼠标是否在控制栏区域
+  const tooltipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null) // 评论 tooltip 延迟关闭定时器
+  const isHoveringTooltipRef = useRef(false) // 鼠标是否在评论 tooltip 上
   const [toc, setToc] = useState<TocItem[]>([])
   const [showToc, setShowToc] = useState(false)
   const [activeHeadingId, setActiveHeadingId] = useState<string>('')
@@ -271,6 +273,37 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     showToastMessage,
     t,
   })
+
+  // 评论 tooltip 悬停管理回调
+  const clearTooltipHideTimer = useCallback(() => {
+    if (tooltipHideTimerRef.current) {
+      clearTimeout(tooltipHideTimerRef.current)
+      tooltipHideTimerRef.current = null
+    }
+  }, [])
+
+  const startTooltipHideTimer = useCallback((delay = 200) => {
+    if (tooltipHideTimerRef.current) return // 已有定时器运行中
+    tooltipHideTimerRef.current = setTimeout(() => {
+      tooltipHideTimerRef.current = null
+      setCommentTooltip(null)
+    }, delay)
+  }, [setCommentTooltip])
+
+  const handleTooltipMouseEnter = useCallback(() => {
+    isHoveringTooltipRef.current = true
+    clearTooltipHideTimer()
+  }, [clearTooltipHideTimer])
+
+  const handleTooltipMouseLeave = useCallback(() => {
+    isHoveringTooltipRef.current = false
+    startTooltipHideTimer()
+  }, [startTooltipHideTimer])
+
+  // 清理 tooltip 隐藏定时器
+  useEffect(() => {
+    return () => clearTooltipHideTimer()
+  }, [clearTooltipHideTimer])
 
   // Brewlia AI 播客 - 使用自定义 hook
   const {
@@ -622,14 +655,19 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       }
     }
 
-    // 处理悬停显示 tooltip
+    // 处理悬停显示 tooltip + 离开高亮区域时启动延迟关闭
+    let lastHoveredCommentId: string | null = null
     const handleMouseOver = (e: Event) => {
       const target = e.target as HTMLElement
       const highlight = target.closest('.user-comment-highlight') as HTMLElement
 
       if (highlight) {
+        // 鼠标在高亮区域，取消任何待关闭的定时器
+        clearTooltipHideTimer()
         const commentId = highlight.getAttribute('data-comment-id')
-        if (commentId) {
+        // 同一个评论不重复设置，避免创建新对象引用触发重渲染
+        if (commentId && commentId !== lastHoveredCommentId) {
+          lastHoveredCommentId = commentId
           const comment = comments.find(c => c.id === Number.parseInt(commentId))
           if (comment) {
             const rect = highlight.getBoundingClientRect()
@@ -641,26 +679,30 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           }
         }
       }
+      else {
+        lastHoveredCommentId = null
+        // 鼠标离开高亮区域到文章其他内容，启动延迟关闭（如果不在 tooltip 上）
+        if (!isHoveringTooltipRef.current) {
+          startTooltipHideTimer()
+        }
+      }
     }
 
-    const handleMouseOut = (e: Event) => {
-      const relatedTarget = (e as MouseEvent).relatedTarget as HTMLElement
-
-      // 如果移出的目标不是评论相关元素，隐藏 tooltip
-      if (!relatedTarget?.closest('.user-comment-highlight')
-        && !relatedTarget?.closest('.comment-tooltip')) {
-        setCommentTooltip(null)
+    // 鼠标离开内容区域（可能是移向 tooltip 或其他区域）
+    const handleContentMouseLeave = () => {
+      if (!isHoveringTooltipRef.current) {
+        startTooltipHideTimer()
       }
     }
 
     contentRef.current.addEventListener('click', handleContentClick)
     contentRef.current.addEventListener('mouseover', handleMouseOver)
-    contentRef.current.addEventListener('mouseout', handleMouseOut)
+    contentRef.current.addEventListener('mouseleave', handleContentMouseLeave)
 
     return () => {
       contentRef.current?.removeEventListener('click', handleContentClick)
       contentRef.current?.removeEventListener('mouseover', handleMouseOver)
-      contentRef.current?.removeEventListener('mouseout', handleMouseOut)
+      contentRef.current?.removeEventListener('mouseleave', handleContentMouseLeave)
     }
   }, [comments])
 
@@ -964,35 +1006,41 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
     const handleMouseOver = (e: MouseEvent) => {
       const target = (e.target as HTMLElement).closest('.brewlia-annotation') as HTMLElement
-      if (!target)
-        return
 
-      // 清除之前的延迟隐藏
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current)
-        hoverTimeoutRef.current = null
+      if (target) {
+        // 鼠标在注释上：清除隐藏定时器，显示 tooltip
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current)
+          hoverTimeoutRef.current = null
+        }
+
+        const term = decodeURIComponent(target.dataset.term || '')
+        const explanation = decodeURIComponent(target.dataset.explanation || '')
+        const type = target.dataset.type as AnnotationType || 'term'
+
+        const rect = target.getBoundingClientRect()
+        setTooltipPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top - 8,
+        })
+        setHoveredAnnotation({ term, explanation, type })
       }
-
-      const term = decodeURIComponent(target.dataset.term || '')
-      const explanation = decodeURIComponent(target.dataset.explanation || '')
-      const type = target.dataset.type as AnnotationType || 'term'
-
-      const rect = target.getBoundingClientRect()
-      setTooltipPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 8,
-      })
-      setHoveredAnnotation({ term, explanation, type })
+      else {
+        // 鼠标移到非注释元素：启动延迟隐藏
+        if (!hoverTimeoutRef.current) {
+          hoverTimeoutRef.current = setTimeout(() => {
+            hoverTimeoutRef.current = null
+            setHoveredAnnotation(null)
+          }, 150)
+        }
+      }
     }
 
-    const handleMouseOut = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.brewlia-annotation')
-      const relatedTarget = (e.relatedTarget as HTMLElement)?.closest?.('.brewlia-annotation')
-
-      // 如果移动到另一个注释，不隐藏
-      if (target && !relatedTarget) {
-        // 延迟隐藏，避免闪烁
+    // 鼠标离开内容区域：兜底隐藏
+    const handleMouseLeave = () => {
+      if (!hoverTimeoutRef.current) {
         hoverTimeoutRef.current = setTimeout(() => {
+          hoverTimeoutRef.current = null
           setHoveredAnnotation(null)
         }, 150)
       }
@@ -1000,14 +1048,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
     const container = contentRef.current
     container.addEventListener('mouseover', handleMouseOver)
-    container.addEventListener('mouseout', handleMouseOut)
+    container.addEventListener('mouseleave', handleMouseLeave)
 
     return () => {
       container.removeEventListener('mouseover', handleMouseOver)
-      container.removeEventListener('mouseout', handleMouseOut)
+      container.removeEventListener('mouseleave', handleMouseLeave)
       if (hoverTimeoutRef.current) {
         clearTimeout(hoverTimeoutRef.current)
+        hoverTimeoutRef.current = null
       }
+      setHoveredAnnotation(null)
     }
   }, [showAnnotations])
 
@@ -2215,9 +2265,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       {/* 评论 Tooltip */}
       <CommentTooltip
         commentTooltip={commentTooltip}
-        setCommentTooltip={setCommentTooltip}
+        onMouseEnter={handleTooltipMouseEnter}
+        onMouseLeave={handleTooltipMouseLeave}
         currentTheme={currentTheme}
         isDark={isDark}
+        enableAnimations={enableAnimations}
         t={t}
       />
 

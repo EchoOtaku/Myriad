@@ -1889,15 +1889,16 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || ''
           font-size: 15px; /* 基础字号稍大 */
         }
 
-        h1 {
+        /* 仅限 prose 内容区域的标题缩放，避免覆盖卡片组件中的 Tailwind 字体类 */
+        .prose h1 {
           font-size: 1.75rem; /* 28px */
         }
 
-        h2 {
+        .prose h2 {
           font-size: 1.5rem; /* 24px */
         }
 
-        h3 {
+        .prose h3 {
           font-size: 1.25rem; /* 20px */
         }
 
