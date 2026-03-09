@@ -121,6 +121,9 @@ export const AraelPanel: React.FC = () => {
   const activeConversationPresetIdRef = useRef<number | null>(null)
   const activeConversationDataRef = useRef<ConversationMessage[]>([])
 
+  // 语音服务可用性
+  const [speechAvailable, setSpeechAvailable] = useState(false)
+
   // 语音录制状态
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingVoice, setIsProcessingVoice] = useState(false)
@@ -136,6 +139,9 @@ export const AraelPanel: React.FC = () => {
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const longPressStartRef = useRef<{ x: number, y: number } | null>(null)
   const isLongPressingRef = useRef(false)
+
+  // 长按提示动效
+  const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number, active: boolean }>({ x: 0, y: 0, active: false })
 
   // DOM 引用
   const inputRef = useRef<HTMLInputElement>(null)
@@ -202,6 +208,15 @@ export const AraelPanel: React.FC = () => {
       loadPresets()
     }
   }, [visibility, loadPresets])
+
+  // 面板打开时检查语音服务状态
+  useEffect(() => {
+    if (visibility === 'visible') {
+      getSpeechStatus()
+        .then(status => setSpeechAvailable(status.available && status.asr_enabled))
+        .catch(() => setSpeechAvailable(false))
+    }
+  }, [visibility])
 
   // 切换收藏状态
   const togglePresetFavorite = useCallback(async (presetId: number) => {
@@ -639,9 +654,15 @@ export const AraelPanel: React.FC = () => {
     longPressStartRef.current = { x: point.clientX, y: point.clientY }
     isLongPressingRef.current = true
 
+    // 显示长按提示动效
+    setLongPressIndicator({ x: point.clientX, y: point.clientY, active: true })
+
     // 开始计时
     longPressTimerRef.current = setTimeout(async () => {
       if (isLongPressingRef.current) {
+        // 隐藏提示动效
+        setLongPressIndicator(prev => ({ ...prev, active: false }))
+
         // 触发面板显示
         setVisibility('visible')
 
@@ -660,6 +681,7 @@ export const AraelPanel: React.FC = () => {
     }
     isLongPressingRef.current = false
     longPressStartRef.current = null
+    setLongPressIndicator(prev => ({ ...prev, active: false }))
   }, [])
 
   const checkMovement = useCallback((e: MouseEvent | TouchEvent) => {
@@ -1317,7 +1339,7 @@ export const AraelPanel: React.FC = () => {
               isLoading={isLoading}
               isRecording={isRecording}
               isProcessingVoice={isProcessingVoice}
-              onToggleRecording={toggleRecording}
+              onToggleRecording={speechAvailable ? toggleRecording : undefined}
               inputRef={inputRef}
             />
           </motion.div>
@@ -1331,6 +1353,19 @@ export const AraelPanel: React.FC = () => {
         onUsePreset={usePreset}
         onToggleFavorite={togglePresetFavorite}
       />
+
+      {/* 长按提示动效 */}
+      <div
+        className={`arael-longpress-indicator${longPressIndicator.active ? ' active' : ''}`}
+        style={{ left: longPressIndicator.x, top: longPressIndicator.y }}
+      >
+        <div className="arael-lp-dot" />
+        <div className="arael-lp-pulse" />
+        <svg className="arael-lp-svg" viewBox="0 0 40 40">
+          <circle className="arael-lp-track" cx="20" cy="20" r="16" />
+          <circle className="arael-lp-ring" cx="20" cy="20" r="16" />
+        </svg>
+      </div>
     </div>
   )
 }

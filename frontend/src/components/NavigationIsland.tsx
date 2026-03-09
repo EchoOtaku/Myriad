@@ -7,7 +7,8 @@
  * - 处理一二级导航的切换动画
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { SiAppstore } from '@lib/icons'
@@ -87,6 +88,113 @@ function getPaddingVertical(island: HTMLElement | null): number {
   }
 }
 
+/**
+ * 导航岛 Tooltip - 使用 Portal 渲染到 body，避免被 overflow:hidden 裁剪
+ * 桌面端显示在按钮右侧，移动端显示在按钮上方，不带箭头
+ */
+function NavIslandTooltip({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) {
+  const [tooltip, setTooltip] = useState<{ text: string, rect: DOMRect } | null>(null)
+  const [visible, setVisible] = useState(false)
+  const showTimerRef = useRef<number>(0)
+  const hideTimerRef = useRef<number>(0)
+  const activeTargetRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const show = (target: HTMLElement) => {
+      const text = target.getAttribute('data-tooltip')
+      if (!text) return
+      activeTargetRef.current = target
+      clearTimeout(hideTimerRef.current)
+      clearTimeout(showTimerRef.current)
+      // 立即更新位置，延迟显示避免闪烁
+      setTooltip({ text, rect: target.getBoundingClientRect() })
+      showTimerRef.current = window.setTimeout(() => setVisible(true), 120)
+    }
+
+    const hide = () => {
+      clearTimeout(showTimerRef.current)
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = window.setTimeout(() => {
+        setVisible(false)
+        // 等淡出动画完成再移除 DOM
+        setTimeout(() => {
+          activeTargetRef.current = null
+          setTooltip(null)
+        }, 120)
+      }, 60)
+    }
+
+    const handleMove = (e: MouseEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+      const target = el?.closest?.('[data-tooltip]') as HTMLElement | null
+
+      if (target && container.contains(target)) {
+        if (target !== activeTargetRef.current) {
+          // 切换到新按钮：立即更新位置，重置显示定时
+          show(target)
+        }
+      } else {
+        if (activeTargetRef.current) {
+          hide()
+        }
+      }
+    }
+
+    const handleLeaveContainer = () => {
+      hide()
+    }
+
+    container.addEventListener('mousemove', handleMove)
+    container.addEventListener('mouseleave', handleLeaveContainer)
+    return () => {
+      container.removeEventListener('mousemove', handleMove)
+      container.removeEventListener('mouseleave', handleLeaveContainer)
+      clearTimeout(showTimerRef.current)
+      clearTimeout(hideTimerRef.current)
+    }
+  }, [containerRef])
+
+  if (!tooltip) return null
+
+  const isMobile = window.innerWidth < 768
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    zIndex: 9999,
+    pointerEvents: 'none',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: 1,
+    padding: '6px 10px',
+    borderRadius: '8px',
+    background: 'var(--bg-secondary)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border-color)',
+    boxShadow: '0 2px 8px var(--shadow-color)',
+    opacity: visible ? 1 : 0,
+    transition: 'opacity 0.12s ease',
+  }
+
+  if (isMobile) {
+    style.left = tooltip.rect.left + tooltip.rect.width / 2
+    style.top = tooltip.rect.top - 10
+    style.transform = 'translate(-50%, -100%)'
+  } else {
+    style.left = tooltip.rect.right + 10
+    style.top = tooltip.rect.top + tooltip.rect.height / 2
+    style.transform = 'translateY(-50%)'
+  }
+
+  return createPortal(
+    <div style={style}>{tooltip.text}</div>,
+    document.body,
+  )
+}
+
 export function NavigationIsland() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -100,6 +208,7 @@ export function NavigationIsland() {
   } = useNavigation()
 
   const navContentRef = useRef<HTMLDivElement>(null)
+  const navContainerRef = useRef<HTMLElement>(null)
   const lastModeRef = useRef<'normal' | 'secondary'>('normal')
   const islandMetricsRef = useRef<Record<string, ModeMetrics>>({})
   const prevPathnameRef = useRef(location.pathname)
@@ -530,6 +639,7 @@ export function NavigationIsland() {
 
   return (
     <nav
+      ref={navContainerRef}
       className={`nav-container ${immersiveMode ? 'immersive' : ''}`}
       aria-label={t.nav.mainNavigation}
       {...(immersiveMode && { 'aria-hidden': 'true' })}
@@ -544,7 +654,7 @@ export function NavigationIsland() {
                 <button
                   onClick={handleCollapse}
                   className="nav-item"
-                  title={t.nav.back}
+                  data-tooltip={t.nav.back}
                   aria-label={t.nav.backToNav}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -564,7 +674,7 @@ export function NavigationIsland() {
                   <button
                     onClick={() => secondaryNav.onChange(item.id)}
                     className={`nav-item ${secondaryNav.activeId === item.id ? 'active-secondary' : ''}`}
-                    title={item.title || item.label}
+                    data-tooltip={item.title || item.label}
                     aria-label={item.ariaLabel || item.label}
                   >
                     {item.icon}
@@ -577,7 +687,7 @@ export function NavigationIsland() {
             <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="primary-mode">
               {/* 主页按钮 */}
               <div className="nav-group" data-group="main">
-                <a href="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} title={t.nav.home} aria-label={t.nav.backToHome} aria-current={location.pathname === '/' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); navigate('/') }}>
+                <a href="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} data-tooltip={t.nav.home} aria-label={t.nav.backToHome} aria-current={location.pathname === '/' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); navigate('/') }}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                   </svg>
@@ -588,7 +698,7 @@ export function NavigationIsland() {
               <div className="nav-group nav-group-spaced" data-group="library">
                 <button
                   className={`nav-item ${location.pathname === '/library' ? 'active' : ''}`}
-                  title={t.nav.library}
+                  data-tooltip={t.nav.library}
                   aria-label={t.nav.library}
                   aria-current={location.pathname === '/library' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/library')}
@@ -603,7 +713,7 @@ export function NavigationIsland() {
               <div className="nav-group nav-group-spaced" data-group="brew">
                 <button
                   className={`nav-item ${location.pathname === '/brew' ? 'active' : ''}`}
-                  title={t.nav.brewReading}
+                  data-tooltip={t.nav.brewReading}
                   aria-label={t.nav.brewReading}
                   aria-current={location.pathname === '/brew' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/brew')}
@@ -618,7 +728,7 @@ export function NavigationIsland() {
               <div className="nav-group nav-group-spaced" data-group="reports">
                 <button
                   className={`nav-item ${location.pathname === '/reports' ? 'active' : ''}`}
-                  title={t.nav.reports}
+                  data-tooltip={t.nav.reports}
                   aria-label={t.nav.reports}
                   aria-current={location.pathname === '/reports' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/reports')}
@@ -634,7 +744,7 @@ export function NavigationIsland() {
                 <a
                   href="/tapp"
                   className={`nav-item ${location.pathname === '/tapp' || location.pathname.startsWith('/tapp/') ? 'active' : ''}`}
-                  title={t.nav.tappStore}
+                  data-tooltip={t.nav.tappStore}
                   aria-label={t.nav.openTappStore}
                   aria-current={location.pathname === '/tapp' || location.pathname.startsWith('/tapp/') ? 'page' : undefined}
                   onClick={(e) => { e.preventDefault(); navigate('/tapp') }}
@@ -647,6 +757,7 @@ export function NavigationIsland() {
           )}
         </div>
       </div>
+      <NavIslandTooltip containerRef={navContainerRef} />
     </nav>
   )
 }
