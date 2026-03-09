@@ -117,7 +117,7 @@ export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview 
   useEffect(() => {
     let cancelled = false
     if (canAnimate && !FM) {
-      import('framer-motion')
+      import('motion/react')
         .then((mod) => {
           if (!cancelled)
             setFM({ motion: mod.motion })

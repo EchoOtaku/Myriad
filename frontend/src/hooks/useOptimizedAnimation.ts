@@ -4,7 +4,7 @@
  * 提供按需动画、视口检测、性能优化等功能
  */
 
-import type { TargetAndTransition, Transition } from 'framer-motion'
+import type { TargetAndTransition, Transition } from 'motion/react'
 import type { AnimationConfig } from './useAnimationLevel'
 import { useMemo } from 'react'
 import { useAnimationLevel } from './useAnimationLevel'

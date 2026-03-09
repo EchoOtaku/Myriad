@@ -119,7 +119,7 @@ export const chunkStrategy = {
   charts: ['recharts'],
 
   // UI组件库
-  ui: ['framer-motion'],
+  ui: ['motion'],
 
   // 工具库
   utils: ['date-fns', 'lodash-es'],

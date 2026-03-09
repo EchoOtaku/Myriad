@@ -29,7 +29,7 @@ function loadFramerMotion() {
     return loadPromise
 
   isLoading = true
-  loadPromise = import('framer-motion')
+  loadPromise = import('motion/react')
     .then((mod) => {
       globalFM = { motion: mod.motion, AnimatePresence: mod.AnimatePresence }
       isLoading = false

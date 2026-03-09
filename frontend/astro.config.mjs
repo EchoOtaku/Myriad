@@ -107,9 +107,9 @@ export default defineConfig({
             if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
               return 'chart-vendor'
             }
-            // Framer Motion
-            if (id.includes('node_modules/framer-motion')) {
-              return 'framer-motion'
+            // Motion
+            if (id.includes('node_modules/motion')) {
+              return 'motion'
             }
             // react-icons 各子包分开打包（仅动态导入时使用）
             if (id.includes('node_modules/react-icons/fa6/')) {
