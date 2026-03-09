@@ -200,6 +200,18 @@ html.dark .arael-tasks-wrapper[data-expanded='true'] {
   color: var(--text-secondary, #6b7280);
 }
 
+.arael-tasks-title .qwitcher-grypen {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-primary);
+}
+
+.arael-tasks-title-rest {
+  align-self: center;
+  margin-left: 4px;
+}
+
 html.dark .arael-tasks-title {
   color: #9ca3af;
 }

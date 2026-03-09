@@ -92,6 +92,7 @@ html.dark .dynamic-island:hover {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: border-flow 8s linear infinite;
+  animation-play-state: paused; /* 默认暂停，减少空闲 GPU 开销 */
   background-size: 300% 300%;
   pointer-events: none;
   opacity: 0.35;
@@ -110,6 +111,7 @@ html.dark .dynamic-island:hover {
 
 .dynamic-island:hover::before {
   opacity: 0.6;
+  animation-play-state: running; /* 悬停时启动动画 */
 }
 
 /* 折叠状态 */

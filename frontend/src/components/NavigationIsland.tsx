@@ -7,11 +7,11 @@
  * - 处理一二级导航的切换动画
  */
 
+import { SiAppstore } from '@lib/icons'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
-
-import { SiAppstore } from '@lib/icons'
 import { useI18n } from '../contexts/I18nContext'
 import { useNavigation } from '../contexts/NavigationContext'
 
@@ -24,6 +24,34 @@ interface ModeMetrics {
 const ITEM_HEIGHT = 40
 const MIN_ISLAND_HEIGHT = 48
 const MAX_ISLAND_HEIGHT = 800
+const PRIMARY_NAV_COUNT = 5
+
+// ─── 提取 SVG 图标为模块级常量，避免每次渲染重新创建 JSX ───
+const IconBack = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+  </svg>
+)
+const IconHome = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+  </svg>
+)
+const IconLibrary = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+  </svg>
+)
+const IconBrew = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" />
+  </svg>
+)
+const IconReports = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+  </svg>
+)
 
 /**
  * 设备感知的动画时序配置
@@ -33,35 +61,22 @@ const MAX_ISLAND_HEIGHT = 800
 function getAnimationTiming() {
   const isMobile = window.innerWidth < 768
   return {
-    /** 退出动画各项间隔 (ms) */
     exitStagger: isMobile ? 25 : 40,
-    /** 退出阶段持续 (ms) - 需覆盖 CSS transition 最长时长 */
     exitDuration: isMobile ? 240 : 380,
-    /** 进入动画各项间隔 (ms) */
     enterStagger: isMobile ? 30 : 50,
-    /** 进入首项延迟 (ms) - 等新 DOM 布局稳定 */
     enterDelay: isMobile ? 40 : 70,
   }
 }
 
-// 工具函数：获取设备类型
 const getVariant = () => (window.innerWidth >= 768 ? 'desktop' : 'mobile')
+const isDesktop = () => window.innerWidth >= 768
 
-// 工具函数：验证并修正高度值
 function validateHeight(height: number | null | undefined): number | null {
-  if (height === null || height === undefined || !Number.isFinite(height)) {
+  if (height === null || height === undefined || !Number.isFinite(height))
     return null
-  }
-  if (height < MIN_ISLAND_HEIGHT) {
-    return MIN_ISLAND_HEIGHT
-  }
-  if (height > MAX_ISLAND_HEIGHT) {
-    return MAX_ISLAND_HEIGHT
-  }
-  return Math.round(height) // 避免小数导致的布局抖动
+  return Math.round(Math.min(MAX_ISLAND_HEIGHT, Math.max(MIN_ISLAND_HEIGHT, height)))
 }
 
-// 工具函数：安全设置高度
 function safeSetHeight(island: HTMLElement, height: number | null | undefined): boolean {
   const validHeight = validateHeight(height)
   if (validHeight !== null) {
@@ -71,7 +86,19 @@ function safeSetHeight(island: HTMLElement, height: number | null | undefined): 
   return false
 }
 
-// 工具函数：计算 padding（带安全检查）
+/** 两帧延迟执行 - 确保浏览器完成布局后回调 */
+function doubleRaf(callback: () => void): () => void {
+  let id2: number
+  const id1 = requestAnimationFrame(() => {
+    id2 = requestAnimationFrame(callback)
+  })
+  return () => {
+    cancelAnimationFrame(id1)
+    cancelAnimationFrame(id2)
+  }
+}
+
+/** 计算 padding（带安全检查），结果可缓存 */
 function getPaddingVertical(island: HTMLElement | null): number {
   if (!island)
     return 0
@@ -90,26 +117,25 @@ function getPaddingVertical(island: HTMLElement | null): number {
 
 /**
  * 导航岛 Tooltip - 使用 Portal 渲染到 body，避免被 overflow:hidden 裁剪
- * 桌面端显示在按钮右侧，移动端显示在按钮上方，不带箭头
+ * 使用事件委托：pointerenter/pointerleave 替代 mousemove，减少事件触发频率
  */
 function NavIslandTooltip({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) {
   const [tooltip, setTooltip] = useState<{ text: string, rect: DOMRect } | null>(null)
   const [visible, setVisible] = useState(false)
   const showTimerRef = useRef<number>(0)
   const hideTimerRef = useRef<number>(0)
-  const activeTargetRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
-    if (!container) return
+    if (!container)
+      return
 
     const show = (target: HTMLElement) => {
       const text = target.getAttribute('data-tooltip')
-      if (!text) return
-      activeTargetRef.current = target
+      if (!text)
+        return
       clearTimeout(hideTimerRef.current)
       clearTimeout(showTimerRef.current)
-      // 立即更新位置，延迟显示避免闪烁
       setTooltip({ text, rect: target.getBoundingClientRect() })
       showTimerRef.current = window.setTimeout(() => setVisible(true), 120)
     }
@@ -119,47 +145,43 @@ function NavIslandTooltip({ containerRef }: { containerRef: React.RefObject<HTML
       clearTimeout(hideTimerRef.current)
       hideTimerRef.current = window.setTimeout(() => {
         setVisible(false)
-        // 等淡出动画完成再移除 DOM
-        setTimeout(() => {
-          activeTargetRef.current = null
-          setTooltip(null)
-        }, 120)
+        setTimeout(() => setTooltip(null), 120)
       }, 60)
     }
 
-    const handleMove = (e: MouseEvent) => {
-      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
-      const target = el?.closest?.('[data-tooltip]') as HTMLElement | null
-
+    // 事件委托：在容器上监听 pointerenter/pointerleave，通过冒泡匹配 [data-tooltip]
+    const handlePointerEnter = (e: PointerEvent) => {
+      const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null
       if (target && container.contains(target)) {
-        if (target !== activeTargetRef.current) {
-          // 切换到新按钮：立即更新位置，重置显示定时
-          show(target)
-        }
-      } else {
-        if (activeTargetRef.current) {
-          hide()
-        }
+        show(target)
       }
     }
 
-    const handleLeaveContainer = () => {
-      hide()
+    const handlePointerLeave = (e: PointerEvent) => {
+      const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null
+      if (target) {
+        hide()
+      }
     }
 
-    container.addEventListener('mousemove', handleMove)
+    const handleLeaveContainer = () => hide()
+
+    container.addEventListener('pointerenter', handlePointerEnter, true)
+    container.addEventListener('pointerleave', handlePointerLeave, true)
     container.addEventListener('mouseleave', handleLeaveContainer)
     return () => {
-      container.removeEventListener('mousemove', handleMove)
+      container.removeEventListener('pointerenter', handlePointerEnter, true)
+      container.removeEventListener('pointerleave', handlePointerLeave, true)
       container.removeEventListener('mouseleave', handleLeaveContainer)
       clearTimeout(showTimerRef.current)
       clearTimeout(hideTimerRef.current)
     }
   }, [containerRef])
 
-  if (!tooltip) return null
+  if (!tooltip)
+    return null
 
-  const isMobile = window.innerWidth < 768
+  const mobile = !isDesktop()
   const style: React.CSSProperties = {
     position: 'fixed',
     zIndex: 9999,
@@ -177,16 +199,17 @@ function NavIslandTooltip({ containerRef }: { containerRef: React.RefObject<HTML
     boxShadow: '0 2px 8px var(--shadow-color)',
     opacity: visible ? 1 : 0,
     transition: 'opacity 0.12s ease',
-  }
-
-  if (isMobile) {
-    style.left = tooltip.rect.left + tooltip.rect.width / 2
-    style.top = tooltip.rect.top - 10
-    style.transform = 'translate(-50%, -100%)'
-  } else {
-    style.left = tooltip.rect.right + 10
-    style.top = tooltip.rect.top + tooltip.rect.height / 2
-    style.transform = 'translateY(-50%)'
+    ...(mobile
+      ? {
+          left: tooltip.rect.left + tooltip.rect.width / 2,
+          top: tooltip.rect.top - 10,
+          transform: 'translate(-50%, -100%)',
+        }
+      : {
+          left: tooltip.rect.right + 10,
+          top: tooltip.rect.top + tooltip.rect.height / 2,
+          transform: 'translateY(-50%)',
+        }),
   }
 
   return createPortal(
@@ -212,6 +235,8 @@ export function NavigationIsland() {
   const lastModeRef = useRef<'normal' | 'secondary'>('normal')
   const islandMetricsRef = useRef<Record<string, ModeMetrics>>({})
   const prevPathnameRef = useRef(location.pathname)
+  // 缓存 padding 值，避免每次动画都触发 getComputedStyle
+  const cachedPaddingRef = useRef<number | null>(null)
 
   // 当前是否显示二级导航
   const showSecondary = secondaryNav?.expanded && secondaryNav.routePath === location.pathname
@@ -222,17 +247,23 @@ export function NavigationIsland() {
   // 记录是否已自动展开过（避免重复触发）
   const autoExpandedRef = useRef<string | null>(null)
 
-  // 缓存 metrics key 构建函数
+  // 获取缓存的 padding，仅首次调用时触发 getComputedStyle
+  const getCachedPadding = useCallback((island: HTMLElement): number => {
+    if (cachedPaddingRef.current !== null)
+      return cachedPaddingRef.current
+    const padding = getPaddingVertical(island)
+    cachedPaddingRef.current = padding
+    return padding
+  }, [])
+
   const buildMetricsKey = useCallback((mode: 'normal' | 'secondary', variant: 'desktop' | 'mobile') =>
     `${mode}-${variant}-${location.pathname}`, [location.pathname])
 
-  // 更新 metrics
   const updateModeMetrics = useCallback((mode: 'normal' | 'secondary', metrics: ModeMetrics) => {
     const key = buildMetricsKey(mode, getVariant())
     islandMetricsRef.current[key] = { ...islandMetricsRef.current[key], ...metrics }
   }, [buildMetricsKey])
 
-  // 应用 metrics
   const applyModeMetrics = useCallback((mode: 'normal' | 'secondary', island: HTMLElement) => {
     if (!island)
       return
@@ -240,15 +271,12 @@ export function NavigationIsland() {
     const key = buildMetricsKey(mode, getVariant())
     const metrics = islandMetricsRef.current[key]
 
-    if (window.innerWidth >= 768) {
-      // 尝试应用缓存的高度，如果无效则尝试重新计算
+    if (isDesktop()) {
       if (metrics?.height) {
         if (!safeSetHeight(island, metrics.height)) {
-          // 缓存的高度无效，尝试根据内容重新计算
           const content = island.querySelector('.nav-island-content') as HTMLElement
           if (content) {
-            const paddingVertical = getPaddingVertical(island)
-            const fallbackHeight = content.scrollHeight + paddingVertical
+            const fallbackHeight = content.scrollHeight + getCachedPadding(island)
             safeSetHeight(island, fallbackHeight)
           }
         }
@@ -259,7 +287,7 @@ export function NavigationIsland() {
       island.style.removeProperty('width')
       island.style.removeProperty('height')
     }
-  }, [buildMetricsKey])
+  }, [buildMetricsKey, getCachedPadding])
 
   // 路由切换时重置状态
   useEffect(() => {
@@ -273,6 +301,16 @@ export function NavigationIsland() {
       autoExpandedRef.current = null
     }
   }, [location.pathname, renderModeRef, setIsAnimating])
+
+  // 安全机制：防止 isAnimating 卡死，超时强制重置
+  useEffect(() => {
+    if (!isAnimating)
+      return
+    const safetyTimer = setTimeout(() => {
+      setIsAnimating(false)
+    }, 2000)
+    return () => clearTimeout(safetyTimer)
+  }, [isAnimating, setIsAnimating])
 
   // 自动展开二级导航：当进入有二级导航的页面时
   useEffect(() => {
@@ -295,8 +333,11 @@ export function NavigationIsland() {
     }
   }, [secondaryNav, location.pathname, isAnimating])
 
-  // 处理展开二级导航（带退出动画）
-  const handleExpand = useCallback(() => {
+  /**
+   * 统一模式切换动画处理
+   * @param targetMode - 目标模式（'secondary' = 展开, 'normal' = 收起）
+   */
+  const handleTransition = useCallback((targetMode: 'normal' | 'secondary') => {
     if (isAnimating || !secondaryNav)
       return
 
@@ -307,19 +348,27 @@ export function NavigationIsland() {
     }
 
     setIsAnimating(true)
-    renderModeRef.current = 'normal'
+    // 锁定当前模式（退出阶段保持旧内容渲染）
+    renderModeRef.current = targetMode === 'secondary' ? 'normal' : 'secondary'
 
     const groups = Array.from(content.querySelectorAll('.nav-group'))
     const island = content.closest('.dynamic-island') as HTMLElement
 
-    // 预计算二级导航模式尺寸并立即应用
-    if (island && window.innerWidth >= 768) {
-      const paddingVertical = getPaddingVertical(island)
-      const itemCount = Math.max(1, secondaryNav.items?.length ?? 0) // 确保至少有1项
-      const estimatedSecondaryHeight = (itemCount + 2) * ITEM_HEIGHT + paddingVertical
-      const validHeight = validateHeight(estimatedSecondaryHeight)
+    // 标记过渡开始（启用 will-change、CSS 安全网）
+    if (island) {
+      island.setAttribute('data-transitioning', 'true')
+    }
+
+    // 预计算目标模式高度
+    if (island && isDesktop()) {
+      const padding = getCachedPadding(island)
+      const itemCount = targetMode === 'secondary'
+        ? Math.max(1, secondaryNav.items?.length ?? 0) + 2 // 二级: items + 返回 + 分隔
+        : PRIMARY_NAV_COUNT
+      const estimatedHeight = itemCount * ITEM_HEIGHT + padding
+      const validHeight = validateHeight(estimatedHeight)
       if (validHeight !== null) {
-        updateModeMetrics('secondary', { height: validHeight })
+        updateModeMetrics(targetMode, { height: validHeight })
         island.style.height = `${validHeight}px`
       }
     }
@@ -334,66 +383,21 @@ export function NavigationIsland() {
       }, index * timing.exitStagger)
     })
 
-    // 等退出阶段完全结束后切换状态
+    // 退出完成后切换内容（保持 isAnimating=true 直到进入动画结束）
     setTimeout(() => {
-      groups.forEach((group) => {
-        (group as HTMLElement).removeAttribute('data-animation')
-      })
-      renderModeRef.current = 'secondary'
-      secondaryNav.onToggleExpand()
-      setIsAnimating(false)
-    }, groups.length * timing.exitStagger + timing.exitDuration)
-  }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef, updateModeMetrics])
-
-  // 处理收起二级导航（返回按钮）
-  const handleCollapse = useCallback(() => {
-    if (isAnimating || !secondaryNav)
-      return
-
-    const content = navContentRef.current
-    if (!content) {
-      secondaryNav.onToggleExpand()
-      return
-    }
-
-    setIsAnimating(true)
-    renderModeRef.current = 'secondary'
-
-    const groups = Array.from(content.querySelectorAll('.nav-group'))
-    const island = content.closest('.dynamic-island') as HTMLElement
-
-    // 预计算正常模式尺寸（一级菜单：5主按钮）
-    if (island && window.innerWidth >= 768) {
-      const paddingVertical = getPaddingVertical(island)
-      const estimatedNormalHeight = 5 * ITEM_HEIGHT + paddingVertical
-      const validHeight = validateHeight(estimatedNormalHeight)
-      if (validHeight !== null) {
-        updateModeMetrics('normal', { height: validHeight })
-        // 立即应用高度变化（容器和内容退出同时进行）
-        island.style.height = `${validHeight}px`
+      // 标记即将加载新内容，CSS 安全网确保新 DOM 不闪现
+      if (island) {
+        island.setAttribute('data-entering', 'true')
       }
-    }
-
-    // 退出动画 - 交错标记各项退出
-    const timing = getAnimationTiming()
-    groups.forEach((group, index) => {
-      const el = group as HTMLElement
-      el.removeAttribute('data-animation')
-      setTimeout(() => {
-        el.setAttribute('data-animation', 'exit')
-      }, index * timing.exitStagger)
-    })
-
-    // 等退出阶段完全结束后切换状态
-    setTimeout(() => {
-      groups.forEach((group) => {
-        (group as HTMLElement).removeAttribute('data-animation')
-      })
-      renderModeRef.current = 'normal'
+      // 不清理旧 DOM 的 data-animation — 它们即将被 React 卸载
+      renderModeRef.current = targetMode
       secondaryNav.onToggleExpand()
-      setIsAnimating(false)
+      // 不在此处 setIsAnimating(false)，等进入动画完成后再解锁
     }, groups.length * timing.exitStagger + timing.exitDuration)
-  }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef, updateModeMetrics])
+  }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef, updateModeMetrics, getCachedPadding])
+
+  const handleExpand = useCallback(() => handleTransition('secondary'), [handleTransition])
+  const handleCollapse = useCallback(() => handleTransition('normal'), [handleTransition])
 
   // 导航到页面并展开二级导航
   const handleNavToPage = useCallback((path: string) => {
@@ -435,113 +439,83 @@ export function NavigationIsland() {
     const groups = content.querySelectorAll('.nav-group')
     const island = content.closest('.dynamic-island') as HTMLElement
 
-    // 清理旧动画标记
-    groups.forEach((group) => {
-      (group as HTMLElement).removeAttribute('data-animation')
-    })
-
-    if (island) {
-      island.setAttribute('data-transitioning', 'true')
-    }
-
-    // 设置进入初始状态
+    // 直接设置 enter-initial（跳过 removeAttribute — 新 DOM 没有残留标记）
     groups.forEach((group) => {
       (group as HTMLElement).setAttribute('data-animation', 'enter-initial')
     })
 
-    // 延迟两帧读取尺寸，确保新内容已完全渲染和布局
-    let sizeRafId2: number
-    const sizeRafId1 = requestAnimationFrame(() => {
-      sizeRafId2 = requestAnimationFrame(() => {
-        const currentContent = navContentRef.current
-        if (!currentContent)
-          return
+    if (island) {
+      island.setAttribute('data-transitioning', 'true')
+      // 移除 entering 标记 — enter-initial 已接管可见性控制，防闪安全网可解除
+      island.removeAttribute('data-entering')
+    }
 
-        const currentIsland = currentContent.closest('.dynamic-island') as HTMLElement
-        if (!currentIsland)
-          return
-
-        const paddingVertical = getPaddingVertical(currentIsland)
-        const scrollHeight = currentContent.scrollHeight
-
-        // 确保 scrollHeight 是有效值
-        if (!Number.isFinite(scrollHeight) || scrollHeight <= 0) {
-          // 内容尚未渲染完成，稍后重试
-          requestAnimationFrame(() => {
-            const retryContent = navContentRef.current
-            const retryIsland = retryContent?.closest('.dynamic-island') as HTMLElement
-            if (retryContent && retryIsland && window.innerWidth >= 768) {
-              const retryPadding = getPaddingVertical(retryIsland)
-              const retryHeight = retryContent.scrollHeight + retryPadding
-              if (safeSetHeight(retryIsland, retryHeight)) {
-                updateModeMetrics(currentMode, { height: validateHeight(retryHeight) ?? undefined })
-              }
-            }
-          })
-          return
-        }
-
-        const calculatedHeight = scrollHeight + paddingVertical
-        const validHeight = validateHeight(calculatedHeight)
-        const metrics: ModeMetrics = { height: validHeight ?? undefined }
-
-        if (window.innerWidth >= 768) {
-          if (!safeSetHeight(currentIsland, validHeight)) {
-            // 如果设置失败，移除内联样式让 CSS 处理
-            currentIsland.style.removeProperty('height')
-          }
-        }
-        else {
-          currentIsland.style.removeProperty('width')
-          currentIsland.style.removeProperty('height')
-        }
-
-        if (metrics.height) {
-          updateModeMetrics(currentMode, metrics)
-        }
-
-      })
-    })
-
-    // 进入动画 - 交错移除 enter-initial 标记，触发 CSS 过渡
-    const timing = getAnimationTiming()
-    let rafId2: number
+    // 两帧后读取尺寸并启动进入动画
     const enterTimers: number[] = []
     let cleanupTimer: number
 
-    const rafId1 = requestAnimationFrame(() => {
-      rafId2 = requestAnimationFrame(() => {
-        groups.forEach((group, index) => {
-          const timer = window.setTimeout(() => {
-            (group as HTMLElement).removeAttribute('data-animation')
-          }, index * timing.enterStagger + timing.enterDelay)
-          enterTimers.push(timer)
-        })
+    const cancelSizeRaf = doubleRaf(() => {
+      const currentContent = navContentRef.current
+      const currentIsland = currentContent?.closest('.dynamic-island') as HTMLElement
+      if (!currentContent || !currentIsland)
+        return
 
-        // 安全兜底：所有进入动画应已完成后清理残留标记
-        cleanupTimer = window.setTimeout(() => {
-          if (island) {
-            island.removeAttribute('data-transitioning')
-          }
-          groups.forEach((group) => {
-            (group as HTMLElement).removeAttribute('data-animation')
-          })
-        }, groups.length * timing.enterStagger + timing.enterDelay + 150)
+      const padding = getCachedPadding(currentIsland)
+      const scrollHeight = currentContent.scrollHeight
+
+      if (isDesktop() && Number.isFinite(scrollHeight) && scrollHeight > 0) {
+        const calculatedHeight = scrollHeight + padding
+        const validHeight = validateHeight(calculatedHeight)
+        if (safeSetHeight(currentIsland, validHeight)) {
+          updateModeMetrics(currentMode, { height: validHeight ?? undefined })
+        }
+        else {
+          currentIsland.style.removeProperty('height')
+        }
+      }
+      else if (!isDesktop()) {
+        currentIsland.style.removeProperty('width')
+        currentIsland.style.removeProperty('height')
+      }
+    })
+
+    const timing = getAnimationTiming()
+    const cancelEnterRaf = doubleRaf(() => {
+      groups.forEach((group, index) => {
+        const timer = window.setTimeout(() => {
+          (group as HTMLElement).removeAttribute('data-animation')
+        }, index * timing.enterStagger + timing.enterDelay)
+        enterTimers.push(timer)
       })
+
+      cleanupTimer = window.setTimeout(() => {
+        if (island) {
+          island.removeAttribute('data-transitioning')
+          island.removeAttribute('data-entering')
+        }
+        groups.forEach((group) => {
+          (group as HTMLElement).removeAttribute('data-animation')
+        })
+        // 进入动画完成，解锁动画状态
+        setIsAnimating(false)
+      }, groups.length * timing.enterStagger + timing.enterDelay + 150)
     })
 
     return () => {
-      cancelAnimationFrame(sizeRafId1)
-      cancelAnimationFrame(sizeRafId2)
-      cancelAnimationFrame(rafId1)
-      cancelAnimationFrame(rafId2)
+      cancelSizeRaf()
+      cancelEnterRaf()
       enterTimers.forEach(timer => clearTimeout(timer))
       if (cleanupTimer)
         clearTimeout(cleanupTimer)
+      // 被中断时清理过渡标记
+      if (island) {
+        island.removeAttribute('data-transitioning')
+        island.removeAttribute('data-entering')
+      }
     }
-  }, [showSecondary, isAnimating, renderModeRef, secondaryNav])
+  }, [showSecondary, isAnimating, renderModeRef, secondaryNav, setIsAnimating, getCachedPadding, updateModeMetrics])
 
-  // 首次挂载时初始化导航岛高度，并记录基础高度
+  // 首次挂载时初始化导航岛高度，并缓存 padding
   useEffect(() => {
     const content = navContentRef.current
     if (!content)
@@ -551,7 +525,6 @@ export function NavigationIsland() {
     if (!island)
       return
 
-    // 使用 rAF 等待浏览器完成布局后设置尺寸
     let rafId: number
     let retryCount = 0
     const maxRetries = 5
@@ -562,20 +535,19 @@ export function NavigationIsland() {
       if (!currentContent || !currentIsland)
         return
 
-      if (window.innerWidth >= 768) {
-        const paddingVertical = getPaddingVertical(currentIsland)
+      // 首次计算时缓存 padding
+      const padding = getCachedPadding(currentIsland)
+
+      if (isDesktop()) {
         const scrollHeight = currentContent.scrollHeight
 
-        // 如果内容尚未渲染完成（scrollHeight 为 0 或很小），重试
         if ((!Number.isFinite(scrollHeight) || scrollHeight < MIN_ISLAND_HEIGHT) && retryCount < maxRetries) {
           retryCount++
           rafId = requestAnimationFrame(initHeight)
           return
         }
 
-        const height = scrollHeight + paddingVertical
-        const validHeight = validateHeight(height)
-
+        const validHeight = validateHeight(scrollHeight + padding)
         if (validHeight !== null) {
           currentIsland.style.height = `${validHeight}px`
           updateModeMetrics('normal', { height: validHeight })
@@ -586,7 +558,6 @@ export function NavigationIsland() {
     rafId = requestAnimationFrame(initHeight)
 
     return () => cancelAnimationFrame(rafId)
-    // 仅首次挂载时执行
   }, [])
 
   // 窗口大小变化时更新尺寸 - 使用防抖避免频繁更新
@@ -609,14 +580,14 @@ export function NavigationIsland() {
         lastWidth = currentWidth
 
         if (crossedBreakpoint) {
-          // 跨越断点时，重新计算高度
+          // 跨断点时重置 padding 缓存（padding 可能不同）
+          cachedPaddingRef.current = null
           if (currentWidth >= 768 && content) {
-            const paddingVertical = getPaddingVertical(island)
-            const height = content.scrollHeight + paddingVertical
+            const padding = getCachedPadding(island)
+            const height = content.scrollHeight + padding
             safeSetHeight(island, height)
           }
           else {
-            // 移动端，清除固定尺寸
             island.style.removeProperty('width')
             island.style.removeProperty('height')
           }
@@ -657,9 +628,7 @@ export function NavigationIsland() {
                   data-tooltip={t.nav.back}
                   aria-label={t.nav.backToNav}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
+                  {IconBack}
                 </button>
               </div>
 
@@ -688,9 +657,7 @@ export function NavigationIsland() {
               {/* 主页按钮 */}
               <div className="nav-group" data-group="main">
                 <a href="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} data-tooltip={t.nav.home} aria-label={t.nav.backToHome} aria-current={location.pathname === '/' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); navigate('/') }}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-                  </svg>
+                  {IconHome}
                 </a>
               </div>
 
@@ -703,9 +670,7 @@ export function NavigationIsland() {
                   aria-current={location.pathname === '/library' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/library')}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                  </svg>
+                  {IconLibrary}
                 </button>
               </div>
 
@@ -718,9 +683,7 @@ export function NavigationIsland() {
                   aria-current={location.pathname === '/brew' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/brew')}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" />
-                  </svg>
+                  {IconBrew}
                 </button>
               </div>
 
@@ -733,9 +696,7 @@ export function NavigationIsland() {
                   aria-current={location.pathname === '/reports' ? 'page' : undefined}
                   onClick={() => handleNavToPage('/reports')}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                  </svg>
+                  {IconReports}
                 </button>
               </div>
 

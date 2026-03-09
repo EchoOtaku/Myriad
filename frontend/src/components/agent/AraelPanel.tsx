@@ -1229,15 +1229,23 @@ export const AraelPanel: React.FC = () => {
                           ? (
                               <>
                                 <span className="arael-pulse-dot" />
-                                Arael 正在处理
-                                {' '}
-                                {activeTasks.length}
-                                {' '}
-                                个任务
+                                <span className="qwitcher-grypen">Arael</span>
+                                <span className="arael-tasks-title-rest">
+                                  {`正在处理 ${activeTasks.length} 个任务`}
+                                </span>
                               </>
                             )
                           : (
-                              <>{smartGreeting}</>
+                              <>
+                                {smartGreeting.startsWith('Arael')
+                                  ? (
+                                      <>
+                                        <span className="qwitcher-grypen">Arael</span>
+                                        <span className="arael-tasks-title-rest">{smartGreeting.slice(5)}</span>
+                                      </>
+                                    )
+                                  : smartGreeting}
+                              </>
                             )}
                       </span>
                       <div className="arael-tasks-actions">
