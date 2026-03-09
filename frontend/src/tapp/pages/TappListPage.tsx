@@ -38,6 +38,7 @@ import { TappIcon } from '../components/TappIcon'
 import { TappStore } from '../components/TappStore'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { getTappRuntime } from '../runtime'
+import { isWebKit } from '../runtime/TappPageSandbox'
 import * as TappApiService from '../services/TappApiService'
 import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappColors'
 
@@ -801,8 +802,8 @@ export function TappListPage() {
                     <SiAppstore className="w-3 h-3" />
                     {t.tapp.store}
                   </button>
-                  {/* 多任务入口 - 仅平板和PC端显示 */}
-                  {!isMobile && (
+                  {/* 多任务入口 - 仅平板和PC端显示，Safari 不支持 */}
+                  {!isMobile && !isWebKit && (
                     <button
                       onClick={() => navigate('/tapp/run?multi=true')}
                       className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"

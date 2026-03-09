@@ -53,7 +53,7 @@ import { useI18n } from '../../contexts/I18nContext'
 // 🎯 WebKit/Safari 检测（仅在模块加载时计算一次）
 // Safari 及 iOS 浏览器存在合成层 bug，需要将 iframe portal 到 body
 // 检测策略：UA + vendor 双重验证，避免单一信号误判
-const isWebKit: boolean = (() => {
+export const isWebKit: boolean = (() => {
   if (typeof navigator === 'undefined') return false
   const ua = navigator.userAgent
   // UA 检测：包含 AppleWebKit 但排除桌面版 Chrome/Chromium

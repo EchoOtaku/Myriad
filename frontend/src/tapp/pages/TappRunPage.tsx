@@ -28,6 +28,7 @@ import {
 } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { TappToast } from '../../components/Toast'
 import { useI18n } from '../../contexts/I18nContext'
@@ -37,7 +38,7 @@ import { TappIcon } from '../components/TappIcon'
 import { TappWindowManager } from '../components/TappWindowManager'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
-import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { isWebKit, TappPageSandbox } from '../runtime/TappPageSandbox'
 import { getTappIconStyle } from '../utils/tappColors'
 
 interface TappRunPageProps {
@@ -51,8 +52,8 @@ interface TappRunPageProps {
 export function TappRunPage({ tappId }: TappRunPageProps) {
   const [searchParams] = useSearchParams()
   const { isMobile } = useBreakpoints()
-  // 多窗口模式仅限平板和PC端
-  const isMultiWindow = searchParams.get('multi') === 'true' && !isMobile
+  // 多窗口模式仅限平板和PC端，Safari/WebKit 不支持多窗口
+  const isMultiWindow = searchParams.get('multi') === 'true' && !isMobile && !isWebKit
   const navigate = useNavigate()
 
   // 多窗口模式
@@ -225,71 +226,77 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' }}>
       {/* 全屏模式工具栏 */}
-      <AnimatePresence>
-        {isFullscreen && isReady && tapp && (
-          <motion.div
-            key="fullscreen-toolbar"
-            initial={{ opacity: 0, x: -16, scale: 0.92 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -16, scale: 0.92 }}
-            transition={transitions.elementEnter}
-            className="fixed top-4 left-4 z-[60] opacity-0 hover:opacity-100 transition-opacity duration-300"
-          >
-            <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
-              <div className="flex items-center gap-2">
-                {iconStyle && (
-                  <motion.div
-                    className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
-                    style={iconStyle.style}
-                    whileHover={noAnimation ? undefined : { scale: 1.1 }}
-                    whileTap={noAnimation ? undefined : { scale: 0.95 }}
-                  >
-                    <TappIcon
-                      icon={tapp.manifest.icon}
-                      iconSvg={tapp.manifest.iconSvg}
-                      name={tapp.manifest.name}
-                      sizeClass="w-4 h-4"
-                      textSizeClass="text-sm"
-                    />
-                  </motion.div>
-                )}
-                <div className="hidden sm:block">
-                  <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
-                    {tapp.manifest.name}
-                  </h1>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                    v
-                    {tapp.manifest.version}
-                  </p>
+      {(() => {
+        const toolbar = (
+          <AnimatePresence>
+            {isFullscreen && isReady && tapp && (
+              <motion.div
+                key="fullscreen-toolbar"
+                initial={{ opacity: 0, x: -16, scale: 0.92 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -16, scale: 0.92 }}
+                transition={transitions.elementEnter}
+                className="fixed top-4 left-4 z-[9999] opacity-0 hover:opacity-100 transition-opacity duration-300"
+              >
+                <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
+                  <div className="flex items-center gap-2">
+                    {iconStyle && (
+                      <motion.div
+                        className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
+                        style={iconStyle.style}
+                        whileHover={noAnimation ? undefined : { scale: 1.1 }}
+                        whileTap={noAnimation ? undefined : { scale: 0.95 }}
+                      >
+                        <TappIcon
+                          icon={tapp.manifest.icon}
+                          iconSvg={tapp.manifest.iconSvg}
+                          name={tapp.manifest.name}
+                          sizeClass="w-4 h-4"
+                          textSizeClass="text-sm"
+                        />
+                      </motion.div>
+                    )}
+                    <div className="hidden sm:block">
+                      <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
+                        {tapp.manifest.name}
+                      </h1>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                        v
+                        {tapp.manifest.version}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-px h-6 bg-gray-200 dark:bg-neutral-700" />
+                  <div className="flex items-center gap-1">
+                    <motion.button
+                      onClick={toggleFullscreen}
+                      className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                      title={t.tapp.exitFullscreen}
+                      whileHover={noAnimation ? undefined : { scale: 1.1 }}
+                      whileTap={noAnimation ? undefined : { scale: 0.9 }}
+                    >
+                      <FaCompress className="w-3.5 h-3.5" />
+                    </motion.button>
+                    {canStartStop && (
+                      <motion.button
+                        onClick={handleStop}
+                        className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        title={t.tapp.stopApp}
+                        whileHover={noAnimation ? undefined : { scale: 1.1 }}
+                        whileTap={noAnimation ? undefined : { scale: 0.9 }}
+                      >
+                        <FaPause className="w-3.5 h-3.5" />
+                      </motion.button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="w-px h-6 bg-gray-200 dark:bg-neutral-700" />
-              <div className="flex items-center gap-1">
-                <motion.button
-                  onClick={toggleFullscreen}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-                  title={t.tapp.exitFullscreen}
-                  whileHover={noAnimation ? undefined : { scale: 1.1 }}
-                  whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                >
-                  <FaCompress className="w-3.5 h-3.5" />
-                </motion.button>
-                {canStartStop && (
-                  <motion.button
-                    onClick={handleStop}
-                    className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                    title={t.tapp.stopApp}
-                    whileHover={noAnimation ? undefined : { scale: 1.1 }}
-                    whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                  >
-                    <FaPause className="w-3.5 h-3.5" />
-                  </motion.button>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )
+        // 🎯 Safari/WebKit: 整体 portal 到 body，避免被 portal iframe (z-40) 遮挡
+        return isWebKit ? createPortal(toolbar, document.body) : toolbar
+      })()}
 
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       <motion.div
@@ -454,8 +461,8 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={transitions.stateSwitch}
                   >
-                    {/* 多窗口模式按钮 - 仅平板和PC端显示 */}
-                    {!isMobile && (
+                    {/* 多窗口模式按钮 - 仅平板和PC端显示，Safari 不支持 */}
+                    {!isMobile && !isWebKit && (
                       <motion.button
                         onClick={() => navigate(`/tapp/run/${tappId}?multi=true`)}
                         className="p-1.5 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
