@@ -10,11 +10,12 @@ import {
   LuPalette as Palette,
   LuPlus as Plus,
 } from '@lib/icons'
-import { motionShim as motion } from '@lib/motionShim'
 
 import type { CommentItem } from '../../../services/brewApi'
 import type { ReaderRightPanelProps } from './types'
 import { THEMES } from './constants'
+import { memo } from 'react'
+import { motionShim as motion } from '@lib/motionShim'
 
 interface ExtendedReaderRightPanelProps extends ReaderRightPanelProps {
   // 评论
@@ -25,7 +26,7 @@ interface ExtendedReaderRightPanelProps extends ReaderRightPanelProps {
   setShowCommentsPanel: (show: boolean) => void
 }
 
-export default function ReaderRightPanel({
+export default memo(function ReaderRightPanel({
   theme,
   currentTheme,
   isDark,
@@ -172,4 +173,4 @@ export default function ReaderRightPanel({
         </motion.aside>
     </>
   )
-}
+})

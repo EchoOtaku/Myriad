@@ -31,14 +31,14 @@ import {
   LuVolume2 as Volume2,
   LuX as X,
 } from '@lib/icons'
-import { useMemo, useRef } from 'react'
+import { memo, useMemo, useRef } from 'react'
 
 import type { ReaderLeftPanelProps } from './types'
 import {
   STYLE_MAX_HEIGHT_320,
 } from './constants'
 
-export default function ReaderLeftPanel({
+export default memo(function ReaderLeftPanel({
   item,
   onClose,
   isAuthenticated,
@@ -957,4 +957,4 @@ export default function ReaderLeftPanel({
         </motion.aside>
     </>
   )
-}
+})

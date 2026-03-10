@@ -9,15 +9,30 @@
  * - 动画统一接入调度器，根据设备性能自适应
  */
 
-import * as brewliaApi from '../../services/brewliaApi'
-
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import type { AnnotationItem, AnnotationType } from '../../services/brewliaApi'
+
+import type { BrewItem, SourceType } from '../../types/brew'
+import {
+  LuCalendar as Calendar,
+  LuClock as Clock,
+  LuUser as User,
+} from '@lib/icons'
+import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useI18n } from '../../contexts/I18nContext'
+import { useNavigation } from '../../contexts/NavigationContext'
+import { usePageContentOptional } from '../../contexts/PageContentContext'
+import { useReadingListOptional } from '../../contexts/ReadingListContext'
+
+import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation'
+import * as brewliaApi from '../../services/brewliaApi'
+import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
+import { processRssContent } from '../../utils/rssContentProcessor'
 import {
   AnnotationTooltip,
   CommentInputPopup,
-  CommentTooltip,
   CommentsListPanel,
+  CommentTooltip,
   Lightbox,
   MobileReaderBar,
   ReaderLeftPanel,
@@ -30,24 +45,132 @@ import {
   usePodcast,
   useReaderSettings,
 } from './reader'
-import type { BrewItem, SourceType } from '../../types/brew'
-import {
-  LuCalendar as Calendar,
-  LuClock as Clock,
-  LuUser as User,
-} from '@lib/icons'
-import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation'
-import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-import { processRssContent } from '../../utils/rssContentProcessor'
-import { useI18n } from '../../contexts/I18nContext'
-import { useNavigation } from '../../contexts/NavigationContext'
-import { usePageContentOptional } from '../../contexts/PageContentContext'
-import { useReadingListOptional } from '../../contexts/ReadingListContext'
 
 // API URL
 const API_URL = import.meta.env.PUBLIC_API_URL || ''
+
+// === iframe 保存/恢复 ===
+// 在 innerHTML 更新前保存已加载的 iframe，更新后恢复，避免重新加载导致闪烁
+interface SavedIframe {
+  key: string
+  element: HTMLElement
+}
+
+function saveEmbedElements(container: HTMLElement): SavedIframe[] {
+  const saved: SavedIframe[] = []
+
+  // 保存 bilibili 嵌入（通过 data-video-id 匹配）
+  container.querySelectorAll('.brew-bilibili-embed[data-video-id]').forEach((el) => {
+    const videoId = el.getAttribute('data-video-id')
+    if (videoId && el.querySelector('iframe')) {
+      saved.push({ key: `bilibili:${videoId}`, element: el as HTMLElement })
+    }
+  })
+
+  // 保存 RSS 内容中的 iframe 包装器（通过 iframe src 匹配）
+  container.querySelectorAll('.rss-content-iframe-wrapper').forEach((el) => {
+    const iframe = el.querySelector('iframe')
+    if (iframe) {
+      const src = iframe.getAttribute('src') || iframe.src || ''
+      if (src) {
+        saved.push({ key: `rss:${src}`, element: el as HTMLElement })
+      }
+    }
+  })
+
+  // 保存后处理阶段包装的 iframe（通过 iframe src 匹配）
+  container.querySelectorAll('iframe[data-iframe-wrapped="true"]').forEach((iframe) => {
+    if (iframe.closest('.brew-bilibili-embed') || iframe.closest('.rss-content-iframe-wrapper'))
+      return
+    const wrapper = iframe.parentElement
+    if (wrapper) {
+      const src = iframe.getAttribute('src') || (iframe as HTMLIFrameElement).src || ''
+      if (src) {
+        saved.push({ key: `wrapped:${src}`, element: wrapper })
+      }
+    }
+  })
+
+  // 保存已加载数据的嵌入卡片（网易云音乐、Steam、GitHub）
+  // 避免 overlay 变化时丢失 data-loaded 状态导致重新 fetch
+  container.querySelectorAll('.brew-netease-music[data-loaded="true"], .brew-netease-music[data-loaded="loading"]').forEach((el) => {
+    const songId = el.getAttribute('data-song-id')
+    if (songId) {
+      saved.push({ key: `netease:${songId}`, element: el as HTMLElement })
+    }
+  })
+  container.querySelectorAll('.brew-steam-game[data-loaded="true"], .brew-steam-game[data-loaded="loading"]').forEach((el) => {
+    const appId = el.getAttribute('data-app-id')
+    if (appId) {
+      saved.push({ key: `steam:${appId}`, element: el as HTMLElement })
+    }
+  })
+  container.querySelectorAll('.brew-github-repo[data-loaded="true"], .brew-github-repo[data-loaded="loading"]').forEach((el) => {
+    const repo = el.getAttribute('data-repo')
+    if (repo) {
+      saved.push({ key: `github:${repo}`, element: el as HTMLElement })
+    }
+  })
+
+  // 从 DOM 摘出保存的元素（防止 innerHTML 赋值时销毁它们）
+  saved.forEach(s => s.element.remove())
+
+  return saved
+}
+
+function restoreEmbedElements(container: HTMLElement, saved: SavedIframe[]): void {
+  if (saved.length === 0)
+    return
+  const savedMap = new Map(saved.map(s => [s.key, s.element]))
+  const restored = new Set<string>()
+
+  // 通用恢复：按 selector + key 生成器匹配
+  const restoreBySelector = (selector: string, keyFn: (el: Element) => string | null) => {
+    container.querySelectorAll(selector).forEach((newEl) => {
+      const key = keyFn(newEl)
+      if (key && !restored.has(key)) {
+        const savedEl = savedMap.get(key)
+        if (savedEl && newEl.parentNode) {
+          newEl.parentNode.replaceChild(savedEl, newEl)
+          restored.add(key)
+        }
+      }
+    })
+  }
+
+  // 恢复 bilibili 嵌入
+  restoreBySelector('.brew-bilibili-embed[data-video-id]', el =>
+    el.getAttribute('data-video-id') ? `bilibili:${el.getAttribute('data-video-id')}` : null)
+
+  // 恢复 RSS iframe 包装器
+  restoreBySelector('.rss-content-iframe-wrapper', (el) => {
+    const src = el.querySelector('iframe')?.getAttribute('src') || ''
+    return src ? `rss:${src}` : null
+  })
+
+  // 恢复已加载的嵌入卡片（避免重新 fetch API 数据）
+  restoreBySelector('.brew-netease-music[data-song-id]', el =>
+    el.getAttribute('data-song-id') ? `netease:${el.getAttribute('data-song-id')}` : null)
+  restoreBySelector('.brew-steam-game[data-app-id]', el =>
+    el.getAttribute('data-app-id') ? `steam:${el.getAttribute('data-app-id')}` : null)
+  restoreBySelector('.brew-github-repo[data-repo]', el =>
+    el.getAttribute('data-repo') ? `github:${el.getAttribute('data-repo')}` : null)
+
+  // 恢复后处理包装的 iframe
+  container.querySelectorAll('iframe').forEach((newIframe) => {
+    if (newIframe.closest('.brew-bilibili-embed') || newIframe.closest('.rss-content-iframe-wrapper'))
+      return
+    const src = newIframe.getAttribute('src') || newIframe.src || ''
+    const key = `wrapped:${src}`
+    if (src && !restored.has(key)) {
+      const savedEl = savedMap.get(key)
+      if (savedEl && newIframe.parentNode) {
+        newIframe.parentNode.replaceChild(savedEl, newIframe)
+        restored.add(key)
+      }
+    }
+  })
+}
 
 // 处理图片 URL - 封面图等外部图片通过代理访问
 function getImageUrl(imageUrl: string | null): string | null {
@@ -276,6 +399,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     t,
   })
 
+  // 评论 ref（供事件处理器读取，避免重新绑定监听器）
+  const commentsRef = useRef(comments)
+  commentsRef.current = comments
+
   // 评论 tooltip 悬停管理回调
   const clearTooltipHideTimer = useCallback(() => {
     if (tooltipHideTimerRef.current) {
@@ -285,7 +412,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   }, [])
 
   const startTooltipHideTimer = useCallback((delay = 200) => {
-    if (tooltipHideTimerRef.current) return // 已有定时器运行中
+    if (tooltipHideTimerRef.current)
+      return // 已有定时器运行中
     tooltipHideTimerRef.current = setTimeout(() => {
       tooltipHideTimerRef.current = null
       setCommentTooltip(null)
@@ -359,39 +487,28 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'
     }`, [currentTheme.secondary, currentTheme.text, isDark])
 
-  // 处理文章内容（带注释、评论高亮和嵌入内容）
-  // WebKit 优化：使用状态 + useEffect 异步处理，避免阻塞首次渲染
-  const [processedContent, setProcessedContent] = useState<string>('')
-
-  useEffect(() => {
-    // 如果内容还没准备好，不处理
+  // 基础内容（不含注释/评论高亮）—— 仅在文章内容或暗色模式变化时重新计算
+  // 与 iframe 嵌入等重型内容绑定，避免频繁重建导致闪烁
+  const baseContent = useMemo(() => {
     if (!contentReady)
-      return
+      return ''
 
     // 🔴 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
     if (item.fromWebSearch && !item.content) {
       const hasSummary = item.summary && item.summary.trim().length > 20
       if (hasSummary) {
-        // 将摘要转换为段落格式，让阅读器样式能够控制
         const paragraphs = item.summary!.split(/\n\n|\n/).filter(p => p.trim())
         const summaryHtml = paragraphs.map(p => `<p>${p.trim()}</p>`).join('\n')
-
-        setProcessedContent(`<div class="web-search-summary">
+        return `<div class="web-search-summary">
           ${summaryHtml}
           <p class="web-search-note">以上内容由 AI 根据网络搜索结果生成</p>
-        </div>`)
-        return
+        </div>`
       }
-      else {
-        // 没有摘要时显示提示
-        setProcessedContent(`<div class="web-search-summary">
-          <p class="opacity-60">暂无内容摘要</p>
-        </div>`)
-        return
-      }
+      return `<div class="web-search-summary">
+        <p class="opacity-60">暂无内容摘要</p>
+      </div>`
     }
 
-    // 🔴 优先使用 item 自带的内容
     let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`
 
     // 0. 首先处理 RSS 内容格式（清理危险标签、适配各类 HTML 标签样式）
@@ -405,19 +522,42 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
     // 1. 处理嵌入内容（iframe、特定链接转卡片）
     content = processEmbeds(content, isDark)
+    return content
+  }, [contentReady, item.content, item.summary, item.link, item.fromWebSearch, isDark, t.brew.noContent])
 
-    // 2. 处理 AI 注释高亮
+  // 内容渲染 ref（取代 dangerouslySetInnerHTML，避免 iframe 重建导致闪烁）
+  const contentInnerRef = useRef<HTMLDivElement>(null)
+  const prevBaseContentRef = useRef('')
+
+  // 🔴 统一内容渲染：基础内容变化时全量更新，仅注释/评论变化时保留已加载的 iframe
+  useEffect(() => {
+    const container = contentInnerRef.current
+    if (!container || !baseContent)
+      return
+
+    const isBaseChanged = prevBaseContentRef.current !== baseContent
+    prevBaseContentRef.current = baseContent
+
+    // 构建包含注释和评论高亮的最终 HTML
+    let displayHtml = baseContent
     if (showAnnotations && annotations.length > 0) {
-      content = brewliaApi.highlightAnnotations(content, annotations)
+      displayHtml = brewliaApi.highlightAnnotations(displayHtml, annotations)
     }
-
-    // 3. 处理用户评论高亮
     if (comments.length > 0) {
-      content = highlightComments(content, comments, theme)
+      displayHtml = highlightComments(displayHtml, comments, theme)
     }
 
-    setProcessedContent(content)
-  }, [contentReady, item.content, item.summary, item.link, item.fromWebSearch, showAnnotations, annotations, comments, highlightComments, isDark, theme, t.brew.noContent])
+    if (!isBaseChanged && container.childElementCount > 0) {
+      // 仅覆盖层变化：保留已加载的 iframe 和嵌入卡片避免闪烁和重复 API 调用
+      const saved = saveEmbedElements(container)
+      container.innerHTML = displayHtml
+      restoreEmbedElements(container, saved)
+    }
+    else {
+      // 基础内容变化：直接全量替换
+      container.innerHTML = displayHtml
+    }
+  }, [baseContent, showAnnotations, annotations, comments, highlightComments, theme])
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   // 这避免了同时执行动画 + 大量 DOM 渲染导致的卡顿
@@ -617,7 +757,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
       return () => clearTimeout(loadTimer)
     }
-  }, [processedContent]) // 依赖 processedContent 确保嵌入卡片已渲染
+  }, [baseContent, showAnnotations, annotations, comments, theme]) // 内容更新后重新处理 DOM
 
   // 处理评论高亮和嵌入卡片的点击和悬停事件
   useEffect(() => {
@@ -704,7 +844,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         // 同一个评论不重复设置，避免创建新对象引用触发重渲染
         if (commentId && commentId !== lastHoveredCommentId) {
           lastHoveredCommentId = commentId
-          const comment = comments.find(c => c.id === Number.parseInt(commentId))
+          const comment = commentsRef.current.find(c => c.id === Number.parseInt(commentId))
           if (comment) {
             const rect = highlight.getBoundingClientRect()
             setCommentTooltip({
@@ -740,7 +880,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       contentRef.current?.removeEventListener('mouseover', handleMouseOver)
       contentRef.current?.removeEventListener('mouseleave', handleContentMouseLeave)
     }
-  }, [comments])
+  }, []) // 挂载一次，通过 commentsRef 读取最新评论
 
   // 保持 ref 与 state 同步，供滚动回调读取（避免把 activeHeadingId 放入 effect 依赖）
   activeHeadingIdRef.current = activeHeadingId
@@ -2138,7 +2278,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               {/* WebKit 优化：动画期间显示简单占位，避免同时渲染大量 DOM */}
               {contentReady
                 ? (
-                    <div dangerouslySetInnerHTML={{ __html: processedContent }} />
+                    <div ref={contentInnerRef} />
                   )
                 : (
                     <div className="space-y-4 animate-pulse">

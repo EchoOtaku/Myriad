@@ -36,11 +36,11 @@ import {
 } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { STYLE_MAX_HEIGHT_60VH, THEMES } from './constants'
+import { memo, useState } from 'react'
 
 import type { MobileReaderBarProps } from './types'
-import { useState } from 'react'
 
-export function MobileReaderBar({
+export const MobileReaderBar = memo(function MobileReaderBar({
   item,
   onClose,
   onToggleStar,
@@ -739,4 +739,4 @@ export function MobileReaderBar({
       </AnimatePresence>
     </>
   )
-}
+})
