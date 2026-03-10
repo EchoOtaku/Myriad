@@ -7,7 +7,7 @@
  * - 支持动画过渡和状态同步
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { ReactNode } from 'react'
 
@@ -92,20 +92,20 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const value = useMemo(() => ({
+    secondaryNav,
+    registerSecondaryNav,
+    unregisterSecondaryNav,
+    updateSecondaryNav,
+    isAnimating,
+    setIsAnimating,
+    renderModeRef,
+    immersiveMode,
+    setImmersiveMode,
+  }), [secondaryNav, registerSecondaryNav, unregisterSecondaryNav, updateSecondaryNav, isAnimating, immersiveMode])
+
   return (
-    <NavigationContext.Provider
-      value={{
-        secondaryNav,
-        registerSecondaryNav,
-        unregisterSecondaryNav,
-        updateSecondaryNav,
-        isAnimating,
-        setIsAnimating,
-        renderModeRef,
-        immersiveMode,
-        setImmersiveMode,
-      }}
-    >
+    <NavigationContext.Provider value={value}>
       {children}
     </NavigationContext.Provider>
   )
@@ -132,33 +132,24 @@ export function useSecondaryNav(config: {
   const [activeId, setActiveIdLocal] = useState(config.defaultActiveId)
   const [expanded, setExpandedLocal] = useState(false)
 
+  // 用 ref 追踪当前值，避免在 state updater 内部调用 updateSecondaryNav
+  // （在 updater 中调用另一个组件的 setState 会触发 React 18 的 "setState during render" 警告）
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
+  const expandedRef = useRef(expanded)
+  expandedRef.current = expanded
+
   // 同步包装：状态变更同步更新到 Context，消除 effect 延迟造成的一帧闪烁
   const setActiveId = useCallback((value: string | ((prev: string) => string)) => {
-    if (typeof value === 'function') {
-      setActiveIdLocal((prev) => {
-        const next = value(prev)
-        updateSecondaryNav({ activeId: next })
-        return next
-      })
-    }
-    else {
-      setActiveIdLocal(value)
-      updateSecondaryNav({ activeId: value })
-    }
+    const next = typeof value === 'function' ? value(activeIdRef.current) : value
+    setActiveIdLocal(next)
+    updateSecondaryNav({ activeId: next })
   }, [updateSecondaryNav])
 
   const setExpanded = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
-    if (typeof value === 'function') {
-      setExpandedLocal((prev) => {
-        const next = value(prev)
-        updateSecondaryNav({ expanded: next })
-        return next
-      })
-    }
-    else {
-      setExpandedLocal(value)
-      updateSecondaryNav({ expanded: value })
-    }
+    const next = typeof value === 'function' ? value(expandedRef.current) : value
+    setExpandedLocal(next)
+    updateSecondaryNav({ expanded: next })
   }, [updateSecondaryNav])
 
   // 选中项变化处理（由导航岛的按钮点击触发）

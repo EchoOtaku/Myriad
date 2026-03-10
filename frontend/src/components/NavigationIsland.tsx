@@ -8,7 +8,7 @@
  */
 
 import { SiAppstore } from '@lib/icons'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -118,8 +118,9 @@ function getPaddingVertical(island: HTMLElement | null): number {
 /**
  * 导航岛 Tooltip - 使用 Portal 渲染到 body，避免被 overflow:hidden 裁剪
  * 使用事件委托：pointerenter/pointerleave 替代 mousemove，减少事件触发频率
+ * memo 化：避免父组件动画状态变化时重复渲染
  */
-function NavIslandTooltip({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) {
+const NavIslandTooltip = memo(({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) => {
   const [tooltip, setTooltip] = useState<{ text: string, rect: DOMRect } | null>(null)
   const [visible, setVisible] = useState(false)
   const showTimerRef = useRef<number>(0)
@@ -216,7 +217,7 @@ function NavIslandTooltip({ containerRef }: { containerRef: React.RefObject<HTML
     <div style={style}>{tooltip.text}</div>,
     document.body,
   )
-}
+})
 
 export function NavigationIsland() {
   const location = useLocation()
@@ -237,6 +238,9 @@ export function NavigationIsland() {
   const prevPathnameRef = useRef(location.pathname)
   // 缓存 padding 值，避免每次动画都触发 getComputedStyle
   const cachedPaddingRef = useRef<number | null>(null)
+  // 追踪 handleTransition 内部定时器，组件卸载时清理
+  const exitRafRef = useRef<number>(0)
+  const exitTimerRef = useRef<number>(0)
 
   // 当前是否显示二级导航
   const showSecondary = secondaryNav?.expanded && secondaryNav.routePath === location.pathname
@@ -293,6 +297,23 @@ export function NavigationIsland() {
   useEffect(() => {
     if (prevPathnameRef.current !== location.pathname) {
       prevPathnameRef.current = location.pathname
+
+      // 中断进行中的 handleTransition — 防止退出定时器在路由切换后
+      // 继续执行 renderModeRef 写入和 data-entering 设置，导致导航项残留隐藏
+      cancelAnimationFrame(exitRafRef.current)
+      clearTimeout(exitTimerRef.current)
+
+      // 清除岛上可能残留的过渡标记
+      const island = navContentRef.current?.closest('.dynamic-island') as HTMLElement | null
+      if (island) {
+        island.removeAttribute('data-transitioning')
+        island.removeAttribute('data-entering')
+        // 桌面端重置内联高度，让 useLayoutEffect 的 doubleRaf 重新计算
+        if (isDesktop()) {
+          island.style.removeProperty('height')
+        }
+      }
+
       // 路由切换时重置为正常模式
       lastModeRef.current = 'normal'
       renderModeRef.current = 'normal'
@@ -311,6 +332,14 @@ export function NavigationIsland() {
     }, 2000)
     return () => clearTimeout(safetyTimer)
   }, [isAnimating, setIsAnimating])
+
+  // 组件卸载时清理 handleTransition 内部的定时器和 rAF
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(exitRafRef.current)
+      clearTimeout(exitTimerRef.current)
+    }
+  }, [])
 
   // 自动展开二级导航：当进入有二级导航的页面时
   useEffect(() => {
@@ -373,18 +402,36 @@ export function NavigationIsland() {
       }
     }
 
-    // 退出动画 - 交错标记各项退出
+    // 退出动画 - 使用单个 rAF 循环替代多个 setTimeout，减少定时器开销
     const timing = getAnimationTiming()
-    groups.forEach((group, index) => {
-      const el = group as HTMLElement
-      el.removeAttribute('data-animation')
-      setTimeout(() => {
-        el.setAttribute('data-animation', 'exit')
-      }, index * timing.exitStagger)
+    const exitStartTime = performance.now()
+
+    const runExitStagger = (now: number) => {
+      const elapsed = now - exitStartTime
+      let allDone = true
+      for (let i = 0; i < groups.length; i++) {
+        const el = groups[i] as HTMLElement
+        if (elapsed >= i * timing.exitStagger) {
+          if (!el.getAttribute('data-animation')) {
+            el.setAttribute('data-animation', 'exit')
+          }
+        }
+        else {
+          allDone = false
+        }
+      }
+      if (!allDone) {
+        exitRafRef.current = requestAnimationFrame(runExitStagger)
+      }
+    }
+    // 先清除所有旧标记，然后启动 rAF 循环
+    groups.forEach((group) => {
+      (group as HTMLElement).removeAttribute('data-animation')
     })
+    exitRafRef.current = requestAnimationFrame(runExitStagger)
 
     // 退出完成后切换内容（保持 isAnimating=true 直到进入动画结束）
-    setTimeout(() => {
+    exitTimerRef.current = window.setTimeout(() => {
       // 标记即将加载新内容，CSS 安全网确保新 DOM 不闪现
       if (island) {
         island.setAttribute('data-entering', 'true')
@@ -451,9 +498,6 @@ export function NavigationIsland() {
     }
 
     // 两帧后读取尺寸并启动进入动画
-    const enterTimers: number[] = []
-    let cleanupTimer: number
-
     const cancelSizeRaf = doubleRaf(() => {
       const currentContent = navContentRef.current
       const currentIsland = currentContent?.closest('.dynamic-island') as HTMLElement
@@ -480,15 +524,37 @@ export function NavigationIsland() {
     })
 
     const timing = getAnimationTiming()
-    const cancelEnterRaf = doubleRaf(() => {
-      groups.forEach((group, index) => {
-        const timer = window.setTimeout(() => {
-          (group as HTMLElement).removeAttribute('data-animation')
-        }, index * timing.enterStagger + timing.enterDelay)
-        enterTimers.push(timer)
-      })
+    let enterRafId: number
+    let enterCleanupTimer: number
 
-      cleanupTimer = window.setTimeout(() => {
+    const cancelEnterRaf = doubleRaf(() => {
+      // 使用单个 rAF 循环替代 N 个 setTimeout，减少定时器开销
+      const enterStartTime = performance.now()
+      const totalEnterDuration = groups.length * timing.enterStagger + timing.enterDelay
+
+      const runEnterStagger = (now: number) => {
+        const elapsed = now - enterStartTime
+        let allDone = true
+        for (let i = 0; i < groups.length; i++) {
+          const threshold = i * timing.enterStagger + timing.enterDelay
+          if (elapsed >= threshold) {
+            const el = groups[i] as HTMLElement
+            if (el.hasAttribute('data-animation')) {
+              el.removeAttribute('data-animation')
+            }
+          }
+          else {
+            allDone = false
+          }
+        }
+        if (!allDone) {
+          enterRafId = requestAnimationFrame(runEnterStagger)
+        }
+      }
+      enterRafId = requestAnimationFrame(runEnterStagger)
+
+      // 清理定时器：等待所有进入动画完成后解锁
+      enterCleanupTimer = window.setTimeout(() => {
         if (island) {
           island.removeAttribute('data-transitioning')
           island.removeAttribute('data-entering')
@@ -496,23 +562,24 @@ export function NavigationIsland() {
         groups.forEach((group) => {
           (group as HTMLElement).removeAttribute('data-animation')
         })
-        // 进入动画完成，解锁动画状态
         setIsAnimating(false)
-      }, groups.length * timing.enterStagger + timing.enterDelay + 150)
+      }, totalEnterDuration + 150)
     })
 
     return () => {
       cancelSizeRaf()
       cancelEnterRaf()
-      enterTimers.forEach(timer => clearTimeout(timer))
-      if (cleanupTimer)
-        clearTimeout(cleanupTimer)
+      cancelAnimationFrame(enterRafId)
+      if (enterCleanupTimer)
+        clearTimeout(enterCleanupTimer)
       // 被中断时清理过渡标记
       if (island) {
         island.removeAttribute('data-transitioning')
         island.removeAttribute('data-entering')
       }
     }
+  // deps 故意宽于严格最小集 — lastModeRef guard 确保只在实际模式切换时执行动画,
+  // 多余的 re-fire 被 guard 短路，不会产生副作用
   }, [showSecondary, isAnimating, renderModeRef, secondaryNav, setIsAnimating, getCachedPadding, updateModeMetrics])
 
   // 首次挂载时初始化导航岛高度，并缓存 padding
@@ -599,7 +666,7 @@ export function NavigationIsland() {
       }, 100)
     }
 
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', handleResize, { passive: true })
     return () => {
       window.removeEventListener('resize', handleResize)
       if (timeoutId) {
@@ -608,6 +675,19 @@ export function NavigationIsland() {
     }
   }, [applyModeMetrics])
 
+  // 键盘辅助：Escape 收起二级导航，提升键盘可达性
+  useEffect(() => {
+    if (currentRenderMode !== 'secondary')
+      return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isAnimating) {
+        handleCollapse()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [currentRenderMode, isAnimating, handleCollapse])
+
   return (
     <nav
       ref={navContainerRef}
@@ -615,17 +695,17 @@ export function NavigationIsland() {
       aria-label={t.nav.mainNavigation}
       {...(immersiveMode && { 'aria-hidden': 'true' })}
     >
-      <div className="dynamic-island shadow-2xl" role="navigation">
+      <div className="dynamic-island shadow-2xl">
         <div className="flex flex-row md:flex-col items-center gap-1 relative">
           {currentRenderMode === 'secondary' && secondaryNav ? (
             /* 二级导航模式 */
-            <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="secondary-mode">
-              {/* 返回按钮 */}
+            <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="secondary-mode" role="toolbar" aria-label={secondaryNav.expandHint || t.nav.mainNavigation}>
+              {/* 返回按钮 - Escape 也可收起 */}
               <div className="nav-group" data-group="back">
                 <button
                   onClick={handleCollapse}
                   className="nav-item"
-                  data-tooltip={t.nav.back}
+                  data-tooltip={`${t.nav.back} (Esc)`}
                   aria-label={t.nav.backToNav}
                 >
                   {IconBack}
@@ -653,7 +733,7 @@ export function NavigationIsland() {
             </div>
           ) : (
             /* 一级导航模式 */
-            <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="primary-mode">
+            <div ref={navContentRef} className="nav-island-content flex flex-row md:flex-col items-center gap-1" key="primary-mode" role="toolbar" aria-label={t.nav.mainNavigation}>
               {/* 主页按钮 */}
               <div className="nav-group" data-group="main">
                 <a href="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} data-tooltip={t.nav.home} aria-label={t.nav.backToHome} aria-current={location.pathname === '/' ? 'page' : undefined} onClick={(e) => { e.preventDefault(); navigate('/') }}>

@@ -261,10 +261,10 @@ function generateBilibiliIframe(videoId: { type: 'bv' | 'av', id: string }): str
          data-video-id="${videoId.id}"
          data-video-type="${videoId.type}"
          data-embed-exempt="true">
-      <div class="relative w-full rounded-xl overflow-hidden shadow-lg" style="padding-bottom: 56.25%;">
+      <div class="aspect-video w-full rounded-xl overflow-hidden shadow-lg">
         <iframe
           src="${playerUrl}"
-          class="absolute inset-0 w-full h-full border-0"
+          class="w-full h-full border-0"
           scrolling="no"
           frameborder="0"
           allowfullscreen="true"

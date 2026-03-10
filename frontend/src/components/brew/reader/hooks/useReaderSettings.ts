@@ -5,7 +5,7 @@
 
 import type { FontOption, LayoutKey, LayoutOption, ThemeConfig, ThemeKey } from '../types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { subscribeToTheme } from '../../../../utils/themeSubscriber'
+import { getIsDarkMode, subscribeToTheme } from '../../../../utils/themeSubscriber'
 import { FONT_OPTIONS, LAYOUT_OPTIONS, THEME_ORDER, THEMES } from '../constants'
 
 // 从 localStorage 读取设置
@@ -55,16 +55,15 @@ export interface UseReaderSettingsReturn {
 }
 
 export function useReaderSettings(): UseReaderSettingsReturn {
-  const storedSettings = getStoredSettings()
+  // 阅读设置状态 - 使用懒初始化，避免每次渲染都读 localStorage
+  const [fontSize, setFontSize] = useState(() => getStoredSettings()?.fontSize ?? 18)
+  const [lineHeight, setLineHeight] = useState(() => getStoredSettings()?.lineHeight ?? 1.8)
+  const [fontFamily, setFontFamily] = useState(() => getStoredSettings()?.fontFamily ?? 'serif')
+  // 主题懒初始化：首次渲染直接读 DOM，避免 light→dark 的闪烁
+  const [theme, setTheme] = useState<ThemeKey>(() => getIsDarkMode() ? 'dark' : 'light')
+  const [layout, setLayout] = useState<LayoutKey>(() => getStoredSettings()?.layout ?? 'narrow')
 
-  // 阅读设置状态
-  const [fontSize, setFontSize] = useState(storedSettings?.fontSize ?? 18)
-  const [lineHeight, setLineHeight] = useState(storedSettings?.lineHeight ?? 1.8)
-  const [fontFamily, setFontFamily] = useState(storedSettings?.fontFamily ?? 'serif')
-  const [theme, setTheme] = useState<ThemeKey>('light') // 初始值，会被 useEffect 覆盖
-  const [layout, setLayout] = useState<LayoutKey>(storedSettings?.layout ?? 'narrow')
-
-  // 监听应用主题变化，并在初始化时设置
+  // 监听应用主题变化
   useEffect(() => {
     return subscribeToTheme((isDark) => {
       setTheme(isDark ? 'dark' : 'light')

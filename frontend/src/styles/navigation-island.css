@@ -10,6 +10,8 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
+  /* 隔离导航动画的重绘范围，不影响主内容树 */
+  contain: layout paint;
 }
 
 @media (min-width: 768px) {

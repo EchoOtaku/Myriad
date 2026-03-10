@@ -3,13 +3,12 @@
  * 包含导航栏、背景、全局控制面板
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
 import { SiteFooter } from '../components/SiteFooter'
-import { SocialNetworkSettingsModal } from '../components/widgets/SocialNetworkWidget'
 
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
@@ -30,6 +29,11 @@ import {
 } from '../utils/wallpaperColorCache'
 import { wallpaperState } from '../utils/wallpaperState'
 import './AppLayout.css'
+
+// 懒加载设置弹窗 — 1769 行的 SocialNetworkWidget 延迟到需要时才加载
+const SocialNetworkSettingsModal = lazy(() =>
+  import('../components/widgets/SocialNetworkWidget').then(m => ({ default: m.SocialNetworkSettingsModal })),
+)
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -58,37 +62,38 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 壁纸管理 Hook
   const { loadWallpaper: loadWallpaperFromHook } = useWallpaper()
 
-  // Evocative 壁纸动效配置状态
-  const [evocativeParallax, setEvocativeParallax] = useState(true)
-  const [evocativeDynamicBlur, setEvocativeDynamicBlur] = useState(false)
-  const [evocativeRipple, setEvocativeRipple] = useState(false)
-  const [evocativeFps, setEvocativeFps] = useState(30)
-  const [evocativeRippleQuality, setEvocativeRippleQuality] = useState(0.85)
-  // 壁纸模糊度状态
-  const [wallpaperBlur, setWallpaperBlur] = useState(3)
+  // Evocative 壁纸动效配置状态（合并为单一对象，减少 hook 开销）
+  const [evocativeConfig, setEvocativeConfig] = useState({
+    parallax: true,
+    dynamicBlur: false,
+    ripple: false,
+    fps: 30,
+    rippleQuality: 0.85,
+    blur: 3,
+  })
 
   // 🎨 Evocative 壁纸动效统一 Hook
   // ⚠️ 低性能模式下强制禁用所有动效
   const isLowPerformance = anim.level === 'light' || anim.level === 'none'
   useEvocativeWallpaper('wallpaper', {
     parallax: {
-      enabled: evocativeParallax && !isLowPerformance,
+      enabled: evocativeConfig.parallax && !isLowPerformance,
       enableGyroscope: true,
       enableMouse: true,
       maxOffset: 8,
       scale: 1.02,
     },
     dynamicBlur: {
-      enabled: evocativeDynamicBlur && !isLowPerformance,
-      baseBlur: wallpaperBlur,
+      enabled: evocativeConfig.dynamicBlur && !isLowPerformance,
+      baseBlur: evocativeConfig.blur,
       unblurZone: 0.4,
       blurZone: 0.6,
     },
     ripple: {
-      enabled: evocativeRipple && !isLowPerformance,
+      enabled: evocativeConfig.ripple && !isLowPerformance,
     },
-    fps: evocativeFps,
-    rippleQuality: evocativeRippleQuality,
+    fps: evocativeConfig.fps,
+    rippleQuality: evocativeConfig.rippleQuality,
   })
 
   // 🎨 壁纸颜色提取 —— 缓存 → 验证 → 提取 → 应用
@@ -127,18 +132,24 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (!wallpaperResult)
       return
 
-    // 更新 Evocative 动效配置
+    // 更新 Evocative 动效配置（单次 setState 替代 6 次）
     if (wallpaperResult.evocative) {
-      setEvocativeParallax(wallpaperResult.evocative.parallax)
-      setEvocativeDynamicBlur(wallpaperResult.evocative.dynamicBlur)
-      setEvocativeRipple(wallpaperResult.evocative.ripple)
-      setEvocativeFps(wallpaperResult.evocative.fps)
-      setEvocativeRippleQuality(wallpaperResult.evocative.rippleQuality)
+      setEvocativeConfig({
+        parallax: wallpaperResult.evocative.parallax,
+        dynamicBlur: wallpaperResult.evocative.dynamicBlur,
+        ripple: wallpaperResult.evocative.ripple,
+        fps: wallpaperResult.evocative.fps,
+        rippleQuality: wallpaperResult.evocative.rippleQuality,
+        blur: wallpaperResult.blur,
+      })
     }
     else {
-      setEvocativeParallax(wallpaperResult.parallaxEnabled)
+      setEvocativeConfig(prev => ({
+        ...prev,
+        parallax: wallpaperResult.parallaxEnabled,
+        blur: wallpaperResult.blur,
+      }))
     }
-    setWallpaperBlur(wallpaperResult.blur)
 
     await extractAndApplyColors(wallpaperResult.actualUrl)
   }, [loadWallpaperFromHook, extractAndApplyColors])
@@ -219,7 +230,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* 背景 */}
       <div id="bg-container" className="fixed inset-0 -z-10 overflow-hidden">
         <div id="wallpaper" className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-in-out"></div>
-        <div id="bg-gradient" className="absolute inset-0 bg-gradient-to-b from-transparent from-[35%] via-white/40 via-[55%] to-white/90 to-[85%] transition-opacity duration-500 ease-out"></div>
+        <div id="bg-gradient" className="absolute inset-0 bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"></div>
         {/* ⚠️ 性能优化: 只在标准设备上渲染动画背景
             🔥 使用 GPU 加速的独立合成层，避免 mix-blend-mode 导致的 CPU 回退 */}
         {anim.level === 'standard' && (
@@ -230,7 +241,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="absolute top-[60%] left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/35 rounded-full filter blur-3xl animate-blob-fast animation-delay-4000 bg-blob-element" />
           </div>
         )}
-        <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
+        {anim.level !== 'none' && (
+          <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
+        )}
       </div>
 
       {/* 导航栏 - 使用新的 NavigationIsland 组件 */}
@@ -245,9 +258,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         3. 父容器 pointer-events-none，子元素需要 pointer-events-auto
         4. 响应式定位已配置好，自动避开导航岛
       */}
-      <div className="fixed z-[100] pointer-events-none
+      <div className="fixed z-100 pointer-events-none
         bottom-6 left-6
-        md:bottom-6 md:left-[7.5rem]
+        md:bottom-6 md:left-30
         flex flex-col gap-3 max-w-xs"
       >
 
@@ -256,7 +269,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="pointer-events-auto animate-fade-in">
             <div className="glass rounded-xl px-4 py-3 shadow-lg border border-red-200/50 dark:border-red-800/50 bg-red-50/80 dark:bg-red-950/80 backdrop-blur-md">
               <div className="flex items-center gap-3">
-                <div className="flex-shrink-0">
+                <div className="shrink-0">
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                 </div>
                 <div>
@@ -284,12 +297,12 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <div className="w-4 h-4 rounded-full bg-gradient-radial from-indigo-400/30 to-transparent animate-pulse"></div>
                 )}
                 {notification.type === 'error' && (
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                   </div>
                 )}
                 {notification.type === 'info' && (
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   </div>
                 )}
@@ -314,8 +327,10 @@ export function AppLayout({ children }: AppLayoutProps) {
         {children}
       </main>
 
-      {/* 全局设置弹窗 - 整个应用只渲染一次 */}
-      <SocialNetworkSettingsModal />
+      {/* 全局设置弹窗 - 懒加载，整个应用只渲染一次 */}
+      <Suspense fallback={null}>
+        <SocialNetworkSettingsModal />
+      </Suspense>
 
       {/* 站点底部信息 */}
       <SiteFooter isHomePage={location.pathname === '/'} />

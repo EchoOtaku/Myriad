@@ -5,7 +5,7 @@
 
 import './SiteFooter.css'
 
-import React, { useEffect, useState } from 'react'
+import React, { memo, useEffect, useState } from 'react'
 
 import { API_URL } from '../config'
 import { SiCloudflare } from '@lib/icons'
@@ -87,16 +87,24 @@ interface SiteFooterProps {
   isHomePage?: boolean
 }
 
-export const SiteFooter: React.FC<SiteFooterProps> = ({ isHomePage = false }) => {
+export const SiteFooter: React.FC<SiteFooterProps> = memo(({ isHomePage = false }) => {
   const [config, setConfig] = useState<SiteConfig | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
-  // 检测移动端
+  // 检测移动端（带防抖，避免拖拽窗口时频繁 setState）
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768)
     checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+    let timerId: ReturnType<typeof setTimeout>
+    const handleResize = () => {
+      clearTimeout(timerId)
+      timerId = setTimeout(checkMobile, 150)
+    }
+    window.addEventListener('resize', handleResize, { passive: true })
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      clearTimeout(timerId)
+    }
   }, [])
 
   useEffect(() => {
@@ -250,6 +258,8 @@ export const SiteFooter: React.FC<SiteFooterProps> = ({ isHomePage = false }) =>
       </div>
     </footer>
   )
-}
+})
+
+SiteFooter.displayName = 'SiteFooter'
 
 export default SiteFooter

@@ -163,6 +163,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   } = useReaderSettings()
 
   const [readingProgress, setReadingProgress] = useState(0)
+  const progressRafRef = useRef<number | null>(null)
   const [showToast, setShowToast] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null) // Toast 定时器，防止泄漏
   const [showPanels, setShowPanels] = useState(true)
@@ -179,6 +180,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const [toc, setToc] = useState<TocItem[]>([])
   const [showToc, setShowToc] = useState(false)
   const [activeHeadingId, setActiveHeadingId] = useState<string>('')
+  const activeHeadingIdRef = useRef<string>('')
   const [headingHistory, setHeadingHistory] = useState<string[]>([]) // 标题访问历史
   const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isLongPressRef = useRef(false)
@@ -458,11 +460,17 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 计算阅读进度
   const updateReadingProgress = useCallback(() => {
-    if (articleRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = articleRef.current
-      const progress = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100))
-      setReadingProgress(Number.isNaN(progress) ? 0 : progress)
-    }
+    // RAF 节流：每帧最多更新一次，避免每像素滚动都触发 React re-render
+    if (progressRafRef.current !== null)
+      return
+    progressRafRef.current = requestAnimationFrame(() => {
+      progressRafRef.current = null
+      if (articleRef.current) {
+        const { scrollTop, scrollHeight, clientHeight } = articleRef.current
+        const progress = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100))
+        setReadingProgress(prev => (Number.isNaN(progress) || prev === progress ? prev : progress))
+      }
+    })
   }, [])
 
   // 处理内容中的图片和链接
@@ -548,6 +556,34 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         })
 
         wrapper.appendChild(copyBtn)
+      })
+
+      // 处理透传的原始 iframe（YouTube 等未被 embedProcessor 识别的嵌入）
+      // 用 aspect-ratio 容器包裹，替代不稳定的 padding-bottom hack，防止滚动时闪缩
+      const iframes = contentRef.current.querySelectorAll('iframe')
+      iframes.forEach((iframe) => {
+        // 跳过已在 brew-embed 容器内的（bilibili 等已处理的嵌入）
+        if (iframe.closest('.brew-embed-card, .brew-bilibili-embed, .rss-content-iframe-wrapper'))
+          return
+        // 跳过已处理的
+        if (iframe.dataset.iframeWrapped)
+          return
+        iframe.dataset.iframeWrapped = 'true'
+
+        const src = iframe.src || iframe.getAttribute('src') || ''
+        const isMusicEmbed = src.includes('music.163.com') || src.includes('spotify.com') || src.includes('xiami.com')
+
+        const wrapper = document.createElement('div')
+        wrapper.className = `my-5 rounded-xl overflow-hidden ${isMusicEmbed ? 'aspect-[3/1]' : 'aspect-video'}`
+
+        // 移除 iframe 的固定 width/height，让容器控制尺寸
+        iframe.removeAttribute('width')
+        iframe.removeAttribute('height')
+        iframe.classList.add('w-full', 'h-full', 'border-0')
+        iframe.setAttribute('loading', 'lazy')
+
+        iframe.parentNode?.insertBefore(wrapper, iframe)
+        wrapper.appendChild(iframe)
       })
 
       // 解析标题生成目录
@@ -706,6 +742,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
   }, [comments])
 
+  // 保持 ref 与 state 同步，供滚动回调读取（避免把 activeHeadingId 放入 effect 依赖）
+  activeHeadingIdRef.current = activeHeadingId
+
   // 监听滚动更新当前标题
   useEffect(() => {
     const article = articleRef.current
@@ -729,12 +768,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         }
       }
 
-      if (currentId !== activeHeadingId) {
+      const prevId = activeHeadingIdRef.current
+      if (currentId !== prevId) {
         // 记录标题访问历史（去重，只记录最近 20 个）
-        if (currentId && activeHeadingId) {
+        if (currentId && prevId) {
           setHeadingHistory((prev) => {
-            const newHistory = prev.filter(id => id !== activeHeadingId)
-            newHistory.push(activeHeadingId)
+            const newHistory = prev.filter(id => id !== prevId)
+            newHistory.push(prevId)
             return newHistory.slice(-20)
           })
         }
@@ -744,7 +784,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
     article.addEventListener('scroll', handleScrollForToc, { passive: true })
     return () => article.removeEventListener('scroll', handleScrollForToc)
-  }, [toc, activeHeadingId])
+  }, [toc])
 
   // 监听滚动
   useEffect(() => {
@@ -1259,14 +1299,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       className={`fixed inset-0 z-50 ${currentTheme.bg}`}
       data-brew-reader="true"
     >
-      {/* 顶部进度条 */}
-      <div className="absolute top-0 left-0 right-0 h-0.5 z-10">
-        <motion.div
-          className="h-full bg-gradient-to-r from-amber-500 to-orange-500"
-          style={{ width: `${readingProgress}%` }}
-          initial={enableAnimations ? { width: 0 } : false}
-          animate={enableAnimations ? { width: `${readingProgress}%` } : undefined}
-          transition={enableAnimations ? TRANSITION_FAST : undefined}
+      {/* 顶部进度条 - 用 scaleX 替代 width 动画，避免触发 layout recalculation */}
+      <div className="absolute top-0 left-0 right-0 h-0.5 z-10 overflow-hidden">
+        <div
+          className="h-full w-full bg-linear-to-r from-amber-500 to-orange-500 origin-left"
+          style={{ transform: `scaleX(${readingProgress / 100})` }}
         />
       </div>
 
@@ -1283,10 +1320,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       />
 
       {/* 主内容区 - 三栏布局 */}
+      {/* transform: translateZ(0) 将滚动容器提升为独立合成层，避免 sticky 子元素回流影响主线程 */}
       <article
         ref={articleRef}
         className="h-full overflow-y-auto overflow-x-hidden"
-        style={STYLE_SCROLL_SMOOTH}
+        style={{ ...STYLE_SCROLL_SMOOTH, transform: 'translateZ(0)' }}
       >
         <div className="flex justify-center">
           {/* 左侧控制栏 - 导航与进度 */}
@@ -1535,13 +1573,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               /* RSS 音频 */
               [&_.rss-content-audio]:w-full [&_.rss-content-audio]:my-4
 
-              /* RSS iframe 包装 - 响应式容器 */
-              [&_.rss-content-iframe-wrapper]:relative [&_.rss-content-iframe-wrapper]:w-full
+              /* RSS iframe 包装 - 响应式容器（aspect-ratio 替代 padding-bottom hack）*/
+              [&_.rss-content-iframe-wrapper]:w-full
               [&_.rss-content-iframe-wrapper]:my-5 [&_.rss-content-iframe-wrapper]:rounded-xl
               [&_.rss-content-iframe-wrapper]:overflow-hidden
-              [&_.rss-content-iframe-wrapper.aspect-video]:pb-[56.25%]
-              [&_.rss-content-iframe-wrapper.aspect-wide]:pb-[33.33%]
-              [&_.rss-content-iframe-wrapper_iframe]:absolute [&_.rss-content-iframe-wrapper_iframe]:inset-0
+              [&_.rss-content-iframe-wrapper.aspect-video]:aspect-video
+              [&_.rss-content-iframe-wrapper.aspect-wide]:aspect-[3/1]
               [&_.rss-content-iframe-wrapper_iframe]:w-full [&_.rss-content-iframe-wrapper_iframe]:h-full
               [&_.rss-content-iframe-wrapper_iframe]:border-0
 
@@ -1796,9 +1833,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
                 /* Notion Video */
                 [&_.notion-video]:my-6
-                [&_.notion-video-embed]:relative [&_.notion-video-embed]:w-full
-                [&_.notion-video-embed]:pb-[56.25%] [&_.notion-video-embed]:rounded-xl [&_.notion-video-embed]:overflow-hidden
-                [&_.notion-video-embed_iframe]:absolute [&_.notion-video-embed_iframe]:inset-0
+                [&_.notion-video-embed]:aspect-video [&_.notion-video-embed]:w-full
+                [&_.notion-video-embed]:rounded-xl [&_.notion-video-embed]:overflow-hidden
                 [&_.notion-video-embed_iframe]:w-full [&_.notion-video-embed_iframe]:h-full
                 [&_.notion-video_video]:w-full [&_.notion-video_video]:rounded-xl
 
@@ -1829,9 +1865,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
                 /* Notion Embed */
                 [&_.notion-embed]:my-6
-                [&_.notion-embed-wrapper]:relative [&_.notion-embed-wrapper]:w-full
-                [&_.notion-embed-wrapper]:pb-[56.25%] [&_.notion-embed-wrapper]:rounded-xl [&_.notion-embed-wrapper]:overflow-hidden
-                [&_.notion-embed-wrapper_iframe]:absolute [&_.notion-embed-wrapper_iframe]:inset-0
+                [&_.notion-embed-wrapper]:aspect-video [&_.notion-embed-wrapper]:w-full
+                [&_.notion-embed-wrapper]:rounded-xl [&_.notion-embed-wrapper]:overflow-hidden
                 [&_.notion-embed-wrapper_iframe]:w-full [&_.notion-embed-wrapper_iframe]:h-full
 
                 /* Notion PDF */
@@ -2022,9 +2057,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
                 /* Notion Video */
                 [&_.notion-video]:my-6
-                [&_.notion-video-embed]:relative [&_.notion-video-embed]:w-full
-                [&_.notion-video-embed]:pb-[56.25%] [&_.notion-video-embed]:rounded-xl [&_.notion-video-embed]:overflow-hidden
-                [&_.notion-video-embed_iframe]:absolute [&_.notion-video-embed_iframe]:inset-0
+                [&_.notion-video-embed]:aspect-video [&_.notion-video-embed]:w-full
+                [&_.notion-video-embed]:rounded-xl [&_.notion-video-embed]:overflow-hidden
                 [&_.notion-video-embed_iframe]:w-full [&_.notion-video-embed_iframe]:h-full
                 [&_.notion-video_video]:w-full [&_.notion-video_video]:rounded-xl
 
@@ -2055,9 +2089,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
                 /* Notion Embed */
                 [&_.notion-embed]:my-6
-                [&_.notion-embed-wrapper]:relative [&_.notion-embed-wrapper]:w-full
-                [&_.notion-embed-wrapper]:pb-[56.25%] [&_.notion-embed-wrapper]:rounded-xl [&_.notion-embed-wrapper]:overflow-hidden
-                [&_.notion-embed-wrapper_iframe]:absolute [&_.notion-embed-wrapper_iframe]:inset-0
+                [&_.notion-embed-wrapper]:aspect-video [&_.notion-embed-wrapper]:w-full
+                [&_.notion-embed-wrapper]:rounded-xl [&_.notion-embed-wrapper]:overflow-hidden
                 [&_.notion-embed-wrapper_iframe]:w-full [&_.notion-embed-wrapper_iframe]:h-full
 
                 /* Notion PDF */

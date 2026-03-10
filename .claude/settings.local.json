@@ -60,7 +60,13 @@
       "Bash(gtimeout:*)",
       "Bash(ls:*)",
       "Bash(pnpm add:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(awk 'NR>=191 && NR<=440' /Users/haru/Documents/GitHub/Myriad/frontend/src/views/Brew.tsx)",
+      "Bash(awk 'NR>=443 && NR<=692' /Users/haru/Documents/GitHub/Myriad/frontend/src/views/Brew.tsx)",
+      "Bash(awk 'NR>=695 && NR<=944' /Users/haru/Documents/GitHub/Myriad/frontend/src/views/Brew.tsx)",
+      "Bash(awk 'NR>=947 && NR<=1196' /Users/haru/Documents/GitHub/Myriad/frontend/src/views/Brew.tsx)",
+      "Read(//tmp/**)",
+      "Bash(awk 'NR>=441 && NR<=1197' /Users/haru/Documents/GitHub/Myriad/frontend/src/views/Brew.tsx)"
     ],
     "deny": [],
     "ask": []

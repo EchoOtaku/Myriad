@@ -48,12 +48,16 @@ export function useScrollOptimization(options: ScrollOptimizationOptions = {}): 
     target = typeof document !== 'undefined' ? document.body : null,
   } = options
 
-  const [state, setState] = useState<ScrollState>({
+  // 使用 ref 存储高频变化的滚动数据，避免每帧 setState 导致消费者重渲染
+  // 仅在 isScrolling 状态切换时才触发 React 更新（开始/结束各一次）
+  const stateRef = useRef<ScrollState>({
     isScrolling: false,
     direction: 'none',
     velocity: 0,
     scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
   })
+
+  const [state, setState] = useState<ScrollState>(stateRef.current)
 
   const lastScrollY = useRef(0)
   const lastScrollTime = useRef(0)
@@ -79,19 +83,18 @@ export function useScrollOptimization(options: ScrollOptimizationOptions = {}): 
     lastScrollY.current = currentScrollY
     lastScrollTime.current = now
 
-    // 开始滚动
+    // 始终更新 ref（无渲染开销）
+    stateRef.current.direction = direction
+    stateRef.current.velocity = velocity
+    stateRef.current.scrollY = currentScrollY
+
+    // 开始滚动 — 仅在状态切换时 setState
     if (!isScrollingRef.current) {
       isScrollingRef.current = true
       target.classList.add(scrollingClass)
+      stateRef.current.isScrolling = true
+      setState({ ...stateRef.current })
     }
-
-    // 更新状态
-    setState({
-      isScrolling: true,
-      direction,
-      velocity,
-      scrollY: currentScrollY,
-    })
 
     // 清除之前的结束定时器
     if (scrollEndTimer.current) {
@@ -102,11 +105,9 @@ export function useScrollOptimization(options: ScrollOptimizationOptions = {}): 
     scrollEndTimer.current = setTimeout(() => {
       isScrollingRef.current = false
       target.classList.remove(scrollingClass)
-      setState(prev => ({
-        ...prev,
-        isScrolling: false,
-        velocity: 0,
-      }))
+      stateRef.current.isScrolling = false
+      stateRef.current.velocity = 0
+      setState({ ...stateRef.current })
     }, scrollEndDelay)
   }, [enabled, target, scrollingClass, scrollEndDelay])
 

@@ -369,9 +369,11 @@
 
 /* 低帧率模式 - 全局降级 */
 .low-fps-mode .animate-blob,
+.low-fps-mode .animate-blob-fast,
 .low-fps-mode .animation-delay-2000,
 .low-fps-mode .animation-delay-4000 {
   animation: none !important;
+  will-change: auto;
 }
 
 .low-fps-mode [class*='backdrop-blur'],
@@ -381,8 +383,14 @@
 }
 
 /* 滚动时降级（通过 JS 添加） */
-.is-scrolling .animate-blob {
+.is-scrolling .animate-blob,
+.is-scrolling .animate-blob-fast {
   animation-play-state: paused;
+  will-change: auto;
+}
+
+.is-scrolling .bg-blob-element {
+  will-change: auto;
 }
 
 .is-scrolling [class*='transition-'] {

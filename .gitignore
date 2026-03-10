@@ -64,3 +64,4 @@ out/
 /backend/data/brew
 .env
 /.astro
+/.claude

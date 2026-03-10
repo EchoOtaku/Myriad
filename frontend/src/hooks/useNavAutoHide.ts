@@ -32,17 +32,17 @@ export function useNavAutoHide(selector = '.nav-container') {
     let cachedWindowHeight = window.innerHeight
 
     // ===== CSS 样式应用 =====
+    // transition 只设一次，后续切换只修改变化的属性，避免 cssText 全量重写触发样式重算
+    navContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease'
+
     const applyVisibility = (visible: boolean) => {
       const transform = visible
         ? (cachedIsDesktop ? TRANSFORM_SHOW_DESKTOP : TRANSFORM_SHOW_MOBILE)
         : (cachedIsDesktop ? TRANSFORM_HIDE_DESKTOP : TRANSFORM_HIDE_MOBILE)
 
-      navContainer.style.cssText = `
-        opacity: ${visible ? 1 : 0};
-        transform: ${transform};
-        pointer-events: ${visible ? 'auto' : 'none'};
-        transition: opacity 0.3s ease, transform 0.3s ease;
-      `
+      navContainer.style.opacity = visible ? '1' : '0'
+      navContainer.style.transform = transform
+      navContainer.style.pointerEvents = visible ? 'auto' : 'none'
     }
 
     // ===== 核心显示/隐藏 =====

@@ -151,18 +151,21 @@ export default function ReaderLeftPanel({
   }, [voiceList])
 
   return (
-    <AnimatePresence>
-      {showPanels && (
-        <motion.aside
-          initial={enableAnimations ? { opacity: 0, x: -24, scale: 0.92 } : false}
-          animate={enableAnimations ? { opacity: 1, x: 0, scale: 1 } : undefined}
-          exit={enableAnimations ? { opacity: 0, x: -24, scale: 0.92 } : undefined}
-          transition={enableAnimations ? { duration: 0.3, ease: [0.16, 1, 0.3, 1] } : undefined}
-          className="hidden sm:block sticky top-1/3 -translate-y-1/3 h-fit mr-4 z-20"
-          onClick={e => e.stopPropagation()}
-          onMouseEnter={onMouseEnter}
-          onMouseLeave={onMouseLeave}
-        >
+    // 常驻 DOM 避免每次 showPanels 切换时 unmount/remount backdrop-blur 层（代价极高）
+    // 改用 animate 控制 opacity/transform，pointerEvents 控制交互
+    <>
+      <motion.aside
+        initial={{ opacity: 0, x: -24, scale: 0.92 }}
+        animate={enableAnimations
+          ? (showPanels ? { opacity: 1, x: 0, scale: 1 } : { opacity: 0, x: -24, scale: 0.92 })
+          : { opacity: showPanels ? 1 : 0 }}
+        transition={enableAnimations ? { duration: 0.3, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }}
+        className="hidden sm:block sticky top-1/3 -translate-y-1/3 h-fit mr-4 z-20"
+        style={{ pointerEvents: showPanels ? 'auto' : 'none', willChange: 'transform, opacity' }}
+        onClick={e => e.stopPropagation()}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
           <div className={`flex flex-col items-center gap-2 p-2 rounded-2xl backdrop-blur-md border ${currentTheme.border} ${currentTheme.surface}`}>
             {/* 返回按钮 */}
             <button
@@ -952,7 +955,6 @@ export default function ReaderLeftPanel({
             )}
           </AnimatePresence>
         </motion.aside>
-      )}
-    </AnimatePresence>
+    </>
   )
 }

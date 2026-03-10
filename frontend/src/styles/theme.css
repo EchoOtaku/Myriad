@@ -69,6 +69,8 @@ body {
 
 #bg-container {
   transition: background 0.5s ease-out;
+  /* 隔离背景层：布局/绘制变化不会影响主内容树的 reflow/repaint */
+  contain: strict;
 }
 
 /* 壁纸视差效果样式 */

@@ -4,7 +4,7 @@ import type {
   QuoteData,
   WeatherData,
 } from '../utils/dynamicContent'
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 
@@ -25,8 +25,13 @@ import {
 } from '../utils/dynamicContent'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
-import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets'
-import { MusicPlayer } from './ControlPanel/MusicPlayer'
+// 懒加载展开面板子组件 — 仅在用户展开面板时加载
+const ControlPanelWidgets = lazy(() =>
+  import('./ControlPanel/ControlPanelWidgets').then(m => ({ default: m.ControlPanelWidgets })),
+)
+const MusicPlayer = lazy(() =>
+  import('./ControlPanel/MusicPlayer').then(m => ({ default: m.MusicPlayer })),
+)
 import { UserSection } from './ControlPanel/UserSection'
 import './GlobalControlPanel.css'
 
@@ -1071,10 +1076,12 @@ const GlobalControlPanel: React.FC = () => {
               </div>
 
               {/* 动态信息卡片 - 切换显示 */}
-              <ControlPanelWidgets isAdmin={user?.is_admin} />
+              <Suspense fallback={null}>
+                <ControlPanelWidgets isAdmin={user?.is_admin} />
 
-              {/* 音乐播放器 */}
-              <MusicPlayer player={musicPlayer} />
+                {/* 音乐播放器 */}
+                <MusicPlayer player={musicPlayer} />
+              </Suspense>
 
               {/* 控制项网格 - 一行两个 */}
               <div className="control-items-grid">
