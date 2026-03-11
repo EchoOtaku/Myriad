@@ -39,6 +39,25 @@ pub async fn ai_generate(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let start = std::time::Instant::now();
 
+    // 输入验证前置：在昂贵的权限/DB查询之前进行廉价检查
+    if req.prompt.len() > 2000 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Prompt too long (max 2000 characters)" })),
+        ));
+    }
+
+    if let Some(reason) = validate_prompt_security(&req.prompt) {
+        tracing::warn!(
+            tapp_id = %req.tapp_id, reason = %reason,
+            "[TAPP] AI prompt security violation"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Prompt contains disallowed content", "reason": reason })),
+        ));
+    }
+
     check_tapp_permission(&claims, TappPermission::AiGenerate).await?;
     let user_id = parse_user_id(&claims)?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
@@ -50,26 +69,6 @@ pub async fn ai_generate(
         prompt_len = req.prompt.len(),
         "[TAPP] ai_generate request"
     );
-
-    if req.prompt.len() > 2000 {
-        record_metric("ai.generate", start.elapsed().as_millis() as u64, true).await;
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Prompt too long (max 2000 characters)" })),
-        ));
-    }
-
-    if let Some(reason) = validate_prompt_security(&req.prompt) {
-        tracing::warn!(
-            user_id = user_id, tapp_id = %req.tapp_id, reason = %reason,
-            "[TAPP] AI prompt security violation"
-        );
-        record_metric("ai.generate", start.elapsed().as_millis() as u64, true).await;
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Prompt contains disallowed content", "reason": reason })),
-        ));
-    }
 
     let ai_config = get_ai_config().await?;
     let analyzer = AiAnalyzer::new(
@@ -142,6 +141,15 @@ pub async fn ai_analyze(
     Extension(claims): Extension<Claims>,
     Json(req): Json<TappAiAnalyzeRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // 输入验证前置
+    let data_str = serde_json::to_string_pretty(&req.data).unwrap_or_default();
+    if data_str.len() > 50_000 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Analysis data too large (max 50KB)" })),
+        ));
+    }
+
     check_tapp_permission(&claims, TappPermission::AiAnalyze).await?;
     let user_id = parse_user_id(&claims)?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
@@ -152,14 +160,6 @@ pub async fn ai_analyze(
     );
 
     let ai_config = get_ai_config().await?;
-
-    let data_str = serde_json::to_string_pretty(&req.data).unwrap_or_default();
-    if data_str.len() > 50_000 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Analysis data too large (max 50KB)" })),
-        ));
-    }
 
     let analysis_prompt = match req.analyze_type.as_str() {
         "summarize" => format!(
@@ -262,6 +262,14 @@ pub async fn ai_chat(
     Extension(claims): Extension<Claims>,
     Json(req): Json<AIChatRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // 输入验证前置
+    if req.messages.len() > 100 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Too many messages (max 100)" })),
+        ));
+    }
+
     check_tapp_permission(&claims, TappPermission::AiChat).await?;
     let user_id = parse_user_id(&claims)?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
@@ -270,13 +278,6 @@ pub async fn ai_chat(
         "[TAPP] ai_chat - User: {}, Tapp: {}, Messages: {}",
         claims.username, req.tapp_id, req.messages.len()
     );
-
-    if req.messages.len() > 100 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Too many messages (max 100)" })),
-        ));
-    }
 
     let ai_config = get_ai_config().await?;
     let mut full_messages = req.messages.clone();
@@ -373,6 +374,25 @@ pub async fn ai_image_generate(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let start = std::time::Instant::now();
 
+    // 输入验证前置
+    if req.prompt.len() > 1000 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Prompt too long (max 1000 characters)" })),
+        ));
+    }
+
+    if let Some(reason) = validate_image_prompt_security(&req.prompt) {
+        tracing::warn!(
+            tapp_id = %req.tapp_id, reason = %reason,
+            "[TAPP] AI image prompt security violation"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Prompt contains disallowed content", "reason": reason })),
+        ));
+    }
+
     check_tapp_permission(&claims, TappPermission::AiImage).await?;
     let user_id = parse_user_id(&claims)?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
@@ -382,26 +402,6 @@ pub async fn ai_image_generate(
         user_id = user_id, tapp_id = %req.tapp_id, prompt_len = req.prompt.len(),
         "[TAPP] ai_image_generate request"
     );
-
-    if req.prompt.len() > 1000 {
-        record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Prompt too long (max 1000 characters)" })),
-        ));
-    }
-
-    if let Some(reason) = validate_image_prompt_security(&req.prompt) {
-        tracing::warn!(
-            user_id = user_id, tapp_id = %req.tapp_id, reason = %reason,
-            "[TAPP] AI image prompt security violation"
-        );
-        record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Prompt contains disallowed content", "reason": reason })),
-        ));
-    }
 
     let image_config = get_ai_image_config().await?;
     let width = req.width.unwrap_or(image_config.width).clamp(256, 2048);

@@ -209,8 +209,19 @@ pub async fn add_platform_item(
         items.push(new_item);
     }
 
-    if let Err(e) = tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap()).await {
-        tracing::error!("[TAPP] Failed to write cache file: {}", e);
+    // 原子写入：先写临时文件再重命名，避免并发写入导致数据损坏
+    let tmp_file = cache_file.with_extension("json.tmp");
+    let content = serde_json::to_string_pretty(&data).unwrap();
+    if let Err(e) = tokio::fs::write(&tmp_file, &content).await {
+        tracing::error!("[TAPP] Failed to write temp cache file: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to save platform data" })),
+        ));
+    }
+    if let Err(e) = tokio::fs::rename(&tmp_file, &cache_file).await {
+        tracing::error!("[TAPP] Failed to rename cache file: {}", e);
+        let _ = tokio::fs::remove_file(&tmp_file).await;
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": "Failed to save platform data" })),
@@ -318,8 +329,24 @@ pub async fn add_platform_items_batch(
             continue;
         }
 
-        if let Err(e) = tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap()).await {
-            tracing::error!("[TAPP] Failed to write cache file for {}: {}", platform, e);
+        // 原子写入：先写临时文件再重命名
+        let tmp_file = cache_file.with_extension("json.tmp");
+        let content = serde_json::to_string_pretty(&data).unwrap();
+        let write_ok = match tokio::fs::write(&tmp_file, &content).await {
+            Ok(_) => match tokio::fs::rename(&tmp_file, &cache_file).await {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::error!("[TAPP] Failed to rename cache file for {}: {}", platform, e);
+                    let _ = tokio::fs::remove_file(&tmp_file).await;
+                    false
+                }
+            },
+            Err(e) => {
+                tracing::error!("[TAPP] Failed to write temp cache file for {}: {}", platform, e);
+                false
+            }
+        };
+        if !write_ok {
             let platform_count = results
                 .iter()
                 .filter(|r| r.get("success").and_then(|v| v.as_bool()).unwrap_or(false))

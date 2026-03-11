@@ -24,8 +24,6 @@ import {
   generateWidgetSDK,
 } from './sandbox'
 import { calculateWidgetDimensions, sendResizeMessage, useIframeResize } from '../utils/iframeResize'
-import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
-import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 // 处理器（Widget 只需要基础处理器）
 import {
@@ -43,7 +41,7 @@ import { TappPermissionController } from './TappPermission'
 import type { WidgetRenderProps } from './sandbox'
 import { getCodeForMode } from '../examples/tapps/types'
 import { getQuotaManager } from '../services/QuotaManager'
-import { subscribeToTheme } from '../../utils/themeSubscriber'
+import { useSandboxSubscriptions } from './useSandboxSubscriptions'
 
 export interface TappWidgetSandboxProps {
   /** Tapp 实例 */
@@ -290,9 +288,6 @@ export const TappWidgetSandbox = memo(({
   tappInstanceRef.current = tappInstance
   codeRef.current = code
 
-  // 🎯 使用动画调度器的页面可见性感知，页面隐藏时跳过非必要更新
-  const pageVisibleRef = useRef(isPageVisible())
-
   // 稳定化核心 widgetProps（不包含 theme 和 primaryColor，因为它们通过事件更新）
   // 这样主题/颜色变化不会触发整个沙箱重建
   const configString = JSON.stringify(widgetProps.config || {})
@@ -323,16 +318,8 @@ export const TappWidgetSandbox = memo(({
     onReady?.()
   }, [onReady])
 
-  // 🎯 订阅页面可见性变化（用于优化后台渲染 + 通知 iframe 冻结/恢复）
-  useEffect(() => {
-    return onVisibility((visible) => {
-      pageVisibleRef.current = visible
-      // 🎯 通知 iframe 生命周期变化，让 Tapp 可以响应暂停/恢复
-      if (isReady && bridgeRef.current) {
-        bridgeRef.current.emit(visible ? 'lifecycle:resume' : 'lifecycle:pause', null)
-      }
-    })
-  }, [isReady])
+  // 🎯 共享订阅 hook：主题/主色调/页面可见性联动
+  useSandboxSubscriptions(bridgeRef, isReady)
 
   // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
   // 使用 widgetHtml 长度 + styles 长度 + widgetCSS 长度作为简单指纹，避免大字符串比较
@@ -421,44 +408,6 @@ export const TappWidgetSandbox = memo(({
   // - codeFingerprint: 代码指纹（内容变化才会变）
   // - stableWidgetProps: 已稳定化的 props
   }, [tappInstance.id, widgetId, codeFingerprint, handleReady, stableWidgetProps])
-
-  // 主题变化监听（通过事件通知 iframe，而不是重建）
-  // 🎯 优化：使用共享订阅器，确保所有 widget 都能响应变化
-  useEffect(() => {
-    if (!isReady)
-      return
-
-    return subscribeToTheme((isDark) => {
-      // 直接使用 bridgeRef.current，确保获取最新的 bridge 实例
-      const bridge = bridgeRef.current
-      if (bridge) {
-        bridge.emit('theme:change', isDark ? 'dark' : 'light')
-      }
-    })
-  }, [isReady])
-
-  // 主色调变化监听（通过事件通知 iframe，而不是重建）
-  // 🎯 优化：使用共享的 colorSubscriber，避免每个组件都创建 MutationObserver
-  // 🎯 修复：isReady 时立即发送当前颜色，确保多窗口/多组件场景下正确初始化
-  useEffect(() => {
-    if (!isReady)
-      return
-
-    // 立即发送当前主色调，确保新创建的组件能获取到
-    const bridge = bridgeRef.current
-    const currentColor = getPrimaryColor()
-    if (bridge && currentColor) {
-      bridge.emit('primaryColor:change', currentColor)
-    }
-
-    // 订阅后续变化
-    return subscribeToPrimaryColor((color) => {
-      const bridge = bridgeRef.current
-      if (bridge && color) {
-        bridge.emit('primaryColor:change', color)
-      }
-    })
-  }, [isReady])
 
   // 语言变化监听
   useEffect(() => {

@@ -555,8 +555,20 @@ pub async fn record_metric(operation: &str, duration_ms: u64, is_error: bool) {
 
 // ============ 安全验证 ============
 
-/// 获取管理员用户 ID（使用参数化查询）
+/// 管理员 ID 缓存（60秒 TTL，避免每次请求都查询数据库）
+static ADMIN_ID_CACHE: Lazy<Arc<RwLock<SingleCache<i32>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(60)))));
+
+/// 获取管理员用户 ID（带缓存，使用参数化查询）
 pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCode, Json<Value>)> {
+    // 检查缓存
+    {
+        let cache = ADMIN_ID_CACHE.read().await;
+        if let Some(id) = cache.get() {
+            return Ok(id);
+        }
+    }
+
     let result = db
         .query_one(Statement::from_string(
             DbBackend::Postgres,
@@ -571,13 +583,34 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
             (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "No admin user found" })))
         })?;
 
-    result.try_get::<i32>("", "id").map_err(|e| {
+    let id = result.try_get::<i32>("", "id").map_err(|e| {
         tracing::error!("[TAPP] Error parsing admin ID: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
-    })
+    })?;
+
+    // 写入缓存
+    {
+        let mut cache = ADMIN_ID_CACHE.write().await;
+        cache.set(id);
+    }
+
+    Ok(id)
+}
+
+/// 使管理员 ID 缓存失效（管理员变更时调用）
+#[allow(dead_code)]
+pub async fn invalidate_admin_id_cache() {
+    let mut cache = ADMIN_ID_CACHE.write().await;
+    cache.set(-1); // 强制过期
+    *cache = SingleCache::new(Duration::from_secs(60));
 }
 
 /// 验证用户是否有权访问指定的 Tapp
+///
+/// 安全校验规则：
+/// - 管理员：可以访问所有 Tapp
+/// - 普通用户：可以访问自己安装的 Tapp + 管理员的公开 Tapp
+/// - 游客：只能访问管理员的公开 Tapp
 pub async fn verify_tapp_ownership(
     db: &DatabaseConnection,
     user_id: i32,
@@ -603,6 +636,26 @@ pub async fn verify_tapp_ownership(
                 Json(json!({ "error": "Access denied", "message": "This Tapp is not available for guest access" })),
             ));
         }
+        return Ok(());
+    }
+
+    // 管理员可以访问所有 Tapp
+    if user_id == admin_id {
+        return Ok(());
+    }
+    let is_admin = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
+            [user_id.into()],
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<bool>("", "is_admin").ok())
+        .unwrap_or(false);
+
+    if is_admin {
         return Ok(());
     }
 

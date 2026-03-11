@@ -18,22 +18,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::api::tapp_runtime::common::HTTP_CLIENT;
 use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
 use crate::GLOBAL_DYNAMIC_CONFIG;
-
-// ============ 全局 HTTP 客户端 ============
-
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(10))
-        .pool_max_idle_per_host(10)
-        .user_agent("Myriad-Tapp-API/1.0")
-        .build()
-        .expect("Failed to create HTTP client")
-});
 
 // ============ API 响应缓存 ============
 

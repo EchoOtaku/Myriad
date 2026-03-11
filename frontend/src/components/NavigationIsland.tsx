@@ -21,10 +21,8 @@ interface ModeMetrics {
 }
 
 // 常量
-const ITEM_HEIGHT = 40
 const MIN_ISLAND_HEIGHT = 48
 const MAX_ISLAND_HEIGHT = 800
-const PRIMARY_NAV_COUNT = 5
 
 // ─── 提取 SVG 图标为模块级常量，避免每次渲染重新创建 JSX ───
 const IconBack = (
@@ -288,7 +286,12 @@ export function NavigationIsland() {
       island.style.removeProperty('width')
     }
     else {
-      island.style.removeProperty('width')
+      if (metrics?.width) {
+        island.style.width = `${metrics.width}px`
+      }
+      else {
+        island.style.removeProperty('width')
+      }
       island.style.removeProperty('height')
     }
   }, [buildMetricsKey, getCachedPadding])
@@ -308,9 +311,20 @@ export function NavigationIsland() {
       if (island) {
         island.removeAttribute('data-transitioning')
         island.removeAttribute('data-entering')
-        // 桌面端重置内联高度，让 useLayoutEffect 的 doubleRaf 重新计算
+        // 桌面端：重新测量并设置正常模式高度，而非直接移除
+        // 保留明确的内联高度值，为后续一级→二级过渡的 CSS transition 提供起始帧
+        // （若直接 removeProperty，高度变为 auto，auto → px 无法触发 CSS 过渡动画）
         if (isDesktop()) {
-          island.style.removeProperty('height')
+          const content = navContentRef.current
+          if (content) {
+            const padding = getCachedPadding(island)
+            const height = validateHeight(content.scrollHeight + padding)
+            if (height !== null) {
+              island.style.height = `${height}px`
+            }
+          } else {
+            island.style.removeProperty('height')
+          }
         }
       }
 
@@ -321,7 +335,7 @@ export function NavigationIsland() {
       // 重置自动展开标记，允许新页面自动展开
       autoExpandedRef.current = null
     }
-  }, [location.pathname, renderModeRef, setIsAnimating])
+  }, [location.pathname, renderModeRef, setIsAnimating, getCachedPadding])
 
   // 安全机制：防止 isAnimating 卡死，超时强制重置
   useEffect(() => {
@@ -388,17 +402,15 @@ export function NavigationIsland() {
       island.setAttribute('data-transitioning', 'true')
     }
 
-    // 预计算目标模式高度
-    if (island && isDesktop()) {
-      const padding = getCachedPadding(island)
-      const itemCount = targetMode === 'secondary'
-        ? Math.max(1, secondaryNav.items?.length ?? 0) + 2 // 二级: items + 返回 + 分隔
-        : PRIMARY_NAV_COUNT
-      const estimatedHeight = itemCount * ITEM_HEIGHT + padding
-      const validHeight = validateHeight(estimatedHeight)
-      if (validHeight !== null) {
-        updateModeMetrics(targetMode, { height: validHeight })
-        island.style.height = `${validHeight}px`
+    // 将当前尺寸固定为 px 值，为 CSS 过渡提供起始帧
+    if (island) {
+      if (isDesktop()) {
+        // 确保有明确的起始高度，避免 auto → px 无法触发 CSS 过渡
+        if (!island.style.height) {
+          island.style.height = `${island.offsetHeight}px`
+        }
+      } else {
+        island.style.width = `${island.offsetWidth}px`
       }
     }
 
@@ -441,7 +453,7 @@ export function NavigationIsland() {
       secondaryNav.onToggleExpand()
       // 不在此处 setIsAnimating(false)，等进入动画完成后再解锁
     }, groups.length * timing.exitStagger + timing.exitDuration)
-  }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef, updateModeMetrics, getCachedPadding])
+  }, [isAnimating, secondaryNav, setIsAnimating, renderModeRef])
 
   const handleExpand = useCallback(() => handleTransition('secondary'), [handleTransition])
   const handleCollapse = useCallback(() => handleTransition('normal'), [handleTransition])
@@ -518,7 +530,22 @@ export function NavigationIsland() {
         }
       }
       else if (!isDesktop()) {
+        // 通过 force-reflow 测量新内容的自然宽度，触发 CSS 宽度过渡
+        const fromWidth = currentIsland.offsetWidth
         currentIsland.style.removeProperty('width')
+        const naturalWidth = currentIsland.offsetWidth // force layout，获取新内容的自然宽度
+        if (naturalWidth > 0 && naturalWidth !== fromWidth) {
+          // 恢复起始值，下一帧设目标值，触发 CSS 过渡
+          currentIsland.style.width = `${fromWidth}px`
+          requestAnimationFrame(() => {
+            currentIsland.style.width = `${naturalWidth}px`
+            updateModeMetrics(currentMode, { width: naturalWidth })
+          })
+        }
+        else if (naturalWidth > 0) {
+          currentIsland.style.width = `${naturalWidth}px`
+          updateModeMetrics(currentMode, { width: naturalWidth })
+        }
         currentIsland.style.removeProperty('height')
       }
     })
@@ -695,7 +722,7 @@ export function NavigationIsland() {
       aria-label={t.nav.mainNavigation}
       {...(immersiveMode && { 'aria-hidden': 'true' })}
     >
-      <div className="dynamic-island shadow-2xl">
+      <div className="dynamic-island">
         <div className="flex flex-row md:flex-col items-center gap-1 relative">
           {currentRenderMode === 'secondary' && secondaryNav ? (
             /* 二级导航模式 */

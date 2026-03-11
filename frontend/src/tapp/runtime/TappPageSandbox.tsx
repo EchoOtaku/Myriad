@@ -5,7 +5,6 @@
  */
 
 import type { AnimationConfigRef, SafeInsets, TappNotificationOptions } from './sandbox'
-// 核心模块
 import {
   IFRAME_SANDBOX_ATTRS,
   PAGE_STATIC_CSS,
@@ -17,10 +16,6 @@ import {
   generateThemeCSS,
 } from './sandbox'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getIsDarkMode, subscribeToTheme } from '../../utils/themeSubscriber'
-import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
-import { isPageVisible, onVisibility } from '../../hooks/animation'
-// 处理器
 import {
   registerAIHandlers,
   registerAdvancedHandlers,
@@ -47,8 +42,30 @@ import type { TappPermissionController } from './TappPermission'
 import { createPermissionController } from './TappPermission'
 import { createTappBridge } from './TappBridge'
 import { getCodeForMode } from '../examples/tapps/types'
+import { getIsDarkMode } from '../../utils/themeSubscriber'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useI18n } from '../../contexts/I18nContext'
+import { useSandboxSubscriptions } from './useSandboxSubscriptions'
+
+// 核心模块
+
+
+
+
+
+// 处理器
+
+
+
+
+
+
+
+
+
+
+
+
 
 // 🎯 WebKit/Safari 检测（仅在模块加载时计算一次）
 // Safari 及 iOS 浏览器存在合成层 bug，需要将 iframe portal 到 body
@@ -288,17 +305,8 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   codeRef.current = code
   safeInsetsRef.current = safeInsets
 
-  // 🎯 集成动画调度器的页面可见性感知 + 通知 iframe 冻结/恢复
-  const pageVisibleRef = useRef(isPageVisible())
-  useEffect(() => {
-    return onVisibility((visible) => {
-      pageVisibleRef.current = visible
-      // 🎯 通知 iframe 生命周期变化，让 Tapp 可以响应暂停/恢复
-      if (isReady && bridgeRef.current) {
-        bridgeRef.current.emit(visible ? 'lifecycle:resume' : 'lifecycle:pause', null)
-      }
-    })
-  }, [isReady])
+  // 🎯 集成动画调度器的页面可见性感知 + 主题/主色调订阅（共享 hook）
+  useSandboxSubscriptions(bridgeRef, isReady)
 
   // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
   const codeFingerprint = useMemo(() => {
@@ -334,42 +342,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       return
     bridgeRef.current.emit('locale:change', locale)
   }, [locale, isReady])
-
-  // 主题变化
-  // 🎯 优化：使用共享订阅器，确保所有组件都能响应变化
-  useEffect(() => {
-    if (!isReady)
-      return
-    return subscribeToTheme((isDark) => {
-      const bridge = bridgeRef.current
-      if (bridge) {
-        bridge.emit('theme:change', isDark ? 'dark' : 'light')
-      }
-    })
-  }, [isReady])
-
-  // 主色调变化
-  // 🎯 优化：使用共享的 colorSubscriber，避免每个组件都创建 MutationObserver
-  // 🎯 修复：isReady 时立即发送当前颜色，确保多窗口场景下正确初始化
-  useEffect(() => {
-    if (!isReady)
-      return
-
-    // 立即发送当前主色调，确保新打开的窗口能获取到
-    const bridge = bridgeRef.current
-    const currentColor = getPrimaryColor()
-    if (bridge && currentColor) {
-      bridge.emit('primaryColor:change', currentColor)
-    }
-
-    // 订阅后续变化
-    return subscribeToPrimaryColor((color) => {
-      const bridge = bridgeRef.current
-      if (bridge && color) {
-        bridge.emit('primaryColor:change', color)
-      }
-    })
-  }, [isReady])
 
   // 媒体状态变化 - 转发给 Tapp 沙箱
   useEffect(() => {

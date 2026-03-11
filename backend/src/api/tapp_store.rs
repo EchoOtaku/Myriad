@@ -20,8 +20,8 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DbBackend, EntityTrait, QueryFilter, Set, Statement,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -34,109 +34,27 @@ use crate::models::entities::{
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
+use crate::api::tapp_runtime::common as tapp_common;
 
-/// 获取管理员用户 ID
-/// 返回第一个 is_admin = true 的用户 ID
+/// 获取管理员用户 ID（委托给 tapp_runtime::common 的缓存版本）
 async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, StatusCode> {
-    let result = db
-        .query_one(Statement::from_string(
-            DbBackend::Postgres,
-            "SELECT id FROM users WHERE is_admin = true LIMIT 1".to_string(),
-        ))
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    result
-        .try_get::<i32>("", "id")
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    tapp_common::get_admin_user_id(db).await.map_err(|(status, _)| status)
 }
 
-/// 🔒 验证用户对 Tapp 的访问权限
+/// 🔒 验证用户对 Tapp 的访问权限（委托给 tapp_runtime::common 的统一版本）
 ///
 /// 安全校验规则：
 /// - 管理员：可以访问所有 Tapp
 /// - 普通用户：可以访问自己安装的 Tapp + 管理员的公开 Tapp
 /// - 游客：只能访问管理员的公开 Tapp
-///
-/// 这确保了应用间的数据隔离，Tapp A 无法访问 Tapp B 的存储
 async fn verify_tapp_ownership(
     db: &DatabaseConnection,
     user_id: i32,
     tapp_id: &str,
 ) -> Result<(), StatusCode> {
-    // 获取管理员 ID
-    let admin_id = get_admin_user_id(db).await?;
-
-    // 游客（负数 ID）只能访问管理员的公开 Tapp
-    let is_guest = user_id < 0;
-
-    if is_guest {
-        // 查找管理员安装的该 Tapp
-        let admin_tapp = tapps::Entity::find()
-            .filter(tapps::Column::TappId.eq(tapp_id))
-            .filter(tapps::Column::UserId.eq(admin_id))
-            .one(db)
-            .await
-            .map_err(|e| {
-                tracing::error!("[TAPP] Database error in ownership verification: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        if admin_tapp.is_none() {
-            tracing::warn!(
-                "[TAPP] Guest access denied - tapp_id: {} is not a public admin Tapp",
-                tapp_id
-            );
-            return Err(StatusCode::FORBIDDEN);
-        }
-
-        return Ok(());
-    }
-
-    // 管理员可以访问所有 Tapp
-    // 先检查用户是否是管理员
-    let is_admin = db
-        .query_one(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
-            [user_id.into()],
-        ))
+    tapp_common::verify_tapp_ownership(db, user_id, tapp_id)
         .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<bool>("", "is_admin").ok())
-        .unwrap_or(false);
-
-    if is_admin {
-        return Ok(());
-    }
-
-    // 普通用户：检查自己拥有的 Tapp 或管理员的公开 Tapp
-    let tapp = tapps::Entity::find()
-        .filter(tapps::Column::TappId.eq(tapp_id))
-        .filter(
-            tapps::Column::UserId
-                .eq(user_id)
-                .or(tapps::Column::UserId.eq(admin_id)),
-        )
-        .one(db)
-        .await
-        .map_err(|e| {
-            tracing::error!("[TAPP] Database error in ownership verification: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    if tapp.is_none() {
-        tracing::warn!(
-            "[TAPP] Ownership verification failed - user_id: {}, tapp_id: {}",
-            user_id,
-            tapp_id
-        );
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    Ok(())
+        .map_err(|(status, _)| status)
 }
 
 /// API 响应

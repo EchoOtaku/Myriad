@@ -1,8 +1,6 @@
 /* 导航岛动画系统
- * ⚠️ 级联依赖: 本文件覆盖 navigation-island.css 中的 transition: all
- * navigation-island.css 在 App.tsx 全局导入，本文件在 AppLayout 组件导入
- * 这一导入顺序确保动画 transition 正确覆盖基础样式
- * 若需修改 transition，只改此处；navigation-island.css 的 transition: all 勿动 */
+ * navigation-island.css 和本文件的 .dynamic-island transition 保持一致，
+ * 若需修改动画曲线，两处都要同步修改 */
 .dynamic-island {
   width: 65px; /* 桌面端默认宽度 */
   overflow: hidden;
@@ -99,6 +97,18 @@
   }
   100% {
     transform: scale(1);
+  }
+}
+
+/* 导航项组间距 */
+.nav-group-spaced {
+  margin-left: 8px;
+}
+
+@media (min-width: 768px) {
+  .nav-group-spaced {
+    margin-left: 0;
+    margin-top: 8px;
   }
 }
 
