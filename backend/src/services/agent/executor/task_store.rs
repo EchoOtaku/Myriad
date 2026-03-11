@@ -28,6 +28,7 @@ pub static CANCELLATION_TOKENS: Lazy<Arc<RwLock<HashSet<String>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashSet::new())));
 
 /// 请求取消任务
+#[allow(dead_code)]
 pub async fn request_cancellation(task_id: &str) {
     let mut tokens = CANCELLATION_TOKENS.write().await;
     tokens.insert(task_id.to_string());
@@ -65,17 +66,21 @@ impl TaskStore {
     /// 存储任务（同时异步保存到数据库）
     pub fn store(&mut self, user_id: i32, task: TaskState) {
         let task_id = task.task_id.clone();
-        let task_clone = task.clone();
 
+        // 先 insert 到内存，再从内存里借出一份 clone 给异步任务
+        // 避免 task 被 move 前的额外 clone
         self.tasks.insert(task_id.clone(), task);
-        self.user_tasks.entry(user_id).or_default().push(task_id);
+        self.user_tasks.entry(user_id).or_default().push(task_id.clone());
 
-        // 异步保存到数据库
-        tokio::spawn(async move {
-            if let Err(e) = save_task_to_db(user_id, &task_clone).await {
-                tracing::warn!("保存任务到数据库失败: {}", e);
-            }
-        });
+        // 从内存中取出已存储的任务做一次 clone 用于持久化
+        // 这样可在 TaskState 较大时只 clone 一次，而非两次
+        if let Some(task_for_db) = self.tasks.get(&task_id).cloned() {
+            tokio::spawn(async move {
+                if let Err(e) = save_task_to_db(user_id, &task_for_db).await {
+                    tracing::warn!("保存任务到数据库失败: {}", e);
+                }
+            });
+        }
     }
 
     /// 存储任务并等待数据库保存完成
@@ -338,10 +343,66 @@ pub fn persist_task_async(user_id: i32, task: TaskState) {
 
 // ============ 公共 API ============
 
-/// 获取任务状态
+/// 获取任务状态（不含所有权校验）
+#[allow(dead_code)]
 pub async fn get_task(task_id: &str) -> Option<TaskState> {
     let store = TASK_STORE.read().await;
     store.get(task_id).cloned()
+}
+
+/// 获取任务状态（带所有权校验）
+///
+/// 仅当任务属于指定用户时才返回，防止 IDOR
+pub async fn get_task_for_user(task_id: &str, user_id: i32) -> Option<TaskState> {
+    let store = TASK_STORE.read().await;
+    // 先确认 task_id 在该用户的任务列表中
+    let user_owns_task = store
+        .user_tasks
+        .get(&user_id)
+        .map(|ids| ids.iter().any(|id| id == task_id))
+        .unwrap_or(false);
+
+    if user_owns_task {
+        store.get(task_id).cloned()
+    } else {
+        None
+    }
+}
+
+/// 取消任务（带所有权校验）
+///
+/// 仅当任务属于指定用户时才取消，返回 true 表示已请求取消
+pub async fn cancel_task_for_user(task_id: &str, user_id: i32) -> bool {
+    let owned = {
+        let store = TASK_STORE.read().await;
+        store
+            .user_tasks
+            .get(&user_id)
+            .map(|ids| ids.iter().any(|id| id == task_id))
+            .unwrap_or(false)
+    };
+
+    if !owned {
+        return false;
+    }
+
+    // 设置取消标记
+    {
+        let mut tokens = CANCELLATION_TOKENS.write().await;
+        tokens.insert(task_id.to_string());
+    }
+
+    // 更新内存中的任务状态
+    {
+        let mut store = TASK_STORE.write().await;
+        if let Some(task) = store.get_mut(task_id) {
+            task.status = TaskStatus::Cancelled;
+            task.error = Some("任务已被用户取消".to_string());
+        }
+    }
+
+    tracing::info!(task_id = %task_id, user_id = user_id, "[TaskStore] Task cancelled by user");
+    true
 }
 
 /// 获取用户的所有任务
@@ -355,6 +416,18 @@ pub async fn get_user_tasks(user_id: i32) -> Vec<TaskState> {
 pub async fn cleanup_tasks() {
     let mut store = TASK_STORE.write().await;
     store.cleanup_expired().await;
+}
+
+/// 以约 5% 的概率触发一次过期任务清理（请求驱动，避免独立定时任务）
+pub async fn maybe_cleanup_tasks() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // 每 20 次请求清理一次
+    if n % 20 == 0 {
+        let mut store = TASK_STORE.write().await;
+        store.cleanup_expired().await;
+    }
 }
 
 #[cfg(test)]

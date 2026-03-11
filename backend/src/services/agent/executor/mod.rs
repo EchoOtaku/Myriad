@@ -22,14 +22,13 @@ pub mod utils;
 
 // 重新导出常用类型
 pub use task_store::{
-    get_task, get_user_tasks, init_task_store_db, persist_task_async,
-    TASK_STORE, request_cancellation, is_cancelled, clear_cancellation,
+    cancel_task_for_user, clear_cancellation, get_task, get_task_for_user, get_user_tasks,
+    init_task_store_db, is_cancelled, maybe_cleanup_tasks, persist_task_async, TASK_STORE,
 };
 pub use utils::summarize_output;
 
-use crate::api::agent::ProgressEvent;
 use crate::services::agent::capability::get_registry;
-use crate::services::agent::types::*;
+use crate::services::agent::types::{self, *};
 use crate::services::ai::create_ai_analyzer;
 use crate::services::analyzer::AiAnalyzer;
 use handlers::HandlerContext;
@@ -78,7 +77,7 @@ impl Executor {
         &self,
         recipe: &Recipe,
         user_id: i32,
-        progress_tx: Option<tokio::sync::mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<tokio::sync::mpsc::Sender<types::AgentProgressEvent>>,
     ) -> Result<TaskState, String> {
         // 创建任务状态
         let mut task_state = TaskState::new(recipe);
@@ -172,7 +171,7 @@ impl Executor {
                 // 发送取消事件
                 if let Some(ref tx) = progress_tx {
                     let _ = tx
-                        .send(ProgressEvent::Error {
+                        .send(AgentProgressEvent::Error {
                             task_id: Some(task_state.task_id.clone()),
                             message: "任务已被取消".to_string(),
                             code: "CANCELLED".to_string(),
@@ -216,7 +215,7 @@ impl Executor {
                 let step_description =
                     crate::services::agent::capability::get_step_description(&step);
                 let _ = tx
-                    .send(ProgressEvent::StepStarted {
+                    .send(AgentProgressEvent::StepStarted {
                         step_id: step.id.clone(),
                         step_index: (step_index.saturating_sub(1)) as u32,
                         total_steps: current_total as u32,
@@ -242,7 +241,7 @@ impl Executor {
                     if let Some(ref tx) = progress_tx {
                         let output_summary = summarize_output(&output);
                         let _ = tx
-                            .send(ProgressEvent::StepCompleted {
+                            .send(AgentProgressEvent::StepCompleted {
                                 step_id: step.id.clone(),
                                 step_index: (step_index.saturating_sub(1)) as u32,
                                 success: true,
@@ -272,7 +271,7 @@ impl Executor {
                     // 发送步骤失败事件
                     if let Some(ref tx) = progress_tx {
                         let _ = tx
-                            .send(ProgressEvent::StepCompleted {
+                            .send(AgentProgressEvent::StepCompleted {
                                 step_id: step.id.clone(),
                                 step_index: (step_index.saturating_sub(1)) as u32,
                                 success: false,

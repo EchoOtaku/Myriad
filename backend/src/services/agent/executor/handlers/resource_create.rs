@@ -9,6 +9,19 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// 验证平台名称白名单，防止路径穿越
+fn validate_platform_name(platform: &str) -> bool {
+    matches!(platform, "steam" | "bilibili" | "github" | "netease")
+}
+
+/// 简易 HTML 转义
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 /// 执行资源创建能力
 pub async fn execute(
     capability_id: &str,
@@ -111,9 +124,9 @@ async fn execute_report_create(params: &HashMap<String, Value>) -> Result<Value,
         ),
         "html" => format!(
             "<h1>{}</h1><p>生成时间：{}</p><pre>{}</pre>",
-            title,
+            escape_html(title),
             Utc::now().format("%Y-%m-%d %H:%M:%S"),
-            serde_json::to_string_pretty(&analysis).unwrap_or_default()
+            escape_html(&serde_json::to_string_pretty(&analysis).unwrap_or_default())
         ),
         _ => serde_json::to_string_pretty(&json!({
             "title": title,
@@ -151,9 +164,13 @@ async fn execute_report_comprehensive(
         .and_then(|v| v.as_str())
         .unwrap_or("casual");
 
-    // 收集所有平台数据
+    // 收集所有平台数据（白名单校验，防止路径穿越）
     let mut platform_data = Vec::new();
     for platform in &platforms {
+        if !validate_platform_name(platform) {
+            tracing::warn!(platform = %platform, "[Report] 跳过无效平台名");
+            continue;
+        }
         let cache_file = format!("cache/platforms/{}_filtered.json", platform);
         if let Ok(content) = tokio::fs::read_to_string(&cache_file).await {
             if let Ok(data) = serde_json::from_str::<Value>(&content) {
@@ -342,23 +359,49 @@ async fn execute_bookmark_save(
     let bookmark_id = format!("bookmark_{}", Utc::now().timestamp_millis());
     let now = Utc::now();
 
-    // 尝试获取网页标题
+    // 尝试获取网页标题（SSRF 防护：仅允许 http/https，阻止内网地址）
     let fetched_title = if title.is_none() {
-        let client = reqwest::Client::new();
-        if let Ok(resp) = client.get(url).send().await {
-            if let Ok(body) = resp.text().await {
-                if let Some(start) = body.find("<title>") {
-                    body[start..]
-                        .find("</title>")
-                        .map(|end| body[start + 7..start + end].to_string())
+        let is_safe = url::Url::parse(url)
+            .ok()
+            .filter(|u| matches!(u.scheme(), "http" | "https"))
+            .and_then(|u| u.host_str().map(|h| h.to_string()))
+            .filter(|host| {
+                host != "localhost"
+                    && !host.ends_with(".local")
+                    && !host.ends_with(".internal")
+                    && !host.parse::<std::net::IpAddr>().map_or(false, |ip| ip.is_loopback() || match ip {
+                        std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
+                        std::net::IpAddr::V6(v6) => v6.is_loopback(),
+                    })
+            })
+            .is_some();
+        if !is_safe {
+            None
+        } else {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .ok();
+            if let Some(client) = client {
+                if let Ok(resp) = client.get(url).send().await {
+                    if let Ok(body) = resp.text().await {
+                        let body_limited: String = body.chars().take(100_000).collect();
+                        if let Some(start) = body_limited.find("<title>") {
+                            body_limited[start..]
+                                .find("</title>")
+                                .map(|end| body_limited[start + 7..start + end].to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             } else {
                 None
             }
-        } else {
-            None
         }
     } else {
         None

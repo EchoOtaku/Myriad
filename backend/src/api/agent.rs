@@ -23,7 +23,8 @@ use tokio_stream::StreamExt;
 use crate::middleware::auth::Claims;
 use crate::models::entities::agent_task_presets;
 use crate::services::agent::{
-    Agent, AgentResponse, AgentResponseType, RequestContext, TaskState, UserRequest,
+    Agent, AgentProgressEvent, AgentResponse, AgentResponseType, RequestContext, TaskState,
+    UserRequest,
 };
 
 // ============ 请求/响应类型 ============
@@ -266,73 +267,8 @@ pub struct QuestionSummary {
 
 // ============ SSE 进度事件类型 ============
 
-/// SSE 进度事件
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum ProgressEvent {
-    /// 任务已创建
-    TaskCreated {
-        #[serde(rename = "taskId")]
-        task_id: String,
-        message: String,
-        #[serde(rename = "totalSteps")]
-        total_steps: u32,
-    },
-    /// 步骤开始
-    StepStarted {
-        #[serde(rename = "stepId")]
-        step_id: String,
-        #[serde(rename = "stepIndex")]
-        step_index: u32,
-        #[serde(rename = "totalSteps")]
-        total_steps: u32,
-        #[serde(rename = "capabilityName")]
-        capability_name: String,
-        description: String,
-    },
-    /// 步骤完成
-    StepCompleted {
-        #[serde(rename = "stepId")]
-        step_id: String,
-        #[serde(rename = "stepIndex")]
-        step_index: u32,
-        success: bool,
-        #[serde(rename = "durationMs")]
-        duration_ms: u64,
-        #[serde(rename = "outputSummary", skip_serializing_if = "Option::is_none")]
-        output_summary: Option<String>,
-    },
-    /// 进度更新
-    Progress {
-        progress: u8,
-        #[serde(rename = "completedSteps")]
-        completed_steps: u32,
-        #[serde(rename = "totalSteps")]
-        total_steps: u32,
-        message: String,
-    },
-    /// 任务完成
-    TaskCompleted {
-        #[serde(rename = "taskId")]
-        task_id: String,
-        success: bool,
-        response: Box<ApiResponse>,
-    },
-    /// 需要用户输入
-    WaitingForInput {
-        #[serde(rename = "taskId")]
-        task_id: String,
-        question: QuestionSummary,
-    },
-    /// 错误
-    Error {
-        #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
-        message: String,
-        code: String,
-    },
-}
+/// SSE 进度事件（使用 service 层统一类型）
+pub type ProgressEvent = AgentProgressEvent;
 
 // ============ 任务预设 API 类型 ============
 
@@ -582,51 +518,7 @@ fn extract_capability_name(step_id: &str) -> String {
 
 impl From<AgentResponse> for ApiResponse {
     fn from(response: AgentResponse) -> Self {
-        // 转换数据展示类型
-        let data_display = response.data_display.map(|hint| match hint {
-            crate::services::agent::DataDisplayHint::Table { columns, data_path } => {
-                DataDisplayHintApi::Table {
-                    columns: columns
-                        .into_iter()
-                        .map(|c| ColumnDefApi {
-                            field: c.field,
-                            title: c.title,
-                            width: c.width,
-                            sortable: c.sortable,
-                        })
-                        .collect(),
-                    data_path,
-                }
-            }
-            crate::services::agent::DataDisplayHint::Chart {
-                chart_type,
-                x_field,
-                y_field,
-            } => DataDisplayHintApi::Chart {
-                chart_type: format!("{:?}", chart_type).to_lowercase(),
-                x_field,
-                y_field,
-            },
-            crate::services::agent::DataDisplayHint::CardList {
-                title_field,
-                description_field,
-                image_field,
-            } => DataDisplayHintApi::CardList {
-                title_field,
-                description_field,
-                image_field,
-            },
-            crate::services::agent::DataDisplayHint::Markdown => DataDisplayHintApi::Markdown,
-            crate::services::agent::DataDisplayHint::KeyValue => DataDisplayHintApi::KeyValue,
-            crate::services::agent::DataDisplayHint::Timeline {
-                time_field,
-                content_field,
-            } => DataDisplayHintApi::Timeline {
-                time_field,
-                content_field,
-            },
-            crate::services::agent::DataDisplayHint::Raw => DataDisplayHintApi::Raw,
-        });
+        let data_display = response.data_display.map(convert_data_display_hint);
 
         // 转换确认请求
         let confirmation = response.confirmation.map(|req| {
@@ -679,6 +571,114 @@ impl From<AgentResponse> for ApiResponse {
     }
 }
 
+// ============ 辅助函数 ============
+
+/// 输入限制常量
+const MAX_INPUT_LEN: usize = 2000;
+const MAX_HISTORY_ITEMS: usize = 50;
+
+/// 将 API 层的 ProcessContext 转换为 service 层的 RequestContext
+fn build_request_context(ctx: ProcessContext) -> RequestContext {
+    let conversation_history = ctx.conversation_history.map(|msgs| {
+        msgs.into_iter()
+            .take(MAX_HISTORY_ITEMS)
+            .map(|m| crate::services::agent::types::ConversationMessage {
+                role: m.role,
+                content: m.content,
+                created_at: m.created_at,
+            })
+            .collect()
+    });
+
+    RequestContext {
+        current_route: ctx.current_route,
+        active_platforms: ctx.active_platforms.unwrap_or_default(),
+        preferences: None,
+        session_id: ctx.session_id,
+        conversation_history,
+        custom_data: ctx.custom_data,
+    }
+}
+
+/// 将 DataDisplayHint 从 service 层转换为 API 层类型
+fn convert_data_display_hint(
+    hint: crate::services::agent::DataDisplayHint,
+) -> DataDisplayHintApi {
+    match hint {
+        crate::services::agent::DataDisplayHint::Table { columns, data_path } => {
+            DataDisplayHintApi::Table {
+                columns: columns
+                    .into_iter()
+                    .map(|c| ColumnDefApi {
+                        field: c.field,
+                        title: c.title,
+                        width: c.width,
+                        sortable: c.sortable,
+                    })
+                    .collect(),
+                data_path,
+            }
+        }
+        crate::services::agent::DataDisplayHint::Chart {
+            chart_type,
+            x_field,
+            y_field,
+        } => DataDisplayHintApi::Chart {
+            chart_type: format!("{:?}", chart_type).to_lowercase(),
+            x_field,
+            y_field,
+        },
+        crate::services::agent::DataDisplayHint::CardList {
+            title_field,
+            description_field,
+            image_field,
+        } => DataDisplayHintApi::CardList {
+            title_field,
+            description_field,
+            image_field,
+        },
+        crate::services::agent::DataDisplayHint::Markdown => DataDisplayHintApi::Markdown,
+        crate::services::agent::DataDisplayHint::KeyValue => DataDisplayHintApi::KeyValue,
+        crate::services::agent::DataDisplayHint::Timeline {
+            time_field,
+            content_field,
+        } => DataDisplayHintApi::Timeline {
+            time_field,
+            content_field,
+        },
+        crate::services::agent::DataDisplayHint::Raw => DataDisplayHintApi::Raw,
+    }
+}
+
+/// 解析 user_id，返回标准化错误
+fn parse_user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
+    claims.sub.parse::<i32>().map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
+    })
+}
+
+/// 验证输入长度
+fn validate_input(input: &str) -> Result<(), (StatusCode, Json<Value>)> {
+    if input.len() > MAX_INPUT_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("输入过长，最大允许 {} 字符", MAX_INPUT_LEN)
+            })),
+        ));
+    }
+    if input.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "输入不能为空" })),
+        ));
+    }
+    Ok(())
+}
+
 // ============ API 端点 ============
 
 /// 处理自然语言请求
@@ -688,47 +688,20 @@ pub async fn process(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ProcessRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
+    validate_input(&req.input)?;
 
     tracing::info!(
         user_id = user_id,
-        input = %req.input,
+        input_len = req.input.len(),
         "[Agent API] Processing request"
     );
-
-    // 构建用户请求
-    let context = req.context.map(|ctx| {
-        // 转换对话历史格式
-        let conversation_history = ctx.conversation_history.map(|msgs| {
-            msgs.into_iter()
-                .map(|m| crate::services::agent::types::ConversationMessage {
-                    role: m.role,
-                    content: m.content,
-                    created_at: m.created_at,
-                })
-                .collect()
-        });
-
-        RequestContext {
-            current_route: ctx.current_route,
-            active_platforms: ctx.active_platforms.unwrap_or_default(),
-            preferences: None,
-            session_id: ctx.session_id,
-            conversation_history,
-            custom_data: ctx.custom_data,
-        }
-    });
 
     let user_request = UserRequest {
         raw_input: req.input,
         timestamp: chrono::Utc::now(),
         user_id,
-        context,
+        context: req.context.map(build_request_context),
     };
 
     // 创建 Agent 并处理请求
@@ -751,47 +724,20 @@ pub async fn process_stream(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ProcessRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
+    validate_input(&req.input)?;
 
     tracing::info!(
         user_id = user_id,
-        input = %req.input,
+        input_len = req.input.len(),
         "[Agent API] Processing request with streaming"
     );
 
-    // 构建用户请求
-    let context = req.context.map(|ctx| {
-        // 转换对话历史格式
-        let conversation_history = ctx.conversation_history.map(|msgs| {
-            msgs.into_iter()
-                .map(|m| crate::services::agent::types::ConversationMessage {
-                    role: m.role,
-                    content: m.content,
-                    created_at: m.created_at,
-                })
-                .collect()
-        });
-
-        RequestContext {
-            current_route: ctx.current_route,
-            active_platforms: ctx.active_platforms.unwrap_or_default(),
-            preferences: None,
-            session_id: ctx.session_id,
-            conversation_history,
-            custom_data: ctx.custom_data,
-        }
-    });
-
     let user_request = UserRequest {
-        raw_input: req.input.clone(),
+        raw_input: req.input,
         timestamp: chrono::Utc::now(),
         user_id,
-        context,
+        context: req.context.map(build_request_context),
     };
 
     // 创建进度通道
@@ -807,17 +753,22 @@ pub async fn process_stream(
         match agent.process_with_progress(user_request, tx.clone()).await {
             Ok(response) => {
                 let api_response: ApiResponse = response.into();
+                let task_id = api_response
+                    .task
+                    .as_ref()
+                    .map(|t| t.task_id.clone())
+                    .unwrap_or_default();
+                let success = api_response.success;
+                // 序列化为 Value，避免 service 层依赖 API 类型
+                let response_value = serde_json::to_value(&api_response)
+                    .unwrap_or_else(|_| json!({"error": "serialization failed"}));
 
                 tracing::info!("[Agent API] Sending TaskCompleted event");
                 let send_result = tx
-                    .send(ProgressEvent::TaskCompleted {
-                        task_id: api_response
-                            .task
-                            .as_ref()
-                            .map(|t| t.task_id.clone())
-                            .unwrap_or_default(),
-                        success: api_response.success,
-                        response: Box::new(api_response),
+                    .send(AgentProgressEvent::TaskCompleted {
+                        task_id,
+                        success,
+                        response: Box::new(response_value),
                     })
                     .await;
                 if let Err(e) = send_result {
@@ -829,7 +780,7 @@ pub async fn process_stream(
             Err(e) => {
                 tracing::error!(error = %e, "[Agent API] Processing failed, sending error event");
                 let _ = tx
-                    .send(ProgressEvent::Error {
+                    .send(AgentProgressEvent::Error {
                         task_id: None,
                         message: e.clone(),
                         code: "PROCESSING_ERROR".to_string(),
@@ -856,12 +807,7 @@ pub async fn get_task(
     Extension(claims): Extension<Claims>,
     Path(task_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     tracing::debug!(
         user_id = user_id,
@@ -869,8 +815,9 @@ pub async fn get_task(
         "[Agent API] Getting task status"
     );
 
+    // 带所有权校验，防止 IDOR
     let agent = Agent::new(db).await;
-    let task = agent.get_task_status(&task_id).await;
+    let task = agent.get_task_for_user(&task_id, user_id).await;
 
     match task {
         Some(task_state) => Ok(Json(json!({
@@ -882,7 +829,7 @@ pub async fn get_task(
         }))),
         None => Err((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Task not found" })),
+            Json(json!({ "error": "Task not found or access denied" })),
         )),
     }
 }
@@ -893,12 +840,7 @@ pub async fn list_tasks(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     tracing::debug!(user_id = user_id, "[Agent API] Listing user tasks");
 
@@ -942,16 +884,11 @@ pub async fn list_capabilities(
 /// 取消任务
 /// POST /api/agent/tasks/{task_id}/cancel
 pub async fn cancel_task(
-    State(_db): State<DatabaseConnection>,
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Path(task_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     tracing::info!(
         user_id = user_id,
@@ -959,25 +896,22 @@ pub async fn cancel_task(
         "[Agent API] Cancelling task"
     );
 
-    // 请求取消任务
-    use crate::services::agent::executor::request_cancellation;
-    request_cancellation(&task_id).await;
+    // 通过 Agent 接口取消（含所有权校验，防止 IDOR）
+    let agent = Agent::new(db).await;
+    let cancelled = agent.cancel_task_for_user(&task_id, user_id).await;
 
-    // 同时更新任务状态存储
-    use crate::services::agent::executor::TASK_STORE;
-    {
-        let mut store = TASK_STORE.write().await;
-        if let Some(task) = store.get_mut(&task_id) {
-            task.status = crate::services::agent::types::TaskStatus::Cancelled;
-            task.error = Some("任务已被用户取消".to_string());
-        }
+    if cancelled {
+        Ok(Json(json!({
+            "success": true,
+            "message": "Task cancellation requested",
+            "taskId": task_id
+        })))
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Task not found or access denied" })),
+        ))
     }
-
-    Ok(Json(json!({
-        "success": true,
-        "message": "Task cancellation requested",
-        "taskId": task_id
-    })))
 }
 
 /// 回答问题请求
@@ -997,156 +931,69 @@ pub async fn answer_task_question(
     Path(task_id): Path<String>,
     Json(req): Json<AnswerQuestionRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     tracing::info!(
         user_id = user_id,
         task_id = %task_id,
         question_id = %req.question_id,
-        answer = %req.answer,
         "[Agent API] Answering task question"
     );
 
-    // 创建 Agent 并处理回答
-    // 简化处理：用户选择后，把选择作为新的输入重新处理
-    let agent = crate::services::agent::Agent::new(db.clone()).await;
+    // 验证任务所有权：确认 task_id 属于当前用户
+    let agent = Agent::new(db.clone()).await;
+    let user_tasks = agent.get_user_tasks(user_id).await;
+    let task = user_tasks.iter().find(|t| t.task_id == task_id);
 
-    // 构建新的用户请求，包含用户的选择
-    let new_input = format!("打开 {} 的最新文章", req.answer);
-    let user_request = crate::services::agent::UserRequest {
-        raw_input: new_input.clone(),
+    let (original_question, original_input) = match task {
+        Some(t) => {
+            // 验证 question_id 是否匹配待回答问题
+            let q = t.pending_question.as_ref().filter(|q| q.question_id == req.question_id);
+            let input = t
+                .execution_context
+                .as_ref()
+                .map(|ctx| ctx.original_request.as_str())
+                .unwrap_or("")
+                .to_string();
+            (q.map(|q| q.question.clone()), input)
+        }
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Task not found or access denied" })),
+            ));
+        }
+    };
+
+    // 用用户回答 + 原始请求上下文重新处理
+    // 携带 question context 以便 agent 能理解这是对某个问题的回答
+    let new_input = if let Some(question) = original_question {
+        format!("{}\n问题：{}\n回答：{}", original_input, question, req.answer)
+    } else {
+        // question_id 不匹配，直接把回答作为新输入
+        req.answer.clone()
+    };
+
+    validate_input(&new_input)?;
+
+    let user_request = UserRequest {
+        raw_input: new_input,
         timestamp: chrono::Utc::now(),
         user_id,
         context: None,
     };
 
-    // 处理请求
-    match agent.process(user_request).await {
-        Ok(response) => {
-            // 转换响应
-            let task_info = response.task.as_ref().map(|ts| TaskInfo {
-                task_id: ts.task_id.clone(),
-                status: match ts.status {
-                    crate::services::agent::types::TaskStatus::Completed => "completed",
-                    crate::services::agent::types::TaskStatus::Failed => "failed",
-                    crate::services::agent::types::TaskStatus::WaitingForInput => "waitingforinput",
-                    crate::services::agent::types::TaskStatus::Running => "running",
-                    _ => "pending",
-                }
-                .to_string(),
-                progress: ts.progress,
-                error: ts.error.clone(),
-                current_step: None,
-                completed_steps: ts.current_step as u32,
-                total_steps: ts.step_results.len() as u32,
-                dynamic_steps_added: 0,
-                pending_question: ts.pending_question.as_ref().map(|q| QuestionSummary {
-                    question_id: q.question_id.clone(),
-                    question_type: format!("{:?}", q.question_type).to_lowercase(),
-                    question: q.question.clone(),
-                    options: q
-                        .options
-                        .as_ref()
-                        .map(|opts| opts.iter().map(|o| o.label.clone()).collect::<Vec<_>>()),
-                }),
-                step_history: vec![],
-            });
-
-            // 转换 DataDisplayHint
-            let data_display_api = response.data_display.as_ref().map(|hint| match hint {
-                crate::services::agent::DataDisplayHint::Table { columns, data_path } => {
-                    DataDisplayHintApi::Table {
-                        columns: columns
-                            .iter()
-                            .map(|c| ColumnDefApi {
-                                field: c.field.clone(),
-                                title: c.title.clone(),
-                                width: c.width,
-                                sortable: c.sortable,
-                            })
-                            .collect(),
-                        data_path: data_path.clone(),
-                    }
-                }
-                crate::services::agent::DataDisplayHint::Chart {
-                    chart_type,
-                    x_field,
-                    y_field,
-                } => DataDisplayHintApi::Chart {
-                    chart_type: format!("{:?}", chart_type).to_lowercase(),
-                    x_field: x_field.clone(),
-                    y_field: y_field.clone(),
-                },
-                crate::services::agent::DataDisplayHint::CardList {
-                    title_field,
-                    description_field,
-                    image_field,
-                } => DataDisplayHintApi::CardList {
-                    title_field: title_field.clone(),
-                    description_field: description_field.clone(),
-                    image_field: image_field.clone(),
-                },
-                crate::services::agent::DataDisplayHint::Markdown => DataDisplayHintApi::Markdown,
-                crate::services::agent::DataDisplayHint::KeyValue => DataDisplayHintApi::KeyValue,
-                crate::services::agent::DataDisplayHint::Timeline {
-                    time_field,
-                    content_field,
-                } => DataDisplayHintApi::Timeline {
-                    time_field: time_field.clone(),
-                    content_field: content_field.clone(),
-                },
-                crate::services::agent::DataDisplayHint::Raw => DataDisplayHintApi::Raw,
-            });
-
-            Ok(Json(ApiResponse {
-                success: true,
-                response_type: match response.response_type {
-                    crate::services::agent::AgentResponseType::Answer => "answer",
-                    crate::services::agent::AgentResponseType::Clarification => "clarification",
-                    crate::services::agent::AgentResponseType::TaskCreated => "task_created",
-                    crate::services::agent::AgentResponseType::TaskProgress => "task_progress",
-                    crate::services::agent::AgentResponseType::TaskCompleted => "task_completed",
-                    crate::services::agent::AgentResponseType::Error => "error",
-                    crate::services::agent::AgentResponseType::ConfirmationRequired => {
-                        "confirmation_required"
-                    }
-                }
-                .to_string(),
-                message: response.message.clone(),
-                data: response.data.clone(),
-                data_display: data_display_api,
-                suggestions: response.suggestions.clone(),
-                task: task_info,
-                confirmation: None,
-                frontend_action: response
-                    .frontend_action
-                    .as_ref()
-                    .and_then(|fa| serde_json::to_value(fa).ok()),
-            }))
-        }
-        Err(e) => {
-            tracing::error!(
-                error = %e,
-                "[Agent API] Failed to process answer"
-            );
-            Ok(Json(ApiResponse {
-                success: false,
-                response_type: "error".to_string(),
-                message: format!("处理回答失败: {}", e),
-                data: None,
-                data_display: None,
-                suggestions: vec![],
-                task: None,
-                confirmation: None,
-                frontend_action: None,
-            }))
-        }
-    }
+    agent
+        .process(user_request)
+        .await
+        .map(|response| Json(ApiResponse::from(response)))
+        .map_err(|e| {
+            tracing::error!(error = %e, "[Agent API] Failed to process answer");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("处理回答失败: {}", e) })),
+            )
+        })
 }
 
 /// 提供澄清回答
@@ -1169,12 +1016,8 @@ pub async fn clarify(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ClarifyRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
+    validate_input(&req.original_input)?;
 
     tracing::info!(
         user_id = user_id,
@@ -1185,33 +1028,11 @@ pub async fn clarify(
     // 将澄清合并到原始请求
     let combined_input = format!("{}\n补充说明：{}", req.original_input, req.answer);
 
-    let context = req.context.map(|ctx| {
-        // 转换对话历史格式
-        let conversation_history = ctx.conversation_history.map(|msgs| {
-            msgs.into_iter()
-                .map(|m| crate::services::agent::types::ConversationMessage {
-                    role: m.role,
-                    content: m.content,
-                    created_at: m.created_at,
-                })
-                .collect()
-        });
-
-        RequestContext {
-            current_route: ctx.current_route,
-            active_platforms: ctx.active_platforms.unwrap_or_default(),
-            preferences: None,
-            session_id: ctx.session_id,
-            conversation_history,
-            custom_data: ctx.custom_data,
-        }
-    });
-
     let user_request = UserRequest {
         raw_input: combined_input,
         timestamp: chrono::Utc::now(),
         user_id,
-        context,
+        context: req.context.map(build_request_context),
     };
 
     let agent = Agent::new(db).await;
@@ -1243,20 +1064,26 @@ pub async fn list_presets(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<TaskPresetListResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    use sea_orm::QuerySelect;
 
-    // 获取收藏列表
-    let favorites = agent_task_presets::Entity::find()
-        .filter(agent_task_presets::Column::UserId.eq(user_id))
-        .filter(agent_task_presets::Column::PresetType.eq("favorite"))
-        .order_by_desc(agent_task_presets::Column::LastUsedAt)
-        .all(&db)
-        .await
+    let user_id = parse_user_id(&claims)?;
+
+    // 并行发起两次查询，减少串行等待时间
+    let (favorites_result, history_result) = tokio::join!(
+        agent_task_presets::Entity::find()
+            .filter(agent_task_presets::Column::UserId.eq(user_id))
+            .filter(agent_task_presets::Column::PresetType.eq("favorite"))
+            .order_by_desc(agent_task_presets::Column::LastUsedAt)
+            .all(&db),
+        agent_task_presets::Entity::find()
+            .filter(agent_task_presets::Column::UserId.eq(user_id))
+            .filter(agent_task_presets::Column::PresetType.eq("history"))
+            .order_by_desc(agent_task_presets::Column::LastUsedAt)
+            .limit(20) // DB 层限制，避免拉取全量到内存
+            .all(&db),
+    );
+
+    let favorites = favorites_result
         .map_err(|e| {
             tracing::error!("[Agent Presets] Failed to fetch favorites: {}", e);
             (
@@ -1268,13 +1095,7 @@ pub async fn list_presets(
         .map(TaskPresetResponse::from)
         .collect();
 
-    // 获取历史记录（最多 20 条）
-    let history = agent_task_presets::Entity::find()
-        .filter(agent_task_presets::Column::UserId.eq(user_id))
-        .filter(agent_task_presets::Column::PresetType.eq("history"))
-        .order_by_desc(agent_task_presets::Column::LastUsedAt)
-        .all(&db)
-        .await
+    let history = history_result
         .map_err(|e| {
             tracing::error!("[Agent Presets] Failed to fetch history: {}", e);
             (
@@ -1283,7 +1104,6 @@ pub async fn list_presets(
             )
         })?
         .into_iter()
-        .take(20) // 只取最近 20 条
         .map(TaskPresetResponse::from)
         .collect();
 
@@ -1297,12 +1117,7 @@ pub async fn create_preset(
     Extension(claims): Extension<Claims>,
     Json(req): Json<CreatePresetRequest>,
 ) -> Result<Json<TaskPresetResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     // 验证预设类型
     if req.preset_type != "favorite" && req.preset_type != "history" {
@@ -1336,7 +1151,8 @@ pub async fn create_preset(
             active_model.preset_type = Set(req.preset_type);
         }
         active_model.last_used_at = Set(now);
-        active_model.use_count = Set(active_model.use_count.unwrap() + 1);
+        // 从原始 Model 获取 use_count 避免 ActiveValue::unwrap() panic
+        active_model.use_count = Set(existing_preset.use_count + 1);
         if req.parsed_steps.is_some() {
             active_model.parsed_steps = Set(req.parsed_steps.map(sea_orm::JsonValue::from));
         }
@@ -1400,26 +1216,42 @@ pub async fn create_preset(
 }
 
 /// 清理超过 20 条的历史记录
+///
+/// 只查询超出部分的 ID（加 LIMIT+OFFSET），避免拉取全量数据到内存
 async fn cleanup_old_history(db: &DatabaseConnection, user_id: i32) {
-    // 获取用户的历史记录数量
-    let history_list = agent_task_presets::Entity::find()
+    use sea_orm::{PaginatorTrait, QuerySelect};
+
+    // 先计算总数，若不超出则跳过
+    let count = agent_task_presets::Entity::find()
+        .filter(agent_task_presets::Column::UserId.eq(user_id))
+        .filter(agent_task_presets::Column::PresetType.eq("history"))
+        .count(db)
+        .await
+        .unwrap_or(0);
+
+    if count <= 20 {
+        return;
+    }
+
+    // 只查询第 21 条起的 ID，在 DB 层做 LIMIT/OFFSET
+    let to_delete_ids: Vec<i32> = agent_task_presets::Entity::find()
         .filter(agent_task_presets::Column::UserId.eq(user_id))
         .filter(agent_task_presets::Column::PresetType.eq("history"))
         .order_by_desc(agent_task_presets::Column::LastUsedAt)
+        .offset(20)
+        .limit(count)
         .all(db)
-        .await;
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
 
-    if let Ok(list) = history_list {
-        if list.len() > 20 {
-            // 删除超出的记录
-            let to_delete: Vec<i32> = list.iter().skip(20).map(|p| p.id).collect();
-            if !to_delete.is_empty() {
-                let _ = agent_task_presets::Entity::delete_many()
-                    .filter(agent_task_presets::Column::Id.is_in(to_delete))
-                    .exec(db)
-                    .await;
-            }
-        }
+    if !to_delete_ids.is_empty() {
+        let _ = agent_task_presets::Entity::delete_many()
+            .filter(agent_task_presets::Column::Id.is_in(to_delete_ids))
+            .exec(db)
+            .await;
     }
 }
 
@@ -1430,12 +1262,7 @@ pub async fn delete_preset(
     Extension(claims): Extension<Claims>,
     Path(preset_id): Path<i32>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     // 确保只能删除自己的预设
     let preset = agent_task_presets::Entity::find_by_id(preset_id)
@@ -1486,12 +1313,7 @@ pub async fn toggle_favorite(
     Extension(claims): Extension<Claims>,
     Path(preset_id): Path<i32>,
 ) -> Result<Json<TaskPresetResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     // 查找预设
     let preset = agent_task_presets::Entity::find_by_id(preset_id)
@@ -1540,12 +1362,7 @@ pub async fn use_preset(
     Extension(claims): Extension<Claims>,
     Path(preset_id): Path<i32>,
 ) -> Result<Json<TaskPresetResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     let now = Utc::now().fixed_offset();
 
@@ -1602,12 +1419,7 @@ pub async fn update_preset_conversation(
     Path(preset_id): Path<i32>,
     Json(request): Json<UpdateConversationRequest>,
 ) -> Result<Json<TaskPresetResponse>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     let now = Utc::now().fixed_offset();
 
@@ -1662,12 +1474,7 @@ pub async fn execute_preset(
     Extension(claims): Extension<Claims>,
     Path(preset_id): Path<i32>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     // 查找预设
     let preset = agent_task_presets::Entity::find_by_id(preset_id)
@@ -1741,16 +1548,20 @@ pub async fn execute_preset(
         match agent.execute_saved_recipe(&recipe, user_id, tx.clone()).await {
             Ok(response) => {
                 let api_response: ApiResponse = response.into();
+                let task_id = api_response
+                    .task
+                    .as_ref()
+                    .map(|t| t.task_id.clone())
+                    .unwrap_or_default();
+                let success = api_response.success;
+                let response_value = serde_json::to_value(&api_response)
+                    .unwrap_or_else(|_| json!({"error": "serialization failed"}));
                 tracing::info!("[Agent API] Preset execution completed, sending TaskCompleted event");
                 let _ = tx
-                    .send(ProgressEvent::TaskCompleted {
-                        task_id: api_response
-                            .task
-                            .as_ref()
-                            .map(|t| t.task_id.clone())
-                            .unwrap_or_default(),
-                        success: api_response.success,
-                        response: Box::new(api_response),
+                    .send(AgentProgressEvent::TaskCompleted {
+                        task_id,
+                        success,
+                        response: Box::new(response_value),
                     })
                     .await;
             }

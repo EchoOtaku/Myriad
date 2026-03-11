@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-use crate::api::tapps::{TappApiAccess, TappApiDef};
+use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
 use crate::GLOBAL_DYNAMIC_CONFIG;

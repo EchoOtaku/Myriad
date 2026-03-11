@@ -9,6 +9,14 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// 验证平台名称白名单，防止路径穿越
+fn validate_platform_name(platform: &str) -> Result<&str, String> {
+    match platform {
+        "steam" | "bilibili" | "github" | "netease" | "all" => Ok(platform),
+        _ => Err(format!("不支持的平台名称: {}", platform)),
+    }
+}
+
 /// 执行数据读取能力
 pub async fn execute(
     capability_id: &str,
@@ -65,12 +73,14 @@ pub async fn execute(
 // ============================================================================
 
 async fn execute_platform_read(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let platform = params
+    let platform_raw = params
         .get("platform")
         .and_then(|v| v.as_str())
         .ok_or("Missing platform parameter")?;
+    let platform_lower = platform_raw.to_lowercase();
+    let platform = validate_platform_name(&platform_lower)?;
 
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform.to_lowercase());
+    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
     let content = tokio::fs::read_to_string(&cache_file)
         .await
         .map_err(|e| format!("Failed to read platform data: {}", e))?;
@@ -110,12 +120,14 @@ async fn execute_platform_read(params: &HashMap<String, Value>) -> Result<Value,
 }
 
 async fn execute_platform_stats(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let platform = params
+    let platform_raw = params
         .get("platform")
         .and_then(|v| v.as_str())
         .ok_or("Missing platform parameter")?;
+    let platform_lower = platform_raw.to_lowercase();
+    let platform = validate_platform_name(&platform_lower)?;
 
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform.to_lowercase());
+    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
     let content = tokio::fs::read_to_string(&cache_file)
         .await
         .map_err(|e| format!("Failed to read {}: {}", cache_file, e))?;

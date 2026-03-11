@@ -1152,7 +1152,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/reports/latest", get(get_latest_report_wrapper))
             .route(
                 "/api/reports/list",
-                get(api::tapp::list_reports)
+                get(api::tapp_runtime::list_reports)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
@@ -1165,7 +1165,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             // ============ Tapp 应用管理 API ============
             // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
-            .nest("/api/tapps", api::tapps::create_tapp_routes())
+            .nest("/api/tapps", api::tapp_store::create_tapp_routes())
             // ============ Agent AI 任务编排 API ============
             // 自然语言任务分解、执行和监控
             .nest("/api/agent", api::agent::create_agent_routes())
@@ -1182,177 +1182,177 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // Platform data API - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/platform/{platform}/data",
-                get(api::tapp::get_platform_data)
+                get(api::tapp_runtime::get_platform_data)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/platform/{platform}/stats",
-                get(api::tapp::get_platform_stats)
+                get(api::tapp_runtime::get_platform_stats)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/platform/{platform}/distribution/{dimension}",
-                get(api::tapp::get_platform_distribution)
+                get(api::tapp_runtime::get_platform_distribution)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/platform/items",
-                post(api::tapp::add_platform_item)
+                post(api::tapp_runtime::add_platform_item)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/platform/items/batch",
-                post(api::tapp::add_platform_items_batch)
+                post(api::tapp_runtime::add_platform_items_batch)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // AI API - � 支持权限下放（使用 optional_auth）
             .route(
                 "/api/tapp/ai/generate",
-                post(api::tapp::ai_generate)
+                post(api::tapp_runtime::ai_generate)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/ai/analyze",
-                post(api::tapp::ai_analyze)
+                post(api::tapp_runtime::ai_analyze)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/ai/image",
-                post(api::tapp::ai_image_generate)
+                post(api::tapp_runtime::ai_image_generate)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // ============ Tapp P0 扩展 API ============
             // Data Processing - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/data/transform",
-                post(api::tapp::data_transform)
+                post(api::tapp_runtime::data_transform)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Context API - 🔓 支持权限下放（公开信息）
             .route(
                 "/api/tapp/context/app",
-                get(api::tapp::get_context_app)
+                get(api::tapp_runtime::get_context_app)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/context/user",
-                get(api::tapp::get_context_user)
+                get(api::tapp_runtime::get_context_user)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/context/player",
-                get(api::tapp::get_context_player)
+                get(api::tapp_runtime::get_context_player)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/context/navigation",
-                get(api::tapp::get_context_navigation)
+                get(api::tapp_runtime::get_context_navigation)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/context/system",
-                get(api::tapp::get_context_system)
+                get(api::tapp_runtime::get_context_system)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // ============ Tapp P1 扩展 API ============
             // AI Chat - 🔓 支持权限下放
             .route(
                 "/api/tapp/ai/chat",
-                post(api::tapp::ai_chat)
+                post(api::tapp_runtime::ai_chat)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // Report CRUD - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/reports",
-                post(api::tapp::create_report)
+                post(api::tapp_runtime::create_report)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/reports/tapp/{tapp_id}",
-                get(api::tapp::list_tapp_reports)
+                get(api::tapp_runtime::list_tapp_reports)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/reports/{tapp_id}/{report_id}",
-                get(api::tapp::get_tapp_report)
-                    .put(api::tapp::update_tapp_report)
-                    .delete(api::tapp::delete_tapp_report)
+                get(api::tapp_runtime::get_tapp_report)
+                    .put(api::tapp_runtime::update_tapp_report)
+                    .delete(api::tapp_runtime::delete_tapp_report)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Media Control - 🔓 支持权限下放
             .route(
                 "/api/tapp/media/control",
-                post(api::tapp::media_control)
+                post(api::tapp_runtime::media_control)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/media/status",
-                get(api::tapp::media_status)
+                get(api::tapp_runtime::media_status)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // P2: Component Registration
             .route(
                 "/api/tapp/components/register",
-                post(api::tapp::register_component)
+                post(api::tapp_runtime::register_component)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/components/{tapp_id}/{component_type}/{component_id}",
-                delete(api::tapp::unregister_component)
+                delete(api::tapp_runtime::unregister_component)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/components/{tapp_id}",
-                get(api::tapp::list_components)
+                get(api::tapp_runtime::list_components)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/components/all/{component_type}",
-                get(api::tapp::list_all_components_by_type)
+                get(api::tapp_runtime::list_all_components_by_type)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // P2: Shortcut Registration
             .route(
                 "/api/tapp/shortcuts/register",
-                post(api::tapp::register_shortcut)
+                post(api::tapp_runtime::register_shortcut)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/shortcuts/{tapp_id}/{shortcut_id}",
-                delete(api::tapp::unregister_shortcut)
+                delete(api::tapp_runtime::unregister_shortcut)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/shortcuts",
-                get(api::tapp::list_shortcuts)
+                get(api::tapp_runtime::list_shortcuts)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // P2: Event Bus
             .route(
                 "/api/tapp/events/publish",
-                post(api::tapp::publish_event)
+                post(api::tapp_runtime::publish_event)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/events/subscriptions/{tapp_id}",
-                get(api::tapp::get_event_subscriptions)
-                    .put(api::tapp::update_event_subscriptions)
+                get(api::tapp_runtime::get_event_subscriptions)
+                    .put(api::tapp_runtime::update_event_subscriptions)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Metrics & Rate Limit
             .route(
                 "/api/tapp/metrics",
-                get(api::tapp::get_tapp_metrics)
+                get(api::tapp_runtime::get_tapp_metrics)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/metrics/reset",
-                post(api::tapp::reset_tapp_metrics)
+                post(api::tapp_runtime::reset_tapp_metrics)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/tapp/rate-limit/{tapp_id}",
-                get(api::tapp::get_rate_limit_status)
+                get(api::tapp_runtime::get_rate_limit_status)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // ============ Tapp 定时任务 API ============
@@ -1398,17 +1398,17 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // API Execute - 支持 public 和 protected 两级权限
             .route(
                 "/api/tapp/{tapp_id}/api/{api_name}",
-                post(api::tapp::execute_tapp_api)
+                post(api::tapp_runtime::execute_tapp_api)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // API List - 列出 Tapp 可用的 API
             .route(
                 "/api/tapp/{tapp_id}/apis",
-                get(api::tapp::list_tapp_apis)
+                get(api::tapp_runtime::list_tapp_apis)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // Context Geo - 公开 API，获取客户端地理位置
-            .route("/api/tapp/context/geo", get(api::tapp::get_context_geo))
+            .route("/api/tapp/context/geo", get(api::tapp_runtime::get_context_geo))
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))
             // Client geo location route

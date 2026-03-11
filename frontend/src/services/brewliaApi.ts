@@ -271,11 +271,11 @@ export class PodcastPlayer {
   static selectVoicePair(voices: SpeechSynthesisVoice[], lang: string): { voiceA: SpeechSynthesisVoice | null, voiceB: SpeechSynthesisVoice | null } {
     const filtered = this.filterVoicesByLanguage(voices, lang)
 
-    console.log('[PodcastPlayer] Available voices for language', lang, ':', filtered.map(v => ({ name: v.name, lang: v.lang })))
+    console.debug('[PodcastPlayer] Available voices for language', lang, ':', filtered.map(v => ({ name: v.name, lang: v.lang })))
 
     if (filtered.length === 0) {
       // 回退到任意语音
-      console.log('[PodcastPlayer] No voices found for language, using fallback')
+      console.debug('[PodcastPlayer] No voices found for language, using fallback')
       return { voiceA: voices[0] || null, voiceB: voices[1] || voices[0] || null }
     }
 
@@ -294,7 +294,7 @@ export class PodcastPlayer {
       femaleVoice = filtered.find(v => v !== maleVoice) || filtered[0]
 
     const voicesAreSame = maleVoice === femaleVoice || maleVoice?.name === femaleVoice?.name
-    console.log('[PodcastPlayer] Selected voices:', {
+    console.debug('[PodcastPlayer] Selected voices:', {
       voiceA: maleVoice?.name,
       voiceB: femaleVoice?.name,
       sameVoice: voicesAreSame,
@@ -530,6 +530,28 @@ export class PodcastPlayer {
   }
 }
 
+// ==================== AI 风格标签 ====================
+
+/**
+ * 风格标签响应
+ */
+export interface StyleTagsResponse {
+  success: boolean
+  tags: string[]
+  from_cache: boolean
+  error?: string
+}
+
+/**
+ * 生成订阅源的 AI 风格标签
+ * 基于最近 10 篇文章的标题和前 100 字正文分析
+ */
+export async function generateStyleTags(sourceId: number): Promise<StyleTagsResponse> {
+  return request<StyleTagsResponse>(`/sources/${sourceId}/style-tags`, { method: 'POST' })
+}
+
+// ==================== 文本处理工具 ====================
+
 /**
  * 从 HTML 中提取纯文本
  * 安全：使用 DOMParser 避免 innerHTML 触发脚本
@@ -583,9 +605,10 @@ export function highlightAnnotations(html: string, annotations: AnnotationItem[]
   // 按词汇长度降序排列（长的先匹配，避免短词覆盖长词）
   const sortedAnnotations = [...annotations].sort((a, b) => b.term.length - a.term.length)
 
-  // 只解析一次 DOM，同时获取纯文本和进行 DOM 操作
-  const div = document.createElement('div')
-  div.innerHTML = html
+  // 使用 DOMParser 而非 innerHTML 解析，避免脚本执行风险
+  const domParser = new DOMParser()
+  const parsedDoc = domParser.parseFromString(html, 'text/html')
+  const div = parsedDoc.body
   const fullText = div.textContent || ''
 
   // 记录已标记的词汇（每个词只标记一次）
@@ -788,7 +811,9 @@ export function highlightAnnotations(html: string, annotations: AnnotationItem[]
       }
     }
 
-    div.innerHTML = currentHtml
+    // 用 DOMParser 重新解析修改后的 HTML，避免直接 innerHTML 赋值
+    const updatedDoc = domParser.parseFromString(currentHtml, 'text/html')
+    div.replaceChildren(...Array.from(updatedDoc.body.childNodes))
   }
 
   console.debug('[Brewlia] Total matches found:', totalMatches)

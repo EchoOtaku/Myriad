@@ -158,7 +158,8 @@ async fn execute_ai_chat(
     let mut full_prompt = format!("系统提示：{}\n\n", system_prompt);
 
     if let Some(history) = context {
-        for msg in history {
+        // 限制对话历史条数，防止 token 超限和费用滥用
+        for msg in history.iter().rev().take(50).collect::<Vec<_>>().into_iter().rev() {
             if let (Some(role), Some(content)) = (
                 msg.get("role").and_then(|v| v.as_str()),
                 msg.get("content").and_then(|v| v.as_str()),
@@ -211,6 +212,29 @@ async fn execute_gemini_grounding_search_wrapper(
     }))
 }
 
+/// 清洗用户输入，防止 Prompt Injection
+///
+/// - 移除 ASCII 控制字符（换行除外，保留可读性）
+/// - 限制最大长度为 500 字符
+/// - 去除首尾空白
+fn sanitize_prompt_input(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .take(500)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// 验证平台名称白名单，防止路径穿越
+fn validate_platform_name(platform: &str) -> Result<&str, String> {
+    match platform {
+        "steam" | "bilibili" | "github" | "netease" | "all" => Ok(platform),
+        _ => Err(format!("不支持的平台名称: {}", platform)),
+    }
+}
+
 /// 使用 Gemini Grounding (Google Search) 进行联网搜索
 async fn execute_gemini_grounding_search(
     query: &str,
@@ -237,6 +261,9 @@ async fn execute_gemini_grounding_search(
 
     drop(config);
 
+    // 清洗用户输入，防止 Prompt Injection
+    let safe_query = sanitize_prompt_input(query);
+
     // 构建搜索提示词
     let search_prompt = match search_type {
         "rss_source" => format!(
@@ -251,17 +278,17 @@ async fn execute_gemini_grounding_search(
             - url: RSS/Atom feed URL\n\
             - description: 简要说明\n\
             - source: 来源（official/rsshub/third-party）",
-            query, max_results
+            safe_query, max_results
         ),
         "api_docs" => format!(
             "搜索「{}」的官方 API 文档链接。最多返回 {} 个结果。\n\
             以 JSON 数组格式返回，每个元素包含：name, url, description",
-            query, max_results
+            safe_query, max_results
         ),
         _ => format!(
             "搜索关于「{}」的信息，最多返回 {} 个相关结果。\n\
             以 JSON 数组格式返回结果。",
-            query, max_results
+            safe_query, max_results
         ),
     };
 
@@ -291,7 +318,7 @@ async fn execute_gemini_grounding_search(
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    tracing::info!("🔍 Calling Gemini Grounding Search for: {}", query);
+    tracing::info!("Calling Gemini Grounding Search for query length={}", safe_query.len());
 
     let response = client
         .post(&url)
@@ -513,10 +540,13 @@ async fn execute_smart_filter(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
-    let platform = params
+    let platform_raw = params
         .get("platform")
         .and_then(|v| v.as_str())
         .unwrap_or("all");
+
+    // 白名单校验，防止路径穿越
+    let platform = validate_platform_name(platform_raw)?;
 
     let filtered_file = format!("cache/platforms/{}_filtered.json", platform);
 
@@ -531,7 +561,7 @@ async fn execute_smart_filter(
         }
     }
 
-    let raw_file = format!("cache/raw/{}.json", platform);
+    let raw_file = format!("cache/raw/{}.json", platform); // platform 已经过白名单校验
     if let Ok(content) = tokio::fs::read_to_string(&raw_file).await {
         if let Ok(raw_data) = serde_json::from_str::<Value>(&content) {
             let prompt = format!(
@@ -565,10 +595,13 @@ async fn execute_compare_content(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
-    let platform = params
+    let platform_raw = params
         .get("platform")
         .and_then(|v| v.as_str())
         .unwrap_or("all");
+
+    // 白名单校验，防止路径穿越
+    let platform = validate_platform_name(platform_raw)?;
     let start_date = params.get("startDate").and_then(|v| v.as_str());
     let end_date = params.get("endDate").and_then(|v| v.as_str());
 

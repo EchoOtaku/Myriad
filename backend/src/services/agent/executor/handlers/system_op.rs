@@ -43,6 +43,11 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
         .cloned()
         .unwrap_or_default();
 
+    // 限制 pipeline 步骤数，防止算法复杂度攻击
+    if pipeline.len() > 20 {
+        return Err("管道步骤数不能超过 20".to_string());
+    }
+
     let mut items: Vec<Value> = match input {
         Value::Array(arr) => arr,
         Value::Object(obj) => obj
@@ -158,9 +163,17 @@ async fn execute_system_metrics() -> Result<Value, String> {
     }))
 }
 
+/// 验证平台名称白名单，防止路径穿越
+fn validate_platform_name(platform: &str) -> bool {
+    matches!(platform, "steam" | "bilibili" | "github" | "netease")
+}
+
 async fn execute_cache_status(params: &HashMap<String, Value>) -> Result<Value, String> {
     let platform = params.get("platform").and_then(|v| v.as_str());
     let platforms = if let Some(p) = platform {
+        if !validate_platform_name(p) {
+            return Err(format!("不支持的平台名称: {}", p));
+        }
         vec![p.to_string()]
     } else {
         vec!["netease", "bilibili", "github", "steam"]
@@ -215,6 +228,11 @@ async fn execute_cache_clear(params: &HashMap<String, Value>) -> Result<Value, S
         .get("platform")
         .and_then(|v| v.as_str())
         .ok_or("Missing platform parameter")?;
+
+    // 白名单校验，防止路径穿越和任意文件删除
+    if !validate_platform_name(platform) {
+        return Err(format!("不支持的平台名称: {}", platform));
+    }
 
     let cache_path = format!("cache/platforms/{}_filtered.json", platform);
 

@@ -11,6 +11,88 @@ use sea_orm::{
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::net::ToSocketAddrs;
+
+/// 订阅源名称最大长度
+const MAX_FEED_NAME_LEN: usize = 255;
+
+/// 清洗并验证用户提供的订阅源名称
+///
+/// - 限制最大长度
+/// - 去除首尾空白
+/// - 拒绝纯空白字符串
+fn sanitize_feed_name(name: &str) -> Result<String, String> {
+    let trimmed: String = name.chars().take(MAX_FEED_NAME_LEN).collect();
+    let trimmed = trimmed.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("订阅源名称不能为空".to_string());
+    }
+    Ok(trimmed)
+}
+
+/// 验证平台名称白名单，防止路径穿越
+fn validate_platform_name(platform: &str) -> Result<&str, String> {
+    match platform {
+        "steam" | "bilibili" | "github" | "netease" | "all" => Ok(platform),
+        _ => Err(format!("不支持的平台名称: {}", platform)),
+    }
+}
+
+/// 订阅 URL 最大尝试数
+const MAX_FEED_URLS: usize = 10;
+/// platform.write 单次最大写入条目数
+const MAX_PLATFORM_WRITE_ITEMS: usize = 500;
+/// update_interval 最小值（分钟）
+const MIN_UPDATE_INTERVAL: i32 = 5;
+/// update_interval 最大值（分钟）
+const MAX_UPDATE_INTERVAL: i32 = 1440;
+
+/// 验证订阅 URL 安全性，防止 SSRF
+/// - 仅允许 http/https scheme
+/// - 阻止内网 IP 地址
+fn validate_subscribe_url(url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url).map_err(|_| format!("无效的 URL: {}", url))?;
+
+    // 只允许 http/https
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => return Err(format!("不允许的 URL scheme: {}", scheme)),
+    }
+
+    let host = parsed.host_str().ok_or("URL 缺少 host")?;
+
+    // 阻止明显的内网主机名
+    if host == "localhost" || host.ends_with(".local") || host.ends_with(".internal") {
+        return Err("不允许访问内网地址".to_string());
+    }
+
+    // 解析 IP 并阻止内网地址
+    let port = parsed.port().unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
+    let addr_str = format!("{}:{}", host, port);
+    if let Ok(addrs) = addr_str.to_socket_addrs() {
+        for addr in addrs {
+            let ip = addr.ip();
+            if ip.is_loopback() || ip.is_unspecified() {
+                return Err("不允许访问回环/未指定地址".to_string());
+            }
+            match ip {
+                std::net::IpAddr::V4(v4) => {
+                    if v4.is_private() || v4.is_link_local() || v4.octets()[0] == 169 {
+                        return Err("不允许访问内网地址".to_string());
+                    }
+                }
+                std::net::IpAddr::V6(v6) => {
+                    // 阻止 IPv6 回环和链路本地
+                    if v6.is_loopback() || (v6.segments()[0] & 0xffc0) == 0xfe80 {
+                        return Err("不允许访问内网 IPv6 地址".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
 
 /// 执行数据写入能力
 pub async fn execute(
@@ -35,14 +117,24 @@ pub async fn execute(
 // ============================================================================
 
 async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let platform = params
+    let platform_raw = params
         .get("platform")
         .and_then(|v| v.as_str())
         .ok_or("Missing platform parameter")?;
 
+    // 白名单校验，防止路径穿越
+    let platform = validate_platform_name(platform_raw)?;
+
     let items = params.get("items").ok_or("Missing items parameter")?;
 
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform.to_lowercase());
+    // 限制单次写入条目数量
+    if let Some(arr) = items.as_array() {
+        if arr.len() > MAX_PLATFORM_WRITE_ITEMS {
+            return Err(format!("单次最多写入 {} 条数据", MAX_PLATFORM_WRITE_ITEMS));
+        }
+    }
+
+    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
 
     // 读取现有数据
     let mut data: Value = tokio::fs::read_to_string(&cache_file)
@@ -65,7 +157,7 @@ async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value
 
     Ok(json!({
         "success": true,
-        "platform": platform
+        "platform": platform_raw
     }))
 }
 
@@ -236,12 +328,19 @@ async fn execute_brew_subscribe(
         "[Brew Subscribe] 收到的参数"
     );
 
-    let custom_name = params.get("name").and_then(|v| v.as_str());
+    // 校验并清洗用户提供的名称，防止过长或空白字符串入库
+    let custom_name: Option<String> = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| sanitize_feed_name(s))
+        .transpose()?;
     let category = params.get("category").and_then(|v| v.as_str());
     let update_interval = params
         .get("updateInterval")
         .and_then(|v| v.as_i64())
         .unwrap_or(30) as i32;
+    let update_interval = update_interval.clamp(MIN_UPDATE_INTERVAL, MAX_UPDATE_INTERVAL);
 
     // 收集要尝试的 URL 列表
     let urls_to_try: Vec<(String, Option<String>)> = if let Some(feeds) = params.get("feeds") {
@@ -271,8 +370,15 @@ async fn execute_brew_subscribe(
     let mut last_error = String::new();
     let mut tried_urls = Vec::new();
 
-    // 遍历尝试每个 URL
-    for (url, feed_name) in urls_to_try {
+    // 遍历尝试每个 URL（限制最多尝试数量）
+    for (url, feed_name) in urls_to_try.into_iter().take(MAX_FEED_URLS) {
+        // SSRF 防护：校验 URL 安全性
+        if let Err(e) = validate_subscribe_url(&url) {
+            tracing::warn!(url = %url, error = %e, "[Brew] URL 安全校验失败，跳过");
+            last_error = format!("{}: {}", url, e);
+            continue;
+        }
+
         tried_urls.push(url.clone());
 
         // 检查是否已订阅
@@ -301,7 +407,7 @@ async fn execute_brew_subscribe(
                 // 成功解析！创建订阅
                 let now = chrono::Utc::now();
                 let name = custom_name
-                    .map(|s| s.to_string())
+                    .clone()
                     .or(feed_name)
                     .unwrap_or(feed.title.clone());
 
@@ -329,63 +435,86 @@ async fn execute_brew_subscribe(
                     .await
                     .map_err(|e| format!("创建订阅源失败: {}", e))?;
 
-                // 插入文章
-                let mut inserted_count = 0;
-                for item in feed.items.iter().take(50) {
-                    let empty_string = String::new();
-                    let content_text = item
-                        .content
-                        .as_ref()
-                        .or(item.summary.as_ref())
-                        .unwrap_or(&empty_string);
-                    let word_count = content_text.chars().count() as i32;
-                    let reading_time = (word_count / 400).max(1);
+                // 批量构建文章 ActiveModel，一次性 insert 代替 N+1 个单条 insert
+                let item_models: Vec<brew_items::ActiveModel> = feed
+                    .items
+                    .iter()
+                    .take(50)
+                    .map(|item| {
+                        let empty_string = String::new();
+                        let content_text = item
+                            .content
+                            .as_ref()
+                            .or(item.summary.as_ref())
+                            .unwrap_or(&empty_string);
+                        let word_count = content_text.chars().count() as i32;
+                        let reading_time = (word_count / 400).max(1);
 
-                    let enclosures_json: Option<serde_json::Value> =
-                        if item.enclosures.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                serde_json::to_value(&item.enclosures)
-                                    .unwrap_or(serde_json::json!([])),
-                            )
-                        };
-                    let categories_json: Option<serde_json::Value> =
-                        if item.categories.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                serde_json::to_value(&item.categories)
-                                    .unwrap_or(serde_json::json!([])),
-                            )
-                        };
-                    let published_at = item.published_at.unwrap_or(now);
+                        let enclosures_json: Option<serde_json::Value> =
+                            if item.enclosures.is_empty() {
+                                None
+                            } else {
+                                Some(
+                                    serde_json::to_value(&item.enclosures)
+                                        .unwrap_or(serde_json::json!([])),
+                                )
+                            };
+                        let categories_json: Option<serde_json::Value> =
+                            if item.categories.is_empty() {
+                                None
+                            } else {
+                                Some(
+                                    serde_json::to_value(&item.categories)
+                                        .unwrap_or(serde_json::json!([])),
+                                )
+                            };
+                        let published_at = item.published_at.unwrap_or(now);
 
-                    let new_item = brew_items::ActiveModel {
-                        source_id: Set(source.id),
-                        guid: Set(item.guid.clone()),
-                        title: Set(item.title.clone()),
-                        link: Set(item.link.clone()),
-                        summary: Set(item.summary.clone()),
-                        content: Set(item.content.clone()),
-                        author: Set(item.author.clone()),
-                        image: Set(item.image.clone()),
-                        audio_url: Set(item.audio_url.clone()),
-                        video_url: Set(item.video_url.clone()),
-                        enclosures: Set(enclosures_json),
-                        categories: Set(categories_json),
-                        published_at: Set(published_at.into()),
-                        fetched_at: Set(now.into()),
-                        word_count: Set(Some(word_count)),
-                        reading_time: Set(Some(reading_time)),
-                        fulltext_fetched: Set(false),
-                        ..Default::default()
-                    };
+                        brew_items::ActiveModel {
+                            source_id: Set(source.id),
+                            guid: Set(item.guid.clone()),
+                            title: Set(item.title.clone()),
+                            link: Set(item.link.clone()),
+                            summary: Set(item.summary.clone()),
+                            content: Set(item.content.clone()),
+                            author: Set(item.author.clone()),
+                            image: Set(item.image.clone()),
+                            audio_url: Set(item.audio_url.clone()),
+                            video_url: Set(item.video_url.clone()),
+                            enclosures: Set(enclosures_json),
+                            categories: Set(categories_json),
+                            published_at: Set(published_at.into()),
+                            fetched_at: Set(now.into()),
+                            word_count: Set(Some(word_count)),
+                            reading_time: Set(Some(reading_time)),
+                            fulltext_fetched: Set(false),
+                            ..Default::default()
+                        }
+                    })
+                    .collect();
 
-                    if new_item.insert(ctx.db).await.is_ok() {
-                        inserted_count += 1;
+                let inserted_count = if item_models.is_empty() {
+                    0usize
+                } else {
+                    let total = item_models.len();
+                    // 使用批量插入；guid 冲突（已存在）时跳过，避免 N+1 单条 insert
+                    match brew_items::Entity::insert_many(item_models)
+                        .on_conflict(
+                            sea_orm::sea_query::OnConflict::column(brew_items::Column::Guid)
+                                .do_nothing()
+                                .to_owned(),
+                        )
+                        .do_nothing()
+                        .exec(ctx.db)
+                        .await
+                    {
+                        Ok(_) => total, // InsertResult 不暴露 rows_affected，保守使用 total
+                        Err(e) => {
+                            tracing::warn!("[Brew] 批量插入文章失败: {}", e);
+                            0
+                        }
                     }
-                }
+                };
 
                 tracing::info!(
                     url = %url,
@@ -507,6 +636,14 @@ async fn execute_brew_mark(
         .map_err(|e| format!("Database error: {}", e))?
         .ok_or("Article not found")?;
 
+    // 验证文章所属 source 归当前用户所有，防止越权操作
+    let source = brew_sources::Entity::find_by_id(item.source_id)
+        .filter(brew_sources::Column::UserId.eq(user_id))
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or("无权操作该文章")?;
+
     // 查找或创建用户状态
     let existing = brew_user_states::Entity::find()
         .filter(brew_user_states::Column::UserId.eq(user_id))
@@ -570,7 +707,7 @@ async fn execute_brew_mark(
             .map_err(|e| format!("Failed to create state: {}", e))?;
     }
 
-    // 更新 source 的 unread_count
+    // 更新 source 的 unread_count（附带 user_id 条件，确保仅修改自己的 source）
     if let Some(read) = is_read {
         if read != was_read {
             let delta = if read { -1 } else { 1 };
@@ -578,8 +715,8 @@ async fn execute_brew_mark(
                 .db
                 .execute(sea_orm::Statement::from_sql_and_values(
                     sea_orm::DatabaseBackend::Postgres,
-                    "UPDATE brew_sources SET unread_count = unread_count + $1 WHERE id = $2",
-                    [delta.into(), item.source_id.into()],
+                    "UPDATE brew_sources SET unread_count = GREATEST(unread_count + $1, 0) WHERE id = $2 AND user_id = $3",
+                    [delta.into(), source.id.into(), (user_id as i32).into()],
                 ))
                 .await;
         }

@@ -5,6 +5,69 @@
 use super::HandlerContext;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::net::IpAddr;
+
+/// 验证 URL 安全性，防止 SSRF 攻击
+///
+/// 仅允许 http/https scheme，屏蔽私有/保留 IP 段
+fn validate_url_for_fetch(url_str: &str) -> Result<(), String> {
+    let url = url::Url::parse(url_str).map_err(|e| format!("URL 格式无效: {}", e))?;
+
+    // 只允许 http/https
+    match url.scheme() {
+        "http" | "https" => {}
+        scheme => return Err(format!("不允许的 URL scheme: {}", scheme)),
+    }
+
+    // 必须有 host
+    let host = url.host_str().ok_or("URL 缺少 host")?;
+
+    // 禁止 localhost 及其变体
+    let host_lower = host.to_lowercase();
+    if host_lower == "localhost" || host_lower == "ip6-localhost" {
+        return Err("不允许访问 localhost".to_string());
+    }
+
+    // 如果 host 是 IP 地址，检查是否为私有/保留段
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_private_or_reserved_ip(ip) {
+            return Err(format!("不允许访问私有/保留 IP: {}", ip));
+        }
+    }
+
+    Ok(())
+}
+
+/// 检查 IP 是否属于私有或保留地址段
+fn is_private_or_reserved_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let octets = v4.octets();
+            // 127.x.x.x — loopback
+            octets[0] == 127
+            // 10.x.x.x — RFC1918
+            || octets[0] == 10
+            // 172.16-31.x.x — RFC1918
+            || (octets[0] == 172 && (16..=31).contains(&octets[1]))
+            // 192.168.x.x — RFC1918
+            || (octets[0] == 192 && octets[1] == 168)
+            // 169.254.x.x — link-local
+            || (octets[0] == 169 && octets[1] == 254)
+            // 0.0.0.0
+            || octets[0] == 0
+            // 100.64-127.x.x — shared address (RFC6598)
+            || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+        }
+        IpAddr::V6(v6) => {
+            // ::1 — loopback
+            v6.is_loopback()
+            // fc00::/7 — unique local
+            || (v6.segments()[0] & 0xfe00) == 0xfc00
+            // fe80::/10 — link-local
+            || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
 
 /// 执行外部集成能力
 pub async fn execute(
@@ -38,12 +101,18 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
         .and_then(|v| v.as_str())
         .ok_or("Missing URL parameter")?;
 
+    // SSRF 防护：验证 URL scheme 并屏蔽私有 IP
+    validate_url_for_fetch(url)?;
+
     let method = params
         .get("method")
         .and_then(|v| v.as_str())
         .unwrap_or("GET");
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
     let response = match method {
         "POST" => {
             let body = params.get("body").cloned().unwrap_or(json!({}));
@@ -62,10 +131,15 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
     };
 
     let status = response.status().as_u16();
-    let body = response
-        .text()
+    // 限制响应体大小，防止 OOM
+    let body_bytes = response
+        .bytes()
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
+    if body_bytes.len() > 10 * 1024 * 1024 {
+        return Err("Response body exceeds 10MB limit".to_string());
+    }
+    let body = String::from_utf8_lossy(&body_bytes).to_string();
 
     let data: Value = serde_json::from_str(&body).unwrap_or(json!(body));
 
@@ -83,7 +157,10 @@ async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, 
     let hitokoto_type = params.get("type").and_then(|v| v.as_str());
 
     let url = match hitokoto_type {
-        Some(t) => format!("https://v1.hitokoto.cn/?c={}", t),
+        Some(t) => {
+            let encoded = urlencoding::encode(t);
+            format!("https://v1.hitokoto.cn/?c={}", encoded)
+        }
         None => "https://v1.hitokoto.cn/".to_string(),
     };
 

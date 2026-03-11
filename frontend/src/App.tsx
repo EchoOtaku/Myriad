@@ -62,7 +62,7 @@ const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
  * 路由守卫：检查认证状态
  * ✅ 使用 API 验证（HttpOnly Cookie 无法被 JS 读取）
  */
-function RequireAuth({ children, requiresAdmin }: { children: JSX.Element, requiresAdmin?: boolean }) {
+function RequireAuth({ children, requiresAdmin }: { children: React.ReactNode, requiresAdmin?: boolean }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -117,7 +117,7 @@ function RequireAuth({ children, requiresAdmin }: { children: JSX.Element, requi
  */
 function LoadingFallback() {
   return (
-    <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center">
+    <div className="fixed inset-0 z-9999 pointer-events-none flex items-center justify-center">
       {/* 纯光效 - 跟随壁纸色 */}
       <div className="loading-fallback-light" />
     </div>

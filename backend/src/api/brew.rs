@@ -14,7 +14,7 @@ use reqwest::Url;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
     DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Statement, Value as SeaValue,
+    QuerySelect, QueryTrait, Statement, Value as SeaValue,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -168,96 +168,122 @@ async fn list_sources(
     // 获取所有订阅源的最新文章（每个源最多3篇）
     let source_ids: Vec<i32> = sources.iter().map(|s| s.id).collect();
 
-    // 只有登录用户才查询已读状态，游客跳过以节约计算
-    let read_item_ids: std::collections::HashSet<i32> = if let Some(uid) = user_id {
-        if let Ok(states) = brew_user_states::Entity::find()
-            .filter(brew_user_states::Column::UserId.eq(uid))
-            .filter(brew_user_states::Column::IsRead.eq(true))
-            .all(&db)
-            .await
-        {
-            states.into_iter().map(|s| s.item_id).collect()
-        } else {
-            std::collections::HashSet::new()
-        }
-    } else {
-        // 游客不需要查询已读状态
-        std::collections::HashSet::new()
-    };
-
-    // 性能优化：一次性获取所有订阅源的文章，避免 N+1 查询问题
-    // 之前是对每个 source_id 单独查询，现在改为批量查询 + 内存分组
-    let all_items = brew_items::Entity::find()
-        .filter(brew_items::Column::SourceId.is_in(source_ids.clone()))
-        .order_by_desc(brew_items::Column::PublishedAt)
-        .all(&db)
-        .await
-        .unwrap_or_default();
-
-    // 在内存中按 source_id 分组
-    let mut items_by_source: std::collections::HashMap<i32, Vec<brew_items::Model>> =
-        std::collections::HashMap::new();
-    for item in all_items {
-        items_by_source
-            .entry(item.source_id)
-            .or_default()
-            .push(item);
-    }
-
-    // 计算每个源的未读数和最新3篇文章预览
-    let mut source_items: std::collections::HashMap<i32, Vec<ItemPreview>> =
-        std::collections::HashMap::new();
-    let mut source_unread_counts: std::collections::HashMap<i32, i32> =
-        std::collections::HashMap::new();
-
-    for source_id in &source_ids {
-        let items = items_by_source
-            .get(source_id)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[]);
-
-        // 游客不计算未读数（显示为0），登录用户计算实际未读数
-        let unread_count = if user_id.is_some() {
-            items
-                .iter()
-                .filter(|item| !read_item_ids.contains(&item.id))
-                .count() as i32
-        } else {
-            0 // 游客不显示未读数
-        };
-        source_unread_counts.insert(*source_id, unread_count);
-
-        // 获取最新3篇作为预览（已按 published_at DESC 排序）
-        let previews: Vec<ItemPreview> = items
-            .iter()
-            .take(3)
-            .map(|item| {
-                // 游客所有文章都显示为未读（is_read = false）
-                let is_read = user_id.is_some() && read_item_ids.contains(&item.id);
-                ItemPreview {
-                    id: item.id,
-                    title: item.title.clone(),
-                    summary: item.summary.clone(),
-                    image: item.image.clone(),
-                    published_at: Some(item.published_at.timestamp_millis()),
-                    is_read,
+    // 并行执行两个 SQL 查询，均只传输必要字段：
+    // (a) 每源未读数：SQL 聚合，避免把所有 item_id 拉到内存再过滤
+    // (b) 每源最新3篇预览：窗口函数精确返回3条，仅加载预览字段，不加载 content 等大字段
+    let (source_unread_counts, mut items_by_source) = tokio::join!(
+        // (a) 未读数：LEFT JOIN brew_user_states，统计无已读状态的文章数
+        async {
+            let mut counts: std::collections::HashMap<i32, i32> =
+                std::collections::HashMap::new();
+            if let Some(uid) = user_id {
+                if !source_ids.is_empty() {
+                    let src_ph = source_ids
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("${}", i + 2))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let sql = format!(
+                        "SELECT i.source_id, COUNT(*)::int AS unread_count \
+                         FROM brew_items i \
+                         LEFT JOIN brew_user_states s \
+                           ON s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
+                         WHERE i.source_id IN ({src_ph}) AND s.item_id IS NULL \
+                         GROUP BY i.source_id"
+                    );
+                    let mut values: Vec<sea_orm::Value> = vec![uid.into()];
+                    values
+                        .extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
+                    let stmt = Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        &sql,
+                        values,
+                    );
+                    if let Ok(rows) = db.query_all(stmt).await {
+                        for row in &rows {
+                            let src: i32 = row.try_get("", "source_id").unwrap_or(0);
+                            let cnt: i32 = row.try_get("", "unread_count").unwrap_or(0);
+                            counts.insert(src, cnt);
+                        }
+                    }
                 }
-            })
-            .collect();
-        source_items.insert(*source_id, previews);
-    }
+            }
+            counts
+        },
+        // (b) 每源最新3篇预览：ROW_NUMBER() OVER PARTITION，只选预览字段
+        async {
+            let mut map: std::collections::HashMap<i32, Vec<ItemPreview>> =
+                std::collections::HashMap::new();
+            if !source_ids.is_empty() {
+                let src_ph = source_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("${}", i + 2))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                // $1 = user_id（游客传 -1，不存在的 ID，LEFT JOIN 不会匹配任何行）
+                let sql = format!(
+                    "SELECT id, source_id, title, summary, image, published_at, \
+                            COALESCE(is_read, false) AS is_read \
+                     FROM ( \
+                       SELECT i.id, i.source_id, i.title, i.summary, i.image, \
+                              i.published_at, s.is_read, \
+                              ROW_NUMBER() OVER \
+                                (PARTITION BY i.source_id ORDER BY i.published_at DESC NULLS LAST) AS rn \
+                       FROM brew_items i \
+                       LEFT JOIN brew_user_states s \
+                         ON s.item_id = i.id AND s.user_id = $1 \
+                       WHERE i.source_id IN ({src_ph}) \
+                     ) ranked \
+                     WHERE rn <= 3"
+                );
+                let uid_val: i32 = user_id.unwrap_or(-1);
+                let mut values: Vec<sea_orm::Value> = vec![uid_val.into()];
+                values.extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
+                let stmt = Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    &sql,
+                    values,
+                );
+                if let Ok(rows) = db.query_all(stmt).await {
+                    for row in &rows {
+                        let id: i32 = row.try_get("", "id").unwrap_or(0);
+                        let source_id: i32 = row.try_get("", "source_id").unwrap_or(0);
+                        let title: String = row.try_get("", "title").unwrap_or_default();
+                        let summary: Option<String> = row.try_get("", "summary").ok().flatten();
+                        let image: Option<String> = row.try_get("", "image").ok().flatten();
+                        let published_at: Option<
+                            sea_orm::entity::prelude::DateTimeWithTimeZone,
+                        > = row.try_get("", "published_at").ok();
+                        let is_read: bool = row.try_get("", "is_read").unwrap_or(false);
+                        map.entry(source_id).or_default().push(ItemPreview {
+                            id,
+                            title,
+                            summary,
+                            image,
+                            published_at: published_at.map(|dt| dt.timestamp_millis()),
+                            is_read,
+                        });
+                    }
+                }
+            }
+            map
+        }
+    );
 
-    // 构建响应，使用计算出的真实未读数
+    // 构建响应，使用 SQL 计算的真实未读数
     let responses: Vec<SourceWithRecentItems> = sources
         .into_iter()
         .map(|s| {
             let source_id = s.id;
-            let real_unread_count = source_unread_counts.get(&source_id).copied().unwrap_or(0);
+            let real_unread_count =
+                source_unread_counts.get(&source_id).copied().unwrap_or(0);
             let mut response: brew_sources::SourceResponse = s.into();
             response.unread_count = real_unread_count;
             SourceWithRecentItems {
                 source: response,
-                recent_items: source_items.remove(&source_id).unwrap_or_default(),
+                recent_items: items_by_source.remove(&source_id).unwrap_or_default(),
             }
         })
         .collect();
@@ -1183,17 +1209,8 @@ async fn list_items(
                 Some(ids)
             }
             "unread" => {
-                // 获取用户已读的 item_ids，然后排除
-                let read_ids: Vec<i32> = brew_user_states::Entity::find()
-                    .filter(brew_user_states::Column::UserId.eq(uid))
-                    .filter(brew_user_states::Column::IsRead.eq(true))
-                    .select_only()
-                    .column(brew_user_states::Column::ItemId)
-                    .into_tuple()
-                    .all(&db)
-                    .await
-                    .unwrap_or_default();
-                Some(read_ids) // 这里存储的是要排除的 IDs
+                // 在后续 items_query 构建阶段使用子查询过滤，此处仅标记（返回 None）
+                None
             }
             _ => None,
         }
@@ -1215,11 +1232,16 @@ async fn list_items(
                 }
             }
             "unread" => {
-                if let Some(ref read_ids) = filtered_item_ids {
-                    if !read_ids.is_empty() {
-                        items_query =
-                            items_query.filter(brew_items::Column::Id.is_not_in(read_ids.clone()));
-                    }
+                // 用子查询替代 NOT IN (ids)，避免已读文章数万条时生成巨型参数列表
+                if let Some(uid) = user_id {
+                    let read_subquery = brew_user_states::Entity::find()
+                        .filter(brew_user_states::Column::UserId.eq(uid))
+                        .filter(brew_user_states::Column::IsRead.eq(true))
+                        .select_only()
+                        .column(brew_user_states::Column::ItemId)
+                        .into_query(); // QueryTrait::into_query() 消耗 Select 返回 SelectStatement
+                    items_query = items_query
+                        .filter(brew_items::Column::Id.not_in_subquery(read_subquery));
                 }
             }
             _ => {}
@@ -1662,17 +1684,18 @@ async fn update_item_state(
 }
 
 /// 更新订阅源的未读计数
+/// 使用原子 SQL 避免并发读改写竞态（两个请求同时读取相同值后各自写回导致数据丢失）
 async fn update_source_unread_count(
     db: &DatabaseConnection,
     source_id: i32,
     delta: i32,
 ) -> Result<(), sea_orm::DbErr> {
-    if let Ok(Some(source)) = brew_sources::Entity::find_by_id(source_id).one(db).await {
-        let new_count = (source.unread_count + delta).max(0);
-        let mut active: brew_sources::ActiveModel = source.into();
-        active.unread_count = Set(new_count);
-        active.update(db).await?;
-    }
+    let stmt = Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE brew_sources SET unread_count = GREATEST(0, unread_count + $1) WHERE id = $2",
+        [delta.into(), source_id.into()],
+    );
+    db.execute(stmt).await?;
     Ok(())
 }
 

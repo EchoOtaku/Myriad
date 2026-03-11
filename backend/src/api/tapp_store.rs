@@ -97,9 +97,10 @@ async fn verify_tapp_ownership(
     // 管理员可以访问所有 Tapp
     // 先检查用户是否是管理员
     let is_admin = db
-        .query_one(Statement::from_string(
+        .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            format!("SELECT is_admin FROM users WHERE id = {} LIMIT 1", user_id),
+            "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
+            [user_id.into()],
         ))
         .await
         .ok()
@@ -549,7 +550,29 @@ async fn fetch_from_store(
         .url
         .trim_end_matches("/index.json")
         .trim_end_matches('/');
-    let client = reqwest::Client::new();
+
+    // 安全验证：确保 URL 使用 https 且不指向内部网络
+    if let Ok(parsed_url) = reqwest::Url::parse(base_url) {
+        let scheme = parsed_url.scheme();
+        if scheme != "https" && scheme != "http" {
+            return Err((StatusCode::BAD_REQUEST, api_error("Only HTTP(S) URLs are allowed")));
+        }
+        if let Some(host) = parsed_url.host_str() {
+            if host == "localhost" || host == "127.0.0.1" || host == "::1"
+                || host.starts_with("10.") || host.starts_with("172.16.")
+                || host.starts_with("192.168.") || host == "0.0.0.0"
+                || host.ends_with(".local") || host.ends_with(".internal")
+            {
+                return Err((StatusCode::BAD_REQUEST, api_error("Internal network URLs are not allowed")));
+            }
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
     // 获取商店索引
     let index_url = format!("{}/index.json", base_url);

@@ -51,7 +51,8 @@ async fn execute_tapp_ui_analysis(
         .get("tappId")
         .and_then(|v| v.as_str())
         .ok_or("Missing tappId")?;
-    let user_id = params.get("userId").and_then(|v| v.as_i64()).unwrap_or(ctx.user_id as i64) as i32;
+    // 始终使用已认证的 user_id，防止 IDOR 越权
+    let user_id = ctx.user_id;
     let include_code = params
         .get("includeCode")
         .and_then(|v| v.as_bool())
@@ -60,6 +61,15 @@ async fn execute_tapp_ui_analysis(
         .get("elementFilter")
         .and_then(|v| v.as_str())
         .unwrap_or("interactive");
+
+    // 验证 tapp_id 安全性，防止路径穿越
+    if tapp_id.contains("..")
+        || tapp_id.contains('/')
+        || tapp_id.contains('\\')
+        || tapp_id.contains('\0')
+    {
+        return Err("无效的 tappId".to_string());
+    }
 
     // 获取 Tapp 信息
     let tapp = tapps::Entity::find()
@@ -128,7 +138,8 @@ async fn execute_tapp_understand(
         .get("tappId")
         .and_then(|v| v.as_str())
         .ok_or("Missing tappId")?;
-    let user_id = params.get("userId").and_then(|v| v.as_i64()).unwrap_or(ctx.user_id as i64) as i32;
+    // 始终使用已认证的 user_id，防止 IDOR
+    let user_id = ctx.user_id;
     let user_intent = params
         .get("userIntent")
         .and_then(|v| v.as_str())
@@ -252,7 +263,8 @@ async fn execute_tapp_interact(
         .get("tappId")
         .and_then(|v| v.as_str())
         .ok_or("Missing tappId")?;
-    let user_id = params.get("userId").and_then(|v| v.as_i64()).unwrap_or(ctx.user_id as i64) as i32;
+    // 始终使用已认证的 user_id，防止 IDOR
+    let user_id = ctx.user_id;
     let action = params.get("action").and_then(|v| v.as_str());
     let target = params.get("target").and_then(|v| v.as_str());
     let value = params.get("value").and_then(|v| v.as_str());
@@ -345,11 +357,8 @@ async fn execute_tapp_page_content(
         .unwrap_or("apps");
     let tapp_id = params.get("tappId").and_then(|v| v.as_str());
     let task_id = params.get("taskId").and_then(|v| v.as_str());
-    let user_id = params
-        .get("userId")
-        .and_then(|v| v.as_i64())
-        .map(|v| v as i32)
-        .unwrap_or(ctx.user_id);
+    // 始终使用已认证的 user_id，防止 IDOR
+    let user_id = ctx.user_id;
     let filter = params
         .get("filter")
         .and_then(|v| v.as_str())

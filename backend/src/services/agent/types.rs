@@ -1529,3 +1529,83 @@ impl QuestionOption {
         self
     }
 }
+
+// ============ SSE 进度事件 ============
+
+/// Agent 进度事件（用于 SSE 实时推送）
+///
+/// 定义在 service 层，由 executor 和 agent mod 发送，
+/// api 层负责序列化为 SSE 数据。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AgentProgressEvent {
+    /// 任务已创建
+    TaskCreated {
+        #[serde(rename = "taskId")]
+        task_id: String,
+        message: String,
+        #[serde(rename = "totalSteps")]
+        total_steps: u32,
+    },
+    /// 步骤开始
+    StepStarted {
+        #[serde(rename = "stepId")]
+        step_id: String,
+        #[serde(rename = "stepIndex")]
+        step_index: u32,
+        #[serde(rename = "totalSteps")]
+        total_steps: u32,
+        #[serde(rename = "capabilityName")]
+        capability_name: String,
+        description: String,
+    },
+    /// 步骤完成
+    StepCompleted {
+        #[serde(rename = "stepId")]
+        step_id: String,
+        #[serde(rename = "stepIndex")]
+        step_index: u32,
+        success: bool,
+        #[serde(rename = "durationMs")]
+        duration_ms: u64,
+        #[serde(rename = "outputSummary", skip_serializing_if = "Option::is_none")]
+        output_summary: Option<String>,
+    },
+    /// 进度更新
+    Progress {
+        progress: u8,
+        #[serde(rename = "completedSteps")]
+        completed_steps: u32,
+        #[serde(rename = "totalSteps")]
+        total_steps: u32,
+        message: String,
+    },
+    /// 任务完成（response 为序列化后的 ApiResponse JSON）
+    TaskCompleted {
+        #[serde(rename = "taskId")]
+        task_id: String,
+        success: bool,
+        /// 已序列化的 API 响应（由 api 层填充）
+        response: Box<Value>,
+    },
+    /// 需要用户输入（预留，用于未来的交互式任务）
+    #[allow(dead_code)]
+    WaitingForInput {
+        #[serde(rename = "taskId")]
+        task_id: String,
+        #[serde(rename = "questionId")]
+        question_id: String,
+        #[serde(rename = "questionType")]
+        question_type: String,
+        question: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        options: Option<Vec<String>>,
+    },
+    /// 错误
+    Error {
+        #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+        message: String,
+        code: String,
+    },
+}

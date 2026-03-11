@@ -293,7 +293,7 @@ const BilibiliWidget = memo(({ data, onContentChange, showOverview, defaultDanma
                 loading="lazy"
               />
               {/* 半透明遮罩 */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
             </div>
           </div>
         </motion.div>
@@ -325,7 +325,7 @@ const SteamStatsWidget = memo(({ data, defaultPlayerType }: { data?: {
     <div className="relative h-full w-full overflow-hidden">
       {/* 背景：对角分割设计 */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent clip-diagonal" />
+        <div className="absolute inset-0 bg-linear-to-br from-gray-100/50 to-transparent dark:from-white/2 dark:to-transparent clip-diagonal" />
       </div>
 
       {/* 左侧：巨大评分数字 + 标签 */}
@@ -454,7 +454,7 @@ const SteamWidget = memo(({ data, onContentChange, showOverview, defaultPlayerTy
                 loading="lazy"
               />
               {/* 半透明遮罩 */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
             </div>
           </div>
         </motion.div>
@@ -572,7 +572,7 @@ const GithubStatsWidget = memo(({ data, defaultLevel, levelKeywords }: { data?: 
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* 背景渐变 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
 
       {/* 主要内容区域 - 垂直布局 */}
       <div className="relative h-full flex flex-col p-2 justify-between">
@@ -632,7 +632,7 @@ const GithubStatsWidget = memo(({ data, defaultLevel, levelKeywords }: { data?: 
                     return (
                       <motion.div
                         key={`${week}-${day}`}
-                        className="w-[10px] h-[10px] rounded-[2px]"
+                        className="w-2.5 h-2.5 rounded-xs"
                         style={{
                           backgroundColor: levelColor,
                           opacity: cell?.opacity || 0.15,
@@ -668,7 +668,7 @@ const GithubStatsWidget = memo(({ data, defaultLevel, levelKeywords }: { data?: 
                 </span>
               </div>
               {/* 进度条 */}
-              <div className="h-[3px] w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
+              <div className="h-0.75 w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
                 <motion.div
                   className="h-full rounded-full"
                   style={{ backgroundColor: getLanguageColor(lang.name) }}
@@ -751,7 +751,7 @@ const GithubWidget = memo(({ data, onContentChange, showOverview, defaultLevel, 
           {currentItem ? (
             <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
               {/* 仓库信息展示 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
+              <div className="absolute inset-0 bg-linear-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
                 <div className="absolute inset-0 flex flex-col p-2.5 pb-[20%]">
                   {/* 顶部：Stars和Forks统计 */}
                   <div className="flex items-center gap-2.5 mb-2">
@@ -918,7 +918,7 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* 背景渐变 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 to-transparent dark:from-red-900/20 dark:to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-br from-red-50/50 to-transparent dark:from-red-900/20 dark:to-transparent" />
 
       {/* 主要内容区域 */}
       <div className="relative h-full w-full p-3">
@@ -989,7 +989,7 @@ const MusicStatsWidget = memo(({ data, tenThousandSuffix, triggerKey }: { data?:
         <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-20">
           {/* 等级标签 */}
           <motion.div
-            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
+            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-linear-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
             style={{
               boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)',
             }}
@@ -1934,7 +1934,7 @@ export default function Reports() {
                           transition={{ delay: i * 0.05 }}
                           className="flex gap-3 group"
                         >
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 font-bold text-xs group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                          <div className="shrink-0 w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 font-bold text-xs group-hover:bg-indigo-500 group-hover:text-white transition-colors">
                             {i + 1}
                           </div>
                           <div className="flex-1 pt-0.5">
@@ -1994,7 +1994,7 @@ export default function Reports() {
                 <>
                   {/* 平台报告提示条 */}
                   <motion.div
-                    className={`h-[50px] ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
+                    className={`h-12.5 ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={isPageReady ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
                     exit={{ opacity: 0, x: -20 }}
@@ -2023,7 +2023,7 @@ export default function Reports() {
                       ) : (
                       // 正常模式：显示默认提示
                         <>
-                          <svg className="w-5 h-5 flex-shrink-0 text-primary-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5 shrink-0 text-primary-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z" />
                           </svg>
                           <div className="flex-1 min-w-0">
@@ -2131,10 +2131,10 @@ export default function Reports() {
                           whileHover={{ scale: 1.02, y: -4 }}
                           whileTap={{ scale: 0.98 }}
                           className={`
-                    relative aspect-[2/1] rounded-2xl overflow-hidden cursor-pointer group
+                    relative aspect-2/1 rounded-2xl overflow-hidden cursor-pointer group
                     glass
                     hover:shadow-xl transition-shadow
-                    flex-shrink-0 w-[280px] lg:w-auto snap-center
+                    shrink-0 w-70 lg:w-auto snap-center
                   `}
                           style={{ willChange: 'transform, opacity' }} // 🚀 GPU加速
                           onClick={() => {
@@ -2150,7 +2150,7 @@ export default function Reports() {
                           }}
                         >
                           {/* 动态背景光效 */}
-                          <div className={`absolute -right-10 -top-10 w-40 h-40 bg-gradient-to-br ${platform.color} opacity-10 rounded-full blur-3xl group-hover:opacity-20 transition-opacity`} />
+                          <div className={`absolute -right-10 -top-10 w-40 h-40 bg-linear-to-br ${platform.color} opacity-10 rounded-full blur-3xl group-hover:opacity-20 transition-opacity`} />
 
                           <div className="absolute inset-0 flex flex-col z-10">
                             {/* 哔哩哔哩平台特殊布局 */}
@@ -2205,7 +2205,7 @@ export default function Reports() {
                                       padding: cardContents[platform.id] ? '0 8px 0 8px' : '0 8px',
                                     }}
                                   >
-                                    <div className="text-base flex-shrink-0">
+                                    <div className="text-base shrink-0">
                                       {platform.icon}
                                     </div>
                                     <AnimatePresence>
@@ -2217,7 +2217,7 @@ export default function Reports() {
                                           transition={{ duration: 0.3 }}
                                           className="flex items-center gap-2 whitespace-nowrap overflow-hidden"
                                         >
-                                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate">
+                                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate">
                                             {cardContents[platform.id].title}
                                           </span>
                                           <span
@@ -2287,7 +2287,7 @@ export default function Reports() {
                                       padding: cardContents[platform.id] ? '0 8px 0 8px' : '0 8px',
                                     }}
                                   >
-                                    <div className="text-base flex-shrink-0">
+                                    <div className="text-base shrink-0">
                                       {platform.icon}
                                     </div>
                                     <AnimatePresence>
@@ -2299,7 +2299,7 @@ export default function Reports() {
                                           transition={{ duration: 0.3 }}
                                           className="flex items-center gap-2 whitespace-nowrap overflow-hidden"
                                         >
-                                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate">
+                                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate">
                                             {cardContents[platform.id].title}
                                           </span>
                                         </motion.div>
@@ -2361,7 +2361,7 @@ export default function Reports() {
                                       padding: cardContents[platform.id] ? '0 8px 0 8px' : '0 8px',
                                     }}
                                   >
-                                    <div className="text-base flex-shrink-0">
+                                    <div className="text-base shrink-0">
                                       {platform.icon}
                                     </div>
                                     <AnimatePresence>
@@ -2373,7 +2373,7 @@ export default function Reports() {
                                           transition={{ duration: 0.3 }}
                                           className="flex items-center gap-2 whitespace-nowrap overflow-hidden"
                                         >
-                                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate">
+                                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate">
                                             {cardContents[platform.id].title}
                                           </span>
                                           {cardContents[platform.id].type !== 'repo' && (
@@ -2446,7 +2446,7 @@ export default function Reports() {
                                       height: cardContents[platform.id] ? 'auto' : '32px',
                                     }}
                                   >
-                                    <div className="text-base flex-shrink-0">
+                                    <div className="text-base shrink-0">
                                       {platform.icon}
                                     </div>
                                     <AnimatePresence>
@@ -2459,7 +2459,7 @@ export default function Reports() {
                                           className="flex flex-col gap-0.5 overflow-hidden py-0.5"
                                         >
                                           {cardContents[platform.id].titles.map((title: string, idx: number) => (
-                                            <div key={idx} className="text-[10px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate leading-tight">
+                                            <div key={idx} className="text-[10px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate leading-tight">
                                               {title}
                                             </div>
                                           ))}
@@ -2521,7 +2521,7 @@ export default function Reports() {
                 <>
                   {/* 综合报告提示条 */}
                   <motion.div
-                    className={`h-[50px] ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
+                    className={`h-12.5 ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
                     initial={{ opacity: 0, y: -10 }}
                     animate={isPageReady ? { opacity: 1, y: 0 } : { opacity: 0, y: -10 }}
                     transition={{ duration: 0.3, delay: isPageReady ? 0.1 : 0 }}
@@ -2537,7 +2537,7 @@ export default function Reports() {
                       {isStageMode && stageReportData?.type === 'comprehensive' ? (
                       // 舞台模式下显示标题和控制按钮
                         <>
-                          <FaMagic className="text-base flex-shrink-0 text-accent-color" />
+                          <FaMagic className="text-base shrink-0 text-accent-color" />
                           <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
                             <span className="text-sm font-medium truncate">
                               {stageReportData.title}
@@ -2592,7 +2592,7 @@ export default function Reports() {
                                   ease: 'easeInOut',
                                 }}
                               >
-                                <FaMagic className="text-base flex-shrink-0 text-accent-color" />
+                                <FaMagic className="text-base shrink-0 text-accent-color" />
                               </motion.div>
                               <div className="flex-1 min-w-0 flex items-center gap-2">
                                 <input
@@ -2605,7 +2605,7 @@ export default function Reports() {
                                 <motion.button
                                   onClick={generateComprehensiveReport}
                                   disabled={loadingPlatform === 'comprehensive'}
-                                  className="flex-shrink-0 h-[26px] px-3 text-white rounded text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                  className="shrink-0 h-6.5 px-3 text-white rounded text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                                   style={{
                                     background: `linear-gradient(135deg, var(--color-accent), var(--color-secondary))`,
                                   }}
@@ -2653,7 +2653,7 @@ export default function Reports() {
                           ) : (
                           // 非管理员显示提示
                             <>
-                              <FaMagic className="text-base flex-shrink-0 opacity-50 text-accent-color" />
+                              <FaMagic className="text-base shrink-0 opacity-50 text-accent-color" />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{t.reportsPage.comprehensiveReport}</div>
                                 <div className="text-[10px] text-gray-500 dark:text-gray-500">{t.reportsPage.adminOnlyGenerateHint}</div>

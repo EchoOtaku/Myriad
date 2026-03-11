@@ -260,6 +260,24 @@ pub fn transform_params(
     Some(serde_json::Value::Object(new_params))
 }
 
+/// 验证映射表中的所有升级目标是否为合法的已知能力 ID
+///
+/// 这个函数在测试中调用，用于捕捉「能力 ID 改名但映射表未同步」类型的耦合 bug。
+/// 已知合法的能力 ID 集合从各 definitions 模块中维护，每次新增能力时同步更新此集合即可。
+#[allow(dead_code)]
+pub fn validate_escalation_targets(known_capability_ids: &std::collections::HashSet<&str>) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (source, esc) in CAPABILITY_ESCALATION_MAP.iter() {
+        if !known_capability_ids.contains(esc.target_capability) {
+            errors.push(format!(
+                "能力 '{}' 的升级目标 '{}' 不存在于已知能力列表中",
+                source, esc.target_capability
+            ));
+        }
+    }
+    errors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,5 +341,58 @@ mod tests {
         assert!(all.len() > 10); // 应该有足够多的可升级能力
         assert!(all.contains(&"brew.items"));
         assert!(all.contains(&"database.anime"));
+    }
+
+    /// 升级目标完整性校验
+    ///
+    /// 确保所有映射到的目标能力 ID 都在已知能力集合中。
+    /// 如果某个能力 ID 改名，此测试会立即失败，防止静默升级到不存在的能力。
+    #[test]
+    fn test_escalation_target_integrity() {
+        // 维护所有合法能力 ID 的白名单（与 capability/definitions/*.rs 保持同步）
+        let known_ids: std::collections::HashSet<&str> = [
+            // AI 处理
+            "ai.summarize", "ai.analyze", "ai.recommend", "ai.chat",
+            "ai.webSearch", "ai.groundingSearch",
+            "brewlia.annotate", "brewlia.podcast",
+            "speech.tts", "smart.filter", "compare.content",
+            "icon.recommend", "prompt.generate", "translate.text", "code.explain",
+            // Brew
+            "brew.items", "brew.read", "brew.article", "brew.discover",
+            "brew.subscribe", "brew.mark", "brew.generateReadingList",
+            // Netease
+            "netease.playlist", "netease.searchPlaylist",
+            "netease.song", "netease.playlist.detail",
+            // Platform
+            "platform.read", "platform.write", "platform.refresh",
+            // Bilibili / Steam / GitHub
+            "bilibili.user", "bilibili.video",
+            "steam.user", "steam.game",
+            "github.repos",
+            // Database
+            "database.anime", "database.game", "database.artist",
+            // Search
+            "search.global", "search.fuzzy",
+            // Report
+            "report.create", "report.comprehensive",
+            // Tapp
+            "tapp.list", "tapp.storage",
+            // External
+            "hitokoto.get", "weather.get", "notion.query",
+            "http.fetch", "proxy.image",
+            // Music
+            "music.playlist",
+            // Storage
+            "storage.set",
+            // Content
+            "content.write",
+        ].iter().copied().collect();
+
+        let errors = validate_escalation_targets(&known_ids);
+        assert!(
+            errors.is_empty(),
+            "升级目标 ID 校验失败，请同步更新映射表或能力定义：\n{}",
+            errors.join("\n")
+        );
     }
 }

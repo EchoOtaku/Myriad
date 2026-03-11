@@ -175,6 +175,9 @@ impl Agent {
     pub async fn process(&self, request: UserRequest) -> Result<AgentResponse, String> {
         let user_id = request.user_id;
 
+        // 请求驱动的过期任务清理（低概率触发，避免独立定时任务）
+        executor::maybe_cleanup_tasks().await;
+
         tracing::info!(
             user_id = user_id,
             input = %request.raw_input,
@@ -316,10 +319,8 @@ impl Agent {
     pub async fn process_with_progress(
         &self,
         request: UserRequest,
-        progress_tx: tokio::sync::mpsc::Sender<crate::api::agent::ProgressEvent>,
+        progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<AgentResponse, String> {
-        use crate::api::agent::ProgressEvent;
-
         let user_id = request.user_id;
 
         // 从请求上下文中获取对话历史（由前端「继续对话」功能传入）
@@ -350,7 +351,7 @@ impl Agent {
 
         // 1. 解析意图（带对话历史上下文）
         let _ = progress_tx
-            .send(ProgressEvent::Progress {
+            .send(AgentProgressEvent::Progress {
                 progress: 5,
                 completed_steps: 0,
                 total_steps: 0,
@@ -422,7 +423,7 @@ impl Agent {
 
         // 3. 生成执行方案
         let _ = progress_tx
-            .send(ProgressEvent::Progress {
+            .send(AgentProgressEvent::Progress {
                 progress: 15,
                 completed_steps: 0,
                 total_steps: 0,
@@ -479,7 +480,7 @@ impl Agent {
 
         // 发送任务创建事件（多步骤任务）
         let _ = progress_tx
-            .send(ProgressEvent::TaskCreated {
+            .send(AgentProgressEvent::TaskCreated {
                 task_id: recipe.id.clone(),
                 message: format!("开始执行：{}", recipe.name),
                 total_steps: recipe.steps.len() as u32,
@@ -505,7 +506,7 @@ impl Agent {
         recipe: &Recipe,
         intent: &ParsedIntent,
         user_id: i32,
-        progress_tx: tokio::sync::mpsc::Sender<crate::api::agent::ProgressEvent>,
+        progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<AgentResponse, String> {
         // 确定初始升级等级
         let initial_level = escalation::EscalationLevel::from_intent(intent);
@@ -528,7 +529,7 @@ impl Agent {
         &self,
         recipe: &Recipe,
         user_id: i32,
-        progress_tx: tokio::sync::mpsc::Sender<crate::api::agent::ProgressEvent>,
+        progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<AgentResponse, String> {
         tracing::info!(
             user_id = user_id,
@@ -581,17 +582,15 @@ impl Agent {
         recipe: &Recipe,
         intent: &ParsedIntent,
         user_id: i32,
-        progress_tx: tokio::sync::mpsc::Sender<crate::api::agent::ProgressEvent>,
+        progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<AgentResponse, String> {
-        use crate::api::agent::ProgressEvent;
-
         let step = &recipe.steps[0];
         // 使用带上下文的步骤描述
         let step_description = capability::get_step_description(step);
 
         // 发送开始执行进度
         let _ = progress_tx
-            .send(ProgressEvent::Progress {
+            .send(AgentProgressEvent::Progress {
                 progress: 20,
                 completed_steps: 0,
                 total_steps: 1,
@@ -601,7 +600,7 @@ impl Agent {
 
         // 发送步骤开始
         let _ = progress_tx
-            .send(ProgressEvent::StepStarted {
+            .send(AgentProgressEvent::StepStarted {
                 step_id: step.id.clone(),
                 step_index: 0,
                 total_steps: 1,
@@ -629,7 +628,7 @@ impl Agent {
 
         // 发送步骤完成
         let _ = progress_tx
-            .send(ProgressEvent::StepCompleted {
+            .send(AgentProgressEvent::StepCompleted {
                 step_id: step.id.clone(),
                 step_index: 0,
                 success,
@@ -640,7 +639,7 @@ impl Agent {
 
         // 发送完成进度
         let _ = progress_tx
-            .send(ProgressEvent::Progress {
+            .send(AgentProgressEvent::Progress {
                 progress: 100,
                 completed_steps: 1,
                 total_steps: 1,
@@ -976,7 +975,7 @@ impl Agent {
         user_id: i32,
         initial_level: escalation::EscalationLevel,
         initial_count: u32,
-        progress_tx: Option<tokio::sync::mpsc::Sender<crate::api::agent::ProgressEvent>>,
+        progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
     ) -> Result<AgentResponse, String> {
         use escalation::EscalationDecision;
 
@@ -1032,7 +1031,7 @@ impl Agent {
 
                     // 发送升级进度事件
                     if let Some(ref tx) = progress_tx {
-                        let _ = tx.send(crate::api::agent::ProgressEvent::Progress {
+                        let _ = tx.send(AgentProgressEvent::Progress {
                             progress: 50,
                             completed_steps: escalation_count + 1,
                             total_steps: 0, // 未知
@@ -1170,7 +1169,18 @@ impl Agent {
         }
     }
 
-    /// 获取任务状态
+    /// 获取任务状态（带所有权校验，防止 IDOR）
+    pub async fn get_task_for_user(&self, task_id: &str, user_id: i32) -> Option<TaskState> {
+        executor::get_task_for_user(task_id, user_id).await
+    }
+
+    /// 取消任务（带所有权校验）
+    pub async fn cancel_task_for_user(&self, task_id: &str, user_id: i32) -> bool {
+        executor::cancel_task_for_user(task_id, user_id).await
+    }
+
+    /// 获取任务状态（不含所有权校验，内部使用）
+    #[allow(dead_code)]
     pub async fn get_task_status(&self, task_id: &str) -> Option<TaskState> {
         executor::get_task(task_id).await
     }
