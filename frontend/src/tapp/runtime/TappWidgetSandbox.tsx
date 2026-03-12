@@ -25,11 +25,12 @@ import {
 } from './sandbox'
 import { calculateWidgetDimensions, sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-// 处理器（Widget 只需要基础处理器）
+// 处理器
 import {
   registerContextHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
+  registerMediaHandlers,
   registerStorageHandlers,
   registerUIHandlers,
 } from './sandbox/handlers'
@@ -321,6 +322,133 @@ export const TappWidgetSandbox = memo(({
   // 🎯 共享订阅 hook：主题/主色调/页面可见性联动
   useSandboxSubscriptions(bridgeRef, isReady)
 
+  // 构建媒体状态对象（供 mediaStateChange 事件使用）
+  const buildMediaState = useCallback((detail: Record<string, unknown>) => {
+    const modeMap: Record<string, string> = { loop: 'loop', single: 'single', shuffle: 'shuffle' }
+    const currentSong = detail.currentSong as Record<string, unknown> | null
+    const currentTime = (detail.currentTime as number) || 0
+    const audioDuration = (detail.audioDuration as number) || (currentSong?.duration as number) || 0
+    const volume = (detail.volume as number) ?? 0.7
+    const playMode = (detail.playMode as string) || 'loop'
+    return {
+      isPlaying: detail.isPlaying || false,
+      isPaused: !detail.isPlaying && currentSong !== null,
+      currentTrack: currentSong
+        ? {
+            id: currentSong.id || '',
+            title: currentSong.name || currentSong.title || '',
+            name: currentSong.name || currentSong.title || '',
+            artist: currentSong.artist || '',
+            album: currentSong.album || '',
+            cover: currentSong.cover || '',
+            duration: currentSong.duration || 0,
+          }
+        : null,
+      progress: {
+        current: currentTime,
+        duration: audioDuration,
+        percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
+      },
+      position: currentTime,
+      volume: Math.round(volume * 100),
+      mode: modeMap[playMode] || 'sequence',
+      muted: volume === 0,
+      lyrics: detail.lyrics || [],
+      currentLyricIndex: (detail.currentLyricIndex as number) ?? -1,
+      primaryColor: detail.musicColor || '#fc3c44',
+      secondaryColor: (detail.musicColors as any)?.secondary || detail.musicColor || '#fc3c44',
+      accentColor: (detail.musicColors as any)?.accent || detail.musicColor || '#fc3c44',
+      lightColor: (detail.musicColors as any)?.light || '#ffffff',
+      darkColor: (detail.musicColors as any)?.dark || '#000000',
+    }
+  }, [])
+
+  // 🎵 媒体状态变化 — 转发给 Widget 沙箱
+  useEffect(() => {
+    if (!isReady)
+      return
+
+    const bridge = bridgeRef.current
+    const tapp = tappInstanceRef.current
+
+    if (!bridge || !tapp?.grantedPermissions?.includes('media:read'))
+      return
+
+    const handleMusicStateChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail || !bridgeRef.current)
+        return
+      const currentTapp = tappInstanceRef.current
+      if (!currentTapp?.grantedPermissions?.includes('media:read'))
+        return
+      bridgeRef.current.emit('mediaStateChange', buildMediaState(detail))
+    }
+
+    // 先注册监听，再触发同步（确保不会错过同步事件）
+    window.addEventListener('music-player-state-change', handleMusicStateChange)
+
+    // 🎯 Widget 就绪时立即推送当前音乐状态（解决初始化竞态）
+    const pushCurrentState = () => {
+      const state = (window as any).__musicPlayerState
+      if (state && bridgeRef.current) {
+        bridgeRef.current.emit('mediaStateChange', buildMediaState(state))
+      }
+    }
+
+    const currentGlobalState = (window as any).__musicPlayerState
+    if (currentGlobalState) {
+      bridge.emit('mediaStateChange', buildMediaState(currentGlobalState))
+    }
+    else {
+      window.dispatchEvent(new CustomEvent('request-music-state-sync'))
+    }
+
+    // 🎯 延迟重推：确保 iframe SDK 消息监听器就绪后再推一次
+    const retryTimer = setTimeout(pushCurrentState, 150)
+
+    return () => {
+      clearTimeout(retryTimer)
+      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+    }
+  }, [isReady])
+
+  // 媒体进度实时推送 - 同时发送 mediaProgress（新API）和 mediaStateChange（向后兼容）
+  useEffect(() => {
+    if (!isReady)
+      return
+
+    const handleProgress = (e: Event) => {
+      const bridge = bridgeRef.current
+      if (!bridge)
+        return
+
+      const tapp = tappInstanceRef.current
+      if (!tapp?.grantedPermissions?.includes('media:read'))
+        return
+
+      const { currentTime, audioDuration } = (e as CustomEvent).detail
+      const progress = {
+        current: currentTime,
+        duration: audioDuration,
+        percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
+      }
+
+      // 新 API：轻量进度事件
+      bridge.emit('mediaProgress', progress)
+
+      // 向后兼容：合并进度到完整状态并 emit mediaStateChange
+      const globalState = (window as any).__musicPlayerState
+      if (globalState) {
+        bridge.emit('mediaStateChange', buildMediaState({ ...globalState, currentTime, audioDuration }))
+      }
+    }
+
+    window.addEventListener('music-player-progress', handleProgress)
+    return () => {
+      window.removeEventListener('music-player-progress', handleProgress)
+    }
+  }, [isReady])
+
   // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
   // 使用 widgetHtml 长度 + styles 长度 + widgetCSS 长度作为简单指纹，避免大字符串比较
   const codeFingerprint = useMemo(() => {
@@ -378,6 +506,8 @@ export const TappWidgetSandbox = memo(({
     registerWidgetAIHandler(bridge, permission, currentTappInstance.id)
     // 🎯 注册 Context 处理器（包含 api.execute 和 context.getGeo）
     registerContextHandlers(bridge, currentTappInstance)
+    // 🎵 注册 Media 处理器（供音乐播放器 Tapp 使用）
+    registerMediaHandlers(bridge, currentTappInstance)
 
     // 监听 tapp.ready 事件（Widget HTML 发送的早期 ready 事件）
     const unsubscribeReady = bridge.on('tapp.ready', () => {

@@ -76,7 +76,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   // 图片生成 Provider 选项
   const imageProviderOptions: SettingOption<string>[] = useMemo(() => [
     { value: 'pollinations', label: 'Pollinations', icon: <FaFreeCodeCamp />, badge: t.config.pollinationsFree },
-    { value: 'imaginepro', label: 'ImaginePro', icon: <FaMagic />, badge: 'MJ' },
+    { value: 'pixai', label: 'PixAI', icon: <FaMagic />, badge: 'SD/DiT' },
   ], [t.config.pollinationsFree])
 
   // Pollinations 模型选项
@@ -102,7 +102,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     return configFields.filter((field) => {
       if (field.key === 'provider')
         return false
-      if (field.key.startsWith('ai_image_') || field.key.startsWith('imaginepro_'))
+      if (field.key.startsWith('ai_image_') || field.key.startsWith('pixai_'))
         return false
       if (field.key.startsWith('tencent_'))
         return false
@@ -243,38 +243,47 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           </>
         )}
 
-        {/* ImaginePro 配置 */}
-        {currentImageProvider === 'imaginepro' && (
+        {/* PixAI 配置 */}
+        {currentImageProvider === 'pixai' && (
           <>
             <InputItem
-              itemKey="imaginepro_api_key"
+              itemKey="pixai_api_key"
               label="API Key"
               required
-              value={getFieldValue('imaginepro_api_key')}
-              onChange={v => updateValue('imaginepro_api_key', v)}
-              placeholder={t.config.imagineproPlaceholder}
+              value={getFieldValue('pixai_api_key')}
+              onChange={v => updateValue('pixai_api_key', v)}
+              placeholder={t.config.pixaiPlaceholder}
               inputType="password"
               autoSelectOnMask
               layout="vertical"
             />
+            <InputItem
+              itemKey="ai_image_model_pixai"
+              label={t.config.pixaiModelId}
+              value={getFieldValue('ai_image_model', '1983308862240288769')}
+              onChange={v => updateValue('ai_image_model', v)}
+              placeholder="1983308862240288769"
+              inputType="text"
+              layout="vertical"
+            />
             <CompactSettingGroup>
               <NumberItem
-                itemKey="ai_image_width_mj"
+                itemKey="ai_image_width_pixai"
                 label={t.config.width}
-                value={Number.parseInt(getFieldValue('ai_image_width', '1024'), 10)}
+                value={Number.parseInt(getFieldValue('ai_image_width', '768'), 10)}
                 onChange={v => updateValue('ai_image_width', String(v))}
-                min={512}
-                max={2048}
+                min={768}
+                max={1280}
                 step={128}
                 layout="vertical"
               />
               <NumberItem
-                itemKey="ai_image_height_mj"
+                itemKey="ai_image_height_pixai"
                 label={t.config.height}
-                value={Number.parseInt(getFieldValue('ai_image_height', '1536'), 10)}
+                value={Number.parseInt(getFieldValue('ai_image_height', '1280'), 10)}
                 onChange={v => updateValue('ai_image_height', String(v))}
-                min={512}
-                max={2048}
+                min={768}
+                max={1280}
                 step={128}
                 layout="vertical"
               />

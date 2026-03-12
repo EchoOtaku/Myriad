@@ -238,7 +238,7 @@ pub struct AiImageConfig {
     pub model: String,
     pub width: u32,
     pub height: u32,
-    pub imaginepro_api_key: Option<String>,
+    pub pixai_api_key: Option<String>,
 }
 
 /// AI 配置缓存（5分钟 TTL）
@@ -336,7 +336,7 @@ pub async fn get_ai_image_config() -> Result<AiImageConfig, (StatusCode, Json<Va
         model: config.ai_image_model.clone(),
         width: config.ai_image_width as u32,
         height: config.ai_image_height as u32,
-        imaginepro_api_key: config.imaginepro_api_key.clone(),
+        pixai_api_key: config.pixai_api_key.clone(),
     };
 
     let mut cache = AI_IMAGE_CONFIG_CACHE.write().await;

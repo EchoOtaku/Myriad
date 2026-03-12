@@ -321,11 +321,10 @@ export async function batchTextToSpeech(req: BatchTTSRequest): Promise<BatchTTSR
  */
 export function base64ToAudioUrl(base64: string, mimeType: string = 'audio/mp3'): string {
   const byteCharacters = atob(base64)
-  const byteNumbers = Array.from({ length: byteCharacters.length })
+  const byteArray = new Uint8Array(byteCharacters.length)
   for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i)
+    byteArray[i] = byteCharacters.charCodeAt(i)
   }
-  const byteArray = new Uint8Array(byteNumbers)
   const blob = new Blob([byteArray], { type: mimeType })
   return URL.createObjectURL(blob)
 }

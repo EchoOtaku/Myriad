@@ -28,6 +28,7 @@ import {
   registerMediaHandlers,
   registerPlatformHandlers,
   registerReportHandlers,
+  registerSpeechHandlers,
   registerStorageHandlers,
   registerUIHandlers,
   registerUserHandlers,
@@ -343,79 +344,136 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     bridgeRef.current.emit('locale:change', locale)
   }, [locale, isReady])
 
+  // 构建媒体状态对象（供 mediaStateChange 事件使用）
+  const modeMap: Record<string, string> = { loop: 'loop', single: 'single', shuffle: 'shuffle' }
+
+  const buildMediaState = useCallback((detail: Record<string, unknown>) => {
+    const currentSong = detail.currentSong as Record<string, unknown> | null
+    const currentTime = (detail.currentTime as number) || 0
+    const audioDuration = (detail.audioDuration as number) || (currentSong?.duration as number) || 0
+    const volume = (detail.volume as number) ?? 0.7
+    const playMode = (detail.playMode as string) || 'loop'
+    return {
+      isPlaying: detail.isPlaying || false,
+      isPaused: !detail.isPlaying && currentSong !== null,
+      currentTrack: currentSong
+        ? {
+            id: currentSong.id || '',
+            title: currentSong.name || currentSong.title || '',
+            name: currentSong.name || currentSong.title || '',
+            artist: currentSong.artist || '',
+            album: currentSong.album || '',
+            cover: currentSong.cover || '',
+            duration: currentSong.duration || 0,
+          }
+        : null,
+      progress: {
+        current: currentTime,
+        duration: audioDuration,
+        percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
+      },
+      position: currentTime,
+      volume: Math.round(volume * 100),
+      mode: modeMap[playMode] || 'sequence',
+      muted: volume === 0,
+      lyrics: detail.lyrics || [],
+      currentLyricIndex: (detail.currentLyricIndex as number) ?? -1,
+      primaryColor: detail.musicColor || '#fc3c44',
+      secondaryColor: (detail.musicColors as any)?.secondary || detail.musicColor || '#fc3c44',
+      accentColor: (detail.musicColors as any)?.accent || detail.musicColor || '#fc3c44',
+      lightColor: (detail.musicColors as any)?.light || '#ffffff',
+      darkColor: (detail.musicColors as any)?.dark || '#000000',
+    }
+  }, [])
+
   // 媒体状态变化 - 转发给 Tapp 沙箱
   useEffect(() => {
     if (!isReady)
       return
 
+    const bridge = bridgeRef.current
+    const tapp = tappInstanceRef.current
+
+    if (!bridge || !tapp?.grantedPermissions?.includes('media:read'))
+      return
+
     const handleMusicStateChange = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      if (!detail)
+      if (!detail || !bridgeRef.current)
         return
+      const currentTapp = tappInstanceRef.current
+      if (!currentTapp?.grantedPermissions?.includes('media:read'))
+        return
+      bridgeRef.current.emit('mediaStateChange', buildMediaState(detail))
+    }
 
+    // 先注册监听，再触发同步（确保不会错过同步事件）
+    window.addEventListener('music-player-state-change', handleMusicStateChange)
+
+    // 🎯 Tapp 就绪时立即推送当前音乐状态（解决初始化竞态）
+    const pushCurrentState = () => {
+      const state = (window as any).__musicPlayerState
+      if (state && bridgeRef.current) {
+        bridgeRef.current.emit('mediaStateChange', buildMediaState(state))
+      }
+    }
+
+    const currentGlobalState = (window as any).__musicPlayerState
+    if (currentGlobalState) {
+      // 直接从全局状态构建并推送
+      bridge.emit('mediaStateChange', buildMediaState(currentGlobalState))
+    }
+    else {
+      // 全局状态尚未初始化，触发同步请求（监听器已就位，会收到结果）
+      window.dispatchEvent(new CustomEvent('request-music-state-sync'))
+    }
+
+    // 🎯 延迟重推：确保 iframe SDK 消息监听器就绪后再推一次
+    // 解决初始推送早于 SDK 初始化的竞态
+    const retryTimer = setTimeout(pushCurrentState, 150)
+
+    return () => {
+      clearTimeout(retryTimer)
+      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+    }
+  }, [isReady])
+
+  // 媒体进度实时推送 - 同时发送 mediaProgress（新API）和 mediaStateChange（向后兼容）
+  useEffect(() => {
+    if (!isReady)
+      return
+
+    const handleProgress = (e: Event) => {
       const bridge = bridgeRef.current
       if (!bridge)
         return
 
-      // 检查 Tapp 是否有 media:read 权限
       const tapp = tappInstanceRef.current
       if (!tapp?.grantedPermissions?.includes('media:read'))
         return
 
-      const currentSong = detail.currentSong as Record<string, unknown> | null
-      const currentTime = (detail.currentTime as number) || 0
-      const audioDuration = (detail.audioDuration as number) || (currentSong?.duration as number) || 0
-      const volume = (detail.volume as number) || 0.7
-      const playMode = (detail.playMode as string) || 'loop'
-
-      // 将内部 playMode 映射为 API 模式
-      const modeMap: Record<string, string> = {
-        loop: 'loop',
-        single: 'single',
-        shuffle: 'shuffle',
+      const { currentTime, audioDuration } = (e as CustomEvent).detail
+      const progress = {
+        current: currentTime,
+        duration: audioDuration,
+        percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
       }
 
-      // 构建状态对象
-      const mediaState = {
-        isPlaying: detail.isPlaying || false,
-        isPaused: !detail.isPlaying && currentSong !== null,
-        currentTrack: currentSong
-          ? {
-              id: currentSong.id || '',
-              title: currentSong.name || currentSong.title || '',
-              name: currentSong.name || currentSong.title || '',
-              artist: currentSong.artist || '',
-              album: currentSong.album || '',
-              cover: currentSong.cover || '',
-              duration: currentSong.duration || 0,
-            }
-          : null,
-        progress: {
-          current: currentTime,
-          duration: audioDuration,
-          percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
-        },
-        position: currentTime,
-        volume: Math.round(volume * 100), // 0-100
-        mode: modeMap[playMode] || 'sequence',
-        muted: volume === 0,
-        // 歌词信息
-        lyrics: detail.lyrics || [],
-        currentLyricIndex: detail.currentLyricIndex ?? -1,
-        // 动态主题色（完整颜色对象）
-        primaryColor: detail.musicColor || '#fc3c44',
-        secondaryColor: detail.musicColors?.secondary || detail.musicColor || '#fc3c44',
-        accentColor: detail.musicColors?.accent || detail.musicColor || '#fc3c44',
-        lightColor: detail.musicColors?.light || '#ffffff',
-        darkColor: detail.musicColors?.dark || '#000000',
-      }
+      // 新 API：轻量进度事件
+      bridge.emit('mediaProgress', progress)
 
-      bridge.emit('mediaStateChange', mediaState)
+      // 向后兼容：合并进度到完整状态并 emit mediaStateChange
+      // 已有 tapp（如音乐播放器）依赖 onStateChange 接收进度更新
+      const globalState = (window as any).__musicPlayerState
+      if (globalState) {
+        const lastState = buildMediaState({ ...globalState, currentTime, audioDuration })
+        bridge.emit('mediaStateChange', lastState)
+      }
     }
 
-    window.addEventListener('music-player-state-change', handleMusicStateChange)
+    window.addEventListener('music-player-progress', handleProgress)
     return () => {
-      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+      window.removeEventListener('music-player-progress', handleProgress)
     }
   }, [isReady])
 
@@ -480,6 +538,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerAIHandlers(bridge, permission, currentTappInstance)
     registerReportHandlers(bridge, currentTappInstance)
     registerMediaHandlers(bridge, currentTappInstance)
+    registerSpeechHandlers(bridge, currentTappInstance)
     registerBackgroundHandlers(bridge, currentTappInstance)
     registerAnimationHandlers(bridge, animationConfigRef)
     registerDynamicContentHandlers(bridge, currentTappInstance)

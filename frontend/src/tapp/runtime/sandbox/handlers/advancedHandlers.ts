@@ -26,15 +26,7 @@ export function registerMediaHandlers(
     const [params] = (message.payload as { args: unknown[] }).args || []
     const { action, value } = (params || {}) as { action?: string, value?: unknown }
     try {
-      // 高频操作跳过后端 API，直接触发本地事件
-      const isHighFrequency = HIGH_FREQUENCY_ACTIONS.has(action || '')
-
-      if (!isHighFrequency) {
-        // 非高频操作调用后端 API 记录日志
-        await TappApiService.mediaControl({ tappId: tappInstance.id, action: (action || 'play') as 'play' | 'pause' | 'next' | 'prev' | 'seek' | 'volume' | 'mute' | 'unmute' | 'mode', value })
-      }
-
-      // 触发实际的播放器控制事件
+      // 先触发播放器控制事件（即时响应，避免后端 API 延迟阻塞 UI）
       switch (action) {
         case 'play':
           // 只有在不是播放状态时才触发播放
@@ -77,6 +69,11 @@ export function registerMediaHandlers(
           break
       }
 
+      // 非高频操作异步记录日志（不阻塞 UI 响应）
+      if (!HIGH_FREQUENCY_ACTIONS.has(action || '')) {
+        TappApiService.mediaControl({ tappId: tappInstance.id, action: (action || 'play') as 'play' | 'pause' | 'next' | 'prev' | 'seek' | 'volume' | 'mute' | 'unmute' | 'mode', value }).catch(() => {})
+      }
+
       return { success: true, data: { action, value } }
     }
     catch (error) {
@@ -90,7 +87,7 @@ export function registerMediaHandlers(
       const currentSong = globalState.currentSong as Record<string, unknown> | null
       const currentTime = (globalState.currentTime as number) || 0
       const audioDuration = (globalState.audioDuration as number) || (currentSong?.duration as number) || 0
-      const volume = (globalState.volume as number) || 0.7
+      const volume = (globalState.volume as number) ?? 0.7
       const playMode = (globalState.playMode as string) || 'loop'
       const lyrics = (globalState.lyrics as Array<{ time: number, text: string }>) || []
       const currentLyricIndex = (globalState.currentLyricIndex as number) ?? -1
@@ -268,6 +265,85 @@ export function registerMediaHandlers(
     }
     catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to load playlist' }
+    }
+  })
+}
+
+/**
+ * 注册 Speech 处理器（TTS/ASR）
+ */
+export function registerSpeechHandlers(
+  bridge: TappBridge,
+  _tappInstance: TappInstance,
+): void {
+  bridge.registerHandler('speech.tts', async (message) => {
+    const [params] = (message.payload as { args: unknown[] }).args || []
+    const { text, voice_type, speed, volume, codec, sample_rate, emotion } = (params || {}) as {
+      text?: string
+      voice_type?: number
+      speed?: number
+      volume?: number
+      codec?: string
+      sample_rate?: number
+      emotion?: string
+    }
+
+    if (!text) {
+      return { success: false, error: 'Text is required' }
+    }
+
+    try {
+      const { textToSpeech } = await import('../../../../services/speechApi')
+      const result = await textToSpeech({ text, voice_type, speed, volume, codec, sample_rate, emotion })
+      return { success: result.success, data: result.success ? { audio: result.audio, session_id: result.session_id, cached: result.cached } : undefined, error: result.error }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'TTS failed' }
+    }
+  })
+
+  bridge.registerHandler('speech.getVoices', async () => {
+    try {
+      const { getVoiceList } = await import('../../../../services/speechApi')
+      const result = await getVoiceList()
+      return { success: true, data: result.voices }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to get voices' }
+    }
+  })
+
+  bridge.registerHandler('speech.getStatus', async () => {
+    try {
+      const { getSpeechStatus } = await import('../../../../services/speechApi')
+      const result = await getSpeechStatus()
+      return { success: true, data: result }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to get speech status' }
+    }
+  })
+
+  bridge.registerHandler('speech.asr', async (message) => {
+    const [params] = (message.payload as { args: unknown[] }).args || []
+    const { audio_data, format, engine, word_info } = (params || {}) as {
+      audio_data?: string
+      format?: string
+      engine?: string
+      word_info?: number
+    }
+
+    if (!audio_data) {
+      return { success: false, error: 'Audio data is required' }
+    }
+
+    try {
+      const { speechToText } = await import('../../../../services/speechApi')
+      const result = await speechToText({ audio_data, format, engine, word_info })
+      return { success: result.success, data: result.success ? { text: result.text, duration: result.duration, words: result.words } : undefined, error: result.error }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'ASR failed' }
     }
   })
 }
@@ -602,8 +678,56 @@ export function registerContextHandlers(
   })
 
   bridge.registerHandler('context.getPlayer', async () => {
-    try { return { success: true, data: await TappApiService.getContextPlayer() } }
-    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Failed' } }
+    // 直接从前端全局状态读取播放器信息（后端无法获取实时播放状态）
+    const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
+    if (globalState) {
+      const currentSong = globalState.currentSong as Record<string, unknown> | null
+      const currentTime = (globalState.currentTime as number) || 0
+      const audioDuration = (globalState.audioDuration as number) || (currentSong?.duration as number) || 0
+      const volume = (globalState.volume as number) ?? 0.7
+      const playMode = (globalState.playMode as string) || 'loop'
+      const modeMap: Record<string, string> = { loop: 'loop', single: 'single', shuffle: 'shuffle' }
+      return {
+        success: true,
+        data: {
+          isPlaying: globalState.isPlaying || false,
+          isPaused: !globalState.isPlaying && currentSong !== null,
+          currentTrack: currentSong
+            ? {
+                id: currentSong.id || '',
+                title: currentSong.name || currentSong.title || '',
+                artist: currentSong.artist || '',
+                album: currentSong.album || '',
+                cover: currentSong.cover || '',
+                duration: currentSong.duration || 0,
+                source: currentSong.source || 'unknown',
+              }
+            : null,
+          progress: {
+            current: currentTime,
+            duration: audioDuration,
+            percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
+          },
+          playlist: globalState.playlist ? { id: 'current', name: 'Current Playlist', tracks: (globalState.playlistLength as number) || (globalState.playlist as unknown[]).length || 0 } : null,
+          mode: modeMap[playMode] || 'sequence',
+          volume: Math.round(volume * 100),
+          muted: volume === 0,
+        },
+      }
+    }
+    return {
+      success: true,
+      data: {
+        isPlaying: false,
+        isPaused: false,
+        currentTrack: null,
+        progress: { current: 0, duration: 0, percentage: 0 },
+        playlist: null,
+        mode: 'sequence',
+        volume: 80,
+        muted: false,
+      },
+    }
   })
 
   bridge.registerHandler('context.getNavigation', async () => {

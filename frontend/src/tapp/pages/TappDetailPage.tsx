@@ -19,6 +19,7 @@ import {
   FaHdd,
   FaInfoCircle,
   FaLock,
+  FaMicrophone,
   FaPause,
   FaPlay,
   FaRobot,
@@ -192,6 +193,18 @@ const PERMISSION_CONFIG: Record<TappPermission, {
     icon: FaCog,
     labelKey: 'permSchedulerRegister',
     descriptionKey: 'permSchedulerRegisterDesc',
+    level: 'elevated',
+  },
+  'speech:tts': {
+    icon: FaMicrophone,
+    labelKey: 'permSpeechTts',
+    descriptionKey: 'permSpeechTtsDesc',
+    level: 'elevated',
+  },
+  'speech:asr': {
+    icon: FaMicrophone,
+    labelKey: 'permSpeechAsr',
+    descriptionKey: 'permSpeechAsrDesc',
     level: 'elevated',
   },
 }

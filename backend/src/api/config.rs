@@ -349,7 +349,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                             std::env::var("AI_IMAGE_PROVIDER")
                                 .unwrap_or_else(|_| "pollinations".to_string())
                         }),
-                    placeholder: "pollinations or imaginepro".to_string(),
+                    placeholder: "pollinations or pixai".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -361,9 +361,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.ai_image_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("AI_IMAGE_MODEL")
-                                .unwrap_or_else(|_| "flux-anime".to_string())
+                                .unwrap_or_else(|_| "1983308862240288769".to_string())
                         }),
-                    placeholder: "flux-anime".to_string(),
+                    placeholder: "1983308862240288769".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -374,9 +374,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .as_ref()
                         .map(|c| c.ai_image_width.to_string())
                         .unwrap_or_else(|| {
-                            std::env::var("AI_IMAGE_WIDTH").unwrap_or_else(|_| "512".to_string())
+                            std::env::var("AI_IMAGE_WIDTH").unwrap_or_else(|_| "768".to_string())
                         }),
-                    placeholder: "512".to_string(),
+                    placeholder: "768".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -387,35 +387,22 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .as_ref()
                         .map(|c| c.ai_image_height.to_string())
                         .unwrap_or_else(|| {
-                            std::env::var("AI_IMAGE_HEIGHT").unwrap_or_else(|_| "768".to_string())
+                            std::env::var("AI_IMAGE_HEIGHT").unwrap_or_else(|_| "1280".to_string())
                         }),
-                    placeholder: "768".to_string(),
+                    placeholder: "1280".to_string(),
                     required: false,
                 },
                 ConfigField {
-                    key: "imaginepro_api_key".to_string(),
-                    label: "ImaginePro API Key".to_string(),
+                    key: "pixai_api_key".to_string(),
+                    label: "PixAI API Key".to_string(),
                     field_type: "password".to_string(),
                     value: mask_sensitive(get_value(
                         db_config
                             .as_ref()
-                            .and_then(|c| c.imaginepro_api_key.clone()),
-                        "IMAGINEPRO_API_KEY",
+                            .and_then(|c| c.pixai_api_key.clone()),
+                        "PIXAI_API_KEY",
                     )),
-                    placeholder: "Required for Midjourney generation".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "imaginepro_callback_url".to_string(),
-                    label: "ImaginePro Callback URL".to_string(),
-                    field_type: "text".to_string(),
-                    value: get_value(
-                        db_config
-                            .as_ref()
-                            .and_then(|c| c.imaginepro_callback_url.clone()),
-                        "IMAGINEPRO_CALLBACK_URL",
-                    ),
-                    placeholder: "Optional webhook endpoint".to_string(),
+                    placeholder: "Get from platform.pixai.art".to_string(),
                     required: false,
                 },
                 // 腾讯云语音服务配置 (TTS/ASR)
@@ -1097,11 +1084,7 @@ async fn save_to_database(
                     continue;
                 }
             }
-            "imaginepro_api_key" => ("imaginepro_api_key", JsonValue::String(field.value.clone())),
-            "imaginepro_callback_url" => (
-                "imaginepro_callback_url",
-                JsonValue::String(field.value.clone()),
-            ),
+            "pixai_api_key" => ("pixai_api_key", JsonValue::String(field.value.clone())),
             // 腾讯云语音服务配置 (TTS/ASR)
             "tencent_secret_id" => ("tencent_secret_id", JsonValue::String(field.value.clone())),
             "tencent_secret_key" => ("tencent_secret_key", JsonValue::String(field.value.clone())),
@@ -1293,8 +1276,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "ai_image_model" => "AI_IMAGE_MODEL",
             "ai_image_width" => "AI_IMAGE_WIDTH",
             "ai_image_height" => "AI_IMAGE_HEIGHT",
-            "imaginepro_api_key" => "IMAGINEPRO_API_KEY",
-            "imaginepro_callback_url" => "IMAGINEPRO_CALLBACK_URL",
+            "pixai_api_key" => "PIXAI_API_KEY",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
@@ -2030,7 +2012,7 @@ pub async fn get_permissions(
 /// 更新 Tapp 权限下放配置（仅管理员）
 #[derive(Debug, Deserialize)]
 pub struct UpdatePermissionsPayload {
-    // 普通用户 elevated 权限 (10个, platform:write 和 platform:register 已升为 privileged)
+    // 普通用户 elevated 权限 (11个, platform:write 和 platform:register 已升为 privileged)
     pub user_perm_ai_generate: Option<bool>,
     pub user_perm_ai_analyze: Option<bool>,
     pub user_perm_ai_chat: Option<bool>,
@@ -2041,7 +2023,8 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_component_theme: Option<bool>,
     pub user_perm_shortcut_register: Option<bool>,
     pub user_perm_event_publish: Option<bool>,
-    // 游客 elevated 权限 (10个)
+    pub user_perm_scheduler_register: Option<bool>,
+    // 游客 elevated 权限 (11个)
     pub guest_perm_ai_generate: Option<bool>,
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
@@ -2052,6 +2035,7 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_component_theme: Option<bool>,
     pub guest_perm_shortcut_register: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
+    pub guest_perm_scheduler_register: Option<bool>,
     // AI 使用限额配置
     pub user_ai_daily_calls: Option<i32>,
     pub user_ai_daily_tokens: Option<i32>,
@@ -2100,8 +2084,11 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_event_publish {
         updates.insert("user_perm_event_publish".to_string(), json!(v));
     }
+    if let Some(v) = payload.user_perm_scheduler_register {
+        updates.insert("user_perm_scheduler_register".to_string(), json!(v));
+    }
 
-    // 游客权限 (10个 elevated)
+    // 游客权限 (11个 elevated)
     if let Some(v) = payload.guest_perm_ai_generate {
         updates.insert("guest_perm_ai_generate".to_string(), json!(v));
     }
@@ -2131,6 +2118,9 @@ pub async fn update_permissions(
     }
     if let Some(v) = payload.guest_perm_event_publish {
         updates.insert("guest_perm_event_publish".to_string(), json!(v));
+    }
+    if let Some(v) = payload.guest_perm_scheduler_register {
+        updates.insert("guest_perm_scheduler_register".to_string(), json!(v));
     }
 
     // AI 使用限额配置

@@ -1129,14 +1129,16 @@ export default function Brew() {
           <AnimatePresence mode="wait">
             {selectedItem && (
               <BrewReader
-                key={readingList?.currentList ? 'reading-list-reader' : selectedItem.id}
+                key="brew-reader"
                 item={selectedItem}
                 onClose={handleCloseReader}
                 onToggleStar={() => handleToggleStar(selectedItem)}
                 isAuthenticated={isAuthenticated}
                 isAdmin={isAdmin}
                 sourceType={sources.find(s => s.id === selectedItem.source_id)?.source_type}
-                onNavigateToArticle={readingList?.currentList ? handleNavigateToArticle : undefined}
+                onNavigateToArticle={handleNavigateToArticle}
+                articleList={readingList?.currentList ? undefined : items}
+                currentArticleIndex={readingList?.currentList ? undefined : items.findIndex(i => i.id === selectedItem.id)}
               />
             )}
           </AnimatePresence>

@@ -196,6 +196,9 @@ interface BrewReaderProps {
   sourceType?: SourceType // 来源类型（brewlia 时显示 AI 功能）
   // 阅读列表导航回调（从 Brew.tsx 传入）
   onNavigateToArticle?: (articleId: number) => void
+  // 全局文章列表导航（非阅读列表时使用）
+  articleList?: BrewItem[]
+  currentArticleIndex?: number
 }
 
 // 目录项类型
@@ -205,7 +208,7 @@ interface TocItem {
   level: number
 }
 
-export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType, onNavigateToArticle }: BrewReaderProps) {
+export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType, onNavigateToArticle, articleList, currentArticleIndex }: BrewReaderProps) {
   const { t } = useI18n()
   const contentRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
@@ -213,6 +216,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 阅读列表上下文 - 用于顺序阅读导航
   const readingList = useReadingListOptional()
   const positionInfo = readingList?.getPositionInfo(item.id)
+
+  // 切换文章时回到顶部
+  useEffect(() => {
+    if (articleRef.current) {
+      articleRef.current.scrollTo({ top: 0 })
+    }
+  }, [item.id])
 
   // 沉浸模式 - 进入阅读器时隐藏导航栏和控制面板
   const { setImmersiveMode } = useNavigation()
@@ -2302,87 +2312,125 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               </div>
             )}
 
-            {/* 阅读列表导航 - 上一篇/下一篇 */}
-            {positionInfo && onNavigateToArticle && (
-              <div
-                className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
-                onClick={e => e.stopPropagation()}
-              >
-                {/* 列表信息 */}
-                <div className={`text-center mb-6 ${currentTheme.secondary}`}>
-                  <span className="text-sm">
-                    {readingList?.currentList?.name}
-                    {' '}
-                    ·
-                    {positionInfo.index + 1}
-                    {' '}
-                    /
-                    {positionInfo.total}
-                  </span>
-                </div>
-
-                {/* 导航按钮 */}
-                <div className="flex gap-4">
-                  {/* 上一篇 */}
-                  <button
-                    onClick={() => {
-                      const prev = readingList?.getPrevious()
-                      if (prev) {
-                        readingList?.goToArticle(positionInfo.index - 1)
-                        onNavigateToArticle(prev.id)
-                      }
-                    }}
-                    disabled={!positionInfo.hasPrev}
-                    className={`
-                    flex-1 min-w-0 p-4 rounded-2xl text-left transition-all
-                    ${positionInfo.hasPrev
-                ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
-                : 'opacity-30 cursor-not-allowed'}
-                    border ${currentTheme.border}
-                  `}
+            {/* 文章导航 - 上一篇/下一篇 */}
+            {(() => {
+              // 阅读列表导航
+              if (positionInfo && onNavigateToArticle) {
+                const prevItem = readingList?.getPrevious()
+                const nextItem = readingList?.getNext()
+                return (
+                  <div
+                    className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
+                    onClick={e => e.stopPropagation()}
                   >
-                    <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
-                      <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                      上一篇
+                    <div className={`text-center mb-6 ${currentTheme.secondary}`}>
+                      <span className="text-sm">
+                        {readingList?.currentList?.name}
+                        {' '}
+                        ·
+                        {positionInfo.index + 1}
+                        {' '}
+                        /
+                        {positionInfo.total}
+                      </span>
                     </div>
-                    <div className={`${currentTheme.text} font-medium truncate`}>
-                      {readingList?.getPrevious()?.title || '没有了'}
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => {
+                          if (prevItem) {
+                            readingList?.goToArticle(positionInfo.index - 1)
+                            onNavigateToArticle(prevItem.id)
+                          }
+                        }}
+                        disabled={!positionInfo.hasPrev}
+                        className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${positionInfo.hasPrev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
+                      >
+                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
+                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          上一篇
+                        </div>
+                        <div className={`${currentTheme.text} font-medium truncate`}>
+                          {prevItem?.title || '没有了'}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (nextItem) {
+                            readingList?.goToArticle(positionInfo.index + 1)
+                            onNavigateToArticle(nextItem.id)
+                          }
+                        }}
+                        disabled={!positionInfo.hasNext}
+                        className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${positionInfo.hasNext ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
+                      >
+                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
+                          下一篇
+                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                        <div className={`${currentTheme.text} font-medium truncate`}>
+                          {nextItem?.title || '没有了'}
+                        </div>
+                      </button>
                     </div>
-                  </button>
-
-                  {/* 下一篇 */}
-                  <button
-                    onClick={() => {
-                      const next = readingList?.getNext()
-                      if (next) {
-                        readingList?.goToArticle(positionInfo.index + 1)
-                        onNavigateToArticle(next.id)
-                      }
-                    }}
-                    disabled={!positionInfo.hasNext}
-                    className={`
-                    flex-1 min-w-0 p-4 rounded-2xl text-right transition-all
-                    ${positionInfo.hasNext
-                ? `${currentTheme.surface} hover:opacity-80 cursor-pointer`
-                : 'opacity-30 cursor-not-allowed'}
-                    border ${currentTheme.border}
-                  `}
+                  </div>
+                )
+              }
+              // 全局文章列表导航
+              if (articleList && currentArticleIndex != null && onNavigateToArticle) {
+                const hasPrev = currentArticleIndex > 0
+                const hasNext = currentArticleIndex < articleList.length - 1
+                const prevArticle = hasPrev ? articleList[currentArticleIndex - 1] : null
+                const nextArticle = hasNext ? articleList[currentArticleIndex + 1] : null
+                return (
+                  <div
+                    className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
+                    onClick={e => e.stopPropagation()}
                   >
-                    <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
-                      下一篇
-                      <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => {
+                          if (prevArticle) onNavigateToArticle(prevArticle.id)
+                        }}
+                        disabled={!hasPrev}
+                        className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${hasPrev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
+                      >
+                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
+                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          上一篇
+                        </div>
+                        <div className={`${currentTheme.text} font-medium truncate`}>
+                          {prevArticle?.title || '没有了'}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (nextArticle) onNavigateToArticle(nextArticle.id)
+                        }}
+                        disabled={!hasNext}
+                        className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${hasNext ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
+                      >
+                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
+                          下一篇
+                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                        <div className={`${currentTheme.text} font-medium truncate`}>
+                          {nextArticle?.title || '没有了'}
+                        </div>
+                      </button>
                     </div>
-                    <div className={`${currentTheme.text} font-medium truncate`}>
-                      {readingList?.getNext()?.title || '没有了'}
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
+                  </div>
+                )
+              }
+              return null
+            })()}
 
             {/* 底部留白 */}
             <div className="h-20" />

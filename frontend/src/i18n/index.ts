@@ -362,14 +362,15 @@ export interface TranslationKeys {
     enableAiImage: string
     aiImageHint: string
     pollinationsDescription: string
-    imagineproDescription: string
+    pixaiDescription: string
     pollinationsFree: string
-    imagineproMJ: string
+    pixaiBadge: string
     fluxAnimeRecommend: string
     fluxDefault: string
     fluxRealism: string
     flux3D: string
-    imagineproPlaceholder: string
+    pixaiPlaceholder: string
+    pixaiModelId: string
     // Speech service (TTS/ASR) configuration
     speechServiceTitle: string
     speechServiceDesc: string
@@ -470,6 +471,14 @@ export interface TranslationKeys {
     permShortcutRegisterHint: string
     permEventPublish: string
     permEventPublishHint: string
+    permAiImage: string
+    permAiImageHint: string
+    permSchedulerRegister: string
+    permSchedulerRegisterHint: string
+    permSpeechTts: string
+    permSpeechTtsHint: string
+    permSpeechAsr: string
+    permSpeechAsrHint: string
     permissionsSaved: string
     permissionsSaveFailed: string
     loadPermissionsFailed: string
@@ -1188,6 +1197,10 @@ export interface TranslationKeys {
     permRegisterShortcut: string
     permPublishEvent: string
     permSubscribeEvent: string
+    permAiImage: string
+    permSchedulerRegister: string
+    permSpeechTts: string
+    permSpeechAsr: string
 
     // 权限描述
     permRegisterWidgetDesc: string
@@ -1212,6 +1225,10 @@ export interface TranslationKeys {
     permRegisterShortcutDesc: string
     permPublishEventDesc: string
     permSubscribeEventDesc: string
+    permAiImageDesc: string
+    permSchedulerRegisterDesc: string
+    permSpeechTtsDesc: string
+    permSpeechAsrDesc: string
 
     // 列表页面
     listTitle: string

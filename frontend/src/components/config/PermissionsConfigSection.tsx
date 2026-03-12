@@ -27,6 +27,10 @@ interface PermissionsConfigSectionProps {
     user_perm_component_theme: boolean
     user_perm_shortcut_register: boolean
     user_perm_event_publish: boolean
+    user_perm_ai_image: boolean
+    user_perm_scheduler_register: boolean
+    user_perm_speech_tts: boolean
+    user_perm_speech_asr: boolean
     // 游客权限
     guest_perm_ai_generate: boolean
     guest_perm_ai_analyze: boolean
@@ -37,6 +41,10 @@ interface PermissionsConfigSectionProps {
     guest_perm_component_theme: boolean
     guest_perm_shortcut_register: boolean
     guest_perm_event_publish: boolean
+    guest_perm_ai_image: boolean
+    guest_perm_scheduler_register: boolean
+    guest_perm_speech_tts: boolean
+    guest_perm_speech_asr: boolean
     // AI 配额
     user_ai_daily_calls: number
     user_ai_daily_tokens: number
@@ -66,15 +74,24 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
 
   // 定义权限项列表（复用于用户和游客）
   const permissionItems: PermissionItem[] = [
+    // AI 相关
     { key: 'ai_generate', code: 'ai:generate', label: t.config.permAiGenerate, hint: t.config.permAiGenerateHint },
     { key: 'ai_analyze', code: 'ai:analyze', label: t.config.permAiAnalyze, hint: t.config.permAiAnalyzeHint },
     { key: 'ai_chat', code: 'ai:chat', label: t.config.permAiChat, hint: t.config.permAiChatHint },
+    { key: 'ai_image', code: 'ai:image', label: t.config.permAiImage, hint: t.config.permAiImageHint },
+    // 语音相关
+    { key: 'speech_tts', code: 'speech:tts', label: t.config.permSpeechTts, hint: t.config.permSpeechTtsHint },
+    { key: 'speech_asr', code: 'speech:asr', label: t.config.permSpeechAsr, hint: t.config.permSpeechAsrHint },
+    // 数据与网络
     { key: 'report_write', code: 'report:write', label: t.config.permReportWrite, hint: t.config.permReportWriteHint },
     { key: 'network_fetch', code: 'network:fetch', label: t.config.permNetworkFetch, hint: t.config.permNetworkFetchHint },
+    // 界面与交互
     { key: 'media_control', code: 'media:control', label: t.config.permMediaControl, hint: t.config.permMediaControlHint },
+    { key: 'event_publish', code: 'event:publish', label: t.config.permEventPublish, hint: t.config.permEventPublishHint },
+    // 注册类
     { key: 'component_theme', code: 'component:theme', label: t.config.permComponentTheme, hint: t.config.permComponentThemeHint },
     { key: 'shortcut_register', code: 'shortcut:register', label: t.config.permShortcutRegister, hint: t.config.permShortcutRegisterHint },
-    { key: 'event_publish', code: 'event:publish', label: t.config.permEventPublish, hint: t.config.permEventPublishHint },
+    { key: 'scheduler_register', code: 'scheduler:register', label: t.config.permSchedulerRegister, hint: t.config.permSchedulerRegisterHint },
   ]
 
   // 定义配额项列表

@@ -841,11 +841,11 @@ export interface AIImageGenerateRequest {
  */
 export interface AIImageGenerateResponse {
   success: boolean
-  provider: 'pollinations' | 'imaginepro'
+  provider: 'pollinations' | 'pixai'
   url?: string // Pollinations 直接返回 URL
-  task_id?: string // ImaginePro 返回任务 ID
-  status?: string // ImaginePro 任务状态
-  result?: unknown // ImaginePro 完整结果
+  task_id?: string // PixAI 返回任务 ID
+  status?: string // PixAI 任务状态
+  result?: unknown // PixAI 完整结果
   width: number
   height: number
   model: string
@@ -865,6 +865,32 @@ export async function aiImageGenerate(
     body: JSON.stringify({
       tapp_id: tappId,
       ...request,
+    }),
+  })
+}
+
+/**
+ * PixAI 任务状态查询
+ */
+export interface AIImageTaskStatusResponse {
+  success: boolean
+  task_id: string
+  status: string
+  outputs?: {
+    mediaIds?: string[]
+    mediaUrls?: string[]
+  }
+}
+
+export async function aiImageTaskStatus(
+  tappId: string,
+  taskId: string,
+): Promise<AIImageTaskStatusResponse> {
+  return apiRequest('/api/tapp/ai/image/status', {
+    method: 'POST',
+    body: JSON.stringify({
+      tapp_id: tappId,
+      task_id: taskId,
     }),
   })
 }

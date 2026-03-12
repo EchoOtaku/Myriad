@@ -450,50 +450,48 @@ pub async fn ai_image_generate(
                 "quotaRemaining": 100
             })))
         }
-        "imaginepro" => {
-            let api_key = image_config.imaginepro_api_key.ok_or_else(|| {
-                (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "ImaginePro API key not configured" })))
+        "pixai" => {
+            let api_key = image_config.pixai_api_key.ok_or_else(|| {
+                (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "PixAI API key not configured" })))
             })?;
 
             if api_key.is_empty() {
-                return Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "ImaginePro API key not configured" }))));
+                return Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "PixAI API key not configured" }))));
             }
 
             let client = &*HTTP_CLIENT;
-            let aspect_ratio = if width == height {
-                "1:1".to_string()
-            } else {
-                let g = gcd(width, height);
-                format!("{}:{}", width / g, height / g)
-            };
 
-            let imagine_response = client
-                .post("https://api.imaginepro.ai/api/v1/midjourney/imagine")
+            let pixai_response = client
+                .post("https://api.pixai.art/v1/task")
                 .header("Authorization", format!("Bearer {}", api_key))
                 .header("Content-Type", "application/json")
                 .json(&json!({
-                    "prompt": req.prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "process_mode": "fast"
+                    "parameters": {
+                        "prompts": req.prompt,
+                        "modelId": model,
+                        "width": width,
+                        "height": height,
+                        "batchSize": 1
+                    }
                 }))
                 .send()
                 .await
                 .map_err(|e| {
-                    tracing::error!("[TAPP] ImaginePro API request failed: {}", e);
-                    (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("ImaginePro API error: {}", e) })))
+                    tracing::error!("[TAPP] PixAI API request failed: {}", e);
+                    (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", e) })))
                 })?;
 
-            if !imagine_response.status().is_success() {
-                let status = imagine_response.status();
-                let body = imagine_response.text().await.unwrap_or_default();
-                tracing::error!("[TAPP] ImaginePro API error: {} - {}", status, body);
+            if !pixai_response.status().is_success() {
+                let status = pixai_response.status();
+                let body = pixai_response.text().await.unwrap_or_default();
+                tracing::error!("[TAPP] PixAI API error: {} - {}", status, body);
                 record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
-                return Err((StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("ImaginePro API error: {}", status) }))));
+                return Err((StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", status) }))));
             }
 
-            let result: Value = imagine_response.json().await.map_err(|e| {
-                tracing::error!("[TAPP] Failed to parse ImaginePro response: {}", e);
-                (StatusCode::BAD_GATEWAY, Json(json!({ "error": "Failed to parse ImaginePro response" })))
+            let result: Value = pixai_response.json().await.map_err(|e| {
+                tracing::error!("[TAPP] Failed to parse PixAI response: {}", e);
+                (StatusCode::BAD_GATEWAY, Json(json!({ "error": "Failed to parse PixAI response" })))
             })?;
 
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -501,14 +499,14 @@ pub async fn ai_image_generate(
 
             tracing::info!(
                 user_id = user_id, tapp_id = %req.tapp_id, duration_ms = duration_ms,
-                provider = "imaginepro", "[TAPP] ai_image_generate success"
+                provider = "pixai", "[TAPP] ai_image_generate success"
             );
 
             Ok(Json(json!({
                 "success": true,
-                "provider": "imaginepro",
-                "task_id": result.get("messageId").or(result.get("taskId")),
-                "status": result.get("status").unwrap_or(&json!("pending")),
+                "provider": "pixai",
+                "task_id": result.get("id"),
+                "status": result.get("status").unwrap_or(&json!("waiting")),
                 "result": result,
                 "quotaRemaining": 50
             })))
@@ -523,6 +521,56 @@ pub async fn ai_image_generate(
     }
 }
 
-fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 { a } else { gcd(b, a % b) }
+// ============ PixAI Task Status ============
+
+#[derive(Debug, Deserialize)]
+pub struct PixaiTaskStatusRequest {
+    pub tapp_id: String,
+    pub task_id: String,
+}
+
+/// POST /api/tapp/ai/image/status
+pub async fn ai_image_task_status(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<PixaiTaskStatusRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    check_tapp_permission(&claims, TappPermission::AiImage).await?;
+    let user_id = parse_user_id(&claims)?;
+    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+
+    let image_config = get_ai_image_config().await?;
+    let api_key = image_config.pixai_api_key.ok_or_else(|| {
+        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "PixAI API key not configured" })))
+    })?;
+
+    let client = &*HTTP_CLIENT;
+    let response = client
+        .get(format!("https://api.pixai.art/v1/task/{}", req.task_id))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("[TAPP] PixAI task status request failed: {}", e);
+            (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", e) })))
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        tracing::error!("[TAPP] PixAI task status error: {} - {}", status, body);
+        return Err((StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", status) }))));
+    }
+
+    let result: Value = response.json().await.map_err(|e| {
+        tracing::error!("[TAPP] Failed to parse PixAI task status response: {}", e);
+        (StatusCode::BAD_GATEWAY, Json(json!({ "error": "Failed to parse PixAI response" })))
+    })?;
+
+    Ok(Json(json!({
+        "success": true,
+        "task_id": result.get("id"),
+        "status": result.get("status"),
+        "outputs": result.get("outputs"),
+    })))
 }

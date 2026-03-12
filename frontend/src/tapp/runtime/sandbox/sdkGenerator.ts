@@ -74,6 +74,11 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   const eventListeners = new Map();
   const lifecycleCallbacks = { ready: [], destroy: [], pause: [], resume: [] };
 
+  // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
+  // 解决父窗口推送 mediaStateChange 早于 Tapp 代码注册 onStateChange 的竞态问题
+  const _eventBuffer = new Map();
+  const _BUFFERED_EVENTS = new Set(['mediaStateChange', 'mediaProgress', 'themeChange', 'primaryColorChange', 'localeChange']);
+
   // WebKit 专用沙箱会在注入 HTML 时显式设置该标记，避免 UA 嗅探。
   // 在 WebKit iframe 上，频繁切换 transform 合成层可能触发“空白/不绘制”回归。
   const _forceRepaint = function () {
@@ -199,6 +204,10 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
         _sessionToken: _SESSION_TOKEN,
       }, '*');
     } else if (message.type === 'event') {
+      // 缓存有状态事件的最新值
+      if (_BUFFERED_EVENTS.has(message.action)) {
+        _eventBuffer.set(message.action, message.payload);
+      }
       const listeners = eventListeners.get(message.action);
       listeners?.forEach((cb) => { try { cb(message.payload); } catch (e) {} });
 
@@ -242,6 +251,11 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       eventListeners.set(event, listeners);
     }
     listeners.add(callback);
+    // 🎯 回放缓冲区：如果已有该事件的最新值，立即调用回调
+    const buffered = _eventBuffer.get(event);
+    if (buffered !== undefined) {
+      try { callback(buffered); } catch (e) {}
+    }
     return () => listeners.delete(callback);
   };
 
@@ -380,6 +394,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       jumpToIndex: (idx) => sendRequest('media', 'jumpToIndex', [{ index: idx }]),
       loadNeteasePlaylist: (playlistId) => sendRequest('media', 'loadNeteasePlaylist', [{ playlistId }]),
       onStateChange: (cb) => addEventListener('mediaStateChange', cb),
+      onProgress: (cb) => addEventListener('mediaProgress', cb),
     },
 
     component: {
@@ -490,6 +505,13 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       onLevelChange: (cb) => addEventListener('animationLevelChange', cb),
     },
 
+    speech: {
+      tts: (r) => sendRequest('speech', 'tts', [r]),
+      getVoices: () => sendRequest('speech', 'getVoices', []),
+      getStatus: () => sendRequest('speech', 'getStatus', []),
+      asr: (r) => sendRequest('speech', 'asr', [r]),
+    },
+
     on: addEventListener,
     widgets: {},
     pages: {},
@@ -519,6 +541,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   Object.freeze(Tapp.background);
   Object.freeze(Tapp.dynamicContent);
   Object.freeze(Tapp.animation);
+  Object.freeze(Tapp.speech);
 
   // 🔒 冻结 widgets 和 pages 容器（Tapp 代码可以添加内容，但不能替换整个对象）
   // 使用 Object.seal 允许添加属性但禁止删除
@@ -564,6 +587,10 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   var eventListeners = new Map();
   // 🎯 添加生命周期回调支持
   var lifecycleCallbacks = { pause: [], resume: [] };
+
+  // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
+  var _eventBuffer = new Map();
+  var _BUFFERED_EVENTS = { mediaStateChange: 1, mediaProgress: 1, themeChange: 1, primaryColorChange: 1, localeChange: 1 };
 
   var generateId = function() { return 'widget-' + (++messageIdCounter) + '-' + Date.now(); };
 
@@ -613,6 +640,11 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       eventListeners.set(event, listeners);
     }
     listeners.add(callback);
+    // 🎯 回放缓冲区：如果已有该事件的最新值，立即调用回调
+    var buffered = _eventBuffer.get(event);
+    if (buffered !== undefined) {
+      try { callback(buffered); } catch(e) {}
+    }
     return function() { listeners.delete(callback); };
   };
 
@@ -632,6 +664,10 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
 
     // 处理事件
     if (msg.type === 'event') {
+      // 🎯 缓存有状态事件的最新值（供 addEventListener 回放）
+      if (_BUFFERED_EVENTS[msg.action]) {
+        _eventBuffer.set(msg.action, msg.payload);
+      }
       // 🎯 强制重绘辅助函数：WebKit 专用沙箱会设置 window._TAPP_DISABLE_TRANSFORM_REPAINT
       var forceRepaint = function () {
         void document.body.offsetHeight;
@@ -699,6 +735,14 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
         lifecycleCallbacks.resume.forEach(function(cb) { try { cb(); } catch(e) {} });
         eventListeners.get('resume')?.forEach(function(cb) { try { cb(); } catch(e) {} });
       }
+      // 🎵 媒体状态变化事件
+      else if (msg.action === 'mediaStateChange') {
+        eventListeners.get('mediaStateChange')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
+      }
+      // 🎵 媒体进度实时推送
+      else if (msg.action === 'mediaProgress') {
+        eventListeners.get('mediaProgress')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
+      }
     }
   });
 
@@ -743,6 +787,26 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
 
     ai: { chat: function(m, c, o) { return sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]); } },
 
+    media: {
+      play: function() { return sendRequest('media', 'control', [{ action: 'play' }]); },
+      pause: function() { return sendRequest('media', 'control', [{ action: 'pause' }]); },
+      next: function() { return sendRequest('media', 'control', [{ action: 'next' }]); },
+      prev: function() { return sendRequest('media', 'control', [{ action: 'prev' }]); },
+      seek: function(p) { return sendRequest('media', 'control', [{ action: 'seek', value: p }]); },
+      setVolume: function(v) { return sendRequest('media', 'control', [{ action: 'volume', value: v }]); },
+      setMode: function(m) { return sendRequest('media', 'control', [{ action: 'mode', value: m }]); },
+      mute: function() { return sendRequest('media', 'control', [{ action: 'mute' }]); },
+      unmute: function() { return sendRequest('media', 'control', [{ action: 'unmute' }]); },
+      getStatus: function() { return sendRequest('media', 'getStatus', []); },
+      getPlaylist: function() { return sendRequest('media', 'getPlaylist', []); },
+      getSpectrum: function() { return sendRequest('media', 'getSpectrum', []); },
+      playTrack: function(id, idx) { return sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]); },
+      jumpToIndex: function(idx) { return sendRequest('media', 'jumpToIndex', [{ index: idx }]); },
+      loadNeteasePlaylist: function(playlistId) { return sendRequest('media', 'loadNeteasePlaylist', [{ playlistId: playlistId }]); },
+      onStateChange: function(cb) { return addEventListener('mediaStateChange', cb); },
+      onProgress: function(cb) { return addEventListener('mediaProgress', cb); }
+    },
+
     platform: {
       listEnabled: function() { return sendRequest('platform', 'listEnabled', []); },
       getData: function(p, o) { return sendRequest('platform', 'getData', [p, o]); },
@@ -773,6 +837,13 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
       onLevelChange: function(cb) { return addEventListener('animationLevelChange', cb); }
     },
 
+    speech: {
+      tts: function(r) { return sendRequest('speech', 'tts', [r]); },
+      getVoices: function() { return sendRequest('speech', 'getVoices', []); },
+      getStatus: function() { return sendRequest('speech', 'getStatus', []); },
+      asr: function(r) { return sendRequest('speech', 'asr', [r]); }
+    },
+
     ui: {
       getTheme: function() { return sendRequest('ui', 'getTheme', []); },
       getPrimaryColor: function() { return sendRequest('ui', 'getPrimaryColor', []); },
@@ -791,6 +862,11 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
 
     // 获取上下文信息
     context: {
+      getApp: function() { return sendRequest('context', 'getApp', []); },
+      getUser: function() { return sendRequest('context', 'getUser', []); },
+      getPlayer: function() { return sendRequest('context', 'getPlayer', []); },
+      getNavigation: function() { return sendRequest('context', 'getNavigation', []); },
+      getSystem: function() { return sendRequest('context', 'getSystem', []); },
       getGeo: function() { return sendRequest('context', 'getGeo', []); }
     },
 
@@ -822,7 +898,9 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   Object.freeze(Tapp.report);
   Object.freeze(Tapp.background);
   Object.freeze(Tapp.animation);
+  Object.freeze(Tapp.speech);
   Object.freeze(Tapp.ui);
+  Object.freeze(Tapp.media);
   Object.freeze(Tapp.context);
   Object.freeze(Tapp.dom);
   Object.freeze(Tapp.file);

@@ -1221,6 +1221,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::tapp_runtime::ai_image_generate)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
+            .route(
+                "/api/tapp/ai/image/status",
+                post(api::tapp_runtime::ai_image_task_status)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
             // ============ Tapp P0 扩展 API ============
             // Data Processing - 🔒 REQUIRE AUTHENTICATION
             .route(

@@ -139,6 +139,16 @@ const PERMISSION_INFO: Record<TappPermission, {
     description: '允许此应用注册后台定时任务',
     level: 'elevated',
   },
+  'speech:tts': {
+    title: '文本转语音',
+    description: '允许此应用使用云端语音合成服务（TTS）',
+    level: 'elevated',
+  },
+  'speech:asr': {
+    title: '语音转文本',
+    description: '允许此应用使用云端语音识别服务（ASR）',
+    level: 'elevated',
+  },
 }
 
 /**

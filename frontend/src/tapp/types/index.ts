@@ -197,6 +197,9 @@ export type TappPermission
     | 'event:subscribe'
   // P3: 定时任务权限
     | 'scheduler:register'
+  // P4: 语音服务权限
+    | 'speech:tts'
+    | 'speech:asr'
 
 // ============ 用户角色 ============
 

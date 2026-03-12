@@ -9,6 +9,7 @@ export {
   registerContextHandlers,
   registerDynamicContentHandlers,
   registerMediaHandlers,
+  registerSpeechHandlers,
 } from './advancedHandlers'
 
 export {

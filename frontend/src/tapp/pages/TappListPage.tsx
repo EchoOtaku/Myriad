@@ -341,7 +341,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(({
         <div className="mt-auto">
           {/* 搴旂敤鎻忚堪 - 鏈€澶?琛屽彲婊氬姩 */}
           {manifest.description && (
-            <div className="max-h-[2.5rem] overflow-y-auto mb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+            <div className="max-h-10 overflow-y-auto mb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
               <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed pr-1">
                 {manifest.description}
               </p>

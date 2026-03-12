@@ -123,7 +123,10 @@ function getGlobalState() {
 function setGlobalState(state: any) {
   if (!isBrowser)
     return;
-  (window as any).__musicPlayerState = state
+  (window as any).__musicPlayerState = {
+    ...((window as any).__musicPlayerState || {}),
+    ...state,
+  }
 }
 
 export function useMusicPlayer(): UseMusicPlayerReturn {
@@ -228,13 +231,18 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     return filtered
   }, [playlist, playlistSearchQuery, excludeVipSongs])
 
-  // 同步 lyrics 和 currentLyricIndex 到 ref
+  // 同步 lyrics 和 currentLyricIndex 到 ref + globalState
+  // 直接更新 globalState，确保进度 tick 读到最新数据（不依赖 broadcastStateChange 触发）
   useEffect(() => {
     lyricsRef.current = lyrics
+    const g = (window as any).__musicPlayerState
+    if (g) g.lyrics = lyrics
   }, [lyrics])
 
   useEffect(() => {
     currentLyricIndexRef.current = currentLyricIndex
+    const g = (window as any).__musicPlayerState
+    if (g) g.currentLyricIndex = currentLyricIndex
   }, [currentLyricIndex])
 
   // 验证并规范化颜色值
@@ -554,6 +562,18 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     setCurrentSongIndex(index)
     setAudioDuration(0)
 
+    // 同步写入全局状态，供 Tapp media API 读取
+    setGlobalState({
+      currentSong: song,
+      isEnabled: musicEnabled,
+      isPlaying: false,
+      musicColor: musicColors?.primary || '#ef4444',
+      isTempPlay: tempPlayModeRef.current.enabled,
+      currentSongIndex: index,
+      playlistLength: playlist.length,
+      playlist,
+    })
+
     // 立即触发状态更新
     window.dispatchEvent(new CustomEvent('music-player-state-change', {
       detail: {
@@ -866,9 +886,10 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         }
       }
     }
-
-    broadcastStateChange()
-  }, [isPlaying, currentSong, broadcastStateChange])
+    // 不在此处调用 broadcastStateChange()：
+    // 闭包捕获的是旧 isPlaying 值，await audio.play() 后执行会覆盖
+    // useEffect 已在 isPlaying 变化时自动广播正确状态（line ~1513）
+  }, [isPlaying, currentSong])
 
   // 上一首
   const playPrevious = useCallback(() => {
@@ -1047,13 +1068,17 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         audioManager.updatePositionState(audio.duration, currentTime, audio.playbackRate)
       }
 
-      // 🎯 广播进度更新给 Tapp（使用较低频率以避免性能问题）
-      // 更新全局状态中的 currentTime 和 audioDuration
+      // 🎯 实时更新全局状态并广播进度给 Tapp
       const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
       if (globalState) {
         globalState.currentTime = currentTime
         globalState.audioDuration = audio.duration || 0
       }
+
+      // 直接 dispatch 轻量进度事件，绕过 broadcastStateChange 节流链
+      window.dispatchEvent(new CustomEvent('music-player-progress', {
+        detail: { currentTime, audioDuration: audio.duration || 0 },
+      }))
 
       if (lyricsRef.current.length > 0) {
         const index = getCurrentLyricIndex(lyricsRef.current, currentTime)
@@ -1278,12 +1303,17 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     // 处理系统级暂停事件（移动端浏览器切后台时可能触发）
     const handlePause = () => {
       setIsPlaying(false)
+      // 立即同步 globalState，避免进度 tick 读到旧 isPlaying 导致 tapp 状态闪烁
+      const g = (window as any).__musicPlayerState
+      if (g) g.isPlaying = false
       audioManager.setPlaybackState('paused')
     }
 
     // 处理系统级播放事件（从系统媒体控制恢复播放）
     const handlePlay = () => {
       setIsPlaying(true)
+      const g = (window as any).__musicPlayerState
+      if (g) g.isPlaying = true
       audioManager.setPlaybackState('playing')
     }
 
@@ -1486,36 +1516,23 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
   }, []) // 只在挂载时设置一次
 
-  // 发送音乐播放器状态变化事件 - 使用节流避免频繁触发
-  const broadcastThrottleRef = useRef<number | null>(null)
-  // 🎯 使用 ref 跟踪上次广播的秒数，只在秒数变化时触发
-  const lastBroadcastSecondRef = useRef<number>(-1)
+  // 发送音乐播放器状态变化事件
+  // currentTime 进度通过 handleTimeUpdate → music-player-progress 事件实时推送
+  // 这里只处理关键状态变化（切歌、播放暂停、列表变化等），立即广播
+  const prevKeyStateRef = useRef('')
 
   useEffect(() => {
-    // 对于 currentTime，只在秒数变化时触发（减少广播频率）
-    const currentSecond = Math.floor(currentTime)
-    const shouldBroadcastTime = isPlaying && currentSecond !== lastBroadcastSecondRef.current
+    // 构建关键状态快照（不含 currentTime，进度由 music-player-progress 实时推送）
+    const keyState = `${currentSong?.id}|${musicEnabled}|${isPlaying}|${musicColors?.primary}|${currentSongIndex}|${playlist.length}|${volume}|${playMode}`
 
-    if (shouldBroadcastTime) {
-      lastBroadcastSecondRef.current = currentSecond
-    }
-
-    // 使用节流，最多每 500ms 广播一次
-    if (broadcastThrottleRef.current) {
+    if (prevKeyStateRef.current === keyState) {
       return
     }
-    broadcastThrottleRef.current = window.setTimeout(() => {
-      broadcastThrottleRef.current = null
-      broadcastStateChange()
-    }, shouldBroadcastTime ? 500 : 200)
+    prevKeyStateRef.current = keyState
 
-    return () => {
-      if (broadcastThrottleRef.current) {
-        clearTimeout(broadcastThrottleRef.current)
-        broadcastThrottleRef.current = null
-      }
-    }
-  }, [currentSong?.id, musicEnabled, isPlaying, musicColors?.primary, currentSongIndex, playlist.length, currentTime, volume, playMode])
+    // 关键状态变化，立即广播
+    broadcastStateChange()
+  }, [currentSong?.id, musicEnabled, isPlaying, musicColors?.primary, currentSongIndex, playlist.length, volume, playMode, broadcastStateChange])
 
   // 监听停止临时播放事件 - 使用 ref 避免频繁重建监听器
   const stopTempPlayRef = useRef(stopTempPlay)

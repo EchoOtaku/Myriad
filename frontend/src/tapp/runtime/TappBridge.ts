@@ -285,9 +285,9 @@ export class TappBridge {
 
     const message = event.data as TappMessage
 
-    // 频率限制检查
+    // 频率限制检查（仅限事件类型消息，request 类必须始终处理以避免 SDK 挂起）
     const now = Date.now()
-    if (now - this.lastRequestTime < this.MIN_REQUEST_INTERVAL) {
+    if (message.type !== 'request' && now - this.lastRequestTime < this.MIN_REQUEST_INTERVAL) {
       return
     }
     this.lastRequestTime = now

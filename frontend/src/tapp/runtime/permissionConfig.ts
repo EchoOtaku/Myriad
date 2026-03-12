@@ -35,6 +35,8 @@ export const PERMISSION_LEVELS: Record<TappPermission, PermissionLevel> = {
   'event:publish': 'elevated',
   'event:subscribe': 'basic',
   'scheduler:register': 'elevated',
+  'speech:tts': 'elevated',
+  'speech:asr': 'elevated',
 }
 
 /**
@@ -172,4 +174,10 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = ne
   ['scheduler.disable', 'scheduler:register'],
   ['scheduler.trigger', 'scheduler:register'],
   ['scheduler.onTask', 'scheduler:register'],
+
+  // 语音服务权限
+  ['speech.tts', 'speech:tts'],
+  ['speech.getVoices', 'speech:tts'],
+  ['speech.getStatus', 'speech:tts'],
+  ['speech.asr', 'speech:asr'],
 ])

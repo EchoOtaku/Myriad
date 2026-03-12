@@ -110,6 +110,12 @@ pub enum TappPermission {
     ShortcutRegister,
     #[serde(rename = "event:publish")]
     EventPublish,
+    #[serde(rename = "scheduler:register")]
+    SchedulerRegister,
+    #[serde(rename = "speech:tts")]
+    SpeechTts,
+    #[serde(rename = "speech:asr")]
+    SpeechAsr,
 
     // Privileged 级别（3个）
     #[serde(rename = "platform:write")]
@@ -146,7 +152,10 @@ impl TappPermission {
             | TappPermission::MediaControl
             | TappPermission::ComponentTheme
             | TappPermission::ShortcutRegister
-            | TappPermission::EventPublish => PermissionLevel::Elevated,
+            | TappPermission::EventPublish
+            | TappPermission::SchedulerRegister
+            | TappPermission::SpeechTts
+            | TappPermission::SpeechAsr => PermissionLevel::Elevated,
 
             // Privileged
             TappPermission::PlatformWrite
@@ -181,7 +190,10 @@ impl TappPermission {
             TappPermission::ComponentAgent => "注册 Agent",
             TappPermission::ShortcutRegister => "注册快捷键",
             TappPermission::EventPublish => "发布事件",
+            TappPermission::SchedulerRegister => "注册定时任务",
             TappPermission::EventSubscribe => "订阅事件",
+            TappPermission::SpeechTts => "文本转语音",
+            TappPermission::SpeechAsr => "语音转文本",
         }
     }
 
@@ -198,6 +210,9 @@ impl TappPermission {
             TappPermission::ComponentTheme,
             TappPermission::ShortcutRegister,
             TappPermission::EventPublish,
+            TappPermission::SchedulerRegister,
+            TappPermission::SpeechTts,
+            TappPermission::SpeechAsr,
         ]
     }
 
@@ -227,6 +242,9 @@ impl TappPermission {
             "shortcut:register" => Some(TappPermission::ShortcutRegister),
             "event:publish" => Some(TappPermission::EventPublish),
             "event:subscribe" => Some(TappPermission::EventSubscribe),
+            "scheduler:register" => Some(TappPermission::SchedulerRegister),
+            "speech:tts" => Some(TappPermission::SpeechTts),
+            "speech:asr" => Some(TappPermission::SpeechAsr),
             _ => None,
         }
     }
@@ -258,6 +276,9 @@ impl TappPermission {
             TappPermission::ShortcutRegister => "shortcut:register",
             TappPermission::EventPublish => "event:publish",
             TappPermission::EventSubscribe => "event:subscribe",
+            TappPermission::SchedulerRegister => "scheduler:register",
+            TappPermission::SpeechTts => "speech:tts",
+            TappPermission::SpeechAsr => "speech:asr",
         }
     }
 }
@@ -313,6 +334,9 @@ impl TappPermissionService {
             TappPermission::ComponentTheme => config.user_perm_component_theme,
             TappPermission::ShortcutRegister => config.user_perm_shortcut_register,
             TappPermission::EventPublish => config.user_perm_event_publish,
+            TappPermission::SchedulerRegister => config.user_perm_scheduler_register,
+            TappPermission::SpeechTts => config.user_perm_speech_tts,
+            TappPermission::SpeechAsr => config.user_perm_speech_asr,
             _ => false,
         }
     }
@@ -330,6 +354,9 @@ impl TappPermissionService {
             TappPermission::ComponentTheme => config.guest_perm_component_theme,
             TappPermission::ShortcutRegister => config.guest_perm_shortcut_register,
             TappPermission::EventPublish => config.guest_perm_event_publish,
+            TappPermission::SchedulerRegister => config.guest_perm_scheduler_register,
+            TappPermission::SpeechTts => config.guest_perm_speech_tts,
+            TappPermission::SpeechAsr => config.guest_perm_speech_asr,
             _ => false,
         }
     }
@@ -364,23 +391,31 @@ impl TappPermissionService {
                 ai_generate: config.user_perm_ai_generate,
                 ai_analyze: config.user_perm_ai_analyze,
                 ai_chat: config.user_perm_ai_chat,
+                ai_image: config.user_perm_ai_image,
                 report_write: config.user_perm_report_write,
                 network_fetch: config.user_perm_network_fetch,
                 media_control: config.user_perm_media_control,
                 component_theme: config.user_perm_component_theme,
                 shortcut_register: config.user_perm_shortcut_register,
                 event_publish: config.user_perm_event_publish,
+                scheduler_register: config.user_perm_scheduler_register,
+                speech_tts: config.user_perm_speech_tts,
+                speech_asr: config.user_perm_speech_asr,
             },
             guest: ElevatedPermissions {
                 ai_generate: config.guest_perm_ai_generate,
                 ai_analyze: config.guest_perm_ai_analyze,
                 ai_chat: config.guest_perm_ai_chat,
+                ai_image: config.guest_perm_ai_image,
                 report_write: config.guest_perm_report_write,
                 network_fetch: config.guest_perm_network_fetch,
                 media_control: config.guest_perm_media_control,
                 component_theme: config.guest_perm_component_theme,
                 shortcut_register: config.guest_perm_shortcut_register,
                 event_publish: config.guest_perm_event_publish,
+                scheduler_register: config.guest_perm_scheduler_register,
+                speech_tts: config.guest_perm_speech_tts,
+                speech_asr: config.guest_perm_speech_asr,
             },
             user_ai_quota: AiQuotaConfig {
                 daily_calls: config.user_ai_daily_calls,
@@ -418,18 +453,22 @@ pub struct AiQuotaConfig {
     pub cooldown_seconds: i32,
 }
 
-/// Elevated 级别权限配置（9个权限，platform:write 和 platform:register 已升为 privileged）
+/// Elevated 级别权限配置（11个权限，platform:write 和 platform:register 已升为 privileged）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElevatedPermissions {
     pub ai_generate: bool,
     pub ai_analyze: bool,
     pub ai_chat: bool,
+    pub ai_image: bool,
     pub report_write: bool,
     pub network_fetch: bool,
     pub media_control: bool,
     pub component_theme: bool,
     pub shortcut_register: bool,
     pub event_publish: bool,
+    pub scheduler_register: bool,
+    pub speech_tts: bool,
+    pub speech_asr: bool,
 }
 
 /// AI 使用限额配置（根据用户角色返回不同的限额）

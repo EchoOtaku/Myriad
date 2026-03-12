@@ -184,11 +184,8 @@ impl ConfigService {
                 config.ai_image_height = n as i32;
             }
         }
-        if let Some(v) = map.get("imaginepro_api_key") {
-            config.imaginepro_api_key = v.as_str().map(|s| s.to_string());
-        }
-        if let Some(v) = map.get("imaginepro_callback_url") {
-            config.imaginepro_callback_url = v.as_str().map(|s| s.to_string());
+        if let Some(v) = map.get("pixai_api_key") {
+            config.pixai_api_key = v.as_str().map(|s| s.to_string());
         }
 
         // 腾讯云语音服务配置 (TTS/ASR)
@@ -381,6 +378,21 @@ impl ConfigService {
                 config.user_perm_event_publish = b;
             }
         }
+        if let Some(v) = map.get("user_perm_scheduler_register") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_scheduler_register = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_speech_tts") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_speech_tts = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_speech_asr") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_speech_asr = b;
+            }
+        }
 
         // 游客 elevated 权限 (10个, platform:write 和 platform:register 已升为 privileged)
         if let Some(v) = map.get("guest_perm_ai_generate") {
@@ -431,6 +443,21 @@ impl ConfigService {
         if let Some(v) = map.get("guest_perm_event_publish") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_event_publish = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_scheduler_register") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_scheduler_register = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_speech_tts") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_speech_tts = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_speech_asr") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_speech_asr = b;
             }
         }
 

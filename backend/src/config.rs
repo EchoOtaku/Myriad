@@ -181,12 +181,11 @@ pub struct DynamicConfig {
     pub music_playlist_id: Option<String>,
 
     // AI 图片生成配置（从虚拟人设移动过来）
-    pub ai_image_provider: String, // "pollinations" 或 "imaginepro"
+    pub ai_image_provider: String, // "pollinations" 或 "pixai"
     pub ai_image_model: String,
     pub ai_image_width: i32,
     pub ai_image_height: i32,
-    pub imaginepro_api_key: Option<String>,
-    pub imaginepro_callback_url: Option<String>,
+    pub pixai_api_key: Option<String>,
 
     // 自动数据获取配置
     pub enable_auto_fetch: bool,
@@ -244,8 +243,14 @@ pub struct DynamicConfig {
     pub user_perm_shortcut_register: bool,
     /// event:publish - 发布事件
     pub user_perm_event_publish: bool,
+    /// scheduler:register - 注册定时任务
+    pub user_perm_scheduler_register: bool,
+    /// speech:tts - 文本转语音
+    pub user_perm_speech_tts: bool,
+    /// speech:asr - 语音转文本
+    pub user_perm_speech_asr: bool,
 
-    // ===== 游客可使用的 elevated 权限 (10个，platform:write 和 platform:register 已升为 privileged) =====
+    // ===== 游客可使用的 elevated 权限 (11个，platform:write 和 platform:register 已升为 privileged) =====
     /// ai:generate - AI 生成内容（游客）
     pub guest_perm_ai_generate: bool,
     /// ai:analyze - AI 分析数据（游客）
@@ -266,6 +271,12 @@ pub struct DynamicConfig {
     pub guest_perm_shortcut_register: bool,
     /// event:publish - 发布事件（游客）
     pub guest_perm_event_publish: bool,
+    /// scheduler:register - 注册定时任务（游客）
+    pub guest_perm_scheduler_register: bool,
+    /// speech:tts - 文本转语音（游客）
+    pub guest_perm_speech_tts: bool,
+    /// speech:asr - 语音转文本（游客）
+    pub guest_perm_speech_asr: bool,
 
     // ===== AI 使用限额配置（当权限已下放时生效） =====
     // 这些限额只对非管理员用户生效，管理员无限制
@@ -351,11 +362,10 @@ impl Default for DynamicConfig {
 
             // AI 图片生成配置
             ai_image_provider: "pollinations".to_string(),
-            ai_image_model: "flux-anime".to_string(),
-            ai_image_width: 512,
-            ai_image_height: 768,
-            imaginepro_api_key: None,
-            imaginepro_callback_url: None,
+            ai_image_model: "1983308862240288769".to_string(),
+            ai_image_width: 768,
+            ai_image_height: 1280,
+            pixai_api_key: None,
             enable_auto_fetch: false,
             fetch_interval_hours: 24,
 
@@ -390,6 +400,9 @@ impl Default for DynamicConfig {
             user_perm_component_theme: false,
             user_perm_shortcut_register: false,
             user_perm_event_publish: false,
+            user_perm_scheduler_register: false,
+            user_perm_speech_tts: false,
+            user_perm_speech_asr: false,
 
             // ===== 游客 elevated 权限默认值 =====
             // 默认全部关闭
@@ -403,6 +416,9 @@ impl Default for DynamicConfig {
             guest_perm_component_theme: false,
             guest_perm_shortcut_register: false,
             guest_perm_event_publish: false,
+            guest_perm_scheduler_register: false,
+            guest_perm_speech_tts: false,
+            guest_perm_speech_asr: false,
 
             // ===== AI 使用限额默认值 =====
             // 普通用户: 每日 50 次调用, 20000 tokens, 5 秒冷却

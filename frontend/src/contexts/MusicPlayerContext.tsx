@@ -167,6 +167,11 @@ function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
   globalMusicState = { ...globalMusicState, ...newState }
   // 只有状态真正变化时才通知
   if (prevState !== globalMusicState) {
+    // 同步写回 __musicPlayerState，供 Tapp media API 读取
+    ;(window as any).__musicPlayerState = {
+      ...((window as any).__musicPlayerState || {}),
+      ...globalMusicState,
+    }
     emitMusicStateChange()
   }
 }

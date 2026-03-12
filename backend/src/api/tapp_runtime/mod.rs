@@ -36,7 +36,7 @@ pub use platform::{
 };
 
 // AI API
-pub use ai::{ai_generate, ai_analyze, ai_chat, ai_image_generate};
+pub use ai::{ai_generate, ai_analyze, ai_chat, ai_image_generate, ai_image_task_status};
 
 // Reports API
 pub use reports::{

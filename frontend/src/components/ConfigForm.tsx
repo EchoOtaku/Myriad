@@ -176,6 +176,10 @@ const ModernConfigForm: React.FC = () => {
     user_perm_component_theme: false,
     user_perm_shortcut_register: false,
     user_perm_event_publish: false,
+    user_perm_ai_image: false,
+    user_perm_scheduler_register: false,
+    user_perm_speech_tts: false,
+    user_perm_speech_asr: false,
     // 游客 elevated 权限
     guest_perm_ai_generate: false,
     guest_perm_ai_analyze: false,
@@ -186,6 +190,10 @@ const ModernConfigForm: React.FC = () => {
     guest_perm_component_theme: false,
     guest_perm_shortcut_register: false,
     guest_perm_event_publish: false,
+    guest_perm_ai_image: false,
+    guest_perm_scheduler_register: false,
+    guest_perm_speech_tts: false,
+    guest_perm_speech_asr: false,
     // AI 使用限额配置
     user_ai_daily_calls: 50,
     user_ai_daily_tokens: 20000,
@@ -232,7 +240,7 @@ const ModernConfigForm: React.FC = () => {
       if (response.success && response.config) {
         const { guest, user, user_ai_quota, guest_ai_quota } = response.config
         setPermissionConfig({
-          // 普通用户权限 (9个 elevated)
+          // 普通用户权限
           user_perm_ai_generate: user.ai_generate,
           user_perm_ai_analyze: user.ai_analyze,
           user_perm_ai_chat: user.ai_chat,
@@ -242,7 +250,11 @@ const ModernConfigForm: React.FC = () => {
           user_perm_component_theme: user.component_theme,
           user_perm_shortcut_register: user.shortcut_register,
           user_perm_event_publish: user.event_publish,
-          // 游客权限 (9个 elevated)
+          user_perm_ai_image: user.ai_image,
+          user_perm_scheduler_register: user.scheduler_register,
+          user_perm_speech_tts: user.speech_tts,
+          user_perm_speech_asr: user.speech_asr,
+          // 游客权限
           guest_perm_ai_generate: guest.ai_generate,
           guest_perm_ai_analyze: guest.ai_analyze,
           guest_perm_ai_chat: guest.ai_chat,
@@ -252,6 +264,10 @@ const ModernConfigForm: React.FC = () => {
           guest_perm_component_theme: guest.component_theme,
           guest_perm_shortcut_register: guest.shortcut_register,
           guest_perm_event_publish: guest.event_publish,
+          guest_perm_ai_image: guest.ai_image,
+          guest_perm_scheduler_register: guest.scheduler_register,
+          guest_perm_speech_tts: guest.speech_tts,
+          guest_perm_speech_asr: guest.speech_asr,
           // AI 使用限额配置
           user_ai_daily_calls: user_ai_quota?.daily_calls ?? 50,
           user_ai_daily_tokens: user_ai_quota?.daily_tokens ?? 20000,
