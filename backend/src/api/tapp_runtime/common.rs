@@ -194,22 +194,28 @@ pub async fn get_cached_platform_data(platform: &str) -> Result<Value, String> {
         }
     }
 
-    // 缓存未命中，获取 write lock 并 double-check
-    let mut cache = PLATFORM_CACHE.write().await;
-
-    // 二次检查：其他线程可能已经填充了缓存
-    if let Some(data) = cache.get(&key) {
-        return Ok(data.clone());
+    // 缓存未命中，先 double-check（持有 write lock）
+    {
+        let cache = PLATFORM_CACHE.write().await;
+        if let Some(data) = cache.get(&key) {
+            return Ok(data.clone());
+        }
+        // 确认未命中后立即释放写锁，再做耗时的文件 I/O
     }
 
-    // 确实需要从文件读取
+    // 在锁外读取文件（多线程可能并发读，但最终写入相同内容，可接受）
     let cache_file = format!("cache/platforms/{}_filtered.json", key);
     let content = tokio::fs::read_to_string(&cache_file)
         .await
         .map_err(|e| format!("Failed to read cache: {}", e))?;
 
     let data: Value = serde_json::from_str(&content).unwrap_or(json!({ "items": [] }));
-    cache.set(key, data.clone());
+
+    // 重新获取写锁写入缓存
+    {
+        let mut cache = PLATFORM_CACHE.write().await;
+        cache.set(key, data.clone());
+    }
 
     Ok(data)
 }
@@ -601,7 +607,6 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
 #[allow(dead_code)]
 pub async fn invalidate_admin_id_cache() {
     let mut cache = ADMIN_ID_CACHE.write().await;
-    cache.set(-1); // 强制过期
     *cache = SingleCache::new(Duration::from_secs(60));
 }
 

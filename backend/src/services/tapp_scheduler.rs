@@ -20,11 +20,13 @@ use tokio::sync::{broadcast, RwLock};
 
 use std::collections::HashMap;
 
+use crate::api::tapp_runtime::common::HTTP_CLIENT;
 use crate::models::entities::tapp_scheduled_tasks::{
     self, BackendAction, BackendActionWrapper, ExecutionTarget, MissedPolicy, RetryConfig,
     ScheduleConfig, ScheduleType, TaskScope, TaskStats,
 };
 use crate::models::entities::tapp_task_executions::{self, ExecutionStatus};
+use crate::services::tapp_api_service::TappApiService;
 
 /// 任务执行上下文（发送给前端）
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -878,12 +880,14 @@ impl TappSchedulerEngine {
         headers: Option<serde_json::Value>,
         body: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        let client = reqwest::Client::new();
+        // SSRF 防护：复用与 TappApiService 相同的 URL 安全校验
+        TappApiService::validate_url_security_pub(url)?;
+
         let method_str = method.unwrap_or_else(|| "GET".to_string());
         let method = reqwest::Method::from_str(&method_str)
             .map_err(|_| format!("Invalid method: {}", method_str))?;
 
-        let mut request = client.request(method, url);
+        let mut request = HTTP_CLIENT.request(method, url);
 
         if let Some(headers_json) = headers {
             if let Some(headers_map) = headers_json.as_object() {

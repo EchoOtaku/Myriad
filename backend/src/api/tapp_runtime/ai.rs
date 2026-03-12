@@ -304,7 +304,18 @@ pub async fn ai_chat(
         }
 
         if let Some(custom) = &context.custom_data {
-            system_context.push_str(&format!("\n自定义数据: {}", custom));
+            // 对 custom_data 施加与主 prompt 相同的安全校验，防止 prompt 注入
+            let custom_str = match custom.as_str() {
+                Some(s) => s.to_string(),
+                None => custom.to_string(),
+            };
+            if let Some(reason) = validate_prompt_security(&custom_str) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "custom_data contains disallowed content", "reason": reason })),
+                ));
+            }
+            system_context.push_str(&format!("\n自定义数据: {}", custom_str));
         }
 
         if !system_context.is_empty() {

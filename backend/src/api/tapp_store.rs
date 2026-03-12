@@ -486,15 +486,9 @@ async fn fetch_from_store(
         }
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
-
     // 获取商店索引
     let index_url = format!("{}/index.json", base_url);
-    let index_resp = client.get(&index_url).send().await.map_err(|e| {
+    let index_resp = tapp_common::HTTP_CLIENT.get(&index_url).send().await.map_err(|e| {
         (
             StatusCode::BAD_GATEWAY,
             api_error(format!("Failed to fetch store index: {}", e)),
@@ -550,7 +544,7 @@ async fn fetch_from_store(
         .ok_or_else(|| (StatusCode::BAD_GATEWAY, api_error("No manifest path")))?;
     let manifest_url = format!("{}/{}", base_url, manifest_path);
 
-    let manifest_resp = client.get(&manifest_url).send().await.map_err(|e| {
+    let manifest_resp = tapp_common::HTTP_CLIENT.get(&manifest_url).send().await.map_err(|e| {
         (
             StatusCode::BAD_GATEWAY,
             api_error(format!("Failed to fetch manifest: {}", e)),
@@ -571,7 +565,7 @@ async fn fetch_from_store(
         .ok_or_else(|| (StatusCode::BAD_GATEWAY, api_error("No code path")))?;
     let code_url = format!("{}/{}", base_url, code_path);
 
-    let code = client
+    let code = tapp_common::HTTP_CLIENT
         .get(&code_url)
         .send()
         .await
@@ -601,7 +595,7 @@ async fn fetch_from_store(
     // 下载 CSS 样式（统一模式）
     if let Some(styles_path) = download.get("styles").and_then(|v| v.as_str()) {
         let styles_url = format!("{}/{}", base_url, styles_path);
-        if let Ok(resp) = client.get(&styles_url).send().await {
+        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&styles_url).send().await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     styles_content = Some(content);
@@ -613,7 +607,7 @@ async fn fetch_from_store(
     // 下载 Widget 专用 CSS（分离模式）
     if let Some(widget_styles_path) = download.get("widget_styles").and_then(|v| v.as_str()) {
         let widget_styles_url = format!("{}/{}", base_url, widget_styles_path);
-        if let Ok(resp) = client.get(&widget_styles_url).send().await {
+        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&widget_styles_url).send().await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     widget_styles_content = Some(content);
@@ -625,7 +619,7 @@ async fn fetch_from_store(
     // 下载 Page 专用 CSS（分离模式）
     if let Some(page_styles_path) = download.get("page_styles").and_then(|v| v.as_str()) {
         let page_styles_url = format!("{}/{}", base_url, page_styles_path);
-        if let Ok(resp) = client.get(&page_styles_url).send().await {
+        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&page_styles_url).send().await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     page_styles_content = Some(content);
@@ -637,7 +631,7 @@ async fn fetch_from_store(
     // 下载 Page 模板
     if let Some(page_path) = download.get("page_template").and_then(|v| v.as_str()) {
         let page_url = format!("{}/{}", base_url, page_path);
-        if let Ok(resp) = client.get(&page_url).send().await {
+        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&page_url).send().await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     page_template_content = Some(content);
@@ -651,7 +645,7 @@ async fn fetch_from_store(
         for (size, path) in templates {
             if let Some(template_path) = path.as_str() {
                 let template_url = format!("{}/{}", base_url, template_path);
-                if let Ok(resp) = client.get(&template_url).send().await {
+                if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&template_url).send().await {
                     if resp.status().is_success() {
                         if let Ok(content) = resp.text().await {
                             widget_templates.insert(size.clone(), content);
@@ -2024,6 +2018,9 @@ async fn do_uninstall_tapp(
     }
     // 如果 keep_data 为 true，保留 tapp_storage 中的数据，再次安装时可以恢复
 
+    // 清除 manifest API 缓存
+    crate::api::tapp_runtime::declared_api::invalidate_tapp_apis_cache(tapp_id).await;
+
     // 删除 Tapp 记录
     tapps::Entity::delete_by_id(tapp.id)
         .exec(db)
@@ -2206,6 +2203,9 @@ async fn update_tapp(
             api_error(format!("Database error: {}", e)),
         )
     })?;
+
+    // manifest 已更新，清除 API 解析缓存
+    crate::api::tapp_runtime::declared_api::invalidate_tapp_apis_cache(&tapp_id).await;
 
     // 普通用户安装的 Tapp 都是临时的
     let is_temporary = !claims.is_admin;

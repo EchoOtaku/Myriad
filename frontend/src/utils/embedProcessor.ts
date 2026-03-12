@@ -177,14 +177,14 @@ function generateNeteaseMusicCard(songId: string, _isDark: boolean): string {
       <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
         <div class="block w-full h-full relative">
           <!-- 封面容器 - 可被动态更新 -->
-          <div class="brew-embed-cover w-full h-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center">
+          <div class="brew-embed-cover w-full h-full bg-linear-to-br from-red-400 to-red-600 flex items-center justify-center">
             <svg class="w-16 h-16 text-white/80 brew-embed-placeholder" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
             </svg>
           </div>
 
           <!-- 悬停信息遮罩 - 与资料库一致 -->
-          <div class="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3 pointer-events-none">
+          <div class="absolute inset-0 bg-linear-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3 pointer-events-none">
             <div>
               <div class="flex items-start gap-1">
                 <h3 class="brew-embed-title font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
@@ -218,7 +218,7 @@ function generateSteamGameCard(appId: string, _isDark: boolean): string {
          data-embed-exempt="true"
          style="max-width: 28rem;">
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
-        <div class="relative overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800">
+        <div class="relative overflow-hidden bg-linear-to-br from-gray-900 to-gray-800">
           <a href="${storeUrl}"
              target="_blank"
              rel="noopener noreferrer"
@@ -226,12 +226,12 @@ function generateSteamGameCard(appId: string, _isDark: boolean): string {
             <!-- 游戏封面图 -->
             <img src="${headerImg}"
                  alt="Steam Game"
-                 class="brew-embed-cover w-full block object-cover aspect-[460/215] transition-all duration-500 group-hover:scale-110"
+                 class="brew-embed-cover w-full block object-cover aspect-460/215 transition-all duration-500 group-hover:scale-110"
                  loading="lazy"/>
           </a>
 
           <!-- 悬停信息遮罩 -->
-          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+          <div class="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
             <h3 class="brew-embed-title font-bold text-white text-base line-clamp-2 leading-snug mb-1">
               App ID: ${appId}
             </h3>
@@ -297,7 +297,7 @@ function _generateBilibiliVideoCard(videoId: { type: 'bv' | 'av', id: string }, 
         <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
           <div class="block w-full h-full relative">
             <!-- 视频占位封面 -->
-            <div class="w-full h-full bg-gradient-to-br from-[#00A1D6] to-[#0086B3] flex items-center justify-center">
+            <div class="w-full h-full bg-linear-to-br from-[#00A1D6] to-[#0086B3] flex items-center justify-center">
               <svg class="w-16 h-16 text-white/80" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>

@@ -136,7 +136,7 @@ function generateWidgetHTML(
 
   <script nonce="${nonce}">
     window._TAPP_MODE = 'widget';
-    window._TAPP_WIDGET_ID = '${widgetId}';
+    window._TAPP_WIDGET_ID = ${JSON.stringify(widgetId)};
     window._TAPP_WIDGET_PROPS = ${JSON.stringify(widgetProps)};
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1, isCompact: false, isMini: false };
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
@@ -158,7 +158,7 @@ function generateWidgetHTML(
       action: 'tapp.ready',
       payload: null,
       timestamp: Date.now()
-    }, '*');
+    }, document.referrer ? new URL(document.referrer).origin : '*');
   </script>
 
   <!-- SDK 始终加载 -->
@@ -184,7 +184,7 @@ function generateWidgetHTML(
       'use strict';
       setTimeout(function() {
         try {
-          var widgetId = '${widgetId}';
+          var widgetId = ${JSON.stringify(widgetId)};
           var widgetDef = Tapp.widgets[widgetId];
           var container = document.getElementById('widget-root');
 

@@ -11,7 +11,6 @@
  */
 
 import type {
-  PermissionLevel,
   TappAPIRequest,
   TappAPIResponse,
   TappInstance,
@@ -19,7 +18,7 @@ import type {
   TappPermission,
 } from '../types'
 import { getQuotaManager } from '../services/QuotaManager'
-import { PERMISSION_LEVELS, PERMISSION_MAP } from './permissionConfig'
+import { PERMISSION_MAP } from './permissionConfig'
 
 type MessageHandler = (message: TappMessage) => Promise<TappAPIResponse>
 
@@ -187,7 +186,7 @@ export class TappBridge {
       timestamp: Date.now(),
     }
 
-    this.iframe.contentWindow.postMessage(message, '*')
+    this.iframe.contentWindow.postMessage(message, this.allowedOrigin)
   }
 
   /**
@@ -282,7 +281,7 @@ export class TappBridge {
     // 频率限制检查
     const now = Date.now()
     if (now - this.lastRequestTime < this.MIN_REQUEST_INTERVAL) {
-      // 静默限流
+      return
     }
     this.lastRequestTime = now
 
@@ -438,7 +437,7 @@ export class TappBridge {
       timestamp: Date.now(),
     }
 
-    this.iframe.contentWindow.postMessage(message, '*')
+    this.iframe.contentWindow.postMessage(message, this.allowedOrigin)
   }
 
   /**
@@ -478,47 +477,6 @@ export class TappBridge {
     }
 
     return { allowed: true, requiredPermission }
-  }
-
-  /**
-   * 检查权限是否在用户角色允许范围内
-   */
-  private checkPermissionForRole(permission: TappPermission): { allowed: boolean, reason?: string } {
-    const userRole = this.tappInstance?.userRole || 'guest'
-    const permissionLevel = PERMISSION_LEVELS[permission]
-
-    if (!permissionLevel) {
-      return { allowed: false, reason: `Unknown permission: ${permission}` }
-    }
-
-    // 根据用户角色确定允许的权限级别
-    const allowedLevels: PermissionLevel[] = (() => {
-      switch (userRole) {
-        case 'admin':
-          return ['public', 'basic', 'elevated', 'privileged']
-        case 'user':
-          return ['public', 'basic']
-        case 'guest':
-        default:
-          return ['public']
-      }
-    })()
-
-    if (!allowedLevels.includes(permissionLevel)) {
-      const roleNames: Record<string, string> = { guest: '游客', user: '普通用户', admin: '管理员' }
-      const levelNames: Record<PermissionLevel, string> = {
-        public: '公开',
-        basic: '基础',
-        elevated: '高级',
-        privileged: '特权',
-      }
-      return {
-        allowed: false,
-        reason: `${roleNames[userRole] || '未知用户'}无权使用${levelNames[permissionLevel]}权限: ${permission}`,
-      }
-    }
-
-    return { allowed: true }
   }
 
   /**

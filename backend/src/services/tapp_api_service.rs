@@ -24,6 +24,16 @@ use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
+// 预编译模板变量正则，避免每次调用都重新编译
+static TEMPLATE_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"\{\{([^}]+)\}\}").expect("Invalid template regex"));
+
+// Geo 信息缓存（按 IP，10分钟 TTL）
+static GEO_CACHE: Lazy<Arc<RwLock<HashMap<String, (GeoInfo, Instant)>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
+
 // ============ API 响应缓存 ============
 
 struct CacheEntry {
@@ -270,9 +280,19 @@ impl TappApiService {
         Ok(())
     }
 
-    /// 获取地理位置信息
+    /// 获取地理位置信息（带缓存）
     async fn get_geo_info(client_ip: Option<&str>) -> GeoInfo {
         let ip = client_ip.unwrap_or("auto");
+
+        // 检查缓存
+        {
+            let cache = GEO_CACHE.read().await;
+            if let Some((geo, cached_at)) = cache.get(ip) {
+                if cached_at.elapsed() < GEO_CACHE_TTL {
+                    return geo.clone();
+                }
+            }
+        }
 
         // 检查是否为本地/内网 IP
         let is_local = ip == "auto"
@@ -329,7 +349,7 @@ impl TappApiService {
         if let Ok(resp) = HTTP_CLIENT.get(&url).send().await {
             if let Ok(data) = resp.json::<Value>().await {
                 if data.get("status").and_then(|s| s.as_str()) == Some("success") {
-                    return GeoInfo {
+                    let geo = GeoInfo {
                         lat: data.get("lat").and_then(|v| v.as_f64()).unwrap_or(0.0),
                         lon: data.get("lon").and_then(|v| v.as_f64()).unwrap_or(0.0),
                         city: data
@@ -348,6 +368,9 @@ impl TappApiService {
                             .unwrap_or("")
                             .to_string(),
                     };
+                    let mut cache = GEO_CACHE.write().await;
+                    cache.insert(ip.to_string(), (geo.clone(), Instant::now()));
+                    return geo;
                 }
             }
         }
@@ -515,6 +538,11 @@ impl TappApiService {
         }
     }
 
+    /// 公开的 URL 安全校验（供调度器等内部模块复用）
+    pub fn validate_url_security_pub(url: &str) -> Result<(), String> {
+        Self::validate_url_security(url)
+    }
+
     /// 验证 URL 安全性（防止 SSRF）
     fn validate_url_security(url: &str) -> Result<(), String> {
         let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
@@ -537,9 +565,9 @@ impl TappApiService {
             return Err("Localhost access is not allowed".to_string());
         }
 
-        // 检查私有 IP
+        // 检查 IPv4 私有地址
         if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
-            if ip.is_private() || ip.is_loopback() || ip.is_link_local() {
+            if ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_unspecified() {
                 return Err("Private network access is not allowed".to_string());
             }
             // 元数据服务
@@ -548,13 +576,30 @@ impl TappApiService {
             }
         }
 
+        // 检查 IPv6 私有/链路本地/回环地址
+        // 去掉方括号后解析，例如 [fc00::1] -> fc00::1
+        let ipv6_host = host.trim_start_matches('[').trim_end_matches(']');
+        if let Ok(ip) = ipv6_host.parse::<std::net::Ipv6Addr>() {
+            if ip.is_loopback() || ip.is_unspecified() {
+                return Err("Private network access is not allowed".to_string());
+            }
+            let segments = ip.segments();
+            // fc00::/7 唯一本地地址
+            if segments[0] & 0xfe00 == 0xfc00 {
+                return Err("Private network access is not allowed".to_string());
+            }
+            // fe80::/10 链路本地地址
+            if segments[0] & 0xffc0 == 0xfe80 {
+                return Err("Private network access is not allowed".to_string());
+            }
+        }
+
         Ok(())
     }
 
     /// 解析模板变量 {{varName}}
     fn resolve_template(template: &str, context: &HashMap<String, Value>) -> String {
-        let re = regex::Regex::new(r"\{\{([^}]+)\}\}").unwrap();
-        re.replace_all(template, |caps: &regex::Captures| {
+        TEMPLATE_RE.replace_all(template, |caps: &regex::Captures| {
             let path = caps.get(1).map_or("", |m| m.as_str()).trim();
             context
                 .get(path)
@@ -632,11 +677,9 @@ impl TappApiService {
             },
         );
 
-        // 清理过期缓存（简单策略：超过 1000 条时清理）
-        if cache.len() > 1000 {
-            let now = Instant::now();
-            cache.retain(|_, entry| entry.expires_at > now);
-        }
+        // 每次写入都清理过期条目，避免长期积压
+        let now = Instant::now();
+        cache.retain(|_, entry| entry.expires_at > now);
     }
 
     /// 列出 Tapp 可用的 API

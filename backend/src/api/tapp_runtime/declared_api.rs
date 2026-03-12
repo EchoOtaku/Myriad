@@ -5,15 +5,69 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
+use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 use crate::middleware::auth::Claims;
 use crate::models::entities::tapps;
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
+
+// ============ Manifest API 解析缓存 ============
+
+/// 缓存条目：已解析的 API 定义 + 缓存时间
+struct ApisCacheEntry {
+    apis: HashMap<String, TappApiDef>,
+    cached_at: Instant,
+}
+
+/// 全局缓存（tapp_id → 解析结果，5 分钟 TTL）
+static TAPP_APIS_CACHE: Lazy<Arc<RwLock<HashMap<String, ApisCacheEntry>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+const APIS_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// 从 manifest JSON 解析 API 定义，优先命中内存缓存
+async fn get_tapp_apis(tapp_id: &str, manifest: &Value) -> HashMap<String, TappApiDef> {
+    // 读缓存
+    {
+        let cache = TAPP_APIS_CACHE.read().await;
+        if let Some(entry) = cache.get(tapp_id) {
+            if entry.cached_at.elapsed() < APIS_CACHE_TTL {
+                return entry.apis.clone();
+            }
+        }
+    }
+
+    // 缓存未命中，解析 manifest
+    let apis: HashMap<String, TappApiDef> = manifest
+        .get("apis")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    // 写缓存
+    {
+        let mut cache = TAPP_APIS_CACHE.write().await;
+        cache.insert(tapp_id.to_string(), ApisCacheEntry {
+            apis: apis.clone(),
+            cached_at: Instant::now(),
+        });
+    }
+
+    apis
+}
+
+/// Tapp 更新/卸载时使缓存失效
+pub async fn invalidate_tapp_apis_cache(tapp_id: &str) {
+    let mut cache = TAPP_APIS_CACHE.write().await;
+    cache.remove(tapp_id);
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,12 +105,8 @@ pub async fn execute_tapp_api(
             (StatusCode::NOT_FOUND, Json(json!({ "error": "Tapp not found" })))
         })?;
 
-    // 2. 解析 manifest 中的 APIs
-    let apis: HashMap<String, TappApiDef> = tapp
-        .manifest
-        .get("apis")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
+    // 2. 解析 manifest 中的 APIs（带缓存）
+    let apis = get_tapp_apis(&tapp_id, &tapp.manifest).await;
 
     let api_def = apis.get(&api_name).ok_or_else(|| {
         (StatusCode::NOT_FOUND, Json(json!({ "error": format!("API '{}' not defined in manifest", api_name) })))
@@ -125,11 +175,7 @@ pub async fn list_tapp_apis(
             (StatusCode::NOT_FOUND, Json(json!({ "error": "Tapp not found" })))
         })?;
 
-    let apis: HashMap<String, TappApiDef> = tapp
-        .manifest
-        .get("apis")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
+    let apis = get_tapp_apis(&tapp_id, &tapp.manifest).await;
 
     let api_list: Vec<Value> = apis
         .iter()

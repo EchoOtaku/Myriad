@@ -1449,13 +1449,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
       {/* 顶部淡出遮罩 */}
       <div
-        className="absolute top-0 left-0 right-0 h-24 pointer-events-none z-[5]"
+        className="absolute top-0 left-0 right-0 h-24 pointer-events-none z-5"
         style={maskGradientStyles.top}
       />
 
       {/* 底部淡入遮罩 */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-[5]"
+        className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-5"
         style={maskGradientStyles.bottom}
       />
 
@@ -1623,7 +1623,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               /* 链接 - 简洁下划线 + 防溢出 */
               prose-a:font-normal prose-a:underline prose-a:underline-offset-2
               prose-a:decoration-1 prose-a:transition-colors
-              prose-a:break-words [&_a]:overflow-wrap-anywhere
+              prose-a:wrap-break-word [&_a]:overflow-wrap-anywhere
 
               /* 列表 - 紧凑 */
               prose-ul:my-4 prose-ul:pl-5
@@ -1718,7 +1718,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.rss-content-iframe-wrapper]:my-5 [&_.rss-content-iframe-wrapper]:rounded-xl
               [&_.rss-content-iframe-wrapper]:overflow-hidden
               [&_.rss-content-iframe-wrapper.aspect-video]:aspect-video
-              [&_.rss-content-iframe-wrapper.aspect-wide]:aspect-[3/1]
+              [&_.rss-content-iframe-wrapper.aspect-wide]:aspect-3/1
               [&_.rss-content-iframe-wrapper_iframe]:w-full [&_.rss-content-iframe-wrapper_iframe]:h-full
               [&_.rss-content-iframe-wrapper_iframe]:border-0
 
@@ -1745,7 +1745,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.rss-content-details[open]_.rss-content-summary]:border-b
 
               /* RSS 链接 - 文字断行 */
-              [&_.rss-content-link]:break-words [&_.rss-content-link]:underline
+              [&_.rss-content-link]:wrap-break-word [&_.rss-content-link]:underline
               [&_.rss-content-link]:underline-offset-2 [&_.rss-content-link]:decoration-1
 
               /* RSS kbd 按键样式 */
@@ -1824,31 +1824,31 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 hover:prose-a:text-blue-300 hover:prose-a:decoration-blue-300/60
 
                 /* 引用块 */
-                prose-blockquote:bg-white/[0.03]
+                prose-blockquote:bg-white/3
 
                 /* 行内代码 */
-                prose-code:bg-white/[0.08] prose-code:text-amber-200/90
+                prose-code:bg-white/8 prose-code:text-amber-200/90
 
                 /* 代码块 */
-                prose-pre:bg-white/[0.04]
+                prose-pre:bg-white/4
 
                 /* 分隔线 */
-                prose-hr:bg-white/[0.06]
+                prose-hr:bg-white/6
 
                 /* 表格 */
-                [&_table]:bg-white/[0.02]
-                [&_thead]:bg-white/[0.03]
-                [&_tbody_tr:nth-child(even)]:bg-white/[0.02]
+                [&_table]:bg-white/2
+                [&_thead]:bg-white/3
+                [&_tbody_tr:nth-child(even)]:bg-white/2
 
                 /* 数学公式 */
-                [&_.katex-display]:bg-white/[0.03]
+                [&_.katex-display]:bg-white/3
 
                 /* details */
-                [&_details]:bg-white/[0.03]
-                [&_summary:hover]:bg-white/[0.05]
+                [&_details]:bg-white/3
+                [&_summary:hover]:bg-white/5
 
                 /* kbd */
-                [&_kbd]:bg-white/[0.08]
+                [&_kbd]:bg-white/8
 
                 /* mark */
                 [&_mark]:text-amber-200 [&_mark]:bg-amber-500/20
@@ -1856,29 +1856,29 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* ====== RSS 内容样式 - 暗色主题 ====== */
 
                 /* RSS 引用块 */
-                [&_.rss-content-blockquote]:bg-white/[0.03] [&_.rss-content-blockquote]:border-white/10
+                [&_.rss-content-blockquote]:bg-white/3 [&_.rss-content-blockquote]:border-white/10
 
                 /* RSS 代码 */
-                [&_.rss-content-pre]:bg-white/[0.04]
-                [&_.rss-content-inline-code]:bg-white/[0.08]
+                [&_.rss-content-pre]:bg-white/4
+                [&_.rss-content-inline-code]:bg-white/8
 
                 /* RSS 表格 */
                 [&_.rss-content-table]:border-white/10
-                [&_.rss-content-thead]:bg-white/[0.05]
+                [&_.rss-content-thead]:bg-white/5
                 [&_.rss-content-th]:border-white/10
                 [&_.rss-content-td]:border-white/10
-                [&_.rss-content-tr:nth-child(even)]:bg-white/[0.02]
+                [&_.rss-content-tr:nth-child(even)]:bg-white/2
 
                 /* RSS 描述列表 */
                 [&_.rss-content-dd]:border-white/10
 
                 /* RSS 折叠 */
-                [&_.rss-content-details]:bg-white/[0.03]
-                [&_.rss-content-summary]:hover:bg-white/[0.05]
+                [&_.rss-content-details]:bg-white/3
+                [&_.rss-content-summary]:hover:bg-white/5
                 [&_.rss-content-details[open]_.rss-content-summary]:border-white/10
 
                 /* RSS kbd */
-                [&_.rss-content-kbd]:bg-white/[0.08] [&_.rss-content-kbd]:border-white/20
+                [&_.rss-content-kbd]:bg-white/8 [&_.rss-content-kbd]:border-white/20
 
                 /* RSS mark */
                 [&_.rss-content-mark]:bg-yellow-500/30
@@ -1893,7 +1893,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.rss-content-category]:bg-white/10
 
                 /* RSS 侧边栏 */
-                [&_.rss-content-aside]:bg-white/[0.03]
+                [&_.rss-content-aside]:bg-white/3
 
                 /* Brewlia 注释样式 - 暗色主题 */
                 [&_.brewlia-annotation]:cursor-help [&_.brewlia-annotation]:rounded [&_.brewlia-annotation]:px-0.5
@@ -1941,18 +1941,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Callout */
                 [&_.notion-callout]:flex [&_.notion-callout]:items-start [&_.notion-callout]:gap-3
                 [&_.notion-callout]:p-4 [&_.notion-callout]:my-4 [&_.notion-callout]:rounded-xl
-                [&_.notion-callout]:bg-white/[0.04] [&_.notion-callout]:border [&_.notion-callout]:border-white/10
-                [&_.notion-callout-icon]:text-xl [&_.notion-callout-icon]:flex-shrink-0
+                [&_.notion-callout]:bg-white/4 [&_.notion-callout]:border [&_.notion-callout]:border-white/10
+                [&_.notion-callout-icon]:text-xl [&_.notion-callout-icon]:shrink-0
                 [&_.notion-callout-icon]:w-6 [&_.notion-callout-icon]:h-6 [&_.notion-callout-icon]:object-contain
                 [&_.notion-callout-content]:flex-1 [&_.notion-callout-content]:min-w-0
 
                 /* Notion Quote */
                 [&_.notion-quote]:pl-4 [&_.notion-quote]:py-1 [&_.notion-quote]:my-4
-                [&_.notion-quote]:bg-white/[0.04] [&_.notion-quote]:rounded-xl
+                [&_.notion-quote]:bg-white/4 [&_.notion-quote]:rounded-xl
 
                 /* Notion Todo */
                 [&_.notion-todo]:flex [&_.notion-todo]:items-start [&_.notion-todo]:gap-2 [&_.notion-todo]:my-1
-                [&_.notion-checkbox]:w-5 [&_.notion-checkbox]:h-5 [&_.notion-checkbox]:flex-shrink-0
+                [&_.notion-checkbox]:w-5 [&_.notion-checkbox]:h-5 [&_.notion-checkbox]:shrink-0
                 [&_.notion-checkbox]:border-2 [&_.notion-checkbox]:border-white/30 [&_.notion-checkbox]:rounded
                 [&_.notion-checkbox.checked]:bg-blue-500 [&_.notion-checkbox.checked]:border-blue-500
                 [&_.notion-checkbox.checked]:after:content-['✓'] [&_.notion-checkbox.checked]:after:text-white
@@ -1961,7 +1961,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-todo-text.checked]:line-through [&_.notion-todo-text.checked]:opacity-60
 
                 /* Notion Toggle */
-                [&_.notion-toggle]:bg-white/[0.03] [&_.notion-toggle]:border [&_.notion-toggle]:border-white/10
+                [&_.notion-toggle]:bg-white/3 [&_.notion-toggle]:border [&_.notion-toggle]:border-white/10
                 [&_.notion-toggle]:rounded-xl [&_.notion-toggle]:my-3
                 [&_.notion-toggle_summary]:px-4 [&_.notion-toggle_summary]:py-3
 
@@ -1985,8 +1985,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Bookmark */
                 [&_.notion-bookmark]:flex [&_.notion-bookmark]:items-center [&_.notion-bookmark]:gap-3
                 [&_.notion-bookmark]:p-4 [&_.notion-bookmark]:my-4 [&_.notion-bookmark]:rounded-xl
-                [&_.notion-bookmark]:bg-white/[0.04] [&_.notion-bookmark]:border [&_.notion-bookmark]:border-white/10
-                [&_.notion-bookmark]:no-underline [&_.notion-bookmark]:hover:bg-white/[0.06]
+                [&_.notion-bookmark]:bg-white/4 [&_.notion-bookmark]:border [&_.notion-bookmark]:border-white/10
+                [&_.notion-bookmark]:no-underline [&_.notion-bookmark]:hover:bg-white/6
                 [&_.notion-bookmark-icon]:text-lg
                 [&_.notion-bookmark-title]:font-medium [&_.notion-bookmark-title]:flex-1
                 [&_.notion-bookmark-url]:text-sm [&_.notion-bookmark-url]:opacity-50 [&_.notion-bookmark-url]:truncate [&_.notion-bookmark-url]:max-w-48
@@ -1994,14 +1994,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Link Preview */
                 [&_.notion-link-preview]:inline-flex [&_.notion-link-preview]:items-center [&_.notion-link-preview]:gap-1.5
                 [&_.notion-link-preview]:px-2 [&_.notion-link-preview]:py-0.5 [&_.notion-link-preview]:rounded-md
-                [&_.notion-link-preview]:bg-white/[0.06] [&_.notion-link-preview]:no-underline
-                [&_.notion-link-preview]:hover:bg-white/[0.1]
+                [&_.notion-link-preview]:bg-white/6 [&_.notion-link-preview]:no-underline
+                [&_.notion-link-preview]:hover:bg-white/10
 
                 /* Notion File */
                 [&_.notion-file]:inline-flex [&_.notion-file]:items-center [&_.notion-file]:gap-2
                 [&_.notion-file]:px-3 [&_.notion-file]:py-2 [&_.notion-file]:my-2 [&_.notion-file]:rounded-lg
-                [&_.notion-file]:bg-white/[0.04] [&_.notion-file]:border [&_.notion-file]:border-white/10
-                [&_.notion-file]:no-underline [&_.notion-file]:hover:bg-white/[0.08]
+                [&_.notion-file]:bg-white/4 [&_.notion-file]:border [&_.notion-file]:border-white/10
+                [&_.notion-file]:no-underline [&_.notion-file]:hover:bg-white/8
 
                 /* Notion Embed */
                 [&_.notion-embed]:my-6
@@ -2011,12 +2011,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
                 /* Notion PDF */
                 [&_.notion-pdf]:my-6
-                [&_.notion-pdf-embed]:w-full [&_.notion-pdf-embed]:h-[600px] [&_.notion-pdf-embed]:rounded-xl
+                [&_.notion-pdf-embed]:w-full [&_.notion-pdf-embed]:h-150 [&_.notion-pdf-embed]:rounded-xl
                 [&_.notion-pdf-embed]:border [&_.notion-pdf-embed]:border-white/10
 
                 /* Notion Equation */
                 [&_.notion-equation]:my-4 [&_.notion-equation]:py-4 [&_.notion-equation]:px-6
-                [&_.notion-equation]:bg-white/[0.03] [&_.notion-equation]:rounded-xl
+                [&_.notion-equation]:bg-white/3 [&_.notion-equation]:rounded-xl
                 [&_.notion-equation]:overflow-x-auto [&_.notion-equation]:text-center
 
                 /* Notion Table */
@@ -2024,7 +2024,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-table]:rounded-xl [&_.notion-table]:overflow-hidden
                 [&_.notion-table_td]:px-3 [&_.notion-table_td]:py-2
                 [&_.notion-table_td]:border [&_.notion-table_td]:border-white/10
-                [&_.notion-table.has-header_tr:first-child]:bg-white/[0.05]
+                [&_.notion-table.has-header_tr:first-child]:bg-white/5
                 [&_.notion-table.has-header_tr:first-child_td]:font-medium
 
                 /* Notion Columns */
@@ -2034,8 +2034,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Page Link */
                 [&_.notion-page-link]:inline-flex [&_.notion-page-link]:items-center [&_.notion-page-link]:gap-1.5
                 [&_.notion-page-link]:px-2 [&_.notion-page-link]:py-1 [&_.notion-page-link]:rounded-md
-                [&_.notion-page-link]:bg-white/[0.04] [&_.notion-page-link]:no-underline
-                [&_.notion-page-link]:hover:bg-white/[0.08]
+                [&_.notion-page-link]:bg-white/4 [&_.notion-page-link]:no-underline
+                [&_.notion-page-link]:hover:bg-white/8
 
                 /* Notion Code */
                 [&_.notion-code]:my-4
@@ -2052,31 +2052,31 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 hover:prose-a:text-amber-800 hover:prose-a:decoration-amber-700/50
 
                 /* 引用块 */
-                prose-blockquote:bg-black/[0.02]
+                prose-blockquote:bg-black/2
 
                 /* 行内代码 */
-                prose-code:bg-black/[0.04] prose-code:text-amber-800
+                prose-code:bg-black/4 prose-code:text-amber-800
 
                 /* 代码块 */
                 prose-pre:bg-[#282c34] prose-pre:text-[#abb2bf]
 
                 /* 分隔线 */
-                prose-hr:bg-black/[0.06]
+                prose-hr:bg-black/6
 
                 /* 表格 */
-                [&_table]:bg-black/[0.01]
-                [&_thead]:bg-black/[0.02]
-                [&_tbody_tr:nth-child(even)]:bg-black/[0.015]
+                [&_table]:bg-black/1
+                [&_thead]:bg-black/2
+                [&_tbody_tr:nth-child(even)]:bg-black/1.5
 
                 /* 数学公式 */
-                [&_.katex-display]:bg-black/[0.02]
+                [&_.katex-display]:bg-black/2
 
                 /* details */
-                [&_details]:bg-black/[0.02]
-                [&_summary:hover]:bg-black/[0.04]
+                [&_details]:bg-black/2
+                [&_summary:hover]:bg-black/4
 
                 /* kbd */
-                [&_kbd]:bg-black/[0.05]
+                [&_kbd]:bg-black/5
 
                 /* mark */
                 [&_mark]:text-amber-900 [&_mark]:bg-amber-400/30
@@ -2084,29 +2084,29 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* ====== RSS 内容样式 - 浅色主题 ====== */
 
                 /* RSS 引用块 */
-                [&_.rss-content-blockquote]:bg-black/[0.02] [&_.rss-content-blockquote]:border-black/10
+                [&_.rss-content-blockquote]:bg-black/2 [&_.rss-content-blockquote]:border-black/10
 
                 /* RSS 代码 */
                 [&_.rss-content-pre]:bg-[#282c34] [&_.rss-content-pre]:text-[#abb2bf]
-                [&_.rss-content-inline-code]:bg-black/[0.04]
+                [&_.rss-content-inline-code]:bg-black/4
 
                 /* RSS 表格 */
                 [&_.rss-content-table]:border-black/10
-                [&_.rss-content-thead]:bg-black/[0.03]
+                [&_.rss-content-thead]:bg-black/3
                 [&_.rss-content-th]:border-black/10
                 [&_.rss-content-td]:border-black/10
-                [&_.rss-content-tr:nth-child(even)]:bg-black/[0.015]
+                [&_.rss-content-tr:nth-child(even)]:bg-black/1.5
 
                 /* RSS 描述列表 */
                 [&_.rss-content-dd]:border-black/10
 
                 /* RSS 折叠 */
-                [&_.rss-content-details]:bg-black/[0.02]
-                [&_.rss-content-summary]:hover:bg-black/[0.04]
+                [&_.rss-content-details]:bg-black/2
+                [&_.rss-content-summary]:hover:bg-black/4
                 [&_.rss-content-details[open]_.rss-content-summary]:border-black/10
 
                 /* RSS kbd */
-                [&_.rss-content-kbd]:bg-black/[0.05] [&_.rss-content-kbd]:border-black/10
+                [&_.rss-content-kbd]:bg-black/5 [&_.rss-content-kbd]:border-black/10
 
                 /* RSS mark */
                 [&_.rss-content-mark]:bg-yellow-200/60
@@ -2121,7 +2121,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.rss-content-category]:bg-black/5
 
                 /* RSS 侧边栏 */
-                [&_.rss-content-aside]:bg-black/[0.02]
+                [&_.rss-content-aside]:bg-black/2
 
                 /* Brewlia 注释样式 - 浅色主题 */
                 [&_.brewlia-annotation]:cursor-help [&_.brewlia-annotation]:rounded [&_.brewlia-annotation]:px-0.5
@@ -2165,18 +2165,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Callout */
                 [&_.notion-callout]:flex [&_.notion-callout]:items-start [&_.notion-callout]:gap-3
                 [&_.notion-callout]:p-4 [&_.notion-callout]:my-4 [&_.notion-callout]:rounded-xl
-                [&_.notion-callout]:bg-black/[0.02] [&_.notion-callout]:border [&_.notion-callout]:border-black/5
-                [&_.notion-callout-icon]:text-xl [&_.notion-callout-icon]:flex-shrink-0
+                [&_.notion-callout]:bg-black/2 [&_.notion-callout]:border [&_.notion-callout]:border-black/5
+                [&_.notion-callout-icon]:text-xl [&_.notion-callout-icon]:shrink-0
                 [&_.notion-callout-icon]:w-6 [&_.notion-callout-icon]:h-6 [&_.notion-callout-icon]:object-contain
                 [&_.notion-callout-content]:flex-1 [&_.notion-callout-content]:min-w-0
 
                 /* Notion Quote */
                 [&_.notion-quote]:pl-4 [&_.notion-quote]:py-1 [&_.notion-quote]:my-4
-                [&_.notion-quote]:bg-black/[0.04] [&_.notion-quote]:rounded-xl
+                [&_.notion-quote]:bg-black/4 [&_.notion-quote]:rounded-xl
 
                 /* Notion Todo */
                 [&_.notion-todo]:flex [&_.notion-todo]:items-start [&_.notion-todo]:gap-2 [&_.notion-todo]:my-1
-                [&_.notion-checkbox]:w-5 [&_.notion-checkbox]:h-5 [&_.notion-checkbox]:flex-shrink-0
+                [&_.notion-checkbox]:w-5 [&_.notion-checkbox]:h-5 [&_.notion-checkbox]:shrink-0
                 [&_.notion-checkbox]:border-2 [&_.notion-checkbox]:border-black/20 [&_.notion-checkbox]:rounded
                 [&_.notion-checkbox.checked]:bg-blue-500 [&_.notion-checkbox.checked]:border-blue-500
                 [&_.notion-checkbox.checked]:after:content-['✓'] [&_.notion-checkbox.checked]:after:text-white
@@ -2185,7 +2185,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-todo-text.checked]:line-through [&_.notion-todo-text.checked]:opacity-60
 
                 /* Notion Toggle */
-                [&_.notion-toggle]:bg-black/[0.02] [&_.notion-toggle]:border [&_.notion-toggle]:border-black/5
+                [&_.notion-toggle]:bg-black/2 [&_.notion-toggle]:border [&_.notion-toggle]:border-black/5
                 [&_.notion-toggle]:rounded-xl [&_.notion-toggle]:my-3
                 [&_.notion-toggle_summary]:px-4 [&_.notion-toggle_summary]:py-3
 
@@ -2209,8 +2209,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Bookmark */
                 [&_.notion-bookmark]:flex [&_.notion-bookmark]:items-center [&_.notion-bookmark]:gap-3
                 [&_.notion-bookmark]:p-4 [&_.notion-bookmark]:my-4 [&_.notion-bookmark]:rounded-xl
-                [&_.notion-bookmark]:bg-black/[0.02] [&_.notion-bookmark]:border [&_.notion-bookmark]:border-black/5
-                [&_.notion-bookmark]:no-underline [&_.notion-bookmark]:hover:bg-black/[0.04]
+                [&_.notion-bookmark]:bg-black/2 [&_.notion-bookmark]:border [&_.notion-bookmark]:border-black/5
+                [&_.notion-bookmark]:no-underline [&_.notion-bookmark]:hover:bg-black/4
                 [&_.notion-bookmark-icon]:text-lg
                 [&_.notion-bookmark-title]:font-medium [&_.notion-bookmark-title]:flex-1
                 [&_.notion-bookmark-url]:text-sm [&_.notion-bookmark-url]:opacity-50 [&_.notion-bookmark-url]:truncate [&_.notion-bookmark-url]:max-w-48
@@ -2218,14 +2218,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Link Preview */
                 [&_.notion-link-preview]:inline-flex [&_.notion-link-preview]:items-center [&_.notion-link-preview]:gap-1.5
                 [&_.notion-link-preview]:px-2 [&_.notion-link-preview]:py-0.5 [&_.notion-link-preview]:rounded-md
-                [&_.notion-link-preview]:bg-black/[0.03] [&_.notion-link-preview]:no-underline
-                [&_.notion-link-preview]:hover:bg-black/[0.06]
+                [&_.notion-link-preview]:bg-black/3 [&_.notion-link-preview]:no-underline
+                [&_.notion-link-preview]:hover:bg-black/6
 
                 /* Notion File */
                 [&_.notion-file]:inline-flex [&_.notion-file]:items-center [&_.notion-file]:gap-2
                 [&_.notion-file]:px-3 [&_.notion-file]:py-2 [&_.notion-file]:my-2 [&_.notion-file]:rounded-lg
-                [&_.notion-file]:bg-black/[0.02] [&_.notion-file]:border [&_.notion-file]:border-black/5
-                [&_.notion-file]:no-underline [&_.notion-file]:hover:bg-black/[0.04]
+                [&_.notion-file]:bg-black/2 [&_.notion-file]:border [&_.notion-file]:border-black/5
+                [&_.notion-file]:no-underline [&_.notion-file]:hover:bg-black/4
 
                 /* Notion Embed */
                 [&_.notion-embed]:my-6
@@ -2235,12 +2235,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
                 /* Notion PDF */
                 [&_.notion-pdf]:my-6
-                [&_.notion-pdf-embed]:w-full [&_.notion-pdf-embed]:h-[600px] [&_.notion-pdf-embed]:rounded-xl
+                [&_.notion-pdf-embed]:w-full [&_.notion-pdf-embed]:h-150 [&_.notion-pdf-embed]:rounded-xl
                 [&_.notion-pdf-embed]:border [&_.notion-pdf-embed]:border-black/10
 
                 /* Notion Equation */
                 [&_.notion-equation]:my-4 [&_.notion-equation]:py-4 [&_.notion-equation]:px-6
-                [&_.notion-equation]:bg-black/[0.02] [&_.notion-equation]:rounded-xl
+                [&_.notion-equation]:bg-black/2 [&_.notion-equation]:rounded-xl
                 [&_.notion-equation]:overflow-x-auto [&_.notion-equation]:text-center
 
                 /* Notion Table */
@@ -2248,7 +2248,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-table]:rounded-xl [&_.notion-table]:overflow-hidden
                 [&_.notion-table_td]:px-3 [&_.notion-table_td]:py-2
                 [&_.notion-table_td]:border [&_.notion-table_td]:border-black/10
-                [&_.notion-table.has-header_tr:first-child]:bg-black/[0.03]
+                [&_.notion-table.has-header_tr:first-child]:bg-black/3
                 [&_.notion-table.has-header_tr:first-child_td]:font-medium
 
                 /* Notion Columns */
@@ -2258,8 +2258,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 /* Notion Page Link */
                 [&_.notion-page-link]:inline-flex [&_.notion-page-link]:items-center [&_.notion-page-link]:gap-1.5
                 [&_.notion-page-link]:px-2 [&_.notion-page-link]:py-1 [&_.notion-page-link]:rounded-md
-                [&_.notion-page-link]:bg-black/[0.02] [&_.notion-page-link]:no-underline
-                [&_.notion-page-link]:hover:bg-black/[0.04]
+                [&_.notion-page-link]:bg-black/2 [&_.notion-page-link]:no-underline
+                [&_.notion-page-link]:hover:bg-black/4
 
                 /* Notion Code */
                 [&_.notion-code]:my-4
@@ -2342,7 +2342,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                   `}
                   >
                     <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
-                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
                       上一篇
@@ -2372,7 +2372,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                   >
                     <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
                       下一篇
-                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -2426,7 +2426,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             animate={enableAnimations ? { opacity: 1, y: 0, scale: 1 } : undefined}
             exit={enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : undefined}
             transition={enableAnimations ? { duration: 0.25, ease: [0.16, 1, 0.3, 1] } : undefined}
-            className={`fixed bottom-8 inset-x-0 mx-auto w-fit px-4 py-2 rounded-xl shadow-lg z-[60] ${
+            className={`fixed bottom-8 inset-x-0 mx-auto w-fit px-4 py-2 rounded-xl shadow-lg z-60 ${
               isDark ? 'bg-neutral-800/95 text-white' : 'bg-black/90 text-white'
             }`}
           >

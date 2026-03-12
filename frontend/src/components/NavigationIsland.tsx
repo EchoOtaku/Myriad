@@ -115,7 +115,7 @@ function getPaddingVertical(island: HTMLElement | null): number {
 
 /**
  * 导航岛 Tooltip - 使用 Portal 渲染到 body，避免被 overflow:hidden 裁剪
- * 使用事件委托：pointerenter/pointerleave 替代 mousemove，减少事件触发频率
+ * 使用事件委托：pointerover/pointerout 冒泡事件，配合 relatedTarget 实现无闪烁切换
  * memo 化：避免父组件动画状态变化时重复渲染
  */
 const NavIslandTooltip = memo(({ containerRef }: { containerRef: React.RefObject<HTMLElement | null> }) => {
@@ -123,57 +123,76 @@ const NavIslandTooltip = memo(({ containerRef }: { containerRef: React.RefObject
   const [visible, setVisible] = useState(false)
   const showTimerRef = useRef<number>(0)
   const hideTimerRef = useRef<number>(0)
+  const clearTimerRef = useRef<number>(0)
+  const activeTargetRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container)
       return
 
+    const cancelAllTimers = () => {
+      clearTimeout(showTimerRef.current)
+      clearTimeout(hideTimerRef.current)
+      clearTimeout(clearTimerRef.current)
+    }
+
     const show = (target: HTMLElement) => {
       const text = target.getAttribute('data-tooltip')
       if (!text)
         return
-      clearTimeout(hideTimerRef.current)
-      clearTimeout(showTimerRef.current)
-      setTooltip({ text, rect: target.getBoundingClientRect() })
-      showTimerRef.current = window.setTimeout(() => setVisible(true), 120)
+      cancelAllTimers()
+      const rect = target.getBoundingClientRect()
+      const wasVisible = activeTargetRef.current !== null
+      activeTargetRef.current = target
+      setTooltip({ text, rect })
+      // 已经可见时直接更新内容和位置，无需延迟
+      if (wasVisible) {
+        setVisible(true)
+      }
+      else {
+        showTimerRef.current = window.setTimeout(() => setVisible(true), 120)
+      }
     }
 
     const hide = () => {
-      clearTimeout(showTimerRef.current)
-      clearTimeout(hideTimerRef.current)
+      cancelAllTimers()
       hideTimerRef.current = window.setTimeout(() => {
+        activeTargetRef.current = null
         setVisible(false)
-        setTimeout(() => setTooltip(null), 120)
+        clearTimerRef.current = window.setTimeout(() => setTooltip(null), 120)
       }, 60)
     }
 
-    // 事件委托：在容器上监听 pointerenter/pointerleave，通过冒泡匹配 [data-tooltip]
-    const handlePointerEnter = (e: PointerEvent) => {
+    // 使用 pointerover/pointerout（会冒泡）实现事件委托，仅响应鼠标
+    const handlePointerOver = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
       const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null
       if (target && container.contains(target)) {
         show(target)
       }
     }
 
-    const handlePointerLeave = (e: PointerEvent) => {
-      const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null
-      if (target) {
-        hide()
-      }
+    const handlePointerOut = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      const from = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null
+      if (!from) return
+      // 如果移向另一个 tooltip 元素，跳过 hide（让 pointerover 直接更新）
+      const to = (e.relatedTarget as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null
+      if (to && container.contains(to)) return
+      hide()
     }
 
     const handleLeaveContainer = () => hide()
 
-    container.addEventListener('pointerenter', handlePointerEnter, true)
-    container.addEventListener('pointerleave', handlePointerLeave, true)
+    container.addEventListener('pointerover', handlePointerOver)
+    container.addEventListener('pointerout', handlePointerOut)
     container.addEventListener('mouseleave', handleLeaveContainer)
     return () => {
-      container.removeEventListener('pointerenter', handlePointerEnter, true)
-      container.removeEventListener('pointerleave', handlePointerLeave, true)
+      container.removeEventListener('pointerover', handlePointerOver)
+      container.removeEventListener('pointerout', handlePointerOut)
       container.removeEventListener('mouseleave', handleLeaveContainer)
-      clearTimeout(showTimerRef.current)
-      clearTimeout(hideTimerRef.current)
+      cancelAllTimers()
     }
   }, [containerRef])
 
