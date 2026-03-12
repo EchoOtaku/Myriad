@@ -45,9 +45,13 @@ const TAILWIND_MAP: Record<string, string> = {
   'flex-initial': 'flex:0 1 auto',
   'flex-none': 'flex:none',
   'flex-shrink-0': 'flex-shrink:0',
+  'shrink-0': 'flex-shrink:0',
   'flex-shrink': 'flex-shrink:1',
+  'shrink': 'flex-shrink:1',
   'flex-grow-0': 'flex-grow:0',
+  'grow-0': 'flex-grow:0',
   'flex-grow': 'flex-grow:1',
+  'grow': 'flex-grow:1',
 
   // Justify Content
   'justify-start': 'justify-content:flex-start',
@@ -514,6 +518,7 @@ const TAILWIND_MAP: Record<string, string> = {
   // Word Break
   'break-normal': 'overflow-wrap:normal;word-break:normal',
   'break-words': 'overflow-wrap:break-word',
+  'wrap-break-word': 'overflow-wrap:break-word',
   'break-all': 'word-break:break-all',
 
   // Line Clamp
@@ -1140,7 +1145,7 @@ function parseDynamicClass(className: string): string | null {
     return TAILWIND_MAP[className]
   }
 
-  // 渐变方向
+  // 渐变方向 (支持 v3 bg-gradient-to-* 和 v4 bg-linear-to-* 两种写法)
   const gradientDirs: Record<string, string> = {
     'bg-gradient-to-t': 'background-image:linear-gradient(to top,var(--tw-gradient-stops))',
     'bg-gradient-to-tr': 'background-image:linear-gradient(to top right,var(--tw-gradient-stops))',
@@ -1150,6 +1155,14 @@ function parseDynamicClass(className: string): string | null {
     'bg-gradient-to-bl': 'background-image:linear-gradient(to bottom left,var(--tw-gradient-stops))',
     'bg-gradient-to-l': 'background-image:linear-gradient(to left,var(--tw-gradient-stops))',
     'bg-gradient-to-tl': 'background-image:linear-gradient(to top left,var(--tw-gradient-stops))',
+    'bg-linear-to-t': 'background-image:linear-gradient(to top,var(--tw-gradient-stops))',
+    'bg-linear-to-tr': 'background-image:linear-gradient(to top right,var(--tw-gradient-stops))',
+    'bg-linear-to-r': 'background-image:linear-gradient(to right,var(--tw-gradient-stops))',
+    'bg-linear-to-br': 'background-image:linear-gradient(to bottom right,var(--tw-gradient-stops))',
+    'bg-linear-to-b': 'background-image:linear-gradient(to bottom,var(--tw-gradient-stops))',
+    'bg-linear-to-bl': 'background-image:linear-gradient(to bottom left,var(--tw-gradient-stops))',
+    'bg-linear-to-l': 'background-image:linear-gradient(to left,var(--tw-gradient-stops))',
+    'bg-linear-to-tl': 'background-image:linear-gradient(to top left,var(--tw-gradient-stops))',
   }
   if (gradientDirs[className]) {
     return gradientDirs[className]

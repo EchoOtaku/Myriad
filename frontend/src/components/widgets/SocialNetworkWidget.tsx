@@ -759,7 +759,7 @@ const InfoTooltip = memo(({
   return createPortal(
     <motion.div
       {...TOOLTIP_ANIMATION}
-      className="fixed z-[10001] pointer-events-auto w-fit h-fit"
+      className="fixed z-10001 pointer-events-auto w-fit h-fit"
       style={{ top: position.top, left: position.left }}
     >
       <div
@@ -772,7 +772,7 @@ const InfoTooltip = memo(({
             {/* 文本内容 - 点击可复制 */}
             {textContent && (
               <div className="cursor-pointer text-center">
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words whitespace-pre-wrap leading-relaxed">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 wrap-break-word whitespace-pre-wrap leading-relaxed">
                   {textContent}
                 </p>
               </div>
@@ -1064,7 +1064,7 @@ const GlobalSettingsModal = memo(() => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[10000]"
+      className="fixed inset-0 z-10000"
       style={{ pointerEvents: 'none' }}
     >
       <motion.div
@@ -1188,7 +1188,7 @@ const PlatformButton = memo(({
       }`}
     >
       <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0 ${platform.isCustom ? 'p-1.5' : 'text-lg'}`}
+        className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 ${platform.isCustom ? 'p-1.5' : 'text-lg'}`}
         style={{ backgroundColor: platform.color }}
       >
         {platform.icon}
@@ -1198,7 +1198,7 @@ const PlatformButton = memo(({
       </span>
       {isSelected && !onDelete && (
         <div
-          className="ml-auto w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+          className="ml-auto w-5 h-5 rounded-full flex items-center justify-center shrink-0"
           style={{ backgroundColor: platform.color }}
         >
           <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1212,7 +1212,7 @@ const PlatformButton = memo(({
           tabIndex={0}
           onClick={handleDelete}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDelete(e as any) } }}
-          className="ml-auto w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500 transition-colors flex-shrink-0 cursor-pointer"
+          className="ml-auto w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500 transition-colors shrink-0 cursor-pointer"
           title={deleteLabel || 'Delete'}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1490,7 +1490,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
       return (
         <div className="h-full w-full flex items-center justify-center gap-3 px-4">
           <motion.div
-            className="text-2xl flex-shrink-0"
+            className="text-2xl shrink-0"
             layout={false}
             style={{ color: iconColor }}
             animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
@@ -1532,7 +1532,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           {/* 顶部：小图标 + 平台名 */}
           <div className="flex items-center gap-2 mb-1">
             <div
-              className="text-lg flex-shrink-0"
+              className="text-lg shrink-0"
               style={{ color: iconColor }}
             >
               {selectedPlatform.icon}
@@ -1548,7 +1548,7 @@ export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConf
           <div className="flex-1 flex flex-col justify-center overflow-hidden">
             {popupContent.textContent && (
               <p
-                className="text-base font-medium text-gray-800 dark:text-gray-100 break-words whitespace-pre-wrap leading-snug line-clamp-4 text-center"
+                className="text-base font-medium text-gray-800 dark:text-gray-100 wrap-break-word whitespace-pre-wrap leading-snug line-clamp-4 text-center"
               >
                 {popupContent.textContent}
               </p>

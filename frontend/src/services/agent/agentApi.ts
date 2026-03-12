@@ -358,6 +358,9 @@ class AgentService {
           let buffer = ''
           let finalResponse: AgentResponse | null = null
 
+          // 记录从 task_created 事件中获取的 task_id，用于流中断后 fallback 轮询
+          let capturedTaskId: string | null = null
+
           try {
             while (true) {
               const { done, value } = await reader.read()
@@ -375,6 +378,11 @@ class AgentService {
                   if (data) {
                     try {
                       const event: ProgressEvent = JSON.parse(data)
+
+                      // 捕获 task_id，供流中断时 fallback 使用
+                      if (event.type === 'task_created' && (event as any).taskId) {
+                        capturedTaskId = (event as any).taskId
+                      }
 
                       if (onProgress) {
                         onProgress(event)
@@ -406,6 +414,28 @@ class AgentService {
 
           if (finalResponse) {
             resolve(finalResponse)
+          }
+          else if (capturedTaskId) {
+            // SSE 流意外结束但任务已创建，fallback 到轮询等待结果
+            console.warn('[AgentService] SSE stream ended without completion, falling back to polling for task:', capturedTaskId)
+            try {
+              const task = await this.pollTaskUntilComplete(capturedTaskId, {
+                intervalMs: 2000,
+                timeoutMs: 120000,
+                onProgress: onProgress ? (t) => {
+                  onProgress({ type: 'progress', taskId: t.taskId, progress: t.progress } as any)
+                } : undefined,
+              })
+              if (task.status === 'completed' && task.results) {
+                resolve(task.results as unknown as AgentResponse)
+              }
+              else {
+                reject(new Error(`任务 ${capturedTaskId} 以状态 ${task.status} 结束`))
+              }
+            }
+            catch (pollError) {
+              reject(pollError)
+            }
           }
           else {
             reject(new Error('未收到完成响应'))

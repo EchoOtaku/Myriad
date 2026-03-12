@@ -58,7 +58,7 @@ export function UninstallConfirmDialog({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
           onClick={handleCancel}
         >
           <motion.div
@@ -71,7 +71,7 @@ export function UninstallConfirmDialog({
           >
             {/* 对话框头部 */}
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-100 to-orange-100 dark:from-red-900/50 dark:to-orange-900/50 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-xl bg-linear-to-br from-red-100 to-orange-100 dark:from-red-900/50 dark:to-orange-900/50 flex items-center justify-center">
                 <FaTrash className="text-red-600 dark:text-red-400 text-lg" />
               </div>
               <div>

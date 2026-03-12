@@ -271,10 +271,10 @@ export function EditMode({
             transition={{ duration: 0.2 }}
             className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50"
           >
-            <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
             <span className="truncate max-w-[10rem]">{importProgress.step}</span>
             {importProgress.total > 0 && (
-              <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40">
+              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40">
                 {importProgress.current}
                 /
                 {importProgress.total}
@@ -300,10 +300,10 @@ export function EditMode({
           >
             {importExportSuccess
               ? (
-                  <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                  <Check className="w-3.5 h-3.5 shrink-0" />
                 )
               : (
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 )}
             <span className="truncate max-w-[12rem]">{importExportSuccess || importExportError}</span>
           </motion.div>

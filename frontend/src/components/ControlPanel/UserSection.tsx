@@ -234,7 +234,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
                 <img
                   src={userInfo.avatar}
                   alt={userInfo.name}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  className="w-10 h-10 rounded-full object-cover shrink-0"
                   onError={(e) => {
                     e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`
                   }}
@@ -251,7 +251,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
             )
           : (
               <>
-                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <span className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">{t.userModal.pleaseLogin}</span>

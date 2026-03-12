@@ -167,7 +167,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
                   {item.source_icon && (
                     <img src={item.source_icon || undefined} alt="" className="w-6 h-6 rounded-lg" />
                   )}
-                  <span className={`text-sm font-medium ${currentTheme.text} truncate max-w-[100px]`}>
+                  <span className={`text-sm font-medium ${currentTheme.text} truncate max-w-25`}>
                     {item.source_name}
                   </span>
                 </div>
@@ -337,7 +337,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
                           >
                             <Minus className="w-4 h-4" />
                           </button>
-                          <span className={`text-xs ${currentTheme.secondary} tabular-nums min-w-[24px] text-center`}>{fontSize}</span>
+                          <span className={`text-xs ${currentTheme.secondary} tabular-nums min-w-6 text-center`}>{fontSize}</span>
                           <button
                             onClick={() => adjustFontSize(1)}
                             className={`p-1 rounded ${currentTheme.secondary} hover:${currentTheme.text}`}
@@ -356,7 +356,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
                           >
                             <AlignJustify className="w-4 h-4 opacity-50" />
                           </button>
-                          <span className={`text-xs ${currentTheme.secondary} tabular-nums min-w-[28px] text-center`}>{lineHeight.toFixed(1)}</span>
+                          <span className={`text-xs ${currentTheme.secondary} tabular-nums min-w-7 text-center`}>{lineHeight.toFixed(1)}</span>
                           <button
                             onClick={() => adjustLineHeight(0.1)}
                             className={`p-1 rounded ${currentTheme.secondary} hover:${currentTheme.text}`}
@@ -469,7 +469,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
                           className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-all duration-200 ease-out ${
                             isActive
                               ? `${isDark ? 'bg-white/10' : 'bg-black/5'} ${currentTheme.text} font-medium`
-                              : `${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/[0.03]'}`
+                              : `${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/3'}`
                           }`}
                           style={{ paddingLeft: `${12 + indent}px` }}
                         >
@@ -553,7 +553,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
                                   className={`w-full text-left p-3 rounded-xl transition-all duration-200 ease-out ${
                                     isSelected
                                       ? `${typeConfig.bgColor} ${currentTheme.text}`
-                                      : `${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/[0.02] hover:bg-black/[0.05]'}`
+                                      : `${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/2 hover:bg-black/5'}`
                                   }`}
                                 >
                                   <div className="flex items-center gap-2 mb-1">
@@ -632,7 +632,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
 
                     {/* 播放控制 */}
                     {podcastDialogues.length > 0 && (
-                      <div className={`flex items-center justify-center gap-4 mb-4 p-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'}`}>
+                      <div className={`flex items-center justify-center gap-4 mb-4 p-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/2'}`}>
                         <button
                           onClick={handlePrevious}
                           disabled={podcastCurrentIndex === 0}
@@ -709,7 +709,7 @@ export const MobileReaderBar = memo(function MobileReaderBar({
                                       ? isPlaying
                                         ? 'bg-emerald-500/20 ring-2 ring-emerald-500/50'
                                         : `${isDark ? 'bg-white/10' : 'bg-black/5'}`
-                                      : `${isDark ? 'hover:bg-white/5' : 'hover:bg-black/[0.02]'}`
+                                      : `${isDark ? 'hover:bg-white/5' : 'hover:bg-black/2'}`
                                   }`}
                                 >
                                   <div className="flex items-start gap-2">

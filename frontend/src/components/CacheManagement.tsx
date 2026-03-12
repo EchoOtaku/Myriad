@@ -274,7 +274,7 @@ export function CacheManagement() {
       {/* 说明 */}
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <FaExclamationCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <FaExclamationCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
           <div className="text-sm text-blue-900 dark:text-blue-100">
             <p className="font-medium mb-2">{t.cache.aboutCaching}</p>
             <ul className="space-y-1 text-blue-800 dark:text-blue-200">

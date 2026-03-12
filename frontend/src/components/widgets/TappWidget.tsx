@@ -247,8 +247,8 @@ const TappWidgetPreview = memo(({
     ? { background: `linear-gradient(to bottom right, ${previewInfo.themeColor}, ${previewInfo.themeColor}99)` }
     : undefined
   const iconBgClass = previewInfo?.themeColor
-    ? 'bg-gradient-to-br'
-    : 'bg-gradient-to-br from-indigo-500 to-purple-600'
+    ? 'bg-linear-to-br'
+    : 'bg-linear-to-br from-indigo-500 to-purple-600'
 
   return (
     <div
@@ -275,12 +275,12 @@ const TappWidgetPreview = memo(({
       <div className={`relative z-10 h-full flex ${isCompact ? 'items-center justify-center' : 'flex-col justify-center items-center'} p-3`}>
         {/* 图标 */}
         <div
-          className={`${iconBgClass} flex items-center justify-center text-white shadow-lg relative overflow-hidden flex-shrink-0 ${
+          className={`${iconBgClass} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0 ${
             isCompact ? 'w-8 h-8 rounded-lg' : isLarge ? 'w-14 h-14 rounded-xl mb-3' : 'w-10 h-10 rounded-xl mb-2'
           }`}
           style={iconBgStyle}
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
           <TappIcon
             icon={previewInfo?.icon}
             iconSvg={previewInfo?.iconSvg}
@@ -636,8 +636,8 @@ export const TappWidgetComponent = memo(({
       ? { background: `linear-gradient(to bottom right, ${tappInstance.manifest.themeColor}, ${tappInstance.manifest.themeColor}99)` }
       : undefined
     const iconBgClass = tappInstance.manifest.themeColor
-      ? 'bg-gradient-to-br'
-      : 'bg-gradient-to-br from-indigo-500 to-purple-600'
+      ? 'bg-linear-to-br'
+      : 'bg-linear-to-br from-indigo-500 to-purple-600'
 
     return (
       <div
@@ -668,7 +668,7 @@ export const TappWidgetComponent = memo(({
             className={`w-12 h-12 ${iconBgClass} rounded-xl flex items-center justify-center text-white shadow-lg relative overflow-hidden mb-3`}
             style={iconBgStyle}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
             <TappIcon
               icon={widget.config.icon || tappInstance.manifest.icon}
               iconSvg={tappInstance.manifest.iconSvg}

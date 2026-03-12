@@ -388,7 +388,7 @@ function _processIframes(html: string): string {
  * 处理引用块
  */
 function processBlockquotes(html: string, isDark: boolean): string {
-  const bgClass = isDark ? 'bg-white/5' : 'bg-black/[0.03]'
+  const bgClass = isDark ? 'bg-white/5' : 'bg-black/3'
 
   return html.replace(/<blockquote([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
@@ -405,7 +405,7 @@ function processBlockquotes(html: string, isDark: boolean): string {
  * 处理代码块
  */
 function processCodeBlocks(html: string, isDark: boolean): string {
-  const bgClass = isDark ? 'bg-white/5' : 'bg-black/[0.03]'
+  const bgClass = isDark ? 'bg-white/5' : 'bg-black/3'
 
   // 处理 <pre><code> 组合
   let result = html.replace(/<pre([^>]*)>/gi, (match, attrs) => {
@@ -434,8 +434,8 @@ function processCodeBlocks(html: string, isDark: boolean): string {
  */
 function processTables(html: string, isDark: boolean): string {
   const borderClass = isDark ? 'border-white/10' : 'border-black/10'
-  const headerBg = isDark ? 'bg-white/5' : 'bg-black/[0.03]'
-  const stripeBg = isDark ? 'bg-white/[0.02]' : 'bg-black/[0.01]'
+  const headerBg = isDark ? 'bg-white/5' : 'bg-black/3'
+  const stripeBg = isDark ? 'bg-white/2' : 'bg-black/1'
 
   let result = html
 
@@ -497,7 +497,7 @@ function processDescriptionLists(html: string): string {
  * 处理 details/summary 折叠组件
  */
 function processDetails(html: string, isDark: boolean): string {
-  const bgClass = isDark ? 'bg-white/5' : 'bg-black/[0.03]'
+  const bgClass = isDark ? 'bg-white/5' : 'bg-black/3'
   const hoverBg = isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'
 
   let result = html
@@ -561,7 +561,7 @@ function processLinks(html: string, options: ProcessOptions): string {
 
     // 添加样式类
     if (!newAttrs.includes('class=')) {
-      newAttrs += ' class="rss-content-link text-inherit underline underline-offset-2 decoration-1 break-words"'
+      newAttrs += ' class="rss-content-link text-inherit underline underline-offset-2 decoration-1 wrap-break-word"'
     }
 
     return `<a${newAttrs}>`

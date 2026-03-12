@@ -173,7 +173,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
     return (
       <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
         {/* 背景装饰 */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
         <GlowBackground
           color="var(--color-primary)"
           animLevel={anim.level}
@@ -224,7 +224,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
   return (
     <div ref={containerRef} className="relative h-full w-full rounded-xl overflow-hidden glass">
       {/* 背景装饰 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
       <GlowBackground
         color="var(--color-primary)"
         animLevel={anim.level}
@@ -302,7 +302,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
               className="absolute inset-0 cursor-pointer"
             >
               <div
-                className="relative h-full w-full rounded-lg bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.05] transition-all hover:scale-[1.02] shadow-lg overflow-hidden p-4"
+                className="relative h-full w-full rounded-lg bg-white/60 dark:bg-white/3 backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/5 transition-all hover:scale-[1.02] shadow-lg overflow-hidden p-4"
                 style={{ padding: `${16 * scale}px` }}
               >
                 <div
@@ -310,7 +310,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                   style={{ gap: `${12 * scale}px`, marginBottom: `${12 * scale}px` }}
                 >
                   <motion.div
-                    className="w-6 h-6 flex-shrink-0 flex items-center justify-center text-gray-700 dark:text-white/60"
+                    className="w-6 h-6 shrink-0 flex items-center justify-center text-gray-700 dark:text-white/60"
                     style={{ width: `${24 * scale}px`, height: `${24 * scale}px` }}
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
@@ -351,7 +351,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
                       }}
                     >
                       <div
-                        className="w-1 h-1 rounded-full mt-1 flex-shrink-0 bg-gray-400 dark:bg-white/30"
+                        className="w-1 h-1 rounded-full mt-1 shrink-0 bg-gray-400 dark:bg-white/30"
                         style={{
                           width: `${4 * scale}px`,
                           height: `${4 * scale}px`,

@@ -26,8 +26,9 @@
   },
   "dependencies": {
     "@astrojs/check": "^0.9.7",
+    "@astrojs/compiler-rs": "^0.1.4",
     "@astrojs/react": "^5.0.0",
-    "astro": "^6.0.2",
+    "astro": "^6.0.3",
     "axios": "^1.13.6",
     "chart.js": "^4.5.1",
     "jszip": "^3.10.1",

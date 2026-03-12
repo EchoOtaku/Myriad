@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import react from '@astrojs/react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'astro/config'
+import { defineConfig, fontProviders } from 'astro/config'
 // rollup-plugin-visualizer 与 Vite 7 (Rolldown) 不兼容，仅在构建时按需加载
 // import { visualizer } from 'rollup-plugin-visualizer'
 
@@ -59,6 +59,107 @@ export default defineConfig({
   build: {
     inlineStylesheets: 'auto',
   },
+  // Astro 6: 内置 Fonts API - 自动下载并自托管 Google Fonts，优化性能和隐私
+  // 所有字体均通过此 API 自托管，消除对 Google Fonts CDN 的运行时请求
+  fonts: [
+    // 主体字体
+    {
+      provider: fontProviders.google(),
+      name: 'Inter',
+      cssVariable: '--font-inter',
+      weights: [400, 500, 600, 700],
+      styles: ['normal'],
+      fallbacks: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+    },
+    // 标题装饰字体（由 useTitleFont hook 按需切换）
+    {
+      provider: fontProviders.google(),
+      name: 'Qwitcher Grypen',
+      cssVariable: '--font-qwitcher-grypen',
+      weights: [400, 700],
+      styles: ['normal'],
+      fallbacks: ['cursive'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Codystar',
+      cssVariable: '--font-codystar',
+      weights: [400],
+      styles: ['normal'],
+      fallbacks: ['system-ui'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Henny Penny',
+      cssVariable: '--font-henny-penny',
+      weights: [400],
+      styles: ['normal'],
+      fallbacks: ['system-ui'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Srisakdi',
+      cssVariable: '--font-srisakdi',
+      weights: [400, 700],
+      styles: ['normal'],
+      fallbacks: ['system-ui'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Fleur De Leah',
+      cssVariable: '--font-fleur-de-leah',
+      weights: [400],
+      styles: ['normal'],
+      fallbacks: ['cursive'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'League Script',
+      cssVariable: '--font-league-script',
+      weights: [400],
+      styles: ['normal'],
+      fallbacks: ['cursive'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Megrim',
+      cssVariable: '--font-megrim',
+      weights: [400],
+      styles: ['normal'],
+      fallbacks: ['system-ui'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Silkscreen',
+      cssVariable: '--font-silkscreen',
+      weights: [400, 700],
+      styles: ['normal'],
+      fallbacks: ['system-ui'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'UnifrakturMaguntia',
+      cssVariable: '--font-unifraktur-maguntia',
+      weights: [400],
+      styles: ['normal'],
+      fallbacks: ['serif'],
+    },
+    {
+      provider: fontProviders.google(),
+      name: 'Cinzel',
+      cssVariable: '--font-cinzel',
+      weights: [400, 700],
+      styles: ['normal'],
+      fallbacks: ['serif'],
+    },
+  ],
+  // Astro 6: 实验性功能
+  experimental: {
+    // Rust 编译器：比 Go 编译器更快更可靠
+    rustCompiler: true,
+    // 队列渲染：两阶段渲染策略，基准测试提升 2x
+    queuedRendering: { enabled: true },
+  },
   // SPA 模式：所有路由都重定向到 index.html
   trailingSlash: 'never',
   vite: {
@@ -78,6 +179,56 @@ export default defineConfig({
         '@config': path.resolve(__dirname, './src/config.ts'),
       },
     },
+    // Astro 6 / Vite 7: 客户端 Rollup 输出配置迁移到 environments.client
+    environments: {
+      client: {
+        build: {
+          rollupOptions: {
+            output: {
+              manualChunks: (id) => {
+                // React 核心 + React Router 合并到同一 chunk
+                // 避免 React Router v7 在 React Context 初始化前加载导致 hydration 错误
+                if (id.includes('node_modules/react/')
+                  || id.includes('node_modules/react-dom/')
+                  || id.includes('node_modules/react-router')
+                  || id.includes('node_modules/@remix-run')) {
+                  return 'react-vendor'
+                }
+                // Chart.js
+                if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
+                  return 'chart-vendor'
+                }
+                // Motion
+                if (id.includes('node_modules/motion')) {
+                  return 'motion'
+                }
+                // react-icons 各子包分开打包（仅动态导入时使用）
+                if (id.includes('node_modules/react-icons/fa6/')) {
+                  return 'icons-fa6'
+                }
+                if (id.includes('node_modules/react-icons/fa/')) {
+                  return 'icons-fa'
+                }
+                if (id.includes('node_modules/react-icons/si/')) {
+                  return 'icons-si'
+                }
+                if (id.includes('node_modules/react-icons')) {
+                  return 'icons-base'
+                }
+                // Axios
+                if (id.includes('node_modules/axios')) {
+                  return 'axios'
+                }
+              },
+              // 优化文件名用于长期缓存
+              chunkFileNames: 'assets/[name]-[hash].js',
+              entryFileNames: 'assets/[name]-[hash].js',
+              assetFileNames: 'assets/[name]-[hash].[ext]',
+            },
+          },
+        },
+      },
+    },
     build: {
       cssCodeSplit: true,
       minify: 'terser',
@@ -90,49 +241,6 @@ export default defineConfig({
         },
         mangle: {
           safari10: true,
-        },
-      },
-      rollupOptions: {
-        output: {
-          manualChunks: (id) => {
-            // React 核心 + React Router 合并到同一 chunk
-            // 避免 React Router v7 在 React Context 初始化前加载导致 hydration 错误
-            if (id.includes('node_modules/react/')
-              || id.includes('node_modules/react-dom/')
-              || id.includes('node_modules/react-router')
-              || id.includes('node_modules/@remix-run')) {
-              return 'react-vendor'
-            }
-            // Chart.js
-            if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
-              return 'chart-vendor'
-            }
-            // Motion
-            if (id.includes('node_modules/motion')) {
-              return 'motion'
-            }
-            // react-icons 各子包分开打包（仅动态导入时使用）
-            if (id.includes('node_modules/react-icons/fa6/')) {
-              return 'icons-fa6'
-            }
-            if (id.includes('node_modules/react-icons/fa/')) {
-              return 'icons-fa'
-            }
-            if (id.includes('node_modules/react-icons/si/')) {
-              return 'icons-si'
-            }
-            if (id.includes('node_modules/react-icons')) {
-              return 'icons-base'
-            }
-            // Axios
-            if (id.includes('node_modules/axios')) {
-              return 'axios'
-            }
-          },
-          // 优化文件名用于长期缓存
-          chunkFileNames: 'assets/[name]-[hash].js',
-          entryFileNames: 'assets/[name]-[hash].js',
-          assetFileNames: 'assets/[name]-[hash].[ext]',
         },
       },
       assetsInlineLimit: 4096,

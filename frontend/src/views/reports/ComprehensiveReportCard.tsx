@@ -110,7 +110,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
         whileHover={{ y: -4, scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="relative overflow-hidden rounded-2xl cursor-pointer glass flex-shrink-0 snap-center w-[280px] lg:w-full"
+        className="relative overflow-hidden rounded-2xl cursor-pointer glass shrink-0 snap-center w-70 lg:w-full"
         style={{
           aspectRatio: '2 / 1',
           willChange: 'transform',
@@ -127,7 +127,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(({
 
         <div className="relative z-10 h-full flex items-center justify-between px-6 py-3">
           {/* 左侧：图标区域 */}
-          <div className="flex-shrink-0 flex items-center justify-center">
+          <div className="shrink-0 flex items-center justify-center">
             {analysis.decorative_emojis && analysis.decorative_emojis.length > 0 && (
               <>
                 {analysis.decorative_emojis.slice(0, 2).map((emoji: string, i: number) => {

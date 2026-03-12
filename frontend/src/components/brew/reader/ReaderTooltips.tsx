@@ -113,7 +113,7 @@ export function CommentTooltip({
           animate={enableAnimations ? { opacity: 1, x: '-50%', y: '-100%', scale: 1 } : undefined}
           exit={enableAnimations ? { opacity: 0, x: '-50%', y: 'calc(-100% + 10px)', scale: 0.95 } : undefined}
           transition={enableAnimations ? { duration: 0.2, ease: [0.22, 1, 0.36, 1] } : undefined}
-          className={`comment-tooltip fixed z-[80] max-w-xs rounded-lg shadow-xl border ${currentTheme.border} ${currentTheme.surfaceSolid}`}
+          className={`comment-tooltip fixed z-80 max-w-xs rounded-lg shadow-xl border ${currentTheme.border} ${currentTheme.surfaceSolid}`}
           style={{
             left: `${Math.max(16, Math.min(commentTooltip.x, window.innerWidth - 260))}px`,
             top: `${Math.max(16, commentTooltip.y - 12)}px`,
@@ -263,7 +263,7 @@ export function CommentInputPopup({
           animate={enableAnimations ? { opacity: 1, scale: 1, y: 0 } : undefined}
           exit={enableAnimations ? { opacity: 0, scale: 0.92, y: 12 } : undefined}
           transition={enableAnimations ? { duration: 0.25, ease: [0.16, 1, 0.3, 1] } : undefined}
-          className={`comment-popup fixed z-[70] rounded-xl shadow-2xl border ${currentTheme.border} ${currentTheme.surfaceSolid}`}
+          className={`comment-popup fixed z-70 rounded-xl shadow-2xl border ${currentTheme.border} ${currentTheme.surfaceSolid}`}
           style={{
             left: Math.max(16, Math.min(commentPopupPosition.x - (showCommentInput ? 144 : 60), window.innerWidth - (showCommentInput ? 304 : 140))),
             top: Math.max(16, commentPopupPosition.y - (showCommentInput ? 180 : 90)),

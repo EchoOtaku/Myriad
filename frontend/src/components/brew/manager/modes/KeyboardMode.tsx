@@ -85,7 +85,7 @@ export function KeyboardMode({
                       <span className="text-xs text-gray-600 dark:text-gray-400 truncate mr-2">
                         {shortcut.descriptionKey ? (t[shortcut.descriptionKey] || shortcut.descriptionKey) : shortcut.description}
                       </span>
-                      <kbd className="min-w-[18px] px-1.5 py-0.5 bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 rounded text-[10px] text-gray-500 dark:text-gray-400 font-mono text-center shadow-sm flex-shrink-0">
+                      <kbd className="min-w-4.5 px-1.5 py-0.5 bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 rounded text-[10px] text-gray-500 dark:text-gray-400 font-mono text-center shadow-sm shrink-0">
                         {shortcut.key.split(' / ')[0]}
                       </kbd>
                     </div>

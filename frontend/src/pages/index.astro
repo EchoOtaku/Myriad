@@ -3,6 +3,7 @@
  * SPA 外壳页面
  * 这是唯一的 Astro 页面，用于挂载 React 应用
  */
+import { Font } from 'astro:assets'
 import PageLoader from '@components/PageLoader.astro'
 import App from '../App'
 import '../styles/tailwind.css'
@@ -26,38 +27,28 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || ''
     <!-- 安全策略 -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
+    <!-- Astro 6 内置 Fonts API: 全部字体自托管，消除 Google Fonts 外部请求 -->
+    <!-- 主体字体（预加载） -->
+    <Font cssVariable="--font-inter" preload />
+    <!-- 标题装饰字体（@font-face 预声明，浏览器按需下载字体文件） -->
+    <Font cssVariable="--font-qwitcher-grypen" preload />
+    <Font cssVariable="--font-codystar" />
+    <Font cssVariable="--font-henny-penny" />
+    <Font cssVariable="--font-srisakdi" />
+    <Font cssVariable="--font-fleur-de-leah" />
+    <Font cssVariable="--font-league-script" />
+    <Font cssVariable="--font-megrim" />
+    <Font cssVariable="--font-silkscreen" />
+    <Font cssVariable="--font-unifraktur-maguntia" />
+    <Font cssVariable="--font-cinzel" />
+
     <!-- Resource Hints优化 - DNS预解析和预连接 -->
-    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
     <link rel="dns-prefetch" href="https://api.fuukei.org" />
     <link rel="dns-prefetch" href="https://api.open-meteo.com" />
     <link rel="dns-prefetch" href="https://avatars.githubusercontent.com" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- 关键外部 API 预连接（Lighthouse 建议） -->
     <link rel="preconnect" href="https://api.fuukei.org" crossorigin />
     <link rel="preconnect" href="https://avatars.githubusercontent.com" crossorigin />
-    <!-- Inter 字体延迟加载 -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
-    />
-    <!-- Qwitcher Grypen 字体 - 延迟加载避免渲染阻塞（默认标题字体） -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@400;700&display=swap"
-      rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
-    />
-    <!-- 其他标题字体按需加载，由 useTitleFont hook 动态加载 -->
-    <noscript>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Qwitcher+Grypen:wght@400;700&display=swap"
-        rel="stylesheet"
-      />
-    </noscript>
 
     <!-- 关键CSS内联 - 优化FCP -->
     <style>
@@ -84,10 +75,10 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || ''
         background: var(--bg-primary);
         color: var(--text-primary);
         font-family:
-          Inter,
+          var(--font-inter, 'Inter'),
           -apple-system,
           BlinkMacSystemFont,
-          Segoe UI,
+          'Segoe UI',
           sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -386,21 +377,21 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || ''
       }
 
       body {
-        font-family: 'Inter', sans-serif;
+        font-family: var(--font-inter), sans-serif;
         overflow-x: hidden;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
 
-      /* Qwitcher Grypen 字体 - Google Fonts 官方 CSS 类 */
+      /* Qwitcher Grypen 字体 - Astro 6 Fonts API 自托管 */
       .qwitcher-grypen-regular {
-        font-family: 'Qwitcher Grypen', cursive;
+        font-family: var(--font-qwitcher-grypen), cursive;
         font-weight: 400;
         font-style: normal;
       }
 
       .qwitcher-grypen-bold {
-        font-family: 'Qwitcher Grypen', cursive;
+        font-family: var(--font-qwitcher-grypen), cursive;
         font-weight: 700;
         font-style: normal;
       }

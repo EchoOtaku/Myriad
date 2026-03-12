@@ -67,8 +67,15 @@ export class TappBridge {
   /** 请求超时时间 */
   private readonly REQUEST_TIMEOUT = 30000
 
-  /** 允许的 origin（安全检查） */
+  /** 允许的 origin（用于验证接收消息的来源） */
   private allowedOrigin: string = ''
+
+  /** postMessage 目标 origin（发送消息用）
+   * srcdoc iframe 在配合 allow-same-origin 时 origin 为父页面，否则为 null
+   * 浏览器不接受字符串 'null' 作为 postMessage 目标，使用 '*' 代替
+   * 安全性由 event.source === iframe.contentWindow 检查保证
+   */
+  private postMessageTarget: string = '*'
 
   /** 会话 token（用于验证消息来源） */
   private sessionToken: string = ''
@@ -186,7 +193,7 @@ export class TappBridge {
       timestamp: Date.now(),
     }
 
-    this.iframe.contentWindow.postMessage(message, this.allowedOrigin)
+    this.iframe.contentWindow.postMessage(message, this.postMessageTarget)
   }
 
   /**
@@ -437,7 +444,7 @@ export class TappBridge {
       timestamp: Date.now(),
     }
 
-    this.iframe.contentWindow.postMessage(message, this.allowedOrigin)
+    this.iframe.contentWindow.postMessage(message, this.postMessageTarget)
   }
 
   /**

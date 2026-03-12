@@ -3,7 +3,7 @@
 //! 提供 AI Agent 自然语言任务编排的 HTTP 接口
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
     Extension, Json,
@@ -836,19 +836,43 @@ pub async fn get_task(
 
 /// 获取用户的所有任务
 /// GET /api/agent/tasks
+/// 任务列表分页参数
+#[derive(Debug, Deserialize, Default)]
+pub struct TaskListQuery {
+    /// 最多返回多少条，默认 20，最大 100
+    #[serde(default = "default_task_limit")]
+    pub limit: usize,
+    /// 偏移量，默认 0
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_task_limit() -> usize {
+    20
+}
+
 pub async fn list_tasks(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    Query(pagination): Query<TaskListQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user_id = parse_user_id(&claims)?;
 
-    tracing::debug!(user_id = user_id, "[Agent API] Listing user tasks");
+    // 限制单次最多返回 100 条
+    let limit = pagination.limit.min(100);
+    let offset = pagination.offset;
+
+    tracing::debug!(user_id = user_id, limit = limit, offset = offset, "[Agent API] Listing user tasks");
 
     let agent = Agent::new(db).await;
-    let tasks = agent.get_user_tasks(user_id).await;
+    let all_tasks = agent.get_user_tasks(user_id).await;
+    let total = all_tasks.len();
 
-    let task_list: Vec<Value> = tasks
+    let task_list: Vec<Value> = all_tasks
         .iter()
+        .rev() // 最新任务优先
+        .skip(offset)
+        .take(limit)
         .map(|t| {
             json!({
                 "taskId": t.task_id,
@@ -864,7 +888,10 @@ pub async fn list_tasks(
     Ok(Json(json!({
         "success": true,
         "tasks": task_list,
-        "total": task_list.len()
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "hasMore": offset + limit < total
     })))
 }
 

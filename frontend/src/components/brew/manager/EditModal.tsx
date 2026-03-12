@@ -251,7 +251,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -438,7 +438,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                       type="color"
                       value={themeColor}
                       onChange={e => setThemeColor(e.target.value)}
-                      className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 dark:border-neutral-700 bg-transparent flex-shrink-0 p-0"
+                      className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 dark:border-neutral-700 bg-transparent shrink-0 p-0"
                       title={t.brew.selectThemeColor}
                       aria-label={t.brew.selectThemeColor}
                     />
@@ -463,7 +463,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                 <div className="group/info">
                   <div className="flex items-center gap-2 mb-1">
                     <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      className="w-3 h-3 rounded-full shrink-0"
                       style={{ backgroundColor: themeColor }}
                       title={`${t.brew.themeColor}: ${themeColor}`}
                     />
@@ -570,7 +570,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <X className={`w-3.5 h-3.5 flex-shrink-0 ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'}`} />
+                      <X className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'}`} />
                       <span className={`text-xs font-medium ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>{t.brew.stop}</span>
                     </div>
                     <p className={`text-[10px] mt-0.5 ${subscriptionMode === 'disabled' ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>{t.brew.pauseFetch}</p>
@@ -587,7 +587,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <Rss className={`w-3.5 h-3.5 flex-shrink-0 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-500' : isNotion ? 'text-sky-500' : 'text-orange-500') : 'text-gray-400 dark:text-gray-500'}`} />
+                      <Rss className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-500' : isNotion ? 'text-sky-500' : 'text-orange-500') : 'text-gray-400 dark:text-gray-500'}`} />
                       <span className={`text-xs font-medium ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-600 dark:text-teal-400' : isNotion ? 'text-sky-600 dark:text-sky-400' : 'text-orange-600 dark:text-orange-400') : 'text-gray-500 dark:text-gray-400'}`}>{t.brew.subscribe}</span>
                     </div>
                     <p className={`text-[10px] mt-0.5 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-600/70 dark:text-teal-400/70' : isNotion ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-orange-600/70 dark:text-orange-400/70') : 'text-gray-400 dark:text-gray-500'}`}>{t.brew.standardMode}</p>
@@ -604,7 +604,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <Sparkles className={`w-3.5 h-3.5 flex-shrink-0 ${subscriptionMode === 'brewlia' ? 'text-purple-500' : 'text-gray-400 dark:text-gray-500'}`} />
+                      <Sparkles className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'brewlia' ? 'text-purple-500' : 'text-gray-400 dark:text-gray-500'}`} />
                       <span className={`text-xs font-medium ${subscriptionMode === 'brewlia' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>Brewlia AI</span>
                     </div>
                     <p className={`text-[10px] mt-0.5 ${subscriptionMode === 'brewlia' ? 'text-purple-600/70 dark:text-purple-400/70' : 'text-gray-400 dark:text-gray-500'}`}>{t.brew.brewliaFeatures}</p>
@@ -779,7 +779,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
             {/* 错误提示 */}
             {error && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
               </div>
             )}

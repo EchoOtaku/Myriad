@@ -14,13 +14,13 @@ export function EmptyComprehensiveReport({ isAdmin }: EmptyComprehensiveReportPr
 
   return (
     <motion.div
-      className="flex-shrink-0 snap-center w-[280px] lg:w-full"
+      className="shrink-0 snap-center w-70 lg:w-full"
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.4 }}
     >
       <div
-        className="relative overflow-hidden rounded-2xl glass flex-shrink-0"
+        className="relative overflow-hidden rounded-2xl glass shrink-0"
         style={{ aspectRatio: '2 / 1' }}
       >
         <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl opacity-10 bg-gray-400" />
@@ -28,7 +28,7 @@ export function EmptyComprehensiveReport({ isAdmin }: EmptyComprehensiveReportPr
 
         <div className="relative z-10 h-full flex items-center justify-between px-6 py-3">
           {/* 左侧：图标区域 */}
-          <div className="flex-shrink-0 flex items-center justify-center">
+          <div className="shrink-0 flex items-center justify-center">
             <div className="relative">
               <div className="absolute inset-0 rounded-xl blur-xl bg-gray-400 opacity-15" />
               <div

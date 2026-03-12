@@ -65,12 +65,12 @@ export function FeedMode({
               <img
                 src={feedMode.source.icon}
                 alt=""
-                className="w-7 h-7 rounded-lg object-cover flex-shrink-0"
+                className="w-7 h-7 rounded-lg object-cover shrink-0"
               />
             )
           : (
               <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                 style={{ backgroundColor: feedMode.source.theme_color || '#F97316' }}
               >
                 <Rss className="w-4 h-4 text-white" />

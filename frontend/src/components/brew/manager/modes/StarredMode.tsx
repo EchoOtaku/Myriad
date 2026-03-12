@@ -52,7 +52,7 @@ export function StarredMode({
 
       {/* 收藏信息 */}
       <div className="flex items-center gap-2 h-10 px-2 min-w-0 flex-1">
-        <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center flex-shrink-0">
+        <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center shrink-0">
           <Star className="w-4 h-4 text-white" />
         </div>
         <div className="min-w-0 flex-1">

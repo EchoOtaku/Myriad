@@ -236,7 +236,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: -16, scale: 0.92 }}
                 transition={transitions.elementEnter}
-                className="fixed top-4 left-4 z-[9999] opacity-0 hover:opacity-100 transition-opacity duration-300"
+                className="fixed top-4 left-4 z-9999 opacity-0 hover:opacity-100 transition-opacity duration-300"
               >
                 <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
                   <div className="flex items-center gap-2">
@@ -316,20 +316,20 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         style={{ pointerEvents: isFullscreen ? 'none' : undefined }}
       >
         {/* 顶部间距 */}
-        <div className="h-20 flex-shrink-0" />
+        <div className="h-20 shrink-0" />
 
         {/* 控制栏 + 沙箱 整体容器 */}
         <div className="flex-1 flex flex-col px-4 sm:px-6 min-h-0 pb-6">
-          <div className="max-w-6xl mx-auto w-full flex flex-col flex-1 min-h-0 max-h-[calc(100vh_-_8rem)]">
+          <div className="max-w-6xl mx-auto w-full flex flex-col flex-1 min-h-0 max-h-[calc(100vh-8rem)]">
             {/* 头部卡片 - 紧凑单行 */}
             <div
-              className="glass rounded-t-xl px-3 py-2 flex items-center justify-between gap-2 shadow-sm min-h-[44px] flex-shrink-0 pointer-events-auto"
+              className="glass rounded-t-xl px-3 py-2 flex items-center justify-between gap-2 shadow-sm min-h-11 shrink-0 pointer-events-auto"
             >
               {/* 左侧：返回 + 状态/图标 + 名称 */}
               <div className="flex items-center gap-2 min-w-0">
                 <motion.button
                   onClick={goBack}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors flex-shrink-0"
+                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors shrink-0"
                   title={t.tapp.back}
                   aria-label={t.tapp.backToAppList}
                   whileHover={noAnimation ? undefined : { scale: 1.1, x: -2 }}
@@ -350,7 +350,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                           exit={{ opacity: 0, x: 8 }}
                           transition={transitions.stateSwitch}
                         >
-                          <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-neutral-700 flex items-center justify-center flex-shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
                             <FaSpinner className="w-4 h-4 text-gray-400 animate-spin" />
                           </div>
                           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -369,7 +369,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                             transition={transitions.stateSwitch}
                           >
                             <motion.div
-                              className="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0"
+                              className="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0"
                               initial={{ scale: 0.8 }}
                               animate={{ scale: 1 }}
                               transition={{ type: 'spring', stiffness: 400, damping: 20 }}
@@ -392,7 +392,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                               transition={transitions.stateSwitch}
                             >
                               <motion.div
-                                className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}
+                                className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-sm font-bold shrink-0`}
                                 style={iconStyle.style}
                                 initial={{ scale: 0.8, rotate: -10 }}
                                 animate={{ scale: 1, rotate: 0 }}
@@ -417,7 +417,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                                 {tapp.manifest.name}
                               </motion.span>
                               <motion.span
-                                className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0"
+                                className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0"
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 transition={{ delay: 0.15 }}
@@ -436,7 +436,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                 {hasError ? (
                   <motion.div
                     key="actions-error"
-                    className="flex items-center gap-1 flex-shrink-0"
+                    className="flex items-center gap-1 shrink-0"
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
@@ -455,7 +455,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                 ) : isReady ? (
                   <motion.div
                     key="actions-ready"
-                    className="flex items-center gap-1 flex-shrink-0"
+                    className="flex items-center gap-1 shrink-0"
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
@@ -520,7 +520,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                 ) : (
                   <motion.div
                     key="actions-loading"
-                    className="flex items-center gap-1 flex-shrink-0"
+                    className="flex items-center gap-1 shrink-0"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}

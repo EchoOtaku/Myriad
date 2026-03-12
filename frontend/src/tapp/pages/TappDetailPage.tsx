@@ -494,7 +494,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
             <div className="flex items-start gap-4">
               <button
                 onClick={goBack}
-                className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors flex-shrink-0"
+                className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors shrink-0"
                 title={t.tapp.back}
                 aria-label={t.tapp.backToAppList}
               >
@@ -502,7 +502,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
               </button>
 
               <div
-                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl ${getTappIconStyle(manifest).className} flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shadow-lg flex-shrink-0`}
+                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl ${getTappIconStyle(manifest).className} flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shadow-lg shrink-0`}
                 style={getTappIconStyle(manifest).style}
               >
                 <TappIcon
@@ -526,7 +526,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                       {manifest.author && ` · ${manifest.author.name}`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
                     <span className="text-sm text-gray-500 dark:text-gray-400">
                       {isRunning ? t.tapp.running : t.tapp.stopped}
@@ -603,7 +603,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         <div className="mb-4 md:mb-6">
           <div className="glass rounded-xl p-4 md:p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 flex items-center justify-center">
                 <FaCog className="text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
@@ -634,7 +634,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                           </p>
                         )}
                       </div>
-                      <div className="flex-shrink-0">
+                      <div className="shrink-0">
                         {/* Toggle 寮€鍏? */}
                         {setting.type === 'toggle' && (
                           <label className="relative inline-flex cursor-pointer">
@@ -734,7 +734,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         <div className="mb-4 md:mb-6">
           <div className="glass rounded-xl p-4 md:p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/50 dark:to-orange-900/50 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-amber-100 to-orange-100 dark:from-amber-900/50 dark:to-orange-900/50 flex items-center justify-center">
                 <FaLock className="text-amber-600 dark:text-amber-400" />
               </div>
               <div>
@@ -767,7 +767,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                     key={permission}
                     className="flex items-center gap-3 p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
                       <Icon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -783,7 +783,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                         {t.tapp[config.descriptionKey as keyof typeof t.tapp]}
                       </p>
                     </div>
-                    <FaCheck className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    <FaCheck className="w-4 h-4 text-green-500 shrink-0" />
                   </div>
                 )
               })}
@@ -795,7 +795,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         <div className="mb-4 md:mb-6">
           <div className="glass rounded-xl p-4 md:p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-100 to-slate-100 dark:from-gray-800 dark:to-slate-800 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-gray-100 to-slate-100 dark:from-gray-800 dark:to-slate-800 flex items-center justify-center">
                 <FaInfoCircle className="text-gray-600 dark:text-gray-400" />
               </div>
               <div>

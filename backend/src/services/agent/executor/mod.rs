@@ -392,22 +392,49 @@ impl Executor {
             }
         }
 
+        // 根据能力类别和预估时长确定超时（秒），预估时长取3倍作为缓冲
+        let timeout_secs = capability
+            .estimated_duration_ms
+            .map(|ms| ((ms / 1000) * 3).clamp(10, 300))
+            .unwrap_or_else(|| match &capability.category {
+                CapabilityCategory::AiProcess | CapabilityCategory::ResourceCreate => 120,
+                CapabilityCategory::ExternalIntegration => 30,
+                _ => 30,
+            });
+        let capability_category = capability.category.clone();
+
+        // 释放注册表读锁，避免锁跨越长时间的 handler await
+        drop(registry);
+
         tracing::debug!(
             step_id = %step.id,
             capability = %step.capability_id,
+            timeout_secs = timeout_secs,
             params = ?resolved_params,
             "[Executor] Executing step"
         );
 
-        // 分发到具体 handler
-        handlers::execute_capability(
-            &step.capability_id,
-            &step.action,
-            &capability.category,
-            &resolved_params,
-            handler_ctx,
+        // 分发到具体 handler（带超时保护）
+        tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            handlers::execute_capability(
+                &step.capability_id,
+                &step.action,
+                &capability_category,
+                &resolved_params,
+                handler_ctx,
+            ),
         )
         .await
+        .map_err(|_| {
+            tracing::error!(
+                step_id = %step.id,
+                capability = %step.capability_id,
+                timeout_secs = timeout_secs,
+                "[Executor] Step timed out"
+            );
+            format!("能力 '{}' 执行超时（{}秒）", step.capability_id, timeout_secs)
+        })?
     }
 
     /// 解析参数中的引用

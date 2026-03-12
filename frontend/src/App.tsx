@@ -28,9 +28,6 @@ import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
 import './styles/page-transitions.css'
-// ⚠️ 级联依赖: navigation-island.css 必须在此全局导入
-// AppLayout.css (在 AppLayout 组件中导入) 会覆盖其中的 transition: all，
-// 若调换顺序或移除此导入，一二级导航切换动画将失效
 import './styles/navigation-island.css'
 import './styles/utility.css'
 import './styles/modals.css'

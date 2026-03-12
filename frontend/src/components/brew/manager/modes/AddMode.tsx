@@ -396,7 +396,7 @@ export function AddMode({
             {sourceType !== 'link' && sourceType !== 'rsshub' && (
               <div className="flex items-center justify-between px-2.5 py-2 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200/50 dark:border-purple-800/30 rounded-xl">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <Sparkles className={`w-4 h-4 flex-shrink-0 ${sourceType === 'brewlia' ? 'text-purple-500' : 'text-purple-400'}`} />
+                  <Sparkles className={`w-4 h-4 shrink-0 ${sourceType === 'brewlia' ? 'text-purple-500' : 'text-purple-400'}`} />
                   <div className="min-w-0">
                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Brewlia AI</span>
                     <p className="text-[10px] text-gray-400 truncate">{t.brewliaShortDesc}</p>
@@ -407,7 +407,7 @@ export function AddMode({
                   onClick={() => setSourceType(sourceType === 'brewlia' ? 'rss' : 'brewlia')}
                   disabled={loading}
                   title={sourceType === 'brewlia' ? t.disableAI : t.enableAI}
-                  className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                  className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
                     sourceType === 'brewlia' ? 'bg-purple-500' : 'bg-gray-300 dark:bg-neutral-600'
                   }`}
                 >
@@ -432,7 +432,7 @@ export function AddMode({
                 {/* RSSHub 的 Brewlia AI 增强开关 */}
                 <div className="flex items-center justify-between px-2.5 py-2 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200/50 dark:border-purple-800/30 rounded-xl">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <Sparkles className={`w-4 h-4 flex-shrink-0 ${enableBrewliaForRsshub ? 'text-purple-500' : 'text-purple-400'}`} />
+                    <Sparkles className={`w-4 h-4 shrink-0 ${enableBrewliaForRsshub ? 'text-purple-500' : 'text-purple-400'}`} />
                     <div className="min-w-0">
                       <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Brewlia AI</span>
                       <p className="text-[10px] text-gray-400 truncate">{t.brewliaFeatures}</p>
@@ -443,7 +443,7 @@ export function AddMode({
                     onClick={() => setEnableBrewliaForRsshub(!enableBrewliaForRsshub)}
                     disabled={loading}
                     title={enableBrewliaForRsshub ? t.disableAI : t.enableAI}
-                    className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                    className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
                       enableBrewliaForRsshub ? 'bg-purple-500' : 'bg-gray-300 dark:bg-neutral-600'
                     }`}
                   >
@@ -515,13 +515,13 @@ export function AddMode({
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-center gap-2 px-2.5 py-2 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/50 dark:border-emerald-800/50 rounded-xl"
               >
-                <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 <span className="text-xs text-emerald-700 dark:text-emerald-300 truncate">{discovered.title}</span>
-                <span className="text-[10px] px-1 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded flex-shrink-0">
+                <span className="text-[10px] px-1 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded shrink-0">
                   {discovered.feed_type.toUpperCase()}
                 </span>
                 {sourceType === 'brewlia' && (
-                  <span className="text-[10px] px-1 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded flex-shrink-0 flex items-center gap-0.5">
+                  <span className="text-[10px] px-1 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded shrink-0 flex items-center gap-0.5">
                     <Star className="w-2.5 h-2.5" />
                     {' '}
                     AI
@@ -669,12 +669,12 @@ export function AddMode({
               disabled={loading || (sourceType === 'rsshub' ? !rsshubFullUrl : (!url.trim() || (sourceType === 'link' && !name.trim())))}
               className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all text-white ${
                 sourceType === 'brewlia'
-                  ? 'bg-gradient-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 disabled:from-purple-300 disabled:to-violet-300'
+                  ? 'bg-linear-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 disabled:from-purple-300 disabled:to-violet-300'
                   : sourceType === 'rsshub'
-                    ? 'bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:from-teal-300 disabled:to-cyan-300'
+                    ? 'bg-linear-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:from-teal-300 disabled:to-cyan-300'
                     : sourceType === 'link'
-                      ? 'bg-gradient-to-r from-gray-500 to-slate-500 hover:from-gray-600 hover:to-slate-600 disabled:from-gray-300 disabled:to-slate-300'
-                      : 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:from-orange-300 disabled:to-amber-300'
+                      ? 'bg-linear-to-r from-gray-500 to-slate-500 hover:from-gray-600 hover:to-slate-600 disabled:from-gray-300 disabled:to-slate-300'
+                      : 'bg-linear-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:from-orange-300 disabled:to-amber-300'
               }`}
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -714,7 +714,7 @@ export function AddMode({
               <button
                 onClick={handleImport}
                 disabled={opmlLoading}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white rounded-xl text-sm font-medium transition-all"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-linear-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white rounded-xl text-sm font-medium transition-all"
               >
                 {opmlLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                 {t.startImport}

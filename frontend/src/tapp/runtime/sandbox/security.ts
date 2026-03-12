@@ -450,10 +450,10 @@ export function generateSecurityWrapper(sessionToken: string): string {
  * 安全说明：
  * - allow-scripts: 允许脚本执行（必需）
  * - allow-pointer-lock: 允许指针锁定（用于游戏等交互）
- * - allow-same-origin: srcdoc 模式需要此项以允许 postMessage 通信和 contentDocument 访问
- *   安全性由 CSP nonce + 安全包装器（原型冻结、API 禁用）补偿
+ * - allow-same-origin 已移除：srcdoc iframe + allow-same-origin 允许脚本逃逸沙箱
+ *   postMessage 通信使用 '*' 作为目标 origin，安全性由 event.source 验证保证
  */
-export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock allow-same-origin'
+export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock'
 
 /**
  * 验证存储 key 格式（防止路径遍历攻击）

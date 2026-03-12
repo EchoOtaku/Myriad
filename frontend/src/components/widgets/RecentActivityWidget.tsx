@@ -288,9 +288,9 @@ const ActivityItem = memo(({ activity, index, t }: { activity: Activity, index: 
       initial={ITEM_INITIAL_ANIMATION}
       animate={ITEM_ANIMATE}
       transition={transition}
-      className="flex items-start gap-2 p-2 rounded-md bg-white/40 dark:bg-white/[0.02] hover:bg-white/60 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+      className="flex items-start gap-2 p-2 rounded-md bg-white/40 dark:bg-white/2 hover:bg-white/60 dark:hover:bg-white/4 transition-colors cursor-pointer"
     >
-      <div className="flex-shrink-0 text-gray-600 dark:text-gray-400 mt-0.5">
+      <div className="shrink-0 text-gray-600 dark:text-gray-400 mt-0.5">
         <PlatformIcon platformName={activity.platform_name} />
       </div>
       <div className="flex-1 min-w-0">
@@ -502,7 +502,7 @@ export const RecentActivityWidget = memo(({ config: _config, isEditMode, isPrevi
 
   return (
     <div className="h-full w-full glass rounded-xl p-3 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-br from-violet-500/5 to-transparent" />
 
       <div className="relative z-10 h-full flex flex-col">
         {/* 标题 */}

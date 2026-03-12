@@ -70,7 +70,7 @@ export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps)
       onClick={handleClick}
     >
       {/* 渐变背景 */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${platform.color} opacity-90`} />
+      <div className={`absolute inset-0 bg-linear-to-br ${platform.color} opacity-90`} />
 
       {/* 装饰圆 */}
       <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />

@@ -732,7 +732,7 @@ export default function RSSHubConfigComponent({
           className="w-full px-3 py-2.5 bg-gray-50/80 dark:bg-neutral-800/50 flex items-center justify-between text-sm text-left focus:outline-none focus:ring-2 focus:ring-orange-500/30 transition-all disabled:opacity-50"
         >
           <div className="flex items-center gap-2 min-w-0">
-            <RSSHubIcon className="w-4 h-4 text-orange-500 flex-shrink-0" />
+            <RSSHubIcon className="w-4 h-4 text-orange-500 shrink-0" />
             <div className="min-w-0">
               {loadingInstances
                 ? (
@@ -763,7 +763,7 @@ export default function RSSHubConfigComponent({
                     )}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {instances.length > 0 && (
               <span className="text-xs text-gray-400">{t.brew.rsshubInstanceCount.replace('{count}', String(instances.length))}</span>
             )}
@@ -993,7 +993,7 @@ export default function RSSHubConfigComponent({
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleToggleEnabled(instance) }}
                                   title={instance.enabled ? t.brew.rsshubDisable : t.brew.rsshubEnable}
-                                  className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${
+                                  className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${
                                     instance.enabled ? 'bg-gray-700 dark:bg-gray-300' : 'bg-gray-300 dark:bg-neutral-600'
                                   }`}
                                 >
@@ -1235,7 +1235,7 @@ export default function RSSHubConfigComponent({
           <div className="space-y-2">
             {extractedParams.map(param => (
               <div key={param.name} className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400 w-20 flex-shrink-0 font-mono">
+                <span className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0 font-mono">
                   :
                   {param.name}
                   {!param.required && (
@@ -1268,7 +1268,7 @@ export default function RSSHubConfigComponent({
             : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/50'
         }`}
         >
-          <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
+          <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
             currentRouteConfig.requiresConfig === 'server'
               ? 'text-amber-500'
               : 'text-blue-500'
@@ -1364,7 +1364,7 @@ export default function RSSHubConfigComponent({
                   <div className="space-y-2">
                     {COMMON_QUERY_PARAMS_KEYS.map(param => (
                       <div key={param.key} className="flex items-start gap-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 w-20 flex-shrink-0 pt-1.5 font-mono">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0 pt-1.5 font-mono">
                           {param.key}
                         </span>
                         <div className="flex-1">

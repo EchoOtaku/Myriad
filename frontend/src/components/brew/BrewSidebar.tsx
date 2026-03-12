@@ -343,7 +343,7 @@ export default memo(({
             onClick={closeContextMenu}
           />
           <div
-            className="fixed z-50 bg-gray-800 border border-white/10 rounded-lg shadow-xl py-1 min-w-[160px]"
+            className="fixed z-50 bg-gray-800 border border-white/10 rounded-lg shadow-xl py-1 min-w-40"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             <button

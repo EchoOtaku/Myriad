@@ -710,7 +710,7 @@ export default function PerformanceMonitor() {
   return (
     <div
       data-perf-monitor
-      className="fixed bottom-4 right-4 z-[9999] bg-black/90 backdrop-blur-md rounded-lg shadow-xl text-white text-xs font-mono"
+      className="fixed bottom-4 right-4 z-9999 bg-black/90 backdrop-blur-md rounded-lg shadow-xl text-white text-xs font-mono"
       style={{ maxWidth: isExpanded ? '360px' : '280px' }}
     >
       {/* 紧凑模式 */}
@@ -820,7 +820,7 @@ export default function PerformanceMonitor() {
             ))}
           </div>
 
-          <div className="p-3 space-y-3 max-h-[400px] overflow-y-auto">
+          <div className="p-3 space-y-3 max-h-100 overflow-y-auto">
             {/* 概览标签页 */}
             {activeTab === 'overview' && (
               <>
@@ -973,7 +973,7 @@ export default function PerformanceMonitor() {
                 {animationStats.expensiveAnimations.length > 0 && (
                   <div>
                     <div className="font-bold mb-2 text-orange-400">⚠️ 可能影响性能</div>
-                    <div className="space-y-1 text-[10px] max-h-[100px] overflow-y-auto">
+                    <div className="space-y-1 text-[10px] max-h-25 overflow-y-auto">
                       {animationStats.expensiveAnimations.map((anim, i) => (
                         <div key={i} className="bg-orange-500/10 border border-orange-500/30 rounded px-2 py-1">
                           <div className="text-orange-300 font-medium truncate" title={anim.selector}>
@@ -1001,7 +1001,7 @@ export default function PerformanceMonitor() {
                   </div>
                   {animationStats.cssAnimations.length > 0
                     ? (
-                        <div className="space-y-1 text-[10px] max-h-[150px] overflow-y-auto">
+                        <div className="space-y-1 text-[10px] max-h-37.5 overflow-y-auto">
                           {animationStats.cssAnimations.map((anim, i) => (
                             <div
                               key={i}
@@ -1123,7 +1123,7 @@ export default function PerformanceMonitor() {
                       {jsAnimationStats.webAnimationDetails.length}
                       )
                     </div>
-                    <div className="space-y-1 text-[10px] max-h-[100px] overflow-y-auto">
+                    <div className="space-y-1 text-[10px] max-h-25 overflow-y-auto">
                       {jsAnimationStats.webAnimationDetails.map(anim => (
                         <div
                           key={anim.id}

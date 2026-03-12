@@ -396,7 +396,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
     >
       {/* 窗口标题栏 - 可拖拽（支持鼠标和触摸） */}
       <div
-        className={`flex items-center justify-between px-3 h-10 flex-shrink-0 select-none backdrop-blur-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex items-center justify-between px-3 h-10 shrink-0 select-none backdrop-blur-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={headerStyle}
         onMouseDown={handleDragStart}
         onTouchStart={handleDragStart}
@@ -404,7 +404,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
         {/* 左侧：拖拽手柄 + 图标 + 名称 */}
         <div className="flex items-center gap-2 min-w-0">
           <FaGripVertical
-            className="w-3 h-3 flex-shrink-0"
+            className="w-3 h-3 shrink-0"
             style={{ color: 'var(--text-muted)' }}
           />
 
@@ -433,7 +433,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
                 ? (
                     <div className="flex items-center gap-2 min-w-0">
                       <div
-                        className={`w-6 h-6 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}
+                        className={`w-6 h-6 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold shrink-0`}
                         style={iconStyle.style}
                       >
                         <TappIcon
@@ -451,7 +451,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
                         {window.tapp.manifest.name}
                       </span>
                       <span
-                        className="text-[10px] flex-shrink-0"
+                        className="text-[10px] shrink-0"
                         style={{ color: 'var(--text-muted)' }}
                       >
                         v
@@ -463,7 +463,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
         </div>
 
         {/* 右侧：关闭按钮 */}
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <motion.button
             onClick={handleCloseClick}
             className="p-1 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
@@ -987,7 +987,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   return (
     <div className="fixed inset-0 overflow-hidden" data-no-ripple>
       {/* 顶部工具栏 - 简化合并 */}
-      <div className="absolute top-4 left-4 z-[1000]">
+      <div className="absolute top-4 left-4 z-1000">
         <div
           className="flex items-center gap-2 rounded-xl px-2 py-1.5 backdrop-blur-md"
           style={{
@@ -1039,7 +1039,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                 <AnimatePresence>
                   {showSchemeMenu && (
                     <motion.div
-                      className="absolute top-full left-0 mt-2 w-56 rounded-xl overflow-hidden z-[1001]"
+                      className="absolute top-full left-0 mt-2 w-56 rounded-xl overflow-hidden z-1001"
                       style={{
                         backgroundColor: 'var(--bg-card)',
                         border: '1px solid var(--border-color)',
@@ -1225,7 +1225,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           <>
             {/* 背景遮罩 */}
             <motion.div
-              className="fixed inset-0 z-[2000]"
+              className="fixed inset-0 z-2000"
               style={{ backgroundColor: 'color-mix(in srgb, var(--bg-primary) 60%, transparent)' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1234,7 +1234,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             />
 
             {/* 选择器面板 - 使用 flex 居中 */}
-            <div className="fixed inset-0 z-[2001] flex items-center justify-center pointer-events-none">
+            <div className="fixed inset-0 z-2001 flex items-center justify-center pointer-events-none">
               <motion.div
                 className="w-full max-w-md max-h-[70vh] overflow-hidden rounded-2xl pointer-events-auto mx-4"
                 style={{

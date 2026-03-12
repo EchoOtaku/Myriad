@@ -87,7 +87,7 @@ export default function CommentsListPanel({
             animate={enableAnimations ? { opacity: 1 } : undefined}
             exit={enableAnimations ? { opacity: 0 } : undefined}
             transition={enableAnimations ? { duration: 0.2 } : undefined}
-            className="fixed inset-0 z-[59] bg-black/20 backdrop-blur-[1px]"
+            className="fixed inset-0 z-59 bg-black/20 backdrop-blur-[1px]"
             onClick={() => setShowCommentsPanel(false)}
           />
           <motion.div
@@ -95,7 +95,7 @@ export default function CommentsListPanel({
             animate={enableAnimations ? { opacity: 1, y: 0, height: 'auto' } : undefined}
             exit={enableAnimations ? { opacity: 0, y: -24, height: 0 } : undefined}
             transition={enableAnimations ? { duration: 0.3, ease: [0.16, 1, 0.3, 1] } : undefined}
-            className={`fixed left-0 right-0 top-0 z-[60] shadow-2xl border-b ${currentTheme.border} ${currentTheme.surfaceSolid} overflow-hidden`}
+            className={`fixed left-0 right-0 top-0 z-60 shadow-2xl border-b ${currentTheme.border} ${currentTheme.surfaceSolid} overflow-hidden`}
             style={STYLE_MAX_HEIGHT_60VH}
           >
             {/* 面板头部 */}
@@ -134,11 +134,11 @@ export default function CommentsListPanel({
                     <div
                       key={comment.id}
                       data-panel-comment-id={comment.id}
-                      className={`flex-shrink-0 w-80 rounded-xl border ${currentTheme.border} ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'} group overflow-hidden`}
+                      className={`shrink-0 w-80 rounded-xl border ${currentTheme.border} ${isDark ? 'bg-white/5' : 'bg-black/2'} group overflow-hidden`}
                     >
                       {/* 选中的原文 */}
                       {comment.selected_text && (
-                        <div className={`px-4 py-2.5 ${isDark ? 'bg-white/5' : 'bg-black/[0.03]'} border-b ${currentTheme.border}`}>
+                        <div className={`px-4 py-2.5 ${isDark ? 'bg-white/5' : 'bg-black/3'} border-b ${currentTheme.border}`}>
                           <p className={`text-xs ${currentTheme.secondary} mb-1`}>{t.brew.originalExcerpt}</p>
                           <p className={`text-sm ${currentTheme.text} line-clamp-2 leading-relaxed`}>
                             "
@@ -248,7 +248,7 @@ export default function CommentsListPanel({
                             <button
                               onClick={submitReply}
                               disabled={!replyInput.trim() || replySubmitting}
-                              className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={t.brew.send}
                             >
                               <Send className="w-3.5 h-3.5" />
@@ -258,7 +258,7 @@ export default function CommentsListPanel({
                                 setReplyingTo(null)
                                 setReplyInput('')
                               }}
-                              className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'} ${currentTheme.secondary} transition-colors`}
+                              className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'} ${currentTheme.secondary} transition-colors`}
                               title={t.brew.cancel}
                             >
                               <X className="w-3.5 h-3.5" />
@@ -273,7 +273,7 @@ export default function CommentsListPanel({
                           {commentReplies[comment.id].map(reply => (
                             <div
                               key={reply.id}
-                              className={`relative pl-3 py-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'} group/reply`}
+                              className={`relative pl-3 py-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/2'} group/reply`}
                             >
                               {/* 回复用户信息 */}
                               <div className={`flex items-center gap-2 mb-1.5 ${currentTheme.secondary}`}>
@@ -354,7 +354,7 @@ export default function CommentsListPanel({
                                 <button
                                   onClick={submitReply}
                                   disabled={!replyInput.trim() || replySubmitting}
-                                  className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   title={t.brew.send}
                                 >
                                   <Send className="w-3.5 h-3.5" />
@@ -364,7 +364,7 @@ export default function CommentsListPanel({
                                     setReplyingTo(null)
                                     setReplyInput('')
                                   }}
-                                  className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'} ${currentTheme.secondary} transition-colors`}
+                                  className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'} ${currentTheme.secondary} transition-colors`}
                                   title={t.brew.cancel}
                                 >
                                   <X className="w-3.5 h-3.5" />

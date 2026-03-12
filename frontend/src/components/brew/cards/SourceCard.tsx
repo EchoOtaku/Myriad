@@ -8,15 +8,9 @@
  * - useMemo 缓存样式计算
  */
 
-import {
-  API_URL,
-  DEFAULT_THEME_COLOR,
-  SIZE_TO_ROWS,
-  getIconUrl,
-  getSourceColor,
-  stripHtml,
-} from '../constants'
+import type { TranslationKeys } from '../../../i18n'
 import type { BrewSource, CardSize, SourceType } from '../../../types/brew'
+import type { SortMode } from '../types'
 import {
   LuEdit3 as Edit3,
   LuExternalLink as ExternalLink,
@@ -24,13 +18,19 @@ import {
   LuRss as Rss,
   LuSparkles as Sparkles,
 } from '@lib/icons'
-import React, { forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { SortMode } from '../types'
-import type { TranslationKeys } from '../../../i18n'
-import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
-import { useBrewCardStagger } from '../../../hooks/animation'
+import React, { forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { useBrewCardStagger } from '../../../hooks/animation'
+import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
+import {
+  API_URL,
+  DEFAULT_THEME_COLOR,
+  getIconUrl,
+  getSourceColor,
+  SIZE_TO_ROWS,
+  stripHtml,
+} from '../constants'
 
 export interface SourceCardProps {
   source: BrewSource
@@ -118,7 +118,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
   isSelected = false,
   isDeleting = false,
   onEdit,
-  onDelete,
+  onDelete: _onDelete,
   onResizeStart,
   previewSize,
   isDragging = false,
@@ -131,7 +131,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
   const { t } = useI18n()
 
   // 接入动画调度器
-  const { canAnimate, _delay, onComplete, animConfig, _initialStyle, animateStyle } = useBrewCardStagger(index, 'source')
+  const { canAnimate, delay: _delay, onComplete, animConfig, initialStyle: _initialStyle, animateStyle } = useBrewCardStagger(index, 'source')
 
   const enableHover = animConfig.level !== 'none'
 
@@ -303,10 +303,10 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
         >
-          <div className="flex items-center gap-[3px] px-2.5 py-1 rounded-full bg-black/5 dark:bg-white/10">
-            <div className={`${size === 'full' ? 'w-[5px] h-[5px]' : 'w-[3px] h-[3px]'} rounded-full bg-gray-400/80`} />
-            <div className={`${size === 'full' ? 'w-[5px] h-[5px]' : 'w-[3px] h-[3px]'} rounded-full bg-gray-400/80`} />
-            <div className={`${size === 'full' ? 'w-[5px] h-[5px]' : 'w-[3px] h-[3px]'} rounded-full bg-gray-400/80`} />
+          <div className="flex items-center gap-0.75 px-2.5 py-1 rounded-full bg-black/5 dark:bg-white/10">
+            <div className={`${size === 'full' ? 'w-1.25 h-1.25' : 'w-0.75 h-0.75'} rounded-full bg-gray-400/80`} />
+            <div className={`${size === 'full' ? 'w-1.25 h-1.25' : 'w-0.75 h-0.75'} rounded-full bg-gray-400/80`} />
+            <div className={`${size === 'full' ? 'w-1.25 h-1.25' : 'w-0.75 h-0.75'} rounded-full bg-gray-400/80`} />
           </div>
         </div>
       )}
@@ -339,9 +339,9 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
       <div className={`absolute inset-0 ${sizeClasses.padding} flex flex-col ${contentTransition}`}>
 
         {/* 顶部：图标 + 名称 + 元信息 */}
-        <div className={`flex items-center gap-3 flex-shrink-0 ${contentTransition}`}>
+        <div className={`flex items-center gap-3 shrink-0 ${contentTransition}`}>
           {/* 图标 */}
-          <div className={`${size === 'tiny' ? 'w-10 h-10' : size === 'mini' ? 'w-9 h-9' : 'w-11 h-11'} rounded-xl flex items-center justify-center relative overflow-hidden flex-shrink-0 ${contentTransition}`}>
+          <div className={`${size === 'tiny' ? 'w-10 h-10' : size === 'mini' ? 'w-9 h-9' : 'w-11 h-11'} rounded-xl flex items-center justify-center relative overflow-hidden shrink-0 ${contentTransition}`}>
             {source.icon
               ? (
                   <img
@@ -373,7 +373,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
               </h3>
               {hasUnread && (
                 <span
-                  className={`${size === 'full' ? 'w-2.5 h-2.5' : 'w-2 h-2'} rounded-full flex-shrink-0 ${size === 'tiny' ? 'animate-pulse' : ''}`}
+                  className={`${size === 'full' ? 'w-2.5 h-2.5' : 'w-2 h-2'} rounded-full shrink-0 ${size === 'tiny' ? 'animate-pulse' : ''}`}
                   style={{ backgroundColor: color }}
                 />
               )}
@@ -420,7 +420,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
 
           {/* AI 风格标签 */}
           {!isEditMode && source.ai_style_tags && source.ai_style_tags.length > 0 && (
-            <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
               {source.ai_style_tags.slice(0, 2).map((tag, idx) => (
                 <span
                   key={idx}
@@ -435,7 +435,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
 
           {/* 操作按钮 - 编辑模式 */}
           {isEditMode && (
-            <div className="flex items-center gap-0.5 flex-shrink-0">
+            <div className="flex items-center gap-0.5 shrink-0">
               <button
                 onClick={handleEdit}
                 className={`${size === 'tiny' ? 'p-1' : 'p-1.5'} rounded-lg transition-all duration-200 ease-out text-gray-400 hover:text-blue-500 hover:bg-blue-500/10`}
@@ -474,15 +474,15 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
           className={`flex-1 mt-2 flex flex-col overflow-hidden min-h-0 ${contentTransition} ${
             size === 'tiny'
               ? 'opacity-0 max-h-0 mt-0 pointer-events-none'
-              : 'opacity-100 max-h-[500px]'
+              : 'opacity-100 max-h-125'
           }`}
         >
           {recentItems.length > 0 ? (
             <>
               {/* 最新文章预览 */}
-              <div className={`flex-1 ${size === 'mini' ? 'px-3 py-2.5 min-h-[44px]' : 'p-4'} rounded-xl bg-black/[0.03] dark:bg-white/[0.04] flex overflow-hidden ${contentTransition}`}>
+              <div className={`flex-1 ${size === 'mini' ? 'px-3 py-2.5 min-h-11' : 'p-4'} rounded-xl bg-black/3 dark:bg-white/4 flex overflow-hidden ${contentTransition}`}>
                 {size === 'full' && recentItems[0].image && (
-                  <div className="w-24 h-full flex-shrink-0 mr-4 rounded-lg overflow-hidden bg-gray-100 dark:bg-neutral-800">
+                  <div className="w-24 h-full shrink-0 mr-4 rounded-lg overflow-hidden bg-gray-100 dark:bg-neutral-800">
                     <img
                       src={recentItems[0].image.startsWith('http')
                         ? `${API_URL}/api/proxy/image?url=${encodeURIComponent(recentItems[0].image)}`
@@ -497,7 +497,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
                 )}
                 <div className="flex items-start gap-2 flex-1 min-w-0 min-h-0">
                   {!recentItems[0].is_read && (
-                    <span className={`${size === 'full' ? 'w-2.5 h-2.5 mt-1' : 'w-1.5 h-1.5 mt-[5px]'} rounded-full shrink-0`} style={{ backgroundColor: color }} />
+                    <span className={`${size === 'full' ? 'w-2.5 h-2.5 mt-1' : 'w-1.5 h-1.5 mt-1.25'} rounded-full shrink-0`} style={{ backgroundColor: color }} />
                   )}
                   <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
                     {size === 'mini'
@@ -515,11 +515,11 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
                         )
                       : (
                           <>
-                            <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex items-center gap-2 shrink-0">
                               <p className="text-[15px] font-semibold text-gray-700 dark:text-gray-300 truncate leading-tight flex-1 min-w-0">
                                 {recentItems[0].title}
                               </p>
-                              <span className="text-[11px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500 shrink-0">
                                 {formatTime(recentItems[0].published_at, t)}
                               </span>
                             </div>
@@ -538,7 +538,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
               <div
                 className={`flex flex-col justify-evenly overflow-hidden ${contentTransition} ${
                   size === 'full'
-                    ? 'flex-1 min-h-0 mt-2.5 opacity-100 max-h-[200px]'
+                    ? 'flex-1 min-h-0 mt-2.5 opacity-100 max-h-50'
                     : 'flex-none h-0 mt-0 opacity-0 pointer-events-none'
                 }`}
               >
@@ -546,7 +546,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
                   <div
                     key={item.id || idx}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors ${
-                      !isEditMode ? 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]' : ''
+                      !isEditMode ? 'hover:bg-black/2 dark:hover:bg-white/3' : ''
                     }`}
                   >
                     {!item.is_read && (
@@ -563,7 +563,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
               </div>
             </>
           ) : (
-            <div className={`flex-1 ${size === 'mini' ? 'p-3' : 'p-4'} rounded-xl bg-black/[0.03] dark:bg-white/[0.04] flex items-start overflow-hidden`}>
+            <div className={`flex-1 ${size === 'mini' ? 'p-3' : 'p-4'} rounded-xl bg-black/3 dark:bg-white/4 flex items-start overflow-hidden`}>
               {source.description && size === 'full'
                 ? (
                     <p className="text-[14px] text-gray-500 dark:text-gray-400 line-clamp-6 leading-relaxed">
@@ -589,7 +589,7 @@ export const SourceCard = React.memo(forwardRef<HTMLDivElement, SourceCardProps>
           onTouchStart={handleResizeStart}
         >
           <div
-            className={`${size === 'tiny' ? 'w-4 h-4 border-b-[4px] border-r-[4px] rounded-br-lg' : size === 'mini' ? 'w-5 h-5 border-b-[5px] border-r-[5px] rounded-br-lg' : 'w-6 h-6 border-b-[6px] border-r-[6px] rounded-br-xl'} opacity-50 group-hover/resize:opacity-100 transition-opacity duration-200`}
+            className={`${size === 'tiny' ? 'w-4 h-4 border-b-4 border-r-4 rounded-br-lg' : size === 'mini' ? 'w-5 h-5 border-b-5 border-r-5 rounded-br-lg' : 'w-6 h-6 border-b-6 border-r-6 rounded-br-xl'} opacity-50 group-hover/resize:opacity-100 transition-opacity duration-200`}
             style={{ borderColor: color }}
           />
         </div>

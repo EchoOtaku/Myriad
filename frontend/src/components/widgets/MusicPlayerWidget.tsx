@@ -25,6 +25,57 @@ interface FloatingChar {
   seed: number
 }
 
+// 确定性随机函数 - 模块级别，避免在每次渲染时重新创建
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 9999) * 10000
+  return x - Math.floor(x)
+}
+
+// 计算字符布局位置 - 纯函数，模块级别
+function computeCharPositions(
+  visibleChars: FloatingChar[],
+): { x: number, y: number, fontSize: number, rotation: number }[] {
+  if (visibleChars.length === 0)
+    return []
+
+  const positions: { x: number, y: number, fontSize: number, rotation: number }[] = []
+  let cumulativeX = 4
+  const availableWidth = 92
+
+  const weights: number[] = []
+  let totalWeight = 0
+  visibleChars.forEach((char) => {
+    const tokenLength = char.char.length
+    const isEnglishWord = tokenLength > 1 && /^[a-z]/i.test(char.char)
+    const baseMin = isEnglishWord ? 0.9 : 0.7
+    const baseWeight = baseMin + seededRandom(char.seed + 100) * 0.4
+    const lengthMultiplier = 1 + (tokenLength - 1) * 0.6
+    const weight = baseWeight * lengthMultiplier
+    weights.push(weight)
+    totalWeight += weight
+  })
+
+  visibleChars.forEach((char, idx) => {
+    const x = cumulativeX
+    const yRandom = seededRandom(char.seed)
+    const y = Math.sqrt(yRandom) * 45
+    const fontSizeRatio = 0.85 + seededRandom(char.seed + 200) * 0.4
+    const rotation = (seededRandom(char.seed + 300) - 0.5) * 16
+    positions.push({ x, y, fontSize: fontSizeRatio, rotation })
+    const charWidth = (weights[idx] / totalWeight) * availableWidth
+    cumulativeX += charWidth
+  })
+
+  return positions
+}
+
+// 批次检查间隔（毫秒）
+const BATCH_CHECK_MS = 200
+// 动画更新间隔（毫秒）~20fps，足够柔和
+const ANIM_UPDATE_MS = 50
+// 每批显示的最大字符数
+const MAX_CHARS_PER_BATCH = 10
+
 // 漂浮歌词显示组件 - 逐字淡入，分批显示
 const FloatingLyrics = memo(({
   lyrics,
@@ -39,40 +90,36 @@ const FloatingLyrics = memo(({
   themeColor: string
   fontScale: number
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null)
   const charsRef = useRef<(HTMLSpanElement | null)[]>([])
   const animationRef = useRef<number | null>(null)
   const pageVisibleRef = useRef(isPageVisible())
   const phaseRef = useRef(0)
-
-  // 每批显示的最大字符数
-  const MAX_CHARS_PER_BATCH = 10
-
-  // 当前播放时间 - 使用 ref 减少重渲染
   const currentTimeRef = useRef(0)
-  // 用于触发批次更新的时间戳（降低更新频率）
-  const [batchTrigger, setBatchTrigger] = useState(0)
-  // 当前批次是否正在淡出
-  const [isFadingOut, setIsFadingOut] = useState(false)
-  // 频谱驱动的节奏进度调制
+  const currentBatchIndexRef = useRef(-1)
+  // 淡出状态用 ref 而非 state — 在 RAF 内读写，无需触发渲染
+  const isFadingOutRef = useRef(false)
+  // 当前批次数据存于 ref，渲染时读取
+  const visibleCharsRef = useRef<FloatingChar[]>([])
+  const charPositionsRef = useRef<{ x: number, y: number, fontSize: number, rotation: number }[]>([])
+  // 频谱节奏检测
   const rhythmProgressRef = useRef(0)
   const lastBeatTimeRef = useRef(0)
   const energyHistoryRef = useRef<number[]>([])
 
-  // 构建所有字符的时间映射 - 英文单词作为整体
+  // 唯一触发 React 重渲染的 state — 只在批次真正切换时递增（约每4秒）
+  const [batchVersion, setBatchVersion] = useState(0)
+
+  // 构建所有字符的时间映射 — 仅歌词变化时重算
   const allCharsWithTime = useMemo(() => {
     const chars: FloatingChar[] = []
-
     if (lyrics.length === 0)
       return chars
 
-    // 将文本分割为词元（中文逐字，英文逐词，数字逐组）
     const tokenize = (text: string): string[] => {
       const tokens: string[] = []
       let i = 0
       while (i < text.length) {
         const char = text[i]
-        // 英文字母：收集整个单词
         if (/[a-z]/i.test(char)) {
           let word = ''
           while (i < text.length && /[a-z']/i.test(text[i])) {
@@ -81,7 +128,6 @@ const FloatingLyrics = memo(({
           }
           tokens.push(word)
         }
-        // 数字：收集整个数字组
         else if (/\d/.test(char)) {
           let num = ''
           while (i < text.length && /[0-9.,]/.test(text[i])) {
@@ -90,7 +136,6 @@ const FloatingLyrics = memo(({
           }
           tokens.push(num)
         }
-        // 其他字符（中文、标点、空格等）：逐个处理
         else {
           tokens.push(char)
           i++
@@ -100,11 +145,7 @@ const FloatingLyrics = memo(({
     }
 
     let globalIndex = 0
-
-    // 智能时长计算：根据歌词长度推算合理显示时间
-    // 每个字符约 0.35 秒，英文单词按实际字符数计算
     const CHAR_DISPLAY_TIME = 0.35
-    // 偏差阈值：实际时间超过推算时间的倍数时才限制
     const DEVIATION_THRESHOLD = 2.0
 
     lyrics.forEach((line, lineIdx) => {
@@ -113,40 +154,20 @@ const FloatingLyrics = memo(({
       const lineEndTime = nextLine ? nextLine.time : lineStartTime + 5
       const actualDuration = lineEndTime - lineStartTime
       const text = line.text
-
-      // 计算推荐时长：基于实际字符数（不是词元数）
-      const charCount = text.replace(/\s/g, '').length // 不计空格
+      const charCount = text.replace(/\s/g, '').length
       const recommendedDuration = charCount * CHAR_DISPLAY_TIME
-
-      // 计算最终时长
-      let lineDuration: number
-      if (actualDuration > recommendedDuration * DEVIATION_THRESHOLD) {
-        // 实际时间远大于推荐时间（可能是间奏）
-        // 使用推荐时间的中上值（1.3 ~ 1.5 倍）作为上限
-        lineDuration = recommendedDuration * 1.4
-      }
-      else {
-        // 正常情况：使用实际时间
-        lineDuration = actualDuration
-      }
-
+      const lineDuration = actualDuration > recommendedDuration * DEVIATION_THRESHOLD
+        ? recommendedDuration * 1.4
+        : actualDuration
       const tokens = tokenize(text)
       const tokenCount = tokens.length
-
       if (tokenCount === 0)
         return
 
       tokens.forEach((token, tokenIdx) => {
         const tokenTime = lineStartTime + (tokenIdx / tokenCount) * lineDuration
         const seed = globalIndex * 17 + token.charCodeAt(0)
-
-        chars.push({
-          char: token,
-          index: globalIndex,
-          absoluteTime: tokenTime,
-          seed,
-        })
-
+        chars.push({ char: token, index: globalIndex, absoluteTime: tokenTime, seed })
         globalIndex++
       })
     })
@@ -154,48 +175,11 @@ const FloatingLyrics = memo(({
     return chars
   }, [lyrics])
 
-  // 同步当前播放时间 - 使用 ref + 节流的批次触发
-  useEffect(() => {
-    if (!isPlaying)
-      return
+  // 计算指定时间点应显示的批次 — 在 RAF 内调用的纯计算
+  const computeCurrentBatch = useCallback((time: number) => {
+    if (allCharsWithTime.length === 0)
+      return { chars: [] as FloatingChar[], positions: [] as ReturnType<typeof computeCharPositions>, batchIndex: -1 }
 
-    const audio = audioManager.getCurrentAudio()
-    if (!audio)
-      return
-
-    let rafId: number | null = null
-    let lastBatchUpdate = 0
-    const BATCH_UPDATE_INTERVAL = 200 // 每200ms检查一次批次变化
-
-    const updateTime = (timestamp: number) => {
-      currentTimeRef.current = audio.currentTime
-
-      // 节流批次更新
-      if (timestamp - lastBatchUpdate >= BATCH_UPDATE_INTERVAL) {
-        setBatchTrigger(audio.currentTime)
-        lastBatchUpdate = timestamp
-      }
-
-      rafId = requestAnimationFrame(updateTime)
-    }
-
-    rafId = requestAnimationFrame(updateTime)
-
-    return () => {
-      if (rafId)
-        cancelAnimationFrame(rafId)
-    }
-  }, [isPlaying])
-
-  // 计算当前应该显示的字符批次 - 使用节流的 batchTrigger
-  const { visibleChars } = useMemo(() => {
-    if (allCharsWithTime.length === 0) {
-      return { visibleChars: [], batchStartTime: 0, batchEndTime: 0 }
-    }
-
-    const time = batchTrigger
-
-    // 找到当前时间对应的字符索引
     let currentCharIndex = 0
     for (let i = 0; i < allCharsWithTime.length; i++) {
       if (allCharsWithTime[i].absoluteTime <= time) {
@@ -206,104 +190,31 @@ const FloatingLyrics = memo(({
       }
     }
 
-    // 计算当前批次的起始索引（每批 MAX_CHARS_PER_BATCH 个字符）
     const batchIndex = Math.floor(currentCharIndex / MAX_CHARS_PER_BATCH)
     const batchStart = batchIndex * MAX_CHARS_PER_BATCH
     const batchEnd = Math.min(batchStart + MAX_CHARS_PER_BATCH, allCharsWithTime.length)
-
     const chars = allCharsWithTime.slice(batchStart, batchEnd)
-    const startTime = chars.length > 0 ? chars[0].absoluteTime : 0
-    const endTime = chars.length > 0 ? chars[chars.length - 1].absoluteTime : 0
+    return { chars, positions: computeCharPositions(chars), batchIndex }
+  }, [allCharsWithTime])
 
-    return {
-      visibleChars: chars,
-      batchStartTime: startTime,
-      batchEndTime: endTime,
-    }
-  }, [allCharsWithTime, batchTrigger])
-
-  // 检测批次切换，触发淡出
-  const prevBatchRef = useRef<number>(-1)
+  // 歌词变化时初始化第一批（非播放状态下也需要显示内容）
   useEffect(() => {
-    if (allCharsWithTime.length === 0)
-      return
-
-    const currentCharIndex = allCharsWithTime.findIndex(c => c.absoluteTime > batchTrigger) - 1
-    const batchIndex = Math.floor(Math.max(0, currentCharIndex) / MAX_CHARS_PER_BATCH)
-
-    if (prevBatchRef.current !== -1 && prevBatchRef.current !== batchIndex) {
-      // 批次变化，触发淡出
-      setIsFadingOut(true)
-      setTimeout(() => setIsFadingOut(false), 300)
+    currentBatchIndexRef.current = -1
+    if (allCharsWithTime.length > 0) {
+      const { chars, positions, batchIndex } = computeCurrentBatch(currentTimeRef.current)
+      visibleCharsRef.current = chars
+      charPositionsRef.current = positions
+      currentBatchIndexRef.current = batchIndex
     }
-
-    prevBatchRef.current = batchIndex
-  }, [batchTrigger, allCharsWithTime])
-
-  // 计算字符布局位置 - 从左到右排列，填满区域，随机间隔
-  const charPositions = useMemo(() => {
-    const positions: { x: number, y: number, fontSize: number, rotation: number }[] = []
-
-    if (visibleChars.length === 0)
-      return positions
-
-    const seededRandom = (seed: number) => {
-      const x = Math.sin(seed * 9999) * 10000
-      return x - Math.floor(x)
+    else {
+      visibleCharsRef.current = []
+      charPositionsRef.current = []
     }
+    setBatchVersion(v => v + 1)
+  }, [allCharsWithTime, computeCurrentBatch])
 
-    // 计算累积的随机间隔
-    let cumulativeX = 4 // 起始位置
-    const availableWidth = 92 // 可用宽度百分比 (4% ~ 96%)
-
-    // 先计算所有权重 - 英文单词根据长度加权
-    const weights: number[] = []
-    let totalWeight = 0
-    visibleChars.forEach((char, _idx) => {
-      const tokenLength = char.char.length
-      const isEnglishWord = tokenLength > 1 && /^[a-z]/i.test(char.char)
-
-      // 基础随机权重：英文单词 0.9~1.3，其他 0.7~1.3
-      const baseMin = isEnglishWord ? 0.9 : 0.7
-      const baseWeight = baseMin + seededRandom(char.seed + 100) * 0.4
-
-      // 根据词元长度计算额外权重
-      // 单个字符（中文、标点）= 1，英文单词按字符数计算
-      // 英文单词长度权重：每个额外字符增加 0.6 的权重
-      const lengthMultiplier = 1 + (tokenLength - 1) * 0.6
-
-      const weight = baseWeight * lengthMultiplier
-      weights.push(weight)
-      totalWeight += weight
-    })
-
-    // 根据权重分配位置
-    visibleChars.forEach((char, idx) => {
-      // 当前字符的位置
-      const x = cumulativeX
-
-      // 垂直位置：在整个区域内随机分布，调整分布使上下更均匀
-      const yRandom = seededRandom(char.seed)
-      // 使用平方根来让分布更均匀（偏向上方补偿）
-      const y = 0 + Math.sqrt(yRandom) * 45 // 0% ~ 45%
-
-      // 随机字体大小：0.85 ~ 1.25 倍
-      const fontSizeRatio = 0.85 + seededRandom(char.seed + 200) * 0.4
-
-      // 随机旋转角度：-8° ~ 8°
-      const rotation = (seededRandom(char.seed + 300) - 0.5) * 16
-
-      positions.push({ x, y, fontSize: fontSizeRatio, rotation })
-
-      // 计算下一个字符的位置（基于权重的间隔）
-      const charWidth = (weights[idx] / totalWeight) * availableWidth
-      cumulativeX += charWidth
-    })
-
-    return positions
-  }, [visibleChars])
-
-  // 柔和的微浮动画 + 频谱节奏检测
+  // 统一 RAF 循环：合并时间同步 + 批次检查 + 动画更新
+  // 重渲染触发从每200ms降为批次切换时（约每4秒）
   useEffect(() => {
     if (!isPlaying) {
       if (animationRef.current) {
@@ -313,64 +224,74 @@ const FloatingLyrics = memo(({
       return
     }
 
+    const audio = audioManager.getCurrentAudio()
+    if (!audio)
+      return
+
     const unsubscribe = onVisibility((visible) => {
       pageVisibleRef.current = visible
     })
 
-    let lastUpdateTime = 0
-    const UPDATE_INTERVAL = 50 // ~20fps 足够柔和
-
-    // 节奏检测参数
+    let lastBatchCheck = 0
+    let lastAnimUpdate = 0
     const ENERGY_HISTORY_SIZE = 8
-    const BEAT_THRESHOLD = 1.3 // 能量比平均值高30%认为是节拍
-    const BEAT_COOLDOWN = 150 // 节拍冷却时间ms
+    const BEAT_THRESHOLD = 1.3
+    const BEAT_COOLDOWN = 150
 
-    const updateAnimation = (timestamp: number) => {
-      if (!pageVisibleRef.current || !isPlaying) {
-        animationRef.current = null
+    const loop = (timestamp: number) => {
+      if (!pageVisibleRef.current) {
+        animationRef.current = requestAnimationFrame(loop)
         return
       }
 
-      // 确定性随机函数
-      const seededRandom = (seed: number) => {
-        const x = Math.sin(seed * 9999) * 10000
-        return x - Math.floor(x)
+      currentTimeRef.current = audio.currentTime
+
+      // --- 批次检查 (200ms) --- 只在批次真正变化时触发 React 重渲染
+      if (timestamp - lastBatchCheck >= BATCH_CHECK_MS) {
+        const { chars, positions, batchIndex } = computeCurrentBatch(audio.currentTime)
+        if (batchIndex !== currentBatchIndexRef.current && batchIndex !== -1) {
+          const prevValid = currentBatchIndexRef.current !== -1
+          currentBatchIndexRef.current = batchIndex
+          visibleCharsRef.current = chars
+          charPositionsRef.current = positions
+          if (prevValid && chars.length > 0) {
+            isFadingOutRef.current = true
+            setBatchVersion(v => v + 1)
+            setTimeout(() => { isFadingOutRef.current = false }, 300)
+          }
+          else if (chars.length > 0) {
+            setBatchVersion(v => v + 1)
+          }
+        }
+        lastBatchCheck = timestamp
       }
 
-      if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
-        phaseRef.current += 0.015 // 非常慢的相位变化
+      // --- 动画更新 (50ms) --- 直接操作 DOM，不触发 React 渲染
+      if (timestamp - lastAnimUpdate >= ANIM_UPDATE_MS) {
+        phaseRef.current += 0.015
         const phase = phaseRef.current
 
-        // 获取频谱数据进行节奏检测
         const spectrum = audioManager.getSpectrumData()
         const currentEnergy = (spectrum[0] + spectrum[1] + spectrum[2] + spectrum[3]) / 4
-
-        // 维护能量历史
         energyHistoryRef.current.push(currentEnergy)
         if (energyHistoryRef.current.length > ENERGY_HISTORY_SIZE) {
           energyHistoryRef.current.shift()
         }
-
-        // 计算平均能量
         const avgEnergy = energyHistoryRef.current.reduce((a, b) => a + b, 0) / energyHistoryRef.current.length
-
-        // 节拍检测：当前能量显著高于平均值
         const isBeat = currentEnergy > avgEnergy * BEAT_THRESHOLD
-          && currentEnergy > 0.15 // 最低能量阈值
+          && currentEnergy > 0.15
           && (timestamp - lastBeatTimeRef.current) > BEAT_COOLDOWN
 
         if (isBeat) {
           lastBeatTimeRef.current = timestamp
-          // 节拍时加速节奏进度
           rhythmProgressRef.current += 0.08
         }
         else {
-          // 缓慢衰减回基础进度
           rhythmProgressRef.current *= 0.95
         }
 
-        // 节奏调制值 (0 ~ 0.3)
         const rhythmModulation = Math.min(0.3, rhythmProgressRef.current)
+        const visibleChars = visibleCharsRef.current
 
         charsRef.current.forEach((el, idx) => {
           if (!el || idx >= visibleChars.length)
@@ -382,66 +303,52 @@ const FloatingLyrics = memo(({
             return
           }
 
-          // 基础时间差 - 使用 ref 避免依赖
           const baseTimeDiff = charData.absoluteTime - currentTimeRef.current
-          // 应用节奏调制：节拍时字符提前显示
           const timeDiff = baseTimeDiff - rhythmModulation * 0.5
+          const { seed } = charData
 
-          const seed = charData.seed
-
-          // 柔和的浮动效果 - 像水中的气泡，不同字符有不同的浮动幅度
-          const floatAmplitude = 3 + seededRandom(seed + 500) * 2 // 3~5px 随机幅度
+          const floatAmplitude = 3 + seededRandom(seed + 500) * 2
           const floatY = Math.sin(phase + seed * 0.1) * floatAmplitude
           const floatX = Math.cos(phase * 0.7 + seed * 0.15) * (floatAmplitude * 0.6)
 
-          // 状态判断 - 考虑节奏调制
           const isActive = timeDiff >= -0.2 && timeDiff <= 0.1
           const isPast = timeDiff < -0.2
-          const isFuture = timeDiff > 0.1
 
           let opacity = 1
           let scale = 1
 
-          if (isFuture) {
-            // 未到 - 透明，但节拍时可能微微显现
-            const peekOpacity = isBeat ? 0.15 : 0
-            opacity = peekOpacity
+          if (timeDiff > 0.1) {
+            opacity = isBeat ? 0.15 : 0
             scale = 0.95
           }
           else if (isActive) {
-            // 正在唱 - 完全显示
             opacity = 1
-            // 节拍时稍微放大
             scale = 1.02 + (isBeat ? 0.05 : 0)
             el.style.color = themeColor
-            const glowSize = isBeat ? 12 : 8
-            el.style.textShadow = `0 0 ${glowSize}px ${themeColor}60, 0 1px 2px rgba(0,0,0,0.1)`
+            el.style.textShadow = `0 0 ${isBeat ? 12 : 8}px ${themeColor}60, 0 1px 2px rgba(0,0,0,0.1)`
           }
           else if (isPast) {
-            // 已过 - 保持显示但稍淡
             opacity = 0.7
             scale = 1
             el.style.color = ''
             el.style.textShadow = 'none'
           }
 
-          // 批次淡出时全部透明
-          if (isFadingOut) {
+          if (isFadingOutRef.current)
             opacity = 0
-          }
 
           const rotation = el.dataset.rotation || '0'
           el.style.transform = `translate(${floatX}px, ${floatY}px) scale(${scale}) rotate(${rotation}deg)`
           el.style.opacity = `${opacity}`
         })
 
-        lastUpdateTime = timestamp
+        lastAnimUpdate = timestamp
       }
 
-      animationRef.current = requestAnimationFrame(updateAnimation)
+      animationRef.current = requestAnimationFrame(loop)
     }
 
-    animationRef.current = requestAnimationFrame(updateAnimation)
+    animationRef.current = requestAnimationFrame(loop)
 
     return () => {
       unsubscribe()
@@ -450,12 +357,15 @@ const FloatingLyrics = memo(({
         animationRef.current = null
       }
     }
-  }, [isPlaying, visibleChars, themeColor, isFadingOut])
+  }, [isPlaying, computeCurrentBatch, themeColor])
 
-  // 重置 refs
+  // 批次切换时重置 charsRef（新 span 元素已挂载）
   useEffect(() => {
     charsRef.current = []
-  }, [visibleChars.length])
+  }, [batchVersion])
+
+  const visibleChars = visibleCharsRef.current
+  const charPositions = charPositionsRef.current
 
   if (visibleChars.length === 0 && lyrics.length > 0) {
     return (
@@ -471,7 +381,6 @@ const FloatingLyrics = memo(({
 
   return (
     <div
-      ref={containerRef}
       className="relative w-full h-full overflow-hidden"
       style={{ minHeight: '60px' }}
     >
@@ -960,12 +869,12 @@ export const MusicPlayerWidget = memo(({ config, isEditMode: _isEditMode, isPrev
             />
             {/* 遮罩层：增强文字对比度 */}
             <div className="absolute inset-0 bg-white/40 dark:bg-black/40 mix-blend-overlay" />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white/10 dark:to-black/10" />
+            <div className="absolute inset-0 bg-linear-to-b from-transparent to-white/10 dark:to-black/10" />
 
             {/* 动态光斑效果 - 低端设备完全禁用，受调度器控制 */}
             {isPlaying && canAnimate && (
               <motion.div
-                className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr from-white/20 to-transparent rounded-full blur-xl mix-blend-overlay"
+                className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-linear-to-tr from-white/20 to-transparent rounded-full blur-xl mix-blend-overlay"
                 animate={{
                   scale: [0.8, 1.1, 0.8],
                   opacity: [0.2, 0.4, 0.2],

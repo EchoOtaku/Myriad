@@ -297,7 +297,7 @@ const SetupWizard: React.FC = () => {
           <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6">{error}</p>
           <button
             onClick={checkSetupStatus}
-            className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-[44px] text-sm sm:text-base"
+            className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-11 text-sm sm:text-base"
           >
             {t.setup.retry}
           </button>
@@ -324,7 +324,7 @@ const SetupWizard: React.FC = () => {
             </p>
             <a
               href="/login"
-              className="inline-flex px-6 sm:px-8 py-3 text-sm sm:text-base text-white rounded-lg transition-colors setup-complete-link min-h-[44px] items-center justify-center"
+              className="inline-flex px-6 sm:px-8 py-3 text-sm sm:text-base text-white rounded-lg transition-colors setup-complete-link min-h-11 items-center justify-center"
             >
               {t.setup.goToLogin}
             </a>
@@ -390,7 +390,7 @@ const SetupWizard: React.FC = () => {
                     {!dbConfigured && (
                       <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                          <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
                           <div>
                             <p className="text-sm font-semibold text-amber-800 mb-1">
                               🔧
@@ -513,7 +513,7 @@ const SetupWizard: React.FC = () => {
                     {status && !status.has_database && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <FaDatabase className="text-blue-600 mt-0.5 flex-shrink-0" />
+                          <FaDatabase className="text-blue-600 mt-0.5 shrink-0" />
                           <div className="flex-1">
                             <p className="text-sm font-semibold text-blue-800 mb-2">
                               📋

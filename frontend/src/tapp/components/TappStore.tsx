@@ -121,7 +121,7 @@ function getAppIconStyle(app: UnifiedAppItem): { className: string, style?: Reac
   if (app.themeColor) {
     // 使用应用自定义主题色
     return {
-      className: 'bg-gradient-to-br',
+      className: 'bg-linear-to-br',
       style: {
         background: `linear-gradient(to bottom right, ${app.themeColor}, ${app.themeColor}99)`,
       },
@@ -238,7 +238,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
       whileTap={{ scale: 0.98 }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="group relative aspect-[2/1] rounded-2xl overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl"
+      className="group relative aspect-2/1 rounded-2xl overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl"
     >
       {/* 动态渐变背�? */}
       <div
@@ -265,10 +265,10 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
         <div className="flex items-start gap-2.5 mb-auto">
           {/* 应用图标 */}
           <div
-            className={`w-14 h-14 rounded-xl ${iconStyle.className} flex items-center justify-center text-white shadow-lg relative overflow-hidden flex-shrink-0`}
+            className={`w-14 h-14 rounded-xl ${iconStyle.className} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0`}
             style={iconStyle.style}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
             <TappIcon
               icon={app.icon}
               iconSvg={app.iconSvg}
@@ -317,7 +317,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
             <motion.button
               onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUpdate() }}
               disabled={updating}
-              className="p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
+              className="p-2.5 rounded-xl transition-all shadow-sm shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
               title={t.tapp.update}
@@ -334,7 +334,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
             ? (
                 <motion.button
                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUninstall() }}
-                  className="group/btn p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-red-500/15 hover:text-red-500 dark:hover:text-red-400"
+                  className="group/btn p-2.5 rounded-xl transition-all shadow-sm shrink-0 bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-red-500/15 hover:text-red-500 dark:hover:text-red-400"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.95 }}
                   title={t.tapp.confirmUninstall}
@@ -347,7 +347,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
                 <motion.button
                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); onInstall() }}
                   disabled={isInstalled || installing}
-                  className={`p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 ${
+                  className={`p-2.5 rounded-xl transition-all shadow-sm shrink-0 ${
                     isInstalled
                       ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                       : installing
@@ -387,7 +387,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
           {/* 底部信息条：类别 + 权限详情 */}
           <div className="flex items-center justify-between gap-2">
             {/* 类别标签 */}
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-400 font-medium flex-shrink-0">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-400 font-medium shrink-0">
               {getCategoryName(app.category)}
             </span>
 
@@ -396,7 +396,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
               {totalPermissions > 0 ? (
                 <>
                   {/* 权限统计 */}
-                  <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0">
+                  <div className="flex items-center gap-0.5 text-[9px] shrink-0">
                     {permissionCounts.admin > 0 && (
                       <span className="px-1 py-0.5 rounded bg-red-500/15 text-red-500 dark:text-red-400 font-medium">
                         {permissionCounts.admin}
@@ -437,7 +437,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
                         return (
                           <span
                             key={i}
-                            className={`px-1.5 py-0.5 rounded font-medium truncate max-w-[60px] ${
+                            className={`px-1.5 py-0.5 rounded font-medium truncate max-w-15 ${
                               isAdmin
                                 ? 'bg-red-500/10 text-red-500 dark:text-red-400'
                                 : isElevated
@@ -547,7 +547,7 @@ function SourcesSettingsModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-60 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <motion.div
@@ -654,7 +654,7 @@ function SourcesSettingsModal({
                 key={source.url}
                 className="p-4 bg-white/50 dark:bg-neutral-800/50 rounded-xl flex items-center gap-3"
               >
-                <div className="text-2xl flex-shrink-0">
+                <div className="text-2xl shrink-0">
                   {source.icon || (source.official ? '🏪' : '📦')}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -677,7 +677,7 @@ function SourcesSettingsModal({
                     {source.url}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => onToggle(source.url, !source.enabled)}
                     className={`p-2 rounded-lg transition-colors ${

@@ -369,7 +369,7 @@ export default memo(function ReaderLeftPanel({
                           className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-all duration-200 ease-out truncate ${
                             isActive
                               ? `${isDark ? 'bg-white/10' : 'bg-black/5'} ${currentTheme.text} font-medium`
-                              : `${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/[0.03]'}`
+                              : `${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/3'}`
                           }`}
                           style={{ paddingLeft: `${8 + indent}px` }}
                           title={item.text}
@@ -485,7 +485,7 @@ export default memo(function ReaderLeftPanel({
                                 className={`w-full text-left p-2.5 rounded-xl transition-all duration-200 ease-out group ${
                                   isSelected
                                     ? `${typeConfig.bgColor} ${currentTheme.text}`
-                                    : `${isDark ? 'hover:bg-white/5' : 'hover:bg-black/[0.02]'}`
+                                    : `${isDark ? 'hover:bg-white/5' : 'hover:bg-black/2'}`
                                 }`}
                               >
                                 <div className="flex items-center gap-2">
@@ -636,7 +636,7 @@ export default memo(function ReaderLeftPanel({
 
                       {/* 重新生成操作 - 仅管理员可见 */}
                       {isAdmin && (
-                        <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'}`}>
+                        <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/2'}`}>
                           <div className={`text-xs ${currentTheme.secondary} mb-1.5`}>{t.brew.regenerateLabel}</div>
                           <div className="flex gap-1.5">
                             <button
@@ -671,7 +671,7 @@ export default memo(function ReaderLeftPanel({
                       {ttsEngine === 'cloud' && cloudTtsAvailable && voiceList.length > 0 && (
                         <>
                           {/* 主播音色 */}
-                          <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'}`}>
+                          <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/2'}`}>
                             <div className={`text-xs ${currentTheme.secondary} mb-1.5 flex items-center justify-between`}>
                               <span>{t.brew.hostAnchor}</span>
                               {hostVoiceId
@@ -741,7 +741,7 @@ export default memo(function ReaderLeftPanel({
                           </div>
 
                           {/* 嘉宾音色 */}
-                          <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'}`}>
+                          <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/2'}`}>
                             <div className={`text-xs ${currentTheme.secondary} mb-1.5 flex items-center justify-between`}>
                               <span>{t.brew.guestLabel}</span>
                               {guestVoiceId
@@ -814,13 +814,13 @@ export default memo(function ReaderLeftPanel({
 
                       {/* 已缓存的音色 - 仅管理员可见 */}
                       {isAdmin && articleCache && articleCache.voices.length > 0 && (
-                        <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'}`}>
+                        <div className={`p-2 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/2'}`}>
                           <div className={`text-xs ${currentTheme.secondary} mb-1.5`}>{t.brew.cachedVoices}</div>
                           <div className="space-y-1">
                             {articleCache.voices.map(voice => (
                               <div
                                 key={voice.voice_id}
-                                className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-md ${isDark ? 'bg-white/5' : 'bg-black/[0.02]'}`}
+                                className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-md ${isDark ? 'bg-white/5' : 'bg-black/2'}`}
                               >
                                 <button
                                   onClick={() => handleSwitchToCachedVoice(voice.voice_id, voice.role)}
@@ -882,7 +882,7 @@ export default memo(function ReaderLeftPanel({
                             className={`w-full text-left p-2.5 rounded-xl transition-all duration-200 ease-out ${
                               isCurrent
                                 ? 'bg-emerald-500/15 ring-1 ring-emerald-500/30'
-                                : `${isDark ? 'hover:bg-white/5' : 'hover:bg-black/[0.02]'}`
+                                : `${isDark ? 'hover:bg-white/5' : 'hover:bg-black/2'}`
                             }`}
                           >
                             <div className="flex items-start gap-2">

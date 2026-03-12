@@ -19,7 +19,7 @@ export interface FontOption {
   id: string
   name: string
   family: string
-  googleUrl: string
+  cssVariable: string
   cssClass: string
 }
 
@@ -93,71 +93,71 @@ export const AVAILABLE_FONTS: readonly FontOption[] = Object.freeze([
   {
     id: 'qwitcher-grypen',
     name: 'Qwitcher Grypen',
-    family: '"Qwitcher Grypen", cursive',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Qwitcher+Grypen:wght@700&display=swap',
+    family: 'var(--font-qwitcher-grypen), cursive',
+    cssVariable: '--font-qwitcher-grypen',
     cssClass: 'title-font-qwitcher-grypen',
   },
   {
     id: 'codystar',
     name: 'Codystar',
-    family: '"Codystar", system-ui',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Codystar&display=swap',
+    family: 'var(--font-codystar), system-ui',
+    cssVariable: '--font-codystar',
     cssClass: 'title-font-codystar',
   },
   {
     id: 'henny-penny',
     name: 'Henny Penny',
-    family: '"Henny Penny", system-ui',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Henny+Penny&display=swap',
+    family: 'var(--font-henny-penny), system-ui',
+    cssVariable: '--font-henny-penny',
     cssClass: 'title-font-henny-penny',
   },
   {
     id: 'srisakdi',
     name: 'Srisakdi',
-    family: '"Srisakdi", system-ui',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Srisakdi:wght@700&display=swap',
+    family: 'var(--font-srisakdi), system-ui',
+    cssVariable: '--font-srisakdi',
     cssClass: 'title-font-srisakdi',
   },
   {
     id: 'fleur-de-leah',
     name: 'Fleur De Leah',
-    family: '"Fleur De Leah", cursive',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Fleur+De+Leah&display=swap',
+    family: 'var(--font-fleur-de-leah), cursive',
+    cssVariable: '--font-fleur-de-leah',
     cssClass: 'title-font-fleur-de-leah',
   },
   {
     id: 'league-script',
     name: 'League Script',
-    family: '"League Script", cursive',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=League+Script&display=swap',
+    family: 'var(--font-league-script), cursive',
+    cssVariable: '--font-league-script',
     cssClass: 'title-font-league-script',
   },
   {
     id: 'megrim',
     name: 'Megrim',
-    family: '"Megrim", system-ui',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Megrim&display=swap',
+    family: 'var(--font-megrim), system-ui',
+    cssVariable: '--font-megrim',
     cssClass: 'title-font-megrim',
   },
   {
     id: 'silkscreen',
     name: 'Silkscreen',
-    family: '"Silkscreen", system-ui',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Silkscreen:wght@700&display=swap',
+    family: 'var(--font-silkscreen), system-ui',
+    cssVariable: '--font-silkscreen',
     cssClass: 'title-font-silkscreen',
   },
   {
     id: 'unifraktur-maguntia',
     name: 'UnifrakturMaguntia',
-    family: '"UnifrakturMaguntia", serif',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&display=swap',
+    family: 'var(--font-unifraktur-maguntia), serif',
+    cssVariable: '--font-unifraktur-maguntia',
     cssClass: 'title-font-unifraktur-maguntia',
   },
   {
     id: 'cinzel',
     name: 'Cinzel',
-    family: '"Cinzel", serif',
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap',
+    family: 'var(--font-cinzel), serif',
+    cssVariable: '--font-cinzel',
     cssClass: 'title-font-cinzel',
   },
 ])
@@ -184,30 +184,28 @@ function loadFont(font: FontOption): Promise<void> {
     return existing
   }
 
-  // 创建新的加载 Promise
-  const promise = new Promise<void>((resolve) => {
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = font.googleUrl
+  // Astro 6 Fonts API 已在构建时声明所有 @font-face 规则并自托管字体文件
+  // 从 CSS 变量读取实际的哈希字体名，用 document.fonts.load() 触发浏览器下载
+  const computedValue = getComputedStyle(document.documentElement)
+    .getPropertyValue(font.cssVariable)
+    .trim()
+  // CSS 变量值可能包含 fallback 列表（如 "Inter-hash, -apple-system, ..."），
+  // document.fonts.load() 仅需第一个字体名
+  const primaryFamily = computedValue
+    ? computedValue.split(',')[0].trim().replace(/^["']|["']$/g, '')
+    : font.name
 
-    const cleanup = () => {
-      loadingFonts.delete(font.id)
-    }
-
-    link.onload = () => {
+  const promise = document.fonts
+    .load(`16px "${primaryFamily}"`)
+    .then(() => {
       loadedFonts.add(font.id)
-      cleanup()
-      resolve()
-    }
-
-    link.onerror = () => {
+    })
+    .catch(() => {
       console.warn(`Failed to load font: ${font.name}`)
-      cleanup()
-      resolve() // 即使失败也继续
-    }
-
-    document.head.appendChild(link)
-  })
+    })
+    .finally(() => {
+      loadingFonts.delete(font.id)
+    })
 
   loadingFonts.set(font.id, promise)
   return promise

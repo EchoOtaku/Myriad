@@ -156,7 +156,7 @@ const BilibiliWidget = memo(({ data, showOverview, onContentChange, allowLoop = 
               <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
                 <div className="absolute inset-0">
                   <img src={getBilibiliProxyUrl(currentItem.cover, currentItem.title)} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                  <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
                 </div>
               </div>
             </motion.div>
@@ -179,7 +179,7 @@ const SteamStatsWidget = memo(({ data }: any) => {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100/50 to-transparent dark:from-white/[0.02] dark:to-transparent clip-diagonal" />
+        <div className="absolute inset-0 bg-linear-to-br from-gray-100/50 to-transparent dark:from-white/2 dark:to-transparent clip-diagonal" />
       </div>
       <motion.div className="absolute top-2 left-4 z-10" initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, delay: 0.1 }}>
         <div className="flex items-start gap-1">
@@ -236,7 +236,7 @@ const SteamWidget = memo(({ data, showOverview, onContentChange }: any) => {
               <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
                 <div className="absolute inset-0">
                   <img src={currentItem.cover || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentItem.title)}&size=400&background=1b2838&color=fff`} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                  <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
                 </div>
               </div>
             </motion.div>
@@ -316,7 +316,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
       <div className="relative h-full flex flex-col p-2 justify-between">
         <div className="space-y-2">
           <div className="flex items-start justify-between">
@@ -350,7 +350,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
                     return (
                       <motion.div
                         key={`${week}-${day}`}
-                        className="w-[10px] h-[10px] rounded-[2px]"
+                        className="w-2.5 h-2.5 rounded-0.5"
                         style={{ backgroundColor: levelColor, opacity: cell?.opacity || 0.15 }}
                         initial={{ scale: 0, opacity: 0 }}
                         animate={{ scale: 1, opacity: cell?.opacity || 0.15 }}
@@ -373,7 +373,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
                   %
                 </span>
               </div>
-              <div className="h-[3px] w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
+              <div className="h-0.75 w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
                 <motion.div
                   className="h-full rounded-full"
                   style={{ backgroundColor: getLanguageColor(lang.name) }}
@@ -414,7 +414,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
         : (
             <motion.div key={`lib-${currentItemIndex}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }} className="h-full w-full p-1.5">
               <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
+                <div className="absolute inset-0 bg-linear-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
                   <div className="absolute inset-0 flex flex-col p-2.5 pb-[20%]">
                     <div className="flex items-center gap-2.5 mb-2">
                       {currentItem.stars !== undefined && (
@@ -529,7 +529,7 @@ const MusicStatsWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: 
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 to-transparent dark:from-red-900/20 dark:to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-br from-red-50/50 to-transparent dark:from-red-900/20 dark:to-transparent" />
       <div className="relative h-full w-full p-3">
         <div className="absolute inset-0 pointer-events-none">
           {bubbles.map((bubble, i) => (
@@ -574,7 +574,7 @@ const MusicStatsWidget = memo(({ data, allowLoop = true, triggerKey }: { data?: 
         </div>
         <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-20">
           <motion.div
-            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
+            className="px-2.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 backdrop-blur-md shadow-lg bg-linear-to-br from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/60 text-red-600 dark:text-red-300"
             style={{ boxShadow: '0 2px 12px rgba(239, 68, 68, 0.25)' }}
             initial={{ scale: 0.8, opacity: 0, x: 20 }}
             animate={{ scale: 1, opacity: 1, x: 0 }}
@@ -882,7 +882,7 @@ export const ReportCardWidget = memo(({ config, isEditMode: _isEditMode, isPrevi
             height: cardContent ? (platformId === 'netease' && cardContent.titles ? 'auto' : '32px') : '32px',
           }}
         >
-          <div className={`text-base flex-shrink-0 ${platformConfig.textColor}`}>{platformConfig.icon}</div>
+          <div className={`text-base shrink-0 ${platformConfig.textColor}`}>{platformConfig.icon}</div>
           <AnimatePresence>
             {cardContent && (
               <motion.div
@@ -896,14 +896,14 @@ export const ReportCardWidget = memo(({ config, isEditMode: _isEditMode, isPrevi
                   ? (
                       <div className="flex flex-col gap-0.5">
                         {cardContent.titles.map((title: string, idx: number) => (
-                          <div key={idx} className="text-[10px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate leading-tight">
+                          <div key={idx} className="text-[10px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate leading-tight">
                             {title}
                           </div>
                         ))}
                       </div>
                     )
                   : (
-                      <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-[120px] truncate">
+                      <span className="text-[11px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate">
                         {cardContent.title}
                       </span>
                     )}

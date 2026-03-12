@@ -209,8 +209,8 @@ const WidgetGridItem = React.memo(({
                 onTouchStart={e => onResizeStart(e, widget.id, 'se')}
               >
                 {/* L 型条 - 适配主题色，1x1组件更小 */}
-                <div className={`border-b-[8px] border-r-[8px] rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)] ${
-                  widget.size === '1x1' ? 'w-4 h-4 border-b-[5px] border-r-[5px]' : 'w-6 h-6'
+                <div className={`border-b-8 border-r-8 rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)] ${
+                  widget.size === '1x1' ? 'w-4 h-4 border-b-5 border-r-5' : 'w-6 h-6'
                 }`}
                 />
               </div>
@@ -1063,7 +1063,7 @@ export default function WidgetGrid({
         {indices.map(i => (
           <div
             key={i}
-            className="border border-gray-200 dark:border-white/5 border-opacity-30"
+            className="border border-gray-200/30 dark:border-white/5"
           />
         ))}
       </div>
@@ -1080,7 +1080,7 @@ export default function WidgetGrid({
       className={libraryContainerClassName || 'fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-2xl'}
       style={libraryStyle}
     >
-      <div className="w-full max-w-[1920px] mx-auto">
+      <div className="w-full max-w-480 mx-auto">
         {/* 控制栏 */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
           <div className="flex items-center gap-4">
@@ -1114,7 +1114,7 @@ export default function WidgetGrid({
 
         {/* 组件列表 - 横向滚动 */}
         <div
-          className={libraryContentClassName || 'flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-[160px]'}
+          className={libraryContentClassName || 'flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-40'}
           onWheel={(e) => {
             if (!libraryContentClassName && e.deltaY !== 0) {
               e.currentTarget.scrollLeft += e.deltaY
@@ -1152,7 +1152,7 @@ export default function WidgetGrid({
             return (
               <motion.div
                 key={widgetType.id}
-                className="relative group cursor-move flex-shrink-0"
+                className="relative group cursor-move shrink-0"
                 style={{
                   width: wrapperWidth,
                   height: wrapperHeight,
@@ -1191,7 +1191,7 @@ export default function WidgetGrid({
           })}
 
           {/* 占位符，确保最后一个元素右侧有间距 */}
-          <div className="w-2 flex-shrink-0" />
+          <div className="w-2 shrink-0" />
         </div>
       </div>
     </motion.div>
@@ -1336,7 +1336,7 @@ export default function WidgetGrid({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              className="fixed pointer-events-none z-[9999]"
+              className="fixed pointer-events-none z-9999"
               style={{
                 left: `${dragCursorPosition.x}px`,
                 top: `${dragCursorPosition.y}px`,

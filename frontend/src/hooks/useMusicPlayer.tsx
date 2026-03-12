@@ -496,16 +496,24 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
     lastBroadcastRef.current = stateSnapshot
 
-    // 🎯 同步更新全局状态（供 Tapp API 读取）
-    const globalState = (window as { __musicPlayerState?: Record<string, unknown> }).__musicPlayerState
-    if (globalState) {
-      globalState.musicColor = musicColors?.primary || '#ef4444'
-      globalState.musicColors = musicColors // 存储完整的颜色对象
-      globalState.isPlaying = isPlaying
-      globalState.volume = volume
-      globalState.playMode = playMode
-      globalState.lyrics = lyrics
-      globalState.currentLyricIndex = currentLyricIndex
+    // 🎯 同步更新全局状态（供 Tapp API 读取）— 写入完整状态，不依赖 Context 转手
+    ;(window as any).__musicPlayerState = {
+      ...((window as any).__musicPlayerState || {}),
+      currentSong,
+      isEnabled: musicEnabled,
+      isPlaying,
+      musicColor: musicColors?.primary || '#ef4444',
+      musicColors,
+      isTempPlay: tempPlayModeRef.current.enabled,
+      currentSongIndex,
+      playlistLength: playlist.length,
+      playlist,
+      currentTime,
+      audioDuration,
+      volume,
+      playMode,
+      lyrics,
+      currentLyricIndex,
     }
 
     window.dispatchEvent(new CustomEvent('music-player-state-change', {

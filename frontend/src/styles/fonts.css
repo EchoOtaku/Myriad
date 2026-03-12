@@ -23,19 +23,19 @@
    Qwitcher Grypen - 原始默认字体
    ============================================ */
 .qwitcher-grypen-regular {
-  font-family: 'Qwitcher Grypen', cursive;
+  font-family: var(--font-qwitcher-grypen), cursive;
   font-weight: 400;
   font-style: normal;
 }
 
 .qwitcher-grypen-bold {
-  font-family: 'Qwitcher Grypen', cursive;
+  font-family: var(--font-qwitcher-grypen), cursive;
   font-weight: 700;
   font-style: normal;
 }
 
 .qwitcher-grypen {
-  font-family: 'Qwitcher Grypen', cursive;
+  font-family: var(--font-qwitcher-grypen), cursive;
 }
 
 /* ============================================
@@ -43,51 +43,51 @@
    ============================================ */
 
 .title-font-qwitcher-grypen {
-  font-family: 'Qwitcher Grypen', cursive;
+  font-family: var(--font-qwitcher-grypen), cursive;
   font-weight: 700;
 }
 
 .title-font-codystar {
-  font-family: 'Codystar', system-ui;
+  font-family: var(--font-codystar), system-ui;
   font-weight: 400;
 }
 
 .title-font-henny-penny {
-  font-family: 'Henny Penny', system-ui;
+  font-family: var(--font-henny-penny), system-ui;
   font-weight: 400;
 }
 
 .title-font-srisakdi {
-  font-family: 'Srisakdi', system-ui;
+  font-family: var(--font-srisakdi), system-ui;
   font-weight: 700;
 }
 
 .title-font-fleur-de-leah {
-  font-family: 'Fleur De Leah', cursive;
+  font-family: var(--font-fleur-de-leah), cursive;
   font-weight: 400;
 }
 
 .title-font-league-script {
-  font-family: 'League Script', cursive;
+  font-family: var(--font-league-script), cursive;
   font-weight: 400;
 }
 
 .title-font-megrim {
-  font-family: 'Megrim', system-ui;
+  font-family: var(--font-megrim), system-ui;
   font-weight: 400;
 }
 
 .title-font-silkscreen {
-  font-family: 'Silkscreen', system-ui;
+  font-family: var(--font-silkscreen), system-ui;
   font-weight: 700;
 }
 
 .title-font-unifraktur-maguntia {
-  font-family: 'UnifrakturMaguntia', serif;
+  font-family: var(--font-unifraktur-maguntia), serif;
   font-weight: 400;
 }
 
 .title-font-cinzel {
-  font-family: 'Cinzel', serif;
+  font-family: var(--font-cinzel), serif;
   font-weight: 700;
 }

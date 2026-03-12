@@ -85,23 +85,23 @@ export function getTappIconGradient(manifest: TappManifest): string {
   // 检查 ID 中是否包含类别关键词
   for (const [category, colors] of Object.entries(CATEGORY_COLORS)) {
     if (lastPart.includes(category) || manifest.id.toLowerCase().includes(category)) {
-      return `bg-gradient-to-br ${colors.from} ${colors.to}`
+      return `bg-linear-to-br ${colors.from} ${colors.to}`
     }
   }
 
   // 2. 尝试从权限推断类型
   const permissions = manifest.permissions || []
   if (permissions.includes('ai:generate') || permissions.includes('ai:chat') || permissions.includes('ai:image')) {
-    return `bg-gradient-to-br ${CATEGORY_COLORS.ai.from} ${CATEGORY_COLORS.ai.to}`
+    return `bg-linear-to-br ${CATEGORY_COLORS.ai.from} ${CATEGORY_COLORS.ai.to}`
   }
   if (permissions.includes('media:control') || permissions.includes('media:read')) {
-    return `bg-gradient-to-br ${CATEGORY_COLORS.media.from} ${CATEGORY_COLORS.media.to}`
+    return `bg-linear-to-br ${CATEGORY_COLORS.media.from} ${CATEGORY_COLORS.media.to}`
   }
   if (permissions.includes('platform:register')) {
-    return `bg-gradient-to-br ${CATEGORY_COLORS.platform.from} ${CATEGORY_COLORS.platform.to}`
+    return `bg-linear-to-br ${CATEGORY_COLORS.platform.from} ${CATEGORY_COLORS.platform.to}`
   }
   if (permissions.includes('widget:register')) {
-    return `bg-gradient-to-br ${CATEGORY_COLORS.widget.from} ${CATEGORY_COLORS.widget.to}`
+    return `bg-linear-to-br ${CATEGORY_COLORS.widget.from} ${CATEGORY_COLORS.widget.to}`
   }
 
   // 4. 默认使用全局壁纸色
@@ -118,7 +118,7 @@ export function getCategoryGradient(category: string | undefined): string {
   const lowerCategory = category.toLowerCase()
   if (CATEGORY_COLORS[lowerCategory]) {
     const colors = CATEGORY_COLORS[lowerCategory]
-    return `bg-gradient-to-br ${colors.from} ${colors.to}`
+    return `bg-linear-to-br ${colors.from} ${colors.to}`
   }
 
   return DEFAULT_TAPP_BG

@@ -272,7 +272,7 @@ export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview 
             {/* 中部：温度和图标 */}
             <div className="flex items-center gap-3 my-auto">
               <MDiv
-                className="text-4xl drop-shadow-md flex-shrink-0"
+                className="text-4xl drop-shadow-md shrink-0"
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
               >
@@ -296,7 +296,7 @@ export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview 
                   </span>
                   {weatherData.feelsLike !== undefined && (
                     <span
-                      className="text-xs text-gray-500 dark:text-gray-500 flex-shrink-0"
+                      className="text-xs text-gray-500 dark:text-gray-500 shrink-0"
                     >
                       {t.weather.feelsLike}
                       {' '}
@@ -373,7 +373,7 @@ export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview 
                       <div className="text-gray-500 dark:text-gray-400 w-8" style={{ fontSize: '0.6rem' }}>
                         {new Date(day.date).toLocaleDateString(locale, { weekday: 'short' })}
                       </div>
-                      <div className="flex-shrink-0 leading-none mx-1 text-base">{day.icon}</div>
+                      <div className="shrink-0 leading-none mx-1 text-base">{day.icon}</div>
                       <div className="flex items-center gap-1 justify-end flex-1">
                         <span className="font-bold text-gray-800 dark:text-gray-100" style={{ fontSize: '0.6rem' }}>
                           {day.maxTemp}
@@ -418,7 +418,7 @@ export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview 
           {/* 左侧：主要信息 (75%) */}
           <div className="w-[75%] flex items-center pr-3 border-r border-gray-200/10 dark:border-white/10 gap-3">
             {/* 图标 & 温度 */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="text-3xl">{weatherData.icon}</div>
               <div className="flex flex-col justify-center">
                 <div
@@ -506,7 +506,7 @@ export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview 
       {/* 主内容区：2x2紧凑布局 */}
       <div className="absolute inset-0 flex flex-col p-3">
         {/* 顶部：图标 - 轻微摆动 */}
-        <div className="h-9 flex-shrink-0">
+        <div className="h-9 shrink-0">
           <MSpan
             className="text-3xl leading-none inline-block origin-center"
             style={{ transformOrigin: 'center center' }}

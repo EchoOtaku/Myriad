@@ -714,7 +714,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         const isMusicEmbed = src.includes('music.163.com') || src.includes('spotify.com') || src.includes('xiami.com')
 
         const wrapper = document.createElement('div')
-        wrapper.className = `my-5 rounded-xl overflow-hidden ${isMusicEmbed ? 'aspect-[3/1]' : 'aspect-video'}`
+        wrapper.className = `my-5 rounded-xl overflow-hidden ${isMusicEmbed ? 'aspect-3/1' : 'aspect-video'}`
 
         // 移除 iframe 的固定 width/height，让容器控制尺寸
         iframe.removeAttribute('width')

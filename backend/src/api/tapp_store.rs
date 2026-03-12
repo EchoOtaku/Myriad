@@ -2019,7 +2019,7 @@ async fn do_uninstall_tapp(
     // 如果 keep_data 为 true，保留 tapp_storage 中的数据，再次安装时可以恢复
 
     // 清除 manifest API 缓存
-    crate::api::tapp_runtime::declared_api::invalidate_tapp_apis_cache(tapp_id).await;
+    crate::api::tapp_runtime::invalidate_tapp_apis_cache(tapp_id).await;
 
     // 删除 Tapp 记录
     tapps::Entity::delete_by_id(tapp.id)
@@ -2205,7 +2205,7 @@ async fn update_tapp(
     })?;
 
     // manifest 已更新，清除 API 解析缓存
-    crate::api::tapp_runtime::declared_api::invalidate_tapp_apis_cache(&tapp_id).await;
+    crate::api::tapp_runtime::invalidate_tapp_apis_cache(&tapp_id).await;
 
     // 普通用户安装的 Tapp 都是临时的
     let is_temporary = !claims.is_admin;

@@ -40,7 +40,7 @@ export function SearchMode({
       className="flex items-center gap-1.5 px-2 py-2 rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10"
     >
       <div className={`flex items-center gap-2 px-3 h-10 ${isMobile ? 'flex-1' : ''}`}>
-        <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <Search className="w-4 h-4 text-gray-400 shrink-0" />
         <input
           type="text"
           value={searchQuery}
@@ -50,13 +50,13 @@ export function SearchMode({
           className={`${isMobile ? 'flex-1' : 'w-40 sm:w-56'} bg-transparent border-none outline-none ring-0 text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-0 focus:border-none appearance-none`}
           style={{ boxShadow: 'none', background: 'transparent', WebkitAppearance: 'none' }}
         />
-        <span className="text-xs text-gray-400 flex-shrink-0 pr-1">
+        <span className="text-xs text-gray-400 shrink-0 pr-1">
           {t.resultsCount.replace('{count}', String(filteredCount))}
         </span>
       </div>
       <button
         onClick={onClose}
-        className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-xl transition-colors flex-shrink-0"
+        className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-xl transition-colors shrink-0"
         title={t.closeSearch}
         aria-label={t.closeSearch}
       >

@@ -76,10 +76,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         currentSongIndex: detail?.currentSongIndex || 0,
         playlistLength: detail?.playlistLength || 0,
         playlist: detail?.playlist || [],
-      });
-
-      // 同步到全局状态
-      (window as any).__musicPlayerState = detail
+      })
     }
 
     window.addEventListener('music-player-state-change', handleMusicStateChange)
@@ -90,12 +87,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
   // 更新状态的方法
   const updateState = useCallback((newState: Partial<MusicPlayerState>) => {
-    setState((prev) => {
-      const updated = { ...prev, ...newState };
-      // 同步到全局状态
-      (window as any).__musicPlayerState = updated
-      return updated
-    })
+    setState(prev => ({ ...prev, ...newState }))
   }, [])
 
   // 播放歌曲
@@ -172,11 +164,7 @@ function getMusicStateSnapshot() {
 /** 更新全局状态并通知监听器 */
 function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
   const prevState = globalMusicState
-  globalMusicState = { ...globalMusicState, ...newState };
-
-  // 同步到 window 对象（向后兼容）
-  (window as any).__musicPlayerState = globalMusicState
-
+  globalMusicState = { ...globalMusicState, ...newState }
   // 只有状态真正变化时才通知
   if (prevState !== globalMusicState) {
     emitMusicStateChange()

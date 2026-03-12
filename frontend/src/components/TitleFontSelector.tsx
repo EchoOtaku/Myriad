@@ -179,7 +179,7 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(({
             {font.name}
           </span>
           {titleFont === font.id && (
-            <FaCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }} />
+            <FaCheck className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
           )}
         </button>
       ))}
@@ -210,7 +210,7 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(({
             </span>
           </div>
           {titleFontSize === size.value && (
-            <FaCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }} />
+            <FaCheck className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
           )}
         </button>
       ))}
@@ -243,7 +243,7 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(({
             </span>
           </div>
           {titleColor === color.id && (
-            <FaCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }} />
+            <FaCheck className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
           )}
         </button>
       ))}

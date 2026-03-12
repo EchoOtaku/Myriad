@@ -288,7 +288,7 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
                   />
                 )
               : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--color-primary,#10b981)] to-[var(--color-accent,#059669)]">
+                  <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-[var(--color-primary,#10b981)] to-[var(--color-accent,#059669)]">
                     <span className="text-6xl">
                       {currentItem.type === 'game'
                         ? '🎮'
@@ -298,7 +298,7 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
                     </span>
                   </div>
                 )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 p-4">

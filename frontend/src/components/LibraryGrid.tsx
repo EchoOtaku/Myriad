@@ -726,7 +726,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
       {error ? (
-        <div className="flex items-center justify-center min-h-[400px]"></div>
+        <div className="flex items-center justify-center min-h-100"></div>
       ) : (
         <div className="space-y-8">
           <QuickTransition transitioning={isTransitioning}>
@@ -793,7 +793,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                     />
                                   )
                                 : (
-                                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-pink-500">
+                                    <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-pink-500">
                                       <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
                                     </div>
                                   )}
@@ -810,14 +810,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                 </div>
                               )}
 
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
+                              <div className="absolute inset-0 bg-linear-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
                                 <div>
                                   <div className="flex items-start gap-1">
                                     <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
                                       {item.title}
                                     </h3>
                                     {isVip && (
-                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gradient-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-linear-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
                                         VIP
                                       </span>
                                     )}
@@ -873,7 +873,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                       />
                                     )
                                   : (
-                                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-400 to-purple-500">
+                                      <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-purple-500">
                                         <span className="text-6xl">{item.item_type === 'anime' ? '📺' : '🎬'}</span>
                                       </div>
                                     )}
@@ -937,7 +937,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                         />
                                       )
                                     : (
-                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-blue-500">
+                                        <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-blue-400 to-blue-500">
                                           <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
                                         </div>
                                       )}
@@ -970,7 +970,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                             )
                           : (
                               <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
-                                <div className="relative overflow-hidden h-full bg-gradient-to-br from-gray-900 to-gray-800">
+                                <div className="relative overflow-hidden h-full bg-linear-to-br from-gray-900 to-gray-800">
                                   <a
                                     href={item.platform.toLowerCase() === 'steam' && item.metadata.appid
                                       ? `https://store.steampowered.com/app/${item.metadata.appid}`
@@ -993,13 +993,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                           />
                                         )
                                       : (
-                                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-400 to-pink-500">
+                                          <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-purple-400 to-pink-500">
                                             <span className="text-6xl">{getTypeIcon(item.item_type)}</span>
                                           </div>
                                         )}
                                   </a>
 
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+                                  <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
                                     <h3 className="font-bold text-white text-base line-clamp-2 leading-snug mb-1">
                                       {item.title}
                                     </h3>

@@ -212,7 +212,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(({
       onClick={handleCardClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`group relative aspect-[2/1] rounded-2xl overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl ${
+      className={`group relative aspect-2/1 rounded-2xl overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl ${
         isRunning && hasPage
           ? 'cursor-pointer'
           : ''
@@ -245,10 +245,10 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(({
         <div className="flex items-start gap-2.5 mb-auto">
           {/* 应用图标 */}
           <div
-            className={`w-14 h-14 rounded-xl ${iconStyle.className} flex items-center justify-center text-white shadow-lg relative overflow-hidden flex-shrink-0`}
+            className={`w-14 h-14 rounded-xl ${iconStyle.className} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0`}
             style={iconStyle.style}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
             <TappIcon
               icon={manifest.icon}
               iconSvg={manifest.iconSvg}
@@ -270,7 +270,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(({
                 {manifest.name}
               </h3>
               {isRunning && (
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
               )}
             </div>
             <div className="flex items-center gap-2 mt-1">
@@ -285,7 +285,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(({
           </div>
 
           {/* 鍙充笂瑙掓搷浣滃尯 - 鎮诞鏄剧ず瀹屾暣锛岄粯璁ゅ彧鏄剧ず涓绘寜閽? */}
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             {/* 涓绘搷浣滄寜閽細鍚姩/鍋滄 - 仅有权限时显示 */}
             {canStartStop && (
               <motion.button
@@ -760,7 +760,7 @@ export function TappListPage() {
           <div className="hidden lg:block flex-1 min-h-[30vh]" />
 
           {/* 椤堕儴淇℃伅鏉?- 涓庨椤靛竷灞€涓€鑷? */}
-          <div className="relative h-[48px] flex-shrink-0 z-10">
+          <div className="relative h-12 shrink-0 z-10">
             {/* 鑳屾櫙鏍囬 */}
             <div
               className="absolute left-0 whitespace-nowrap pointer-events-none z-0 hidden md:block"
@@ -784,7 +784,7 @@ export function TappListPage() {
                   <div className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">
                     {t.tapp.listTitle}
                   </div>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-[200px] truncate leading-tight">
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-50 truncate leading-tight">
                     {t.tapp.listSubtitle}
                   </div>
                 </div>
@@ -869,7 +869,7 @@ export function TappListPage() {
 
               {/* 鍐呭 */}
               <div className="relative z-10 p-8 md:p-12 text-center">
-                <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center shadow-lg">
+                <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-linear-to-br from-gray-100 to-gray-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center shadow-lg">
                   <FaFolder className="w-10 h-10 text-gray-400 dark:text-gray-500" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">

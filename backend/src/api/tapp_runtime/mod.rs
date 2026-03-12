@@ -72,4 +72,4 @@ pub use events::{publish_event, get_event_subscriptions, update_event_subscripti
 pub use metrics::{get_tapp_metrics, reset_tapp_metrics, get_rate_limit_status};
 
 // Declared API System
-pub use declared_api::{execute_tapp_api, list_tapp_apis};
+pub use declared_api::{execute_tapp_api, list_tapp_apis, invalidate_tapp_apis_cache};

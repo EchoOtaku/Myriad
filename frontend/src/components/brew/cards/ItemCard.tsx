@@ -155,7 +155,7 @@ export const ItemCard = React.memo<ItemCardProps>(({
       {/* 封面图 */}
       {item.image && (
         <div className="px-6 pt-6 relative">
-          <div className="aspect-[7/2] overflow-hidden rounded-xl bg-gray-100 dark:bg-neutral-800">
+          <div className="aspect-7/2 overflow-hidden rounded-xl bg-gray-100 dark:bg-neutral-800">
             <img
               src={getImageUrl(item.image) || ''}
               alt=""
@@ -194,7 +194,7 @@ export const ItemCard = React.memo<ItemCardProps>(({
               <img
                 src={getIconUrl(item.source_icon) || ''}
                 alt=""
-                className="w-4 h-4 rounded-full flex-shrink-0"
+                className="w-4 h-4 rounded-full shrink-0"
                 loading="lazy"
                 onError={handleIconError}
               />
@@ -256,7 +256,7 @@ export const ItemCard = React.memo<ItemCardProps>(({
           </h4>
 
           {/* 操作按钮 */}
-          <div className={`flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-300 ease-out ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`flex items-center gap-0.5 shrink-0 transition-opacity duration-300 ease-out ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
             {isAuthenticated && (
               <button
                 onClick={handleStarClick}
@@ -298,7 +298,7 @@ export const ItemCard = React.memo<ItemCardProps>(({
       </div>
 
       {/* 边框 */}
-      <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/[0.04] dark:ring-white/[0.06] pointer-events-none" />
+      <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/4 dark:ring-white/6 pointer-events-none" />
 
       {/* 悬浮高光 */}
       {isHovered && (

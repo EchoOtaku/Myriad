@@ -429,7 +429,7 @@ function CustomScrollbarInner() {
     <>
       {/* 滚动条轨道容器 */}
       <div
-        className="fixed right-4 w-[10px] z-[9999] hidden md:block pointer-events-none"
+        className="fixed right-4 w-2.5 z-9999 hidden md:block pointer-events-none"
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
         style={{

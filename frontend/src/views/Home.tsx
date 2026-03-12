@@ -394,7 +394,7 @@ export default function Home() {
             onToggleEditMode={setIsEditMode}
           >
             {/* 顶部信息条 - 作为 children 传入 WidgetGrid */}
-            <div className="relative h-[60px] flex-shrink-0 z-10 mb-2 p-1">
+            <div className="relative h-15 shrink-0 z-10 mb-2 p-1">
               {/* 背景标题 */}
               {isEditMode
                 ? (
@@ -458,7 +458,7 @@ export default function Home() {
                               {userInfo.name}
                             </div>
                             {userInfo.bio && (
-                              <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-[200px] truncate leading-tight">
+                              <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-50 truncate leading-tight">
                                 {userInfo.bio}
                               </div>
                             )}

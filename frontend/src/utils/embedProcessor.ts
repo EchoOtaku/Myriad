@@ -583,7 +583,7 @@ async function loadNeteaseMusicData(container: HTMLElement): Promise<void> {
         const titleContainer = card.querySelector('.brew-embed-title')?.parentElement
         if (titleContainer && !titleContainer.querySelector('.vip-badge')) {
           const vipBadge = document.createElement('span')
-          vipBadge.className = 'vip-badge inline-flex items-center px-1.5 py-0.5 rounded-md bg-gradient-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none ml-1'
+          vipBadge.className = 'vip-badge inline-flex items-center px-1.5 py-0.5 rounded-md bg-linear-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none ml-1'
           vipBadge.textContent = 'VIP'
           titleContainer.appendChild(vipBadge)
         }

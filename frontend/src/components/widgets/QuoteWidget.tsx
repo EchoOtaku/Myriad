@@ -184,12 +184,12 @@ export const QuoteWidget = memo(({ config, isEditMode: _isEditMode, isPreview }:
         {/* 下半部分：作者信息 (底部右侧) */}
         {quoteData.author && (
           <motion.div
-            className="flex-shrink-0 flex items-center justify-end gap-3 pt-3 mt-1 border-t border-gray-200/10 dark:border-white/5 w-full"
+            className="shrink-0 flex items-center justify-end gap-3 pt-3 mt-1 border-t border-gray-200/10 dark:border-white/5 w-full"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            <div className="h-px w-16 bg-gradient-to-r from-transparent to-gray-400/40"></div>
+            <div className="h-px w-16 bg-linear-to-r from-transparent to-gray-400/40"></div>
             <span className="text-sm text-gray-500 dark:text-gray-400 font-medium tracking-widest uppercase opacity-80 truncate max-w-[60%]" style={{ fontSize: `${12 * fontScale}px` }}>
               {quoteData.author}
             </span>

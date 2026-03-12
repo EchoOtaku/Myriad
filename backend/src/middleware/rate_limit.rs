@@ -202,6 +202,8 @@ fn is_compute_intensive(path: &str) -> bool {
         || path.contains("/tapp/storage")
         // Tapp AI 聊天 API - 消耗 AI 配额
         || path.contains("/tapp/ai/chat")
+        // Agent 处理端点 - 每次都会触发 AI 推理和执行
+        || path.contains("/agent/process")
 }
 
 #[cfg(test)]

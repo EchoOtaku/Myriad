@@ -68,7 +68,11 @@
       "Read(//tmp/**)",
       "Bash(awk 'NR>=441 && NR<=1197' /Users/haru/Documents/GitHub/Myriad/frontend/src/views/Brew.tsx)",
       "Bash(grep -v \"^warning\\\\|^$\\\\|= note\\\\|= help\\\\| --> \\\\|  |\\\\|^Compiling\\\\|^Checking\\\\|^Finished\")",
-      "Bash(grep -v \"tapp\\\\|^Checking\\\\|^Finished\\\\|^$\")"
+      "Bash(grep -v \"tapp\\\\|^Checking\\\\|^Finished\\\\|^$\")",
+      "Bash(wc -l /Users/haru/Documents/GitHub/Myriad/backend/src/services/agent/capability/definitions/*.rs)",
+      "Bash(grep -l \"useMusicPlayer\\\\|MusicPlayer\\\\|MusicCard\" /Users/haru/Documents/GitHub/Myriad/frontend/src/components/*.tsx /Users/haru/Documents/GitHub/Myriad/frontend/src/views/*.tsx)",
+      "Bash(git stash)",
+      "Bash(git stash pop)"
     ],
     "deny": [],
     "ask": []

@@ -397,7 +397,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
       {/* 遮罩层 - 点击退出编辑模式 (Portal 到 body 以避免被裁剪) */}
       {isEditMode && createPortal(
         <div
-          className="fixed inset-0 z-[9998] bg-black/20 backdrop-blur-sm cursor-default"
+          className="fixed inset-0 z-9998 bg-black/20 backdrop-blur-sm cursor-default"
           onClick={(e) => {
             e.stopPropagation()
             setIsEditMode(false)
@@ -408,7 +408,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
 
       <div
         ref={containerRef}
-        className={`control-panel-widgets-container relative w-full transition-all rounded-xl ${isEditMode ? 'z-[9999]' : ''}`}
+        className={`control-panel-widgets-container relative w-full transition-all rounded-xl ${isEditMode ? 'z-9999' : ''}`}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
@@ -437,7 +437,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
                   customGridColumns={12} // 3页宽度 (4 * 3)
                   customGridRows={gridRows}
                   autoHeight={true}
-                  libraryContainerClassName="fixed top-20 right-[450px] w-80 rounded-xl border border-gray-200/50 dark:border-white/5 z-[10000] bg-white/80 dark:bg-black/80 backdrop-blur-xl shadow-2xl overflow-hidden"
+                  libraryContainerClassName="fixed top-20 right-112.5 w-80 rounded-xl border border-gray-200/50 dark:border-white/5 z-10000 bg-white/80 dark:bg-black/80 backdrop-blur-xl shadow-2xl overflow-hidden"
                   // 优化：改为 flex-col 避免重叠
                   libraryContentClassName="flex flex-col items-center gap-6 p-6 overflow-y-auto max-h-[60vh] scrollbar-hide w-full"
                   libraryAnimation={{

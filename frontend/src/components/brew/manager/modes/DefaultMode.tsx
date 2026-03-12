@@ -95,7 +95,7 @@ export function DefaultMode({
                     <img
                       src={getIconUrl(tip.iconUrl) || ''}
                       alt=""
-                      className="w-5 h-5 rounded flex-shrink-0 object-cover"
+                      className="w-5 h-5 rounded shrink-0 object-cover"
                       loading="lazy"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
@@ -104,7 +104,7 @@ export function DefaultMode({
                     />
                   )
                 : null}
-              <span className={`text-base flex-shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}>
+              <span className={`text-base shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}>
                 {tip.icon}
               </span>
               <div className="flex flex-col justify-center leading-tight min-w-0">
@@ -138,7 +138,7 @@ export function DefaultMode({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.95 }}
                 transition={TRANSITION_NORMAL}
-                className="absolute top-full mt-2 right-0 w-36 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-lg overflow-hidden py-1 z-[100]"
+                className="absolute top-full mt-2 right-0 w-36 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-lg overflow-hidden py-1 z-100"
               >
                 {sortOptions.map(option => (
                   <button
@@ -192,7 +192,7 @@ export function DefaultMode({
                   <img
                     src={getIconUrl(tip.iconUrl) || ''}
                     alt=""
-                    className="w-5 h-5 rounded flex-shrink-0 object-cover"
+                    className="w-5 h-5 rounded shrink-0 object-cover"
                     loading="lazy"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
@@ -201,7 +201,7 @@ export function DefaultMode({
                   />
                 )
               : null}
-            <span className={`text-base flex-shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}>
+            <span className={`text-base shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}>
               {tip.icon}
             </span>
             <div className="flex flex-col justify-center leading-tight">
