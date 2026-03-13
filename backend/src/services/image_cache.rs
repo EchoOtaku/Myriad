@@ -156,6 +156,11 @@ impl ImageCacheService {
         // 确保目录存在
         self.ensure_cache_dir().await?;
 
+        // SSRF 防护：阻止请求内网地址
+        if crate::federation::types::is_internal_url(url) {
+            return Err(format!("Blocked SSRF attempt: {}", url));
+        }
+
         // 下载图片
         tracing::info!("Caching image from: {}", url);
         let response = self

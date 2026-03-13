@@ -53,6 +53,12 @@ regex = "1.10"
 hmac = "0.12"        # For Tencent Cloud API signing
 base64 = "0.22"      # For audio data encoding
 
+# Federation (MFP - Myriad Federation Protocol)
+rsa = { version = "0.9", features = ["pem", "sha2"] }  # RSA key generation & signing
+aes-gcm = "0.10"     # AES-256-GCM for private key encryption
+rand_core = { version = "0.6", features = ["getrandom"] }  # RNG compatible with rsa 0.9
+subtle = "2.5"       # Constant-time comparison for digest/signature verification
+
 # Configuration
 dotenvy = "0.15"
 

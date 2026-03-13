@@ -1,0 +1,279 @@
+//! 投递队列服务（Layer 2）
+//!
+//! 后台任务：从 federation_delivery_queue 取出待投递的 Activity，
+//! 签名后发送到目标 inbox，支持指数退避重试。
+
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use std::time::Duration;
+
+use crate::federation::keys::KeyPair;
+use crate::federation::signature::{sign_request, SignatureParams};
+use crate::federation::types::*;
+
+/// 投递队列处理器 — 由后台任务驱动
+///
+/// 每次调用处理一批待投递的 Activity（最多 batch_size 个）
+pub async fn process_delivery_queue(
+    db: &DatabaseConnection,
+    batch_size: u32,
+) -> Result<u32, String> {
+    // 查询待投递的条目
+    let pending = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.id, dq.activity_id, dq.target_inbox, dq.target_domain,
+                      dq.attempts, dq.max_attempts,
+                      a.activity_id AS ap_activity_id, a.activity_type, a.object_json, a.user_id
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE dq.status = 'pending'
+                 AND (dq.next_retry_at IS NULL OR dq.next_retry_at <= NOW())
+               ORDER BY dq.created_at ASC
+               LIMIT $1"#,
+            [(batch_size as i64).into()],
+        ))
+        .await
+        .map_err(|e| format!("Queue query failed: {}", e))?;
+
+    let mut delivered = 0u32;
+
+    for row in pending {
+        let queue_id: i32 = row.try_get("", "id").unwrap_or(0);
+        let target_inbox: String = row.try_get("", "target_inbox").unwrap_or_default();
+        let target_domain: String = row.try_get("", "target_domain").unwrap_or_default();
+        let attempts: i32 = row.try_get("", "attempts").unwrap_or(0);
+        let max_attempts: i32 = row.try_get("", "max_attempts").unwrap_or(12);
+        let _ap_activity_id: String = row.try_get("", "ap_activity_id").unwrap_or_default();
+        let activity_type: String = row.try_get("", "activity_type").unwrap_or_default();
+        let object_json: serde_json::Value = row.try_get("", "object_json").unwrap_or_default();
+        let user_id: i32 = row.try_get("", "user_id").unwrap_or(0);
+
+        // 标记为 delivering
+        let _ = db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE federation_delivery_queue SET status = 'delivering', last_attempt_at = NOW() WHERE id = $1",
+                [queue_id.into()],
+            ))
+            .await;
+
+        // object_json 已经是完整的 Activity JSON（含 @context/type/id/actor/object），直接发送
+        let base_url = get_base_url().await;
+        let username = get_username_by_id(db, user_id).await.unwrap_or_default();
+
+        let body_bytes = serde_json::to_vec(&object_json).unwrap_or_default();
+
+        // 获取用户密钥对
+        match load_user_keypair(db, user_id).await {
+            Ok(keypair) => {
+                match deliver_activity(&keypair, &base_url, &username, &target_inbox, &target_domain, &body_bytes).await {
+                    Ok(()) => {
+                        // 投递成功
+                        let _ = db
+                            .execute(Statement::from_sql_and_values(
+                                DatabaseBackend::Postgres,
+                                "UPDATE federation_delivery_queue SET status = 'delivered', last_attempt_at = NOW() WHERE id = $1",
+                                [queue_id.into()],
+                            ))
+                            .await;
+                        delivered += 1;
+
+                        // 更新实例的 last_success_at，重置 failure_count
+                        let _ = db
+                            .execute(Statement::from_sql_and_values(
+                                DatabaseBackend::Postgres,
+                                "UPDATE federation_instances SET last_success_at = NOW(), failure_count = 0 WHERE domain = $1",
+                                [target_domain.clone().into()],
+                            ))
+                            .await;
+
+                        tracing::debug!("📤 Delivered {} to {}", activity_type, target_inbox);
+                    }
+                    Err(e) => {
+                        let new_attempts = attempts + 1;
+                        if new_attempts >= max_attempts {
+                            // 放弃
+                            let _ = db
+                                .execute(Statement::from_sql_and_values(
+                                    DatabaseBackend::Postgres,
+                                    "UPDATE federation_delivery_queue SET status = 'dead', attempts = $1, error_message = $2, last_attempt_at = NOW() WHERE id = $3",
+                                    [new_attempts.into(), e.clone().into(), queue_id.into()],
+                                ))
+                                .await;
+                            tracing::warn!("💀 Delivery dead after {} attempts to {}: {}", new_attempts, target_inbox, e);
+                        } else {
+                            // 指数退避：2^attempts 秒，最大 86400 秒 (24h)
+                            let backoff_secs = std::cmp::min(2i64.pow(new_attempts as u32), 86400);
+                            let _ = db
+                                .execute(Statement::from_sql_and_values(
+                                    DatabaseBackend::Postgres,
+                                    "UPDATE federation_delivery_queue SET status = 'pending', attempts = $1, error_message = $2, last_attempt_at = NOW(), next_retry_at = NOW() + make_interval(secs => $4::double precision) WHERE id = $3",
+                                    [new_attempts.into(), e.clone().into(), queue_id.into(), backoff_secs.into()],
+                                ))
+                                .await;
+
+                            // 更新实例 failure_count
+                            let _ = db
+                                .execute(Statement::from_sql_and_values(
+                                    DatabaseBackend::Postgres,
+                                    "UPDATE federation_instances SET failure_count = failure_count + 1 WHERE domain = $1",
+                                    [target_domain.clone().into()],
+                                ))
+                                .await;
+
+                            tracing::warn!(
+                                "⚠️ Delivery failed (attempt {}/{}), retrying in {}s: {}",
+                                new_attempts, max_attempts, backoff_secs, e
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to load keypair for user {}: {}", user_id, e);
+                let _ = db
+                    .execute(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "UPDATE federation_delivery_queue SET status = 'pending', error_message = $1 WHERE id = $2",
+                        [format!("Key load failed: {}", e).into(), queue_id.into()],
+                    ))
+                    .await;
+            }
+        }
+    }
+
+    Ok(delivered)
+}
+
+/// 启动投递队列后台循环
+pub fn spawn_delivery_worker(db: DatabaseConnection) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(15));
+        loop {
+            interval.tick().await;
+            match process_delivery_queue(&db, 20).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!("📤 Delivery worker: delivered {} activities", n);
+                }
+                Err(e) => {
+                    tracing::error!("Delivery worker error: {}", e);
+                }
+                _ => {} // 无待投递项，静默
+            }
+        }
+    });
+}
+
+// ==================== 实际投递 ====================
+
+/// 投递 Activity 到目标 inbox
+async fn deliver_activity(
+    keypair: &KeyPair,
+    base_url: &str,
+    username: &str,
+    target_inbox: &str,
+    target_domain: &str,
+    body: &[u8],
+) -> Result<(), String> {
+    // 纵深防御：即使 inbox URL 已入库，投递前仍验证不指向内网
+    if is_internal_url(target_inbox) {
+        return Err(format!("Refusing to deliver to internal URL: {}", target_inbox));
+    }
+
+    let kid = key_id(base_url, username);
+
+    let path = url::Url::parse(target_inbox)
+        .map(|u| u.path().to_string())
+        .unwrap_or_else(|_| "/inbox".to_string());
+
+    let params = SignatureParams {
+        key_id: &kid,
+        host: target_domain,
+        path: &path,
+        method: "POST",
+        body: Some(body),
+    };
+
+    let signed = sign_request(keypair, &params)
+        .map_err(|e| format!("Signing failed: {}", e))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .user_agent(format!("Myriad/{} (+{})", env!("CARGO_PKG_VERSION"), base_url))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let resp = client
+        .post(target_inbox)
+        .header("Host", target_domain)
+        .header("Date", &signed.date)
+        .header("Digest", &signed.digest.unwrap_or_default())
+        .header("Signature", &signed.signature)
+        .header("Content-Type", AP_CONTENT_TYPE)
+        .body(body.to_vec())
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let status = resp.status();
+    if status.is_success() || status.as_u16() == 202 {
+        Ok(())
+    } else {
+        let body_text = resp.text().await.unwrap_or_default();
+        Err(format!("HTTP {}: {}", status, body_text.chars().take(200).collect::<String>()))
+    }
+}
+
+// ==================== 辅助函数 ====================
+
+/// 加载用户的密钥对
+async fn load_user_keypair(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<KeyPair, String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT public_key_pem, private_key_encrypted FROM federation_keys WHERE user_id = $1",
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|e| format!("DB error: {}", e))?
+        .ok_or_else(|| "No federation keys found for user".to_string())?;
+
+    let pub_pem: String = row.try_get("", "public_key_pem").unwrap_or_default();
+    let encrypted: String = row.try_get("", "private_key_encrypted").unwrap_or_default();
+
+    let jwt_secret = {
+        let config = crate::GLOBAL_CONFIG.read().await;
+        config.jwt_secret.clone()
+    };
+
+    KeyPair::from_encrypted(&pub_pem, &encrypted, &jwt_secret)
+        .map_err(|e| format!("Key decryption failed: {}", e))
+}
+
+async fn get_username_by_id(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<String, String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT username FROM users WHERE id = $1 LIMIT 1",
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|e| format!("DB error: {}", e))?
+        .ok_or_else(|| "User not found".to_string())?;
+
+    Ok(row.try_get("", "username").unwrap_or_default())
+}
+
+async fn get_base_url() -> String {
+    let config = crate::GLOBAL_CONFIG.read().await;
+    config
+        .base_url
+        .clone()
+        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+}

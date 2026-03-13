@@ -594,12 +594,19 @@ export function filterPlaylist(
  * @param query 搜索关键词
  */
 export function highlightText(text: string, query: string): string {
+  // 先转义 HTML 元字符，防止 XSS
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
   if (!query || !query.trim()) {
-    return text
+    return escaped
   }
 
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-  return text.replace(regex, '<mark>$1</mark>')
+  return escaped.replace(regex, '<mark>$1</mark>')
 }
 
 /**

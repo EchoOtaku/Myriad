@@ -32,3 +32,20 @@ pub mod rsshub_instances;
 // Agent 任务系统实体
 pub mod agent_tasks;
 pub mod agent_task_presets;
+
+// Federation (MFP) 联邦协议实体
+pub mod federation_keys;
+pub mod federation_remote_actors;
+pub mod federation_instances;
+pub mod federation_follows;
+pub mod federation_activities;
+pub mod federation_delivery_queue;
+pub mod federation_channels;
+pub mod federation_channel_messages;
+pub mod federation_rooms;
+pub mod federation_room_members;
+pub mod federation_room_messages;
+pub mod federation_ring_memberships;
+pub mod federation_published_content;
+pub mod federation_timeline;
+pub mod federation_file_transfers;

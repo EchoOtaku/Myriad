@@ -1003,6 +1003,15 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
             Json(json!({"error": "Invalid URL scheme"})),
         ).into_response();
     }
+
+    // SSRF 防护：阻止请求内网地址
+    if crate::federation::types::is_internal_url(url) {
+        tracing::warn!(url = %url, "[FetchWebContent] Blocked SSRF attempt to internal URL");
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Cannot fetch internal URLs"})),
+        ).into_response();
+    }
     
     tracing::info!(url = %url, "[FetchWebContent] Fetching external content");
     

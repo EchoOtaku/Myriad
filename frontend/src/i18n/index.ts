@@ -44,6 +44,7 @@ export interface TranslationKeys {
     logout: string
     account: string
     dataManagement: string
+    federation: string
     backToHome: string
     // 导航岛
     mainNavigation: string
@@ -1955,6 +1956,63 @@ export interface TranslationKeys {
     lightboxDownload: string
     lightboxClose: string
     lightboxCloseHint: string
+  }
+
+  // 联邦
+  federation: {
+    title: string
+    subtitle: string
+    timeline: string
+    following: string
+    followers: string
+    published: string
+    channels: string
+    followBtn: string
+    followPlaceholder: string
+    emptyTimeline: string
+    emptyTimelineHint: string
+    emptyFollowing: string
+    emptyFollowers: string
+    emptyPublished: string
+    emptyPublishedHint: string
+    // Phase 3: Channel
+    channelPlaceholder: string
+    newChannelBtn: string
+    emptyChannels: string
+    emptyChannelsHint: string
+    back: string
+    connected: string
+    disconnected: string
+    closeChannel: string
+    emptyChatHint: string
+    messagePlaceholder: string
+    sendBtn: string
+    rooms: string
+    roomNamePlaceholder: string
+    newRoomBtn: string
+    emptyRooms: string
+    emptyRoomsHint: string
+    roomMembers: string
+    leaveRoom: string
+    emptyRoomHint: string
+    invitePlaceholder: string
+    rings: string
+    ringNamePlaceholder: string
+    newRingBtn: string
+    emptyRings: string
+    emptyRingsHint: string
+    leaveRing: string
+    ringPeers: string
+    addPeerPlaceholder: string
+    addPeerBtn: string
+    removePeer: string
+    emptyPeers: string
+    emptyPeersHint: string
+    triggerSync: string
+    syncComplete: string
+    syncFailed: string
+    lastSync: string
+    config: string
   }
 }
 

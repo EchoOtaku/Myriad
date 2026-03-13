@@ -140,6 +140,8 @@ const DANGEROUS_TAGS = [
   'option',
   'optgroup',
   'datalist',
+  'svg',
+  'math',
 ]
 
 /**
@@ -215,7 +217,8 @@ function removeDangerousTags(html: string): string {
  */
 function removeDangerousAttrs(html: string): string {
   const attrPattern = DANGEROUS_ATTRS.join('|')
-  const regex = new RegExp(`\\s(${attrPattern})\\s*=\\s*["'][^"']*["']|\\s(${attrPattern})\\s*=\\s*[^\\s>]+`, 'gi')
+  // 匹配事件属性：支持空白符或 / 作为属性分隔符（防止 <tag/onload=... 绕过）
+  const regex = new RegExp(`[\\s/](${attrPattern})\\s*=\\s*["'][^"']*["']|[\\s/](${attrPattern})\\s*=\\s*[^\\s>]+`, 'gi')
   return html.replace(regex, '')
 }
 
@@ -223,7 +226,12 @@ function removeDangerousAttrs(html: string): string {
  * 移除 javascript: 协议链接
  */
 function removeJavascriptLinks(html: string): string {
-  return html.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
+  // 阻止 href、src、action 等属性中的 javascript: 和 data:text/html 协议
+  return html
+    .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href="#"')
+    .replace(/src\s*=\s*["']\s*javascript:[^"']*["']/gi, 'src=""')
+    .replace(/src\s*=\s*["']\s*data:text\/html[^"']*["']/gi, 'src=""')
+    .replace(/action\s*=\s*["']\s*javascript:[^"']*["']/gi, 'action="#"')
 }
 
 /**

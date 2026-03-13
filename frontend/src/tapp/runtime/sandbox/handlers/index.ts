@@ -29,3 +29,7 @@ export {
   registerPlatformHandlers,
   registerWidgetHandlers,
 } from './platformHandlers'
+
+export {
+  registerFederationHandlers,
+} from '../../FederationBridge'

@@ -103,6 +103,12 @@ impl IconService {
 
         debug!("Downloading icon for source {}: {}", source_id, icon_url);
 
+        // SSRF 防护：阻止请求内网地址
+        if crate::federation::types::is_internal_url(icon_url) {
+            warn!("Blocked SSRF attempt in icon download: {}", icon_url);
+            return Ok(None);
+        }
+
         // 下载图标
         let response = match self.client.get(icon_url).send().await {
             Ok(resp) => resp,
