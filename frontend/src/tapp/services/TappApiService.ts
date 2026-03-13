@@ -804,6 +804,7 @@ export async function aiGenerate(
     body: JSON.stringify({
       tapp_id: tappId,
       ...request,
+      prefer_pro: request.preferPro,
     }),
   })
 }
@@ -820,6 +821,7 @@ export async function aiAnalyze(
     body: JSON.stringify({
       tapp_id: tappId,
       ...request,
+      prefer_pro: request.preferPro,
     }),
   })
 }
@@ -1321,6 +1323,8 @@ export interface AIChatRequest {
     temperature?: number
     stream?: boolean
   }
+  /** 是否偏好使用 Pro 模型（可选，Pro 未配置时自动回退标准模型） */
+  preferPro?: boolean
 }
 
 /** AI Chat 响应 */
@@ -1352,6 +1356,7 @@ export async function aiChat(request: AIChatRequest): Promise<AIChatResponse> {
           }
         : undefined,
       options: request.options,
+      prefer_pro: request.preferPro,
     }),
   })
 }

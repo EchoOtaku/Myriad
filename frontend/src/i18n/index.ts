@@ -352,6 +352,13 @@ export interface TranslationKeys {
     aiProvider: string
     aiProviderHint: string
     aiServiceInfoDescription: string
+    aiStandardModelTitle: string
+    aiStandardModelDesc: string
+    aiProModelTitle: string
+    aiProModelDesc: string
+    aiProEnable: string
+    aiProEnableDesc: string
+    aiProProviderHint: string
     geminiDescription: string
     openaiCompatible: string
     openaiDescription: string

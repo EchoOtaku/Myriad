@@ -241,76 +241,60 @@ pub struct AiImageConfig {
     pub pixai_api_key: Option<String>,
 }
 
-/// AI 配置缓存（5分钟 TTL）
+/// AI 配置缓存（5分钟 TTL）- 标准层级
 static AI_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiConfig>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
+
+/// AI 配置缓存（5分钟 TTL）- Pro 层级
+static AI_PRO_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiConfig>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
 
 /// AI 图片配置缓存（5分钟 TTL）
 static AI_IMAGE_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiImageConfig>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
 
-/// 获取 AI 配置（带缓存）
+/// 获取标准层级 AI 配置（向后兼容）
+#[allow(dead_code)]
 pub async fn get_ai_config() -> Result<AiConfig, (StatusCode, Json<Value>)> {
+    get_ai_config_for_tier(crate::config::ModelTier::Standard).await
+}
+
+/// 获取指定层级的 AI 配置（带缓存）
+pub async fn get_ai_config_for_tier(tier: crate::config::ModelTier) -> Result<AiConfig, (StatusCode, Json<Value>)> {
+    let cache_ref = match tier {
+        crate::config::ModelTier::Standard => &*AI_CONFIG_CACHE,
+        crate::config::ModelTier::Pro => &*AI_PRO_CONFIG_CACHE,
+    };
+
     {
-        let cache = AI_CONFIG_CACHE.read().await;
+        let cache = cache_ref.read().await;
         if let Some(config) = cache.get() {
             return Ok(config);
         }
     }
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let resolved = config.resolve_ai_config(tier);
 
-    let ai_config = {
-        if let Some(key) = &config.openai_api_key {
-            if !key.is_empty() {
-                let model = if config.openai_model.is_empty() {
-                    "gpt-4o-mini".to_string()
-                } else {
-                    config.openai_model.clone()
-                };
-                let base_url = if config.openai_base_url.is_empty() {
-                    None
-                } else {
-                    Some(config.openai_base_url.clone())
-                };
-                Some(AiConfig {
-                    provider: AiProvider::OpenAI,
-                    api_key: key.clone(),
-                    model,
-                    base_url,
-                })
-            } else {
-                None
-            }
-        } else {
+    let api_key = resolved.api_key.filter(|k| !k.is_empty());
+    let ai_config = api_key.map(|key| {
+        let provider = AiProvider::from_str(&resolved.provider);
+        let base_url = if resolved.base_url.is_empty() {
             None
-        }
-    }
-    .or_else(|| {
-        if let Some(key) = &config.gemini_api_key {
-            if !key.is_empty() {
-                let model = if config.gemini_model.is_empty() {
-                    "gemini-3-flash-preview".to_string()
-                } else {
-                    config.gemini_model.clone()
-                };
-                Some(AiConfig {
-                    provider: AiProvider::Gemini,
-                    api_key: key.clone(),
-                    model,
-                    base_url: None,
-                })
-            } else {
-                None
-            }
         } else {
-            None
+            Some(resolved.base_url.clone())
+        };
+        AiConfig {
+            provider,
+            api_key: key,
+            model: resolved.model.clone(),
+            base_url,
         }
     });
 
     match ai_config {
         Some(cfg) => {
-            let mut cache = AI_CONFIG_CACHE.write().await;
+            let mut cache = cache_ref.write().await;
             cache.set(cfg.clone());
             Ok(cfg)
         }

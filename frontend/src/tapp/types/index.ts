@@ -465,6 +465,9 @@ export interface AIGenerateRequest {
     temperature?: number
     format?: 'text' | 'json'
   }
+
+  /** 是否偏好使用 Pro 模型（可选，Pro 未配置时自动回退标准模型） */
+  preferPro?: boolean
 }
 
 /** AI 生成响应 */
@@ -489,6 +492,9 @@ export interface AIAnalyzeRequest {
 
   /** 自定义指令 */
   instruction?: string
+
+  /** 是否偏好使用 Pro 模型（可选，Pro 未配置时自动回退标准模型） */
+  preferPro?: boolean
 }
 
 /** AI 分析响应 */

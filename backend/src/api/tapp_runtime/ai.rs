@@ -14,7 +14,7 @@ use crate::services::analyzer::AiAnalyzer;
 use crate::services::permission_service::TappPermission;
 
 use super::common::{
-    check_rate_limit, check_tapp_permission, get_ai_config, get_ai_image_config,
+    check_rate_limit, check_tapp_permission, get_ai_config_for_tier, get_ai_image_config,
     get_available_platforms, get_cached_platform_data, parse_user_id, record_metric,
     validate_image_prompt_security, validate_prompt_security, verify_tapp_ownership, HTTP_CLIENT,
 };
@@ -29,6 +29,9 @@ pub struct TappAiGenerateRequest {
     pub context: Option<Value>,
     #[allow(dead_code)]
     pub options: Option<Value>,
+    /// 是否偏好使用 Pro 模型（可选，默认 false，Pro 未配置时自动回退标准模型）
+    #[serde(default)]
+    pub prefer_pro: Option<bool>,
 }
 
 /// POST /api/tapp/ai/generate
@@ -70,7 +73,12 @@ pub async fn ai_generate(
         "[TAPP] ai_generate request"
     );
 
-    let ai_config = get_ai_config().await?;
+    let tier = if req.prefer_pro.unwrap_or(false) {
+        crate::config::ModelTier::Pro
+    } else {
+        crate::config::ModelTier::Standard
+    };
+    let ai_config = get_ai_config_for_tier(tier).await?;
     let analyzer = AiAnalyzer::new(
         ai_config.provider, ai_config.api_key, ai_config.model, ai_config.base_url,
     ).await;
@@ -133,6 +141,9 @@ pub struct TappAiAnalyzeRequest {
     #[serde(rename = "type")]
     pub analyze_type: String,
     pub instruction: Option<String>,
+    /// 是否偏好使用 Pro 模型（可选，默认 false，Pro 未配置时自动回退标准模型）
+    #[serde(default)]
+    pub prefer_pro: Option<bool>,
 }
 
 /// POST /api/tapp/ai/analyze
@@ -159,7 +170,12 @@ pub async fn ai_analyze(
         claims.username, req.tapp_id, req.analyze_type
     );
 
-    let ai_config = get_ai_config().await?;
+    let tier = if req.prefer_pro.unwrap_or(false) {
+        crate::config::ModelTier::Pro
+    } else {
+        crate::config::ModelTier::Standard
+    };
+    let ai_config = get_ai_config_for_tier(tier).await?;
 
     let analysis_prompt = match req.analyze_type.as_str() {
         "summarize" => format!(
@@ -231,6 +247,9 @@ pub struct AIChatRequest {
     pub context: Option<ChatContext>,
     #[serde(default)]
     pub options: Option<ChatOptions>,
+    /// 是否偏好使用 Pro 模型（可选，默认 false，Pro 未配置时自动回退标准模型）
+    #[serde(default)]
+    pub prefer_pro: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, serde::Serialize, Clone)]
@@ -279,7 +298,12 @@ pub async fn ai_chat(
         claims.username, req.tapp_id, req.messages.len()
     );
 
-    let ai_config = get_ai_config().await?;
+    let tier = if req.prefer_pro.unwrap_or(false) {
+        crate::config::ModelTier::Pro
+    } else {
+        crate::config::ModelTier::Standard
+    };
+    let ai_config = get_ai_config_for_tier(tier).await?;
     let mut full_messages = req.messages.clone();
 
     if let Some(context) = &req.context {

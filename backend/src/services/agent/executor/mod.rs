@@ -29,7 +29,8 @@ pub use utils::summarize_output;
 
 use crate::services::agent::capability::get_registry;
 use crate::services::agent::types::{self, *};
-use crate::services::ai::create_ai_analyzer;
+use crate::services::ai::create_ai_analyzer_for_tier;
+use crate::config::ModelTier;
 use crate::services::analyzer::AiAnalyzer;
 use handlers::HandlerContext;
 use sea_orm::DatabaseConnection;
@@ -63,7 +64,7 @@ pub struct Executor {
 impl Executor {
     /// 创建新的执行引擎
     pub async fn new(db: DatabaseConnection) -> Self {
-        let ai_analyzer = create_ai_analyzer().await;
+        let ai_analyzer = create_ai_analyzer_for_tier(ModelTier::Pro).await;
         Self { db, ai_analyzer }
     }
 

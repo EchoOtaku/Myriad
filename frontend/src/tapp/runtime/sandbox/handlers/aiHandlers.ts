@@ -104,10 +104,11 @@ export function registerAIHandlers(
 
   bridge.registerHandler('ai.chat', async (message) => {
     const [params] = (message.payload as { args: unknown[] }).args || []
-    const { messages, context, options } = (params || {}) as {
+    const { messages, context, options, preferPro } = (params || {}) as {
       messages?: Array<{ role: 'user' | 'assistant' | 'system', content: string }>
       context?: Record<string, unknown>
       options?: Record<string, unknown>
+      preferPro?: boolean
     }
     try {
       const result = await TappApiService.aiChat({
@@ -115,6 +116,7 @@ export function registerAIHandlers(
         messages: messages || [],
         context,
         options,
+        preferPro,
       })
       return { success: true, data: result }
     }

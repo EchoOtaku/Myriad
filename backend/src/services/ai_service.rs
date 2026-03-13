@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 use super::http_client::{GeminiApiUrl, ProxyConfig};
+use crate::config::ModelTier;
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
 /// AI 服务错误
@@ -108,17 +109,22 @@ pub struct AiService {
 }
 
 impl AiService {
-    /// 创建 AI 服务实例
+    /// 创建标准层级 AI 服务实例（向后兼容）
     pub async fn new(_db: &DatabaseConnection) -> Result<Self, AiServiceError> {
-        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        Self::new_with_tier(_db, ModelTier::Standard).await
+    }
 
-        let api_key = config
-            .gemini_api_key
-            .clone()
+    /// 创建指定层级的 AI 服务实例
+    pub async fn new_with_tier(_db: &DatabaseConnection, tier: ModelTier) -> Result<Self, AiServiceError> {
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        let resolved = config.resolve_ai_config(tier);
+
+        let api_key = resolved
+            .api_key
             .filter(|k| !k.is_empty())
             .ok_or(AiServiceError::ApiKeyNotConfigured)?;
 
-        let model = config.gemini_model.clone();
+        let model = resolved.model;
 
         // 创建 HTTP 客户端（带代理支持）
         let proxy_config = ProxyConfig::from_dynamic_config().await;

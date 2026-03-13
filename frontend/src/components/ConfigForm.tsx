@@ -565,7 +565,7 @@ const ModernConfigForm: React.FC = () => {
           config_fields: data.ai_config.config_fields.map((field: any) => {
             let defaultValue = ''
             if (field.key === 'model')
-              defaultValue = 'gemini-pro'
+              defaultValue = 'gemini-3-flash-preview'
             else if (field.key === 'ai_image_provider')
               defaultValue = 'pollinations'
             else if (field.key === 'ai_image_model')

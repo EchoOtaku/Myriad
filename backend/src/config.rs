@@ -1,6 +1,29 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 
+/// AI 模型层级
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModelTier {
+    /// 标准模型 - 用于日常任务
+    Standard,
+    /// Pro 模型 - 用于复杂任务
+    Pro,
+}
+
+impl Default for ModelTier {
+    fn default() -> Self {
+        Self::Standard
+    }
+}
+
+/// 解析后的 AI 配置（已根据 tier 确定具体的 provider/key/model）
+pub struct ResolvedAiConfig {
+    pub provider: String,
+    pub api_key: Option<String>,
+    pub model: String,
+    pub base_url: String,
+}
+
 /// 核心应用配置（从环境变量读取）
 /// 这些是应用启动所必需的基础设施配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +146,7 @@ impl AppConfig {
 /// 这些配置可以在运行时通过API修改
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DynamicConfig {
-    // AI 配置
+    // AI 配置（标准模型）
     pub ai_provider: String,
     pub gemini_api_key: Option<String>,
     pub gemini_model: String,
@@ -131,6 +154,14 @@ pub struct DynamicConfig {
     pub openai_model: String,
     pub openai_base_url: String,
     pub openai_max_tokens: i32,
+    // AI 配置（Pro 模型）
+    pub pro_enabled: bool,
+    pub pro_ai_provider: String,
+    pub pro_gemini_api_key: Option<String>,
+    pub pro_gemini_model: String,
+    pub pro_openai_api_key: Option<String>,
+    pub pro_openai_model: String,
+    pub pro_openai_base_url: String,
     pub topic_style: String,
 
     // 平台配置
@@ -314,9 +345,17 @@ impl Default for DynamicConfig {
             gemini_api_key: None,
             gemini_model: "gemini-3-flash-preview".to_string(),
             openai_api_key: None,
-            openai_model: "gpt-4".to_string(),
+            openai_model: "gpt-5-mini".to_string(),
             openai_base_url: "https://api.openai.com/v1".to_string(),
             openai_max_tokens: 2000,
+            // Pro 模型默认配置
+            pro_enabled: false,
+            pro_ai_provider: "gemini".to_string(),
+            pro_gemini_api_key: None,
+            pro_gemini_model: "gemini-3.1-pro-preview".to_string(),
+            pro_openai_api_key: None,
+            pro_openai_model: "gpt-5.4".to_string(),
+            pro_openai_base_url: "https://api.openai.com/v1".to_string(),
             topic_style: "balanced".to_string(),
 
             github_token: None,
@@ -438,5 +477,54 @@ impl Default for DynamicConfig {
             gemini_base_url: None,     // 默认使用官方 API
             github_api_base_url: None, // 默认使用官方 API
         }
+    }
+}
+
+impl DynamicConfig {
+    /// 根据模型层级解析 AI 配置
+    ///
+    /// Pro 层级：如果 pro_enabled 且 Pro 有独立 API Key，则使用 Pro 配置；
+    /// 否则回退到标准配置。
+    pub fn resolve_ai_config(&self, tier: ModelTier) -> ResolvedAiConfig {
+        if tier == ModelTier::Pro && self.pro_enabled {
+            let provider = &self.pro_ai_provider;
+            let (api_key, model, base_url) = if provider == "openai" {
+                let key = self.pro_openai_api_key.clone()
+                    .filter(|k| !k.is_empty())
+                    .or_else(|| self.openai_api_key.clone());
+                let model = if self.pro_openai_model.is_empty() {
+                    self.openai_model.clone()
+                } else {
+                    self.pro_openai_model.clone()
+                };
+                let base_url = if self.pro_openai_base_url.is_empty() {
+                    self.openai_base_url.clone()
+                } else {
+                    self.pro_openai_base_url.clone()
+                };
+                (key, model, base_url)
+            } else {
+                // gemini
+                let key = self.pro_gemini_api_key.clone()
+                    .filter(|k| !k.is_empty())
+                    .or_else(|| self.gemini_api_key.clone());
+                let model = if self.pro_gemini_model.is_empty() {
+                    self.gemini_model.clone()
+                } else {
+                    self.pro_gemini_model.clone()
+                };
+                (key, model, String::new())
+            };
+            return ResolvedAiConfig { provider: provider.clone(), api_key, model, base_url };
+        }
+
+        // 标准层级
+        let provider = &self.ai_provider;
+        let (api_key, model, base_url) = if provider == "openai" {
+            (self.openai_api_key.clone(), self.openai_model.clone(), self.openai_base_url.clone())
+        } else {
+            (self.gemini_api_key.clone(), self.gemini_model.clone(), String::new())
+        };
+        ResolvedAiConfig { provider: provider.clone(), api_key, model, base_url }
     }
 }

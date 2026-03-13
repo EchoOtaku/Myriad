@@ -89,6 +89,47 @@ impl ConfigService {
             }
         }
 
+        // AI Pro 模型配置
+        if let Some(v) = map.get("pro_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.pro_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.pro_enabled = s == "true";
+            }
+        }
+
+        if let Some(v) = map.get("pro_ai_provider") {
+            if let Some(s) = v.as_str() {
+                config.pro_ai_provider = s.to_string();
+            }
+        }
+
+        if let Some(v) = map.get("pro_gemini_api_key") {
+            config.pro_gemini_api_key = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("pro_gemini_model") {
+            if let Some(s) = v.as_str() {
+                config.pro_gemini_model = s.to_string();
+            }
+        }
+
+        if let Some(v) = map.get("pro_openai_api_key") {
+            config.pro_openai_api_key = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("pro_openai_model") {
+            if let Some(s) = v.as_str() {
+                config.pro_openai_model = s.to_string();
+            }
+        }
+
+        if let Some(v) = map.get("pro_openai_base_url") {
+            if let Some(s) = v.as_str() {
+                config.pro_openai_base_url = s.to_string();
+            }
+        }
+
         // 平台配置
         if let Some(v) = map.get("github_token") {
             config.github_token = v.as_str().map(|s| s.to_string());

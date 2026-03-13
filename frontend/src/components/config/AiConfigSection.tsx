@@ -4,7 +4,7 @@
  */
 
 import type { SettingOption } from '../settings/types'
-import { FaFreeCodeCamp, FaMagic, FaMicrophone, FaVolumeUp, LuPalette, LuSparkles, SiGooglegemini, SiOpenai } from '@lib/icons'
+import { FaFreeCodeCamp, FaMagic, FaMicrophone, FaVolumeUp, LuPalette, LuSparkles, LuZap, SiGooglegemini, SiOpenai } from '@lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
@@ -17,6 +17,7 @@ import {
   SelectItem,
   SettingGroup,
   SettingSection,
+  SwitchItem,
 } from '../settings'
 
 interface ConfigField {
@@ -59,9 +60,19 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     return configFields.find(f => f.key === key)?.value || defaultValue
   }, [configFields])
 
-  // 当前 AI Provider
+  // 当前 AI Provider (标准模型)
   const currentProvider = useMemo(() =>
     getFieldValue('provider', 'gemini'), [getFieldValue])
+
+  // Pro 模型是否启用
+  const proEnabled = useMemo(() => {
+    const val = getFieldValue('pro_enabled', 'false')
+    return val === 'true' || val === '1'
+  }, [getFieldValue])
+
+  // 当前 Pro AI Provider
+  const currentProProvider = useMemo(() =>
+    getFieldValue('pro_provider', 'gemini'), [getFieldValue])
 
   // 当前图片生成 Provider
   const currentImageProvider = useMemo(() =>
@@ -97,10 +108,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     { value: 'ap-nanjing', label: t.config.tencentRegionNanjing },
   ], [t.config.tencentRegionGuangzhou, t.config.tencentRegionShanghai, t.config.tencentRegionBeijing, t.config.tencentRegionChengdu, t.config.tencentRegionChongqing, t.config.tencentRegionNanjing])
 
-  // Provider 对应的配置字段
+  // Standard Provider 对应的配置字段
   const providerFields = useMemo(() => {
     return configFields.filter((field) => {
       if (field.key === 'provider')
+        return false
+      if (field.key.startsWith('pro_'))
         return false
       if (field.key.startsWith('ai_image_') || field.key.startsWith('pixai_'))
         return false
@@ -116,6 +129,24 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       return false
     })
   }, [configFields, currentProvider])
+
+  // Pro Provider 对应的配置字段
+  const proProviderFields = useMemo(() => {
+    return configFields.filter((field) => {
+      if (field.key === 'pro_provider')
+        return false
+      if (!field.key.startsWith('pro_'))
+        return false
+
+      if (currentProProvider === 'gemini') {
+        return field.key.startsWith('pro_gemini_')
+      }
+      else if (currentProProvider === 'openai') {
+        return field.key.startsWith('pro_openai_')
+      }
+      return false
+    })
+  }, [configFields, currentProProvider])
 
   // 处理语音测试
   const handleSpeechTest = useCallback(async () => {
@@ -143,12 +174,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
-      {/* AI 服务 */}
+      {/* 标准模型 AI 服务 */}
       <SettingGroup
-        title={t.config.aiServiceTitle}
+        title={t.config.aiStandardModelTitle}
         icon={<LuSparkles />}
         description={(
           <>
+            {t.config.aiStandardModelDesc}
+            {' · '}
             Gemini
             {' '}
             {t.config.geminiDescription}
@@ -189,6 +222,54 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             layout="vertical"
           />
         ))}
+      </SettingGroup>
+
+      {/* Pro 模型 AI 服务 */}
+      <SettingGroup
+        title={t.config.aiProModelTitle}
+        icon={<LuZap />}
+        description={t.config.aiProModelDesc}
+      >
+        {/* Pro 模型开关 */}
+        <SwitchItem
+          itemKey="pro_enabled"
+          label={t.config.aiProEnable}
+          description={t.config.aiProEnableDesc}
+          value={proEnabled}
+          onChange={(v: boolean) => updateValue('pro_enabled', v ? 'true' : 'false')}
+          layout="horizontal"
+        />
+
+        {proEnabled && (
+          <>
+            {/* Pro AI Provider 选择 */}
+            <ProviderItem
+              itemKey="pro_ai_provider"
+              label={t.config.aiProvider}
+              value={currentProProvider}
+              onChange={v => updateValue('pro_provider', v)}
+              options={aiProviderOptions}
+              hint={t.config.aiProProviderHint}
+              layout="horizontal"
+            />
+
+            {/* Pro Provider 配置字段 */}
+            {proProviderFields.map(field => (
+              <InputItem
+                key={field.key}
+                itemKey={field.key}
+                label={field.label}
+                required={field.required}
+                value={field.value}
+                onChange={v => updateValue(field.key, v)}
+                placeholder={field.placeholder}
+                inputType={field.field_type as 'text' | 'password'}
+                autoSelectOnMask
+                layout="vertical"
+              />
+            ))}
+          </>
+        )}
       </SettingGroup>
 
       {/* AI 图片生成配置 */}

@@ -13,8 +13,9 @@ use super::{
     ParsedIntent, TimeRange,
 };
 use crate::services::agent::types::{Capability, UserRequest};
-use crate::services::analyzer::{AiAnalyzer, AiProvider};
-use crate::GLOBAL_DYNAMIC_CONFIG;
+use crate::services::ai::create_ai_analyzer_for_tier;
+use crate::config::ModelTier;
+use crate::services::analyzer::AiAnalyzer;
 
 /// 意图分析器
 pub struct IntentAnalyzer {
@@ -40,60 +41,9 @@ impl IntentAnalyzer {
         }
     }
 
-    /// 创建 AI 分析器实例（从全局配置读取）
+    /// 创建 AI 分析器实例（使用 Pro 层级处理复杂意图分析）
     async fn create_ai_analyzer() -> Option<AiAnalyzer> {
-        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-
-        // 按优先级尝试：OpenAI > Gemini
-        if let Some(key) = &config.openai_api_key {
-            if !key.is_empty() {
-                let model = if config.openai_model.is_empty() {
-                    "gpt-4o-mini".to_string()
-                } else {
-                    config.openai_model.clone()
-                };
-                let base_url = if config.openai_base_url.is_empty() {
-                    None
-                } else {
-                    Some(config.openai_base_url.clone())
-                };
-                tracing::info!(
-                    provider = "openai",
-                    model = %model,
-                    "[IntentAnalyzer] AI analyzer initialized"
-                );
-                return Some(AiAnalyzer::new(
-                    AiProvider::OpenAI,
-                    key.clone(),
-                    model,
-                    base_url,
-                ).await);
-            }
-        }
-
-        if let Some(key) = &config.gemini_api_key {
-            if !key.is_empty() {
-                let model = if config.gemini_model.is_empty() {
-                    "gemini-2.0-flash".to_string()
-                } else {
-                    config.gemini_model.clone()
-                };
-                tracing::info!(
-                    provider = "gemini",
-                    model = %model,
-                    "[IntentAnalyzer] AI analyzer initialized"
-                );
-                return Some(AiAnalyzer::new(
-                    AiProvider::Gemini,
-                    key.clone(),
-                    model,
-                    None,
-                ).await);
-            }
-        }
-
-        tracing::warn!("[IntentAnalyzer] No AI API key configured, using rule-based only");
-        None
+        create_ai_analyzer_for_tier(ModelTier::Pro).await
     }
 
     /// 创建无 AI 的分析器（仅规则匹配）

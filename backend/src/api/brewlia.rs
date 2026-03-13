@@ -287,7 +287,7 @@ async fn generate_and_save_annotations(
     content: &str,
 ) -> axum::response::Response {
     // 调用 AI 服务
-    let ai_service = match AiService::new(db).await {
+    let ai_service = match AiService::new_with_tier(db, crate::config::ModelTier::Standard).await {
         Ok(service) => service,
         Err(e) => {
             tracing::error!("Failed to initialize AI service: {}", e);
@@ -1309,7 +1309,7 @@ async fn generate_style_tags(
     tracing::debug!("Articles summary for AI:\n{}", articles_summary);
 
     // 初始化 AI 服务
-    let ai_service = match AiService::new(&db).await {
+    let ai_service = match AiService::new_with_tier(&db, crate::config::ModelTier::Standard).await {
         Ok(service) => service,
         Err(e) => {
             tracing::error!("Failed to initialize AI service: {}", e);

@@ -242,7 +242,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                 .as_ref()
                 .map(|c| c.gemini_model.clone())
                 .unwrap_or_else(|| {
-                    std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string())
+                    std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
                 }),
             api_key: get_value(
                 db_config.as_ref().and_then(|c| c.gemini_api_key.clone()),
@@ -292,9 +292,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.gemini_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("GEMINI_MODEL")
-                                .unwrap_or_else(|_| "gemini-pro".to_string())
+                                .unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
                         }),
-                    placeholder: "gemini-pro, gemini-1.5-flash, gemini-1.5-pro, etc.".to_string(),
+                    placeholder: "gemini-3-flash-preview, gemini-3.1-pro-preview, gemini-2.5-flash, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -317,9 +317,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.openai_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("OPENAI_MODEL")
-                                .unwrap_or_else(|_| "gpt-3.5-turbo".to_string())
+                                .unwrap_or_else(|_| "gpt-5-mini".to_string())
                         }),
-                    placeholder: "gpt-3.5-turbo, gpt-4, gpt-4-turbo, etc.".to_string(),
+                    placeholder: "gpt-5-mini, gpt-5.4, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -335,6 +335,95 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         }),
                     placeholder: "https://api.openai.com/v1 (base URL only, no /chat/completions)"
                         .to_string(),
+                    required: false,
+                },
+                // Pro 模型配置
+                ConfigField {
+                    key: "pro_enabled".to_string(),
+                    label: "Enable Pro Model".to_string(),
+                    field_type: "boolean".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.pro_enabled.to_string())
+                        .unwrap_or_else(|| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pro_provider".to_string(),
+                    label: "【Pro Model】AI Provider".to_string(),
+                    field_type: "select".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.pro_ai_provider.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("PRO_AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string())
+                        }),
+                    placeholder: "gemini".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "pro_gemini_api_key".to_string(),
+                    label: "【Pro Model】Gemini API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config.as_ref().and_then(|c| c.pro_gemini_api_key.clone()),
+                        "PRO_GEMINI_API_KEY",
+                    )),
+                    placeholder: "Pro model Gemini API Key (leave empty to reuse standard)".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pro_gemini_model".to_string(),
+                    label: "【Pro Model】Gemini Model Name".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.pro_gemini_model.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("PRO_GEMINI_MODEL")
+                                .unwrap_or_else(|_| "gemini-3.1-pro-preview".to_string())
+                        }),
+                    placeholder: "gemini-3.1-pro-preview, gemini-3-flash-preview, etc.".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pro_openai_api_key".to_string(),
+                    label: "【Pro Model】OpenAI API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config.as_ref().and_then(|c| c.pro_openai_api_key.clone()),
+                        "PRO_OPENAI_API_KEY",
+                    )),
+                    placeholder: "Pro model OpenAI API Key (leave empty to reuse standard)".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pro_openai_model".to_string(),
+                    label: "【Pro Model】OpenAI Model Name".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.pro_openai_model.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("PRO_OPENAI_MODEL")
+                                .unwrap_or_else(|_| "gpt-5.4".to_string())
+                        }),
+                    placeholder: "gpt-5.4, gpt-5-mini, etc.".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "pro_openai_base_url".to_string(),
+                    label: "【Pro Model】OpenAI Base URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.pro_openai_base_url.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("PRO_OPENAI_BASE_URL")
+                                .unwrap_or_else(|_| "https://api.openai.com/v1".to_string())
+                        }),
+                    placeholder: "https://api.openai.com/v1 (leave empty to reuse standard)".to_string(),
                     required: false,
                 },
                 // AI 图片生成配置
@@ -1067,6 +1156,14 @@ async fn save_to_database(
             "openai_api_key" => ("openai_api_key", JsonValue::String(field.value.clone())),
             "openai_model" => ("openai_model", JsonValue::String(field.value.clone())),
             "openai_base_url" => ("openai_base_url", JsonValue::String(field.value.clone())),
+            // Pro 模型配置
+            "pro_enabled" => ("pro_enabled", JsonValue::Bool(field.value == "true")),
+            "pro_provider" => ("pro_ai_provider", JsonValue::String(field.value.clone())),
+            "pro_gemini_api_key" => ("pro_gemini_api_key", JsonValue::String(field.value.clone())),
+            "pro_gemini_model" => ("pro_gemini_model", JsonValue::String(field.value.clone())),
+            "pro_openai_api_key" => ("pro_openai_api_key", JsonValue::String(field.value.clone())),
+            "pro_openai_model" => ("pro_openai_model", JsonValue::String(field.value.clone())),
+            "pro_openai_base_url" => ("pro_openai_base_url", JsonValue::String(field.value.clone())),
             // AI 图片生成配置
             "ai_image_provider" => ("ai_image_provider", JsonValue::String(field.value.clone())),
             "ai_image_model" => ("ai_image_model", JsonValue::String(field.value.clone())),
@@ -1271,6 +1368,14 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "openai_api_key" => "OPENAI_API_KEY",
             "openai_model" => "OPENAI_MODEL",
             "openai_base_url" => "OPENAI_BASE_URL",
+            // Pro 模型配置
+            "pro_enabled" => "PRO_ENABLED",
+            "pro_provider" => "PRO_AI_PROVIDER",
+            "pro_gemini_api_key" => "PRO_GEMINI_API_KEY",
+            "pro_gemini_model" => "PRO_GEMINI_MODEL",
+            "pro_openai_api_key" => "PRO_OPENAI_API_KEY",
+            "pro_openai_model" => "PRO_OPENAI_MODEL",
+            "pro_openai_base_url" => "PRO_OPENAI_BASE_URL",
             // AI 图片生成配置
             "ai_image_provider" => "AI_IMAGE_PROVIDER",
             "ai_image_model" => "AI_IMAGE_MODEL",
