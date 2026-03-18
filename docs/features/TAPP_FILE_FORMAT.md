@@ -12,10 +12,24 @@ my-app.tapp (ZIP 格式)
 ├── main.js            # 主入口代码（必需）
 ├── icon.png           # 应用图标（可选，推荐 128x128）
 ├── README.md          # 说明文档（可选）
+├── styles.css         # 共享样式（可选）
+├── page.html          # 页面 HTML 模板（可选）
+├── page.css           # 页面专用 CSS（可选）
+├── widget.css         # 小组件专用 CSS（可选）
+├── i18n/              # 国际化翻译文件夹（可选）
+│   ├── zh.json
+│   ├── en.json
+│   └── ja.json
+├── page/              # 页面模块文件夹（可选，替代 main.js 中的页面代码）
+│   ├── i18n.js
+│   ├── state.js
+│   ├── helpers.js
+│   └── index.js
 └── assets/            # 资源文件夹（可选）
-    ├── styles.css
     └── ...
 ```
+
+> **模块化架构**：当存在 `i18n/` 目录时，翻译数据会通过 `window._TAPP_I18N` 注入到沙箱中。当存在 `page/` 目录时，模块文件会按 manifest 中 `pageModules` 声明的顺序拼接执行。`main.js` 始终作为回退使用。
 
 ## manifest.json 规范
 
@@ -46,9 +60,12 @@ my-app.tapp (ZIP 格式)
       "sizes": ["1x1", "2x1", "2x2"]
     }
   ],
-  "hasPage": true
+  "hasPage": true,
+  "pageModules": ["i18n.js", "state.js", "helpers.js", "index.js"]
 }
 ```
+
+> **`pageModules`**（可选）：声明 `page/` 目录下模块文件的加载顺序。省略时按字母排序，`index.js` 自动排最后。
 
 ## 权限列表
 
@@ -123,10 +140,17 @@ data/
 └── tapps/
     └── {user_id}/
         └── {tapp_id}/
-            ├── app.tapp          # 原始文件
             ├── manifest.json     # 解压的清单
-            ├── main.js           # 解压的代码
-            └── assets/           # 解压的资源
+            ├── main.js           # 主代码（回退用）
+            ├── styles.css        # 共享样式
+            ├── page.html         # 页面模板
+            ├── i18n/             # 国际化（可选）
+            │   ├── zh.json
+            │   └── en.json
+            └── page/             # 页面模块（可选）
+                ├── i18n.js
+                ├── state.js
+                └── index.js
 ```
 
 ## API 接口

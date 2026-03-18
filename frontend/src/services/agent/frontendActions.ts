@@ -100,7 +100,7 @@ export function hasActionHandler(type: FrontendActionType | string): boolean {
  * 获取所有已注册的处理器类型
  */
 export function getRegisteredActionTypes(): string[] {
-  return Array.from(typedActionHandlers.keys())
+  return [...typedActionHandlers.keys()]
 }
 
 /**

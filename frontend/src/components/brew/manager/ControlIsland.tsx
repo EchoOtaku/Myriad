@@ -38,32 +38,12 @@ import {
 import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
+import { IslandLayout, getIconUrl } from '../../shared/control-island'
 import JSZip from 'jszip'
 import RSSHubConfigComponent from './RSSHubConfig'
 import { useBrewAnimationConfig } from '../../../hooks/animation'
 import { useI18n } from '../../../contexts/I18nContext'
-
-// 导入模式组件
-
-
-
-// API URL
-const API_URL = import.meta.env.PUBLIC_API_URL || ''
-
-// 处理图标 URL - 确保正确的完整路径
-function getIconUrl(iconUrl: string | null | undefined): string | null {
-  if (!iconUrl)
-    return null
-  if (iconUrl.startsWith('/api/')) {
-    return `${API_URL}${iconUrl}`
-  }
-  if (iconUrl.startsWith('http://') || iconUrl.startsWith('https://')) {
-    return `${API_URL}/api/proxy/image?url=${encodeURIComponent(iconUrl)}`
-  }
-  return iconUrl
-}
 
 // 根据订阅源数据生成动态提示
 function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<string, string>): DynamicTip[] {
@@ -895,21 +875,9 @@ export default function ControlIsland({
   }
 
   return (
-    <>
-      {/* 移动端顶部控制条容器 */}
-      <div className="sm:hidden w-full mb-4 touch-pan-y relative z-30">
-        <AnimatePresence mode="wait">
-          {renderModeContent('mobile')}
-        </AnimatePresence>
-      </div>
-
-      {/* 桌面端底部浮动控制条容器 */}
-      <div className="hidden sm:block fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
-        <AnimatePresence mode="wait">
-          {renderModeContent('desktop')}
-        </AnimatePresence>
-      </div>
-    </>
+    <IslandLayout>
+      {variant => renderModeContent(variant)}
+    </IslandLayout>
   )
 }
 

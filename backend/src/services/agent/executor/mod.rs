@@ -16,6 +16,7 @@
 //! - `services/brew_parser` - RSS/Atom 解析
 //! - `services/tapp_api_service` - Tapp API 执行
 
+pub mod dag;
 pub mod handlers;
 pub mod task_store;
 pub mod utils;
@@ -25,12 +26,13 @@ pub use task_store::{
     cancel_task_for_user, clear_cancellation, get_task, get_task_for_user, get_user_tasks,
     init_task_store_db, is_cancelled, maybe_cleanup_tasks, persist_task_async, TASK_STORE,
 };
-pub use utils::summarize_output;
+pub use utils::{extract_image_url, summarize_output};
 
+use crate::config::ModelTier;
 use crate::services::agent::capability::get_registry;
+use crate::services::agent::tier_router::{self, TierRouter};
 use crate::services::agent::types::{self, *};
 use crate::services::ai::create_ai_analyzer_for_tier;
-use crate::config::ModelTier;
 use crate::services::analyzer::AiAnalyzer;
 use handlers::HandlerContext;
 use sea_orm::DatabaseConnection;
@@ -57,15 +59,58 @@ enum StepAnalysisResult {
 pub struct Executor {
     /// 数据库连接
     pub(crate) db: DatabaseConnection,
-    /// AI 分析器
-    pub(crate) ai_analyzer: Option<AiAnalyzer>,
+    /// Pro 层级 AI 分析器（复杂推理、规划、创造性任务）
+    pub(crate) pro_analyzer: Option<AiAnalyzer>,
+    /// Standard 层级 AI 分析器（常规任务、数据处理、定式化操作）
+    pub(crate) standard_analyzer: Option<AiAnalyzer>,
 }
 
 impl Executor {
     /// 创建新的执行引擎
     pub async fn new(db: DatabaseConnection) -> Self {
-        let ai_analyzer = create_ai_analyzer_for_tier(ModelTier::Pro).await;
-        Self { db, ai_analyzer }
+        let pro_analyzer = create_ai_analyzer_for_tier(ModelTier::Pro).await;
+        let standard_analyzer = create_ai_analyzer_for_tier(ModelTier::Standard).await;
+        Self {
+            db,
+            pro_analyzer,
+            standard_analyzer,
+        }
+    }
+
+    /// 根据 ModelTier 获取对应的 AI 分析器
+    fn get_analyzer_for_tier(&self, tier: ModelTier) -> Option<&AiAnalyzer> {
+        match tier {
+            ModelTier::Pro => self.pro_analyzer.as_ref().or(self.standard_analyzer.as_ref()),
+            ModelTier::Standard => self
+                .standard_analyzer
+                .as_ref()
+                .or(self.pro_analyzer.as_ref()),
+        }
+    }
+
+    /// 带熔断器的 tier 解析
+    ///
+    /// 优先使用熔断器感知的解析（自动降级），如果两个 tier 都熔断则 fallback 到普通解析。
+    fn resolve_tier_with_breaker(capability_id: &str, explicit_tier: Option<ModelTier>) -> ModelTier {
+        tier_router::resolve_with_circuit_breaker(capability_id, explicit_tier)
+            .unwrap_or_else(|| {
+                // 两个 tier 都熔断时仍然尝试（best-effort）
+                tracing::warn!(
+                    capability_id = capability_id,
+                    "[Executor] Both tiers circuit-broken, falling back to default resolve"
+                );
+                TierRouter::resolve_with_override(capability_id, explicit_tier)
+            })
+    }
+
+    /// 记录步骤执行结果到熔断器
+    fn record_step_to_breaker(tier: ModelTier, success: bool) {
+        let breaker = tier_router::get_circuit_breaker(tier);
+        if success {
+            breaker.record_success();
+        } else {
+            breaker.record_failure();
+        }
     }
 
     /// 执行方案（不带进度回调，兼容旧代码）
@@ -83,6 +128,7 @@ impl Executor {
         // 创建任务状态
         let mut task_state = TaskState::new(recipe);
         task_state.status = TaskStatus::Running;
+        task_state.lane_id = recipe.lane_key.clone();
 
         // 创建执行上下文（包含对话历史）
         let mut context = ExecutionContext::from_request_full(
@@ -100,6 +146,22 @@ impl Executor {
                 "[Executor] Conversation context loaded with {} messages",
                 history.len()
             );
+        }
+
+        // 注入角色身份上下文（从 Orchestrator 分析结果）
+        if let Some(role_ctx_val) = recipe.metadata.get("role_contexts") {
+            if let Some(obj) = role_ctx_val.as_object() {
+                for (role_key, ctx_val) in obj {
+                    if let Some(ctx_str) = ctx_val.as_str() {
+                        context.role_contexts.insert(role_key.clone(), ctx_str.to_string());
+                    }
+                }
+                tracing::info!(
+                    task_id = %task_state.task_id,
+                    roles = context.role_contexts.len(),
+                    "[Executor] Role identity contexts loaded"
+                );
+            }
         }
 
         // 如果有 page_context，存入 step_outputs
@@ -130,30 +192,34 @@ impl Executor {
             "[Executor] Starting recipe execution"
         );
 
-        // 提取对话历史（不可变引用，避免借用冲突）
-        let conversation_context = context.conversation_context.clone();
+        // 对话历史已通过 ExecutionContext.conversation_context 传递到 HandlerContext
+        // 不再冗余存入 step_outputs（inject_role_identity 直接从 execution_context 读取）
 
-        // 创建 handler 上下文
-        let handler_ctx = HandlerContext {
-            db: &self.db,
-            ai_analyzer: self.ai_analyzer.as_ref(),
-            user_id,
-            execution_context: None, // 暂时不传完整上下文
-        };
+        // 初始化执行追踪
+        let execution_start = std::time::Instant::now();
+        let trace_id = format!("trace_{}", task_state.task_id);
+        let mut step_traces: Vec<types::StepTrace> = Vec::new();
+        let mut tier_usage: HashMap<String, u32> = HashMap::new();
 
-        // 为需要对话历史的处理器创建专用上下文
-        // 将对话历史存入 step_outputs 供处理器使用
-        if let Some(ref history) = conversation_context {
-            context.add_output(
-                "__conversation_context__",
-                serde_json::to_value(history).unwrap_or_default(),
-            );
-        }
+        // 全局重试预算（跨所有步骤最多重试 5 次）
+        let mut global_retry_budget: u32 = 5;
 
         // 执行步骤
         let mut step_index = 0;
         let all_steps: Vec<RecipeStep> = recipe.steps.clone();
         let total_steps = all_steps.len();
+
+        // 构建 DAG 调度器（检测是否有并行依赖）
+        let mut dag_scheduler = dag::DagScheduler::new(&all_steps).ok();
+        let use_dag = dag_scheduler
+            .as_ref()
+            .map_or(false, |d| d.is_parallel_mode());
+        if use_dag {
+            tracing::info!(
+                task_id = %task_state.task_id,
+                "[Executor] Parallel DAG mode detected, using DAG scheduler"
+            );
+        }
 
         while step_index < all_steps.len() || context.has_pending_steps() {
             // 🔴 检查任务是否被取消
@@ -198,13 +264,224 @@ impl Executor {
                     step_id = %dynamic_step.id,
                     "[Executor] Executing dynamic step"
                 );
-                (dynamic_step, true)
+                (Some(dynamic_step), true)
+            } else if use_dag {
+                // DAG 模式：获取所有就绪步骤
+                let ready = dag_scheduler
+                    .as_ref()
+                    .map(|d| d.get_ready_steps())
+                    .unwrap_or_default();
+                if ready.is_empty() {
+                    break;
+                } else if ready.len() > 1 {
+                    // ====== 真正的并行执行 ======
+                    let current_total = total_steps + context.pending_dynamic_steps.len();
+                    let wave_size = ready.len();
+                    tracing::info!(
+                        task_id = %task_state.task_id,
+                        wave_size = wave_size,
+                        "[Executor] Executing {} steps in parallel",
+                        wave_size
+                    );
+
+                    // 为每个步骤发送 StepStarted 事件
+                    for step in &ready {
+                        if let Some(ref tx) = progress_tx {
+                            let desc =
+                                crate::services::agent::capability::get_step_description(step);
+                            let _ = tx
+                                .send(AgentProgressEvent::StepStarted {
+                                    step_id: step.id.clone(),
+                                    step_index: 0,
+                                    total_steps: current_total as u32,
+                                    capability_name: desc.clone(),
+                                    description: format!("正在并行执行: {}", desc),
+                                })
+                                .await;
+                        }
+                    }
+
+                    // 构建并行 futures（手动构建以满足借用检查）
+                    // 注意：并行步骤各自使用 context 的克隆副本。步骤内部对 context 的修改
+                    // （如 queue_dynamic_steps）不会合并回原始 context —— 仅最终 output 会被收集。
+                    // 这是可接受的设计权衡：并行步骤应为独立的数据获取操作，不应产生动态步骤。
+                    let mut futs = Vec::with_capacity(wave_size);
+                    for step in &ready {
+                        let step_tier = Self::resolve_tier_with_breaker(
+                            &step.capability_id,
+                            step.model_tier,
+                        );
+                        let step_analyzer = self.get_analyzer_for_tier(step_tier);
+                        let ctx_snapshot = context.clone();
+                        let step_clone = step.clone();
+                        futs.push(async move {
+                            let start = std::time::Instant::now();
+                            let mut ctx = ctx_snapshot;
+                            let handler_ctx = HandlerContext {
+                                db: &self.db,
+                                ai_analyzer: step_analyzer,
+                                user_id,
+                                execution_context: Some(ctx.clone()),
+                            };
+                            let result = self
+                                .execute_step(&step_clone, &mut ctx, &handler_ctx)
+                                .await;
+                            let duration = start.elapsed().as_millis() as u64;
+                            (step_clone, result, duration)
+                        });
+                    }
+
+                    // 并行执行所有就绪步骤
+                    let results = futures::future::join_all(futs).await;
+
+                    // 顺序处理结果：更新上下文、状态、DAG、追踪
+                    for (step, step_result, duration_ms) in results {
+                        let par_tier = TierRouter::resolve_with_override(
+                            &step.capability_id,
+                            step.model_tier,
+                        );
+                        let par_tier_str = format!("{:?}", par_tier);
+                        if let Some(idx) = all_steps.iter().position(|s| s.id == step.id) {
+                            step_index = idx + 1;
+                        }
+
+                        match step_result {
+                            Ok(output) => {
+                                Self::record_step_to_breaker(par_tier, true);
+                                context.add_output(&step.id, output.clone());
+
+                                if let Some(ref tx) = progress_tx {
+                                    let _ = tx
+                                        .send(AgentProgressEvent::StepCompleted {
+                                            step_id: step.id.clone(),
+                                            step_index: 0,
+                                            success: true,
+                                            duration_ms,
+                                            output_summary: summarize_output(&output),
+                                            image_url: extract_image_url(&output),
+                                        })
+                                        .await;
+                                }
+
+                                task_state.step_results.insert(
+                                    step.id.clone(),
+                                    StepResult {
+                                        step_id: step.id.clone(),
+                                        success: true,
+                                        output: Some(output),
+                                        error: None,
+                                        duration_ms,
+                                        retry_count: 0,
+                                    },
+                                );
+
+                                if let Some(ref mut dag) = dag_scheduler {
+                                    dag.mark_completed(&step.id);
+                                }
+
+                                if let Some(evo) =
+                                    crate::services::agent::skill_evolution::get_skill_evolution()
+                                {
+                                    evo.on_execution_complete(&step.capability_id, true, None)
+                                        .await;
+                                }
+
+                                // 记录并行步骤追踪（成功）
+                                *tier_usage.entry(par_tier_str.clone()).or_insert(0) += 1;
+                                step_traces.push(types::StepTrace {
+                                    step_id: step.id.clone(),
+                                    capability_id: step.capability_id.clone(),
+                                    tier_used: par_tier_str,
+                                    duration_ms,
+                                    success: true,
+                                    error: None,
+                                });
+                            }
+                            Err(e) => {
+                                Self::record_step_to_breaker(par_tier, false);
+                                tracing::error!(
+                                    step_id = %step.id,
+                                    error = %e,
+                                    "[Executor] Parallel step failed"
+                                );
+
+                                if let Some(ref tx) = progress_tx {
+                                    let _ = tx
+                                        .send(AgentProgressEvent::StepCompleted {
+                                            step_id: step.id.clone(),
+                                            step_index: 0,
+                                            success: false,
+                                            duration_ms,
+                                            output_summary: Some(e.clone()),
+                                            image_url: None,
+                                        })
+                                        .await;
+                                }
+
+                                if let Some(evo) =
+                                    crate::services::agent::skill_evolution::get_skill_evolution()
+                                {
+                                    evo.on_execution_complete(
+                                        &step.capability_id,
+                                        false,
+                                        Some(&e),
+                                    )
+                                    .await;
+                                }
+
+                                task_state.step_results.insert(
+                                    step.id.clone(),
+                                    StepResult {
+                                        step_id: step.id.clone(),
+                                        success: false,
+                                        output: None,
+                                        error: Some(e.clone()),
+                                        duration_ms,
+                                        retry_count: 0,
+                                    },
+                                );
+
+                                // DAG 模式：标记步骤失败，根据策略决定是否阻塞依赖链
+                                if let Some(ref mut dag) = dag_scheduler {
+                                    dag.mark_failed(&step.id, &step.on_failure);
+                                }
+
+                                // 记录并行步骤追踪（失败）
+                                *tier_usage.entry(par_tier_str.clone()).or_insert(0) += 1;
+                                step_traces.push(types::StepTrace {
+                                    step_id: step.id.clone(),
+                                    capability_id: step.capability_id.clone(),
+                                    tier_used: par_tier_str,
+                                    duration_ms,
+                                    success: false,
+                                    error: Some(e),
+                                });
+                            }
+                        }
+                    }
+
+                    task_state.update_progress(current_total);
+                    continue; // 继续下一波并行步骤
+                } else {
+                    // 单个就绪步骤，走顺序路径
+                    let next = ready.into_iter().next().unwrap();
+                    if let Some(idx) = all_steps.iter().position(|s| s.id == next.id) {
+                        step_index = idx + 1;
+                    }
+                    (Some(next), false)
+                }
             } else if step_index < all_steps.len() {
                 let s = all_steps[step_index].clone();
                 step_index += 1;
-                (s, false)
+                (Some(s), false)
             } else {
                 break;
+            };
+
+            // ====== 顺序执行路径（单步） ======
+            let step = match step {
+                Some(s) => s,
+                None => continue,
             };
 
             let current_total = total_steps + context.pending_dynamic_steps.len();
@@ -226,77 +503,243 @@ impl Executor {
                     .await;
             }
 
-            // 执行步骤
-            let start_time = std::time::Instant::now();
-            let step_result = self
-                .execute_step(&step, &mut context, &handler_ctx)
-                .await;
-            let duration_ms = start_time.elapsed().as_millis() as u64;
+            // 执行步骤（带重试）
+            let max_step_retries = step
+                .retry
+                .as_ref()
+                .map(|r| r.max_attempts.min(3))
+                .unwrap_or(1);
+            let mut retry_count: u32 = 0;
+            // 用于追踪的 tier（最后一次使用的 tier）
+            let mut step_tier;
 
-            match step_result {
-                Ok(output) => {
-                    // 记录输出
-                    context.add_output(&step.id, output.clone());
+            loop {
+                // 每次重试重新解析 tier（熔断器状态可能已变化）
+                step_tier =
+                    Self::resolve_tier_with_breaker(&step.capability_id, step.model_tier);
+                let step_analyzer = self.get_analyzer_for_tier(step_tier);
 
-                    // 发送步骤完成事件
-                    if let Some(ref tx) = progress_tx {
-                        let output_summary = summarize_output(&output);
-                        let _ = tx
-                            .send(AgentProgressEvent::StepCompleted {
-                                step_id: step.id.clone(),
-                                step_index: (step_index.saturating_sub(1)) as u32,
-                                success: true,
-                                duration_ms,
-                                output_summary,
-                            })
-                            .await;
-                    }
-
-                    let result = StepResult {
-                        step_id: step.id.clone(),
-                        success: true,
-                        output: Some(output),
-                        error: None,
-                        duration_ms,
-                        retry_count: 0,
-                    };
-                    task_state.step_results.insert(step.id.clone(), result);
-                }
-                Err(e) => {
-                    tracing::error!(
+                if retry_count == 0 {
+                    tracing::debug!(
                         step_id = %step.id,
-                        error = %e,
-                        "[Executor] Step failed"
+                        capability = %step.capability_id,
+                        tier = ?step_tier,
+                        "[Executor] Using {:?} tier for step", step_tier
                     );
-
-                    // 发送步骤失败事件
-                    if let Some(ref tx) = progress_tx {
-                        let _ = tx
-                            .send(AgentProgressEvent::StepCompleted {
-                                step_id: step.id.clone(),
-                                step_index: (step_index.saturating_sub(1)) as u32,
-                                success: false,
-                                duration_ms,
-                                output_summary: Some(e.clone()),
-                            })
-                            .await;
-                    }
-
-                    let result = StepResult {
-                        step_id: step.id.clone(),
-                        success: false,
-                        output: None,
-                        error: Some(e),
-                        duration_ms,
-                        retry_count: 0,
-                    };
-                    task_state.step_results.insert(step.id.clone(), result);
                 }
+
+                let handler_ctx = HandlerContext {
+                    db: &self.db,
+                    ai_analyzer: step_analyzer,
+                    user_id,
+                    execution_context: Some(context.clone()),
+                };
+
+                // 快照 context 以便重试时回滚（避免失败的副作用污染下次尝试）
+                let ctx_snapshot = if max_step_retries > 1 {
+                    Some(context.clone())
+                } else {
+                    None
+                };
+
+                let start_time = std::time::Instant::now();
+                let step_result = self
+                    .execute_step(&step, &mut context, &handler_ctx)
+                    .await;
+                let duration_ms = start_time.elapsed().as_millis() as u64;
+
+                match step_result {
+                    Ok(output) => {
+                        Self::record_step_to_breaker(step_tier, true);
+                        // 记录输出
+                        context.add_output(&step.id, output.clone());
+
+                        // 发送步骤完成事件
+                        if let Some(ref tx) = progress_tx {
+                            let output_summary = summarize_output(&output);
+                            let image_url = extract_image_url(&output);
+                            let _ = tx
+                                .send(AgentProgressEvent::StepCompleted {
+                                    step_id: step.id.clone(),
+                                    step_index: (step_index.saturating_sub(1)) as u32,
+                                    success: true,
+                                    duration_ms,
+                                    output_summary,
+                                    image_url,
+                                })
+                                .await;
+                        }
+
+                        // 动态步骤生成器：处理 ConditionalBranch / AiGenerated（在 output move 前）
+                        if let Some(ref gen) = step.generator {
+                            let generated = self
+                                .process_step_generator(gen, &step, &output, &mut context)
+                                .await;
+                            if !generated.is_empty() {
+                                tracing::info!(
+                                    step_id = %step.id,
+                                    count = generated.len(),
+                                    "[Executor] Generator produced {} dynamic steps",
+                                    generated.len()
+                                );
+                                context.queue_dynamic_steps(generated);
+                            }
+                        }
+
+                        let result = StepResult {
+                            step_id: step.id.clone(),
+                            success: true,
+                            output: Some(output),
+                            error: None,
+                            duration_ms,
+                            retry_count,
+                        };
+                        task_state.step_results.insert(step.id.clone(), result);
+
+                        // DAG 模式：标记步骤完成，解锁后续步骤
+                        if let Some(ref mut dag) = dag_scheduler {
+                            dag.mark_completed(&step.id);
+                        }
+
+                        // Skill 进化：记录成功
+                        if let Some(evolution) =
+                            crate::services::agent::skill_evolution::get_skill_evolution()
+                        {
+                            evolution
+                                .on_execution_complete(&step.capability_id, true, None)
+                                .await;
+                        }
+                        break; // 成功，退出重试循环
+                    }
+                    Err(e) => {
+                        Self::record_step_to_breaker(step_tier, false);
+                        retry_count += 1;
+
+                        // 检查是否可以重试（步骤级 + 全局预算）
+                        if retry_count < max_step_retries && global_retry_budget > 0 {
+                            global_retry_budget -= 1;
+                            // 回滚 context 到重试前的快照，避免失败副作用污染
+                            if let Some(snapshot) = ctx_snapshot {
+                                context = snapshot;
+                            }
+
+                            // 重试延迟（指数退避）
+                            if let Some(ref retry_cfg) = step.retry {
+                                let base_delay = retry_cfg.delay_ms.max(100);
+                                let delay = if retry_cfg.exponential_backoff {
+                                    base_delay * 2u64.pow(retry_count - 1)
+                                } else {
+                                    base_delay
+                                };
+                                tracing::warn!(
+                                    step_id = %step.id,
+                                    retry = retry_count,
+                                    delay_ms = delay,
+                                    budget = global_retry_budget,
+                                    error = %e,
+                                    "[Executor] Step failed, retrying in {}ms ({}/{})",
+                                    delay, retry_count, max_step_retries
+                                );
+                                tokio::time::sleep(
+                                    std::time::Duration::from_millis(delay.min(30_000))
+                                ).await;
+                            } else {
+                                tracing::warn!(
+                                    step_id = %step.id,
+                                    retry = retry_count,
+                                    budget = global_retry_budget,
+                                    error = %e,
+                                    "[Executor] Step failed, retrying ({}/{})",
+                                    retry_count, max_step_retries
+                                );
+                            }
+                            continue; // 重试
+                        }
+
+                        tracing::error!(
+                            step_id = %step.id,
+                            error = %e,
+                            retries = retry_count,
+                            "[Executor] Step failed (no more retries)"
+                        );
+
+                        // 发送步骤失败事件
+                        if let Some(ref tx) = progress_tx {
+                            let _ = tx
+                                .send(AgentProgressEvent::StepCompleted {
+                                    step_id: step.id.clone(),
+                                    step_index: (step_index.saturating_sub(1)) as u32,
+                                    success: false,
+                                    duration_ms,
+                                    output_summary: Some(e.clone()),
+                                    image_url: None,
+                                })
+                                .await;
+                        }
+
+                        // Skill 进化：记录失败
+                        if let Some(evolution) =
+                            crate::services::agent::skill_evolution::get_skill_evolution()
+                        {
+                            evolution
+                                .on_execution_complete(&step.capability_id, false, Some(&e))
+                                .await;
+                        }
+
+                        let result = StepResult {
+                            step_id: step.id.clone(),
+                            success: false,
+                            output: None,
+                            error: Some(e),
+                            duration_ms,
+                            retry_count,
+                        };
+                        task_state.step_results.insert(step.id.clone(), result);
+
+                        // DAG 模式：标记步骤失败，根据策略决定是否阻塞依赖链
+                        if let Some(ref mut dag) = dag_scheduler {
+                            dag.mark_failed(&step.id, &step.on_failure);
+                        }
+                        break; // 失败，退出重试循环
+                    }
+                }
+            }
+
+            // 记录步骤追踪
+            if let Some(sr) = task_state.step_results.get(&step.id) {
+                let tier_str = format!("{:?}", step_tier);
+                *tier_usage.entry(tier_str.clone()).or_insert(0) += 1;
+                step_traces.push(types::StepTrace {
+                    step_id: step.id.clone(),
+                    capability_id: step.capability_id.clone(),
+                    tier_used: tier_str,
+                    duration_ms: sr.duration_ms,
+                    success: sr.success,
+                    error: sr.error.clone(),
+                });
             }
         }
 
-        // 完成
-        task_state.status = TaskStatus::Completed;
+        // 附加执行追踪
+        task_state.execution_trace = Some(types::ExecutionTrace {
+            trace_id,
+            steps: step_traces,
+            total_duration_ms: execution_start.elapsed().as_millis() as u64,
+            tier_usage,
+        });
+
+        // 根据步骤结果决定最终状态
+        let total_steps = task_state.step_results.len();
+        let failed_steps = task_state.step_results.values().filter(|r| !r.success).count();
+        if failed_steps > 0 && failed_steps == total_steps {
+            task_state.status = TaskStatus::Failed;
+            let errors: Vec<String> = task_state.step_results.values()
+                .filter_map(|r| r.error.clone())
+                .collect();
+            task_state.error = Some(errors.join("; "));
+        } else {
+            task_state.status = TaskStatus::Completed;
+        }
         task_state.completed_at = Some(chrono::Utc::now());
         task_state.progress = 100;
 
@@ -318,6 +761,13 @@ impl Executor {
         context: &mut ExecutionContext,
         handler_ctx: &HandlerContext<'_>,
     ) -> Result<Value, String> {
+        // Skill 执行：以 "skill:" 开头的 capability_id 由 Skill 系统处理
+        if let Some(skill_id) = step.capability_id.strip_prefix("skill:") {
+            return self
+                .execute_skill_step(skill_id, step, context, handler_ctx)
+                .await;
+        }
+
         // 获取能力定义
         let registry = get_registry().await;
         let capability = registry
@@ -394,14 +844,21 @@ impl Executor {
         }
 
         // 根据能力类别和预估时长确定超时（秒），预估时长取3倍作为缓冲
+        // 注意：先乘后除避免整数截断（500ms * 3 / 1000 = 1，而不是 500/1000*3 = 0）
         let timeout_secs = capability
             .estimated_duration_ms
-            .map(|ms| ((ms / 1000) * 3).clamp(10, 300))
+            .map(|ms| (ms * 3 / 1000).clamp(10, 300))
             .unwrap_or_else(|| match &capability.category {
                 CapabilityCategory::AiProcess | CapabilityCategory::ResourceCreate => 120,
                 CapabilityCategory::ExternalIntegration => 30,
                 _ => 30,
             });
+        // AI 类能力最少给 30 秒（LLM API 调用延迟不可预测）
+        let timeout_secs = if capability.requires_ai && timeout_secs < 30 {
+            30
+        } else {
+            timeout_secs
+        };
         let capability_category = capability.category.clone();
 
         // 释放注册表读锁，避免锁跨越长时间的 handler await
@@ -436,6 +893,220 @@ impl Executor {
             );
             format!("能力 '{}' 执行超时（{}秒）", step.capability_id, timeout_secs)
         })?
+    }
+
+    /// 执行 Skill 步骤
+    ///
+    /// Skill 的 full_instructions 包含执行策略（自然语言描述的步骤编排），
+    /// 通过 AI 将其转化为具体的能力调用序列并动态注入执行上下文。
+    async fn execute_skill_step(
+        &self,
+        skill_id: &str,
+        step: &RecipeStep,
+        context: &mut ExecutionContext,
+        handler_ctx: &HandlerContext<'_>,
+    ) -> Result<Value, String> {
+        // 从注册表加载 Skill
+        let registry = crate::services::agent::skill::get_skill_registry()
+            .ok_or("Skill registry not initialized")?;
+        let skill = registry
+            .get(skill_id)
+            .await
+            .ok_or_else(|| format!("Unknown skill: {}", skill_id))?;
+
+        tracing::info!(
+            skill_id = skill_id,
+            skill_name = %skill.name,
+            "[Executor] Executing skill"
+        );
+
+        // 检查 gating（前置条件）
+        if !skill.gating.capabilities.is_empty() {
+            let cap_registry = get_registry().await;
+            for required_cap in &skill.gating.capabilities {
+                if cap_registry.get(required_cap).is_none() {
+                    return Err(format!(
+                        "Skill '{}' requires capability '{}' which is not available",
+                        skill.name, required_cap
+                    ));
+                }
+            }
+        }
+
+        // 用 AI 将 Skill instructions 转化为执行计划
+        let analyzer = handler_ctx
+            .ai_analyzer
+            .ok_or("AI analyzer not available for skill execution")?;
+
+        // 构建可用能力列表（仅 Skill gating 中声明的 + 通用 AI 能力）
+        let available_caps = {
+            let cap_registry = get_registry().await;
+            let mut caps_desc = String::new();
+            let gating_caps = &skill.gating.capabilities;
+            let all_caps = cap_registry.get_all();
+            for cap in &all_caps {
+                if gating_caps.contains(&cap.id) || cap.id.starts_with("ai.") {
+                    // 提取 required params
+                    let params_hint = cap.input_schema
+                        .get("required")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                        .unwrap_or_default();
+                    caps_desc.push_str(&format!(
+                        "- `{}`: {} (参数: {})\n",
+                        cap.id, cap.description, if params_hint.is_empty() { "无必需" } else { &params_hint }
+                    ));
+                }
+            }
+            drop(cap_registry);
+            caps_desc
+        };
+
+        let prompt = format!(
+            "你是 Myriad 的能力编排引擎。根据 Skill 策略生成 JSON 执行计划。\n\n\
+             ## Skill: {name}\n{desc}\n\n\
+             ## 可用能力（只能使用这些 capability_id）\n{caps}\n\
+             ## 执行策略\n{instructions}\n\n\
+             ## 用户参数\n{params}\n\n\
+             规则：\n\
+             1. capability_id 必须从上面的可用能力列表中选择\n\
+             2. 步骤按执行顺序排列，后续步骤可通过 depends_on 引用前面步骤的 id\n\
+             3. 最多 10 个步骤\n\
+             4. 只返回纯 JSON，不要 markdown\n\n\
+             格式：{{\"steps\": [{{\"capability_id\": \"x\", \"action\": \"描述\", \"params\": {{}}, \"depends_on\": []}}]}}",
+            name = skill.name,
+            desc = skill.description,
+            caps = available_caps,
+            instructions = skill.full_instructions,
+            params = serde_json::to_string_pretty(&step.params).unwrap_or_default()
+        );
+
+        let ai_result = analyzer
+            .analyze(&prompt)
+            .await
+            .map_err(|e| format!("Skill AI planning failed: {}", e))?;
+
+        // 解析 AI 返回的步骤计划（从文本中提取 JSON）
+        let plan: Value = {
+            // 尝试找到 JSON 块
+            let text = ai_result.trim();
+            let json_str = if let Some(start) = text.find('{') {
+                if let Some(end) = text.rfind('}') {
+                    &text[start..=end]
+                } else {
+                    text
+                }
+            } else {
+                text
+            };
+            serde_json::from_str(json_str).unwrap_or_else(|_| json!({"steps": []}))
+        };
+
+        let planned_steps = plan
+            .get("steps")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        if planned_steps.is_empty() {
+            return Err(format!(
+                "Skill '{}' AI planning returned no executable steps",
+                skill.name
+            ));
+        }
+
+        // 步骤上限
+        let planned_steps: Vec<&Value> = planned_steps.iter().take(10).collect();
+
+        // 验证并构建动态步骤
+        let cap_registry = get_registry().await;
+        let mut dynamic_steps = Vec::with_capacity(planned_steps.len());
+        let mut prev_step_id: Option<String> = None;
+
+        for (i, planned) in planned_steps.iter().enumerate() {
+            let cap_id = planned
+                .get("capability_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // 验证 capability_id 存在
+            if cap_id.is_empty() || (!cap_id.starts_with("skill:") && !cap_id.starts_with("mcp.") && cap_registry.get(cap_id).is_none()) {
+                tracing::warn!(
+                    skill_id = skill_id,
+                    invalid_cap = cap_id,
+                    "[Executor] Skill step generated invalid capability_id, skipping"
+                );
+                continue;
+            }
+
+            let action = planned
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("execute");
+            let params: HashMap<String, Value> = planned
+                .get("params")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            // depends_on: 优先使用 AI 返回的，否则串联前一步
+            let depends_on = planned
+                .get("depends_on")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>())
+                .unwrap_or_else(|| {
+                    prev_step_id.iter().cloned().collect()
+                });
+
+            // 第一个数据获取步骤 abort，后续步骤 skip
+            let on_failure = if i == 0 && !cap_id.starts_with("ai.") {
+                types::FailureStrategy::Abort
+            } else {
+                types::FailureStrategy::Skip
+            };
+
+            let step_id = format!("{}_{}_step_{}", step.id, skill_id, i);
+            prev_step_id = Some(step_id.clone());
+
+            dynamic_steps.push(RecipeStep {
+                id: step_id,
+                order: (step.order * 100) + (i as u32),
+                capability_id: cap_id.to_string(),
+                action: action.to_string(),
+                params,
+                depends_on,
+                on_failure,
+                retry: None,
+                timeout_ms: Some(60000),
+                model_tier: skill.tier_hint.as_ref().map(|h| h.to_model_tier()),
+                generator: None,
+            });
+        }
+        drop(cap_registry);
+
+        if dynamic_steps.is_empty() {
+            return Err(format!(
+                "Skill '{}' all generated steps had invalid capability_ids",
+                skill.name
+            ));
+        }
+
+        let steps_count = dynamic_steps.len();
+        context.queue_dynamic_steps(dynamic_steps);
+
+        tracing::info!(
+            skill_id = skill_id,
+            dynamic_steps = steps_count,
+            "[Executor] Skill generated {} dynamic steps",
+            steps_count
+        );
+
+        let last_output = json!({
+            "skill": skill_id,
+            "status": "planned",
+            "dynamic_steps_generated": steps_count,
+        });
+
+        Ok(last_output)
     }
 
     /// 解析参数中的引用
@@ -556,21 +1227,46 @@ impl Executor {
             "[Executor] Resuming execution after user answer"
         );
 
-        // 创建 handler 上下文
-        let handler_ctx = HandlerContext {
-            db: &self.db,
-            ai_analyzer: self.ai_analyzer.as_ref(),
-            user_id,
-            execution_context: None,
-        };
-
         // 继续执行剩余步骤
         let all_steps: Vec<RecipeStep> = recipe.steps.clone();
         let mut step_index = task_state.current_step;
 
+        // 构建 DAG 调度器（检测是否有并行依赖）
+        let mut dag_scheduler = dag::DagScheduler::new(&all_steps).ok();
+        let use_dag = dag_scheduler
+            .as_ref()
+            .map_or(false, |d| d.is_parallel_mode());
+
+        // 已完成的步骤需要在 DAG 中标记
+        if let Some(ref mut dag) = dag_scheduler {
+            for step_id in task_state.step_results.keys() {
+                dag.mark_completed(step_id);
+            }
+        }
+
+        // ExecutionTrace 初始化
+        let execution_start = std::time::Instant::now();
+        let trace_id = format!("trace_{}_resume", task_state.task_id);
+        let mut step_traces: Vec<types::StepTrace> = Vec::new();
+        let mut tier_usage: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+
         while step_index < all_steps.len() || context.has_pending_steps() {
             let step = if let Some(dynamic_step) = context.pop_dynamic_step() {
                 dynamic_step
+            } else if use_dag {
+                let ready = dag_scheduler
+                    .as_ref()
+                    .map(|d| d.get_ready_steps())
+                    .unwrap_or_default();
+                if let Some(next) = ready.into_iter().next() {
+                    if let Some(idx) = all_steps.iter().position(|s| s.id == next.id) {
+                        step_index = idx + 1;
+                    }
+                    next
+                } else {
+                    break;
+                }
             } else if step_index < all_steps.len() {
                 let s = all_steps[step_index].clone();
                 step_index += 1;
@@ -593,6 +1289,18 @@ impl Executor {
                 continue;
             }
 
+            // 根据步骤的 capability_id 和显式 model_tier 选择合适的 AI 分析器（带熔断器）
+            let step_tier =
+                Self::resolve_tier_with_breaker(&step.capability_id, step.model_tier);
+            let step_analyzer = self.get_analyzer_for_tier(step_tier);
+
+            let handler_ctx = HandlerContext {
+                db: &self.db,
+                ai_analyzer: step_analyzer,
+                user_id,
+                execution_context: Some(context.clone()),
+            };
+
             // 执行步骤
             let start_time = std::time::Instant::now();
             let step_result = self
@@ -602,6 +1310,7 @@ impl Executor {
 
             match step_result {
                 Ok(output) => {
+                    Self::record_step_to_breaker(step_tier, true);
                     context.add_output(&step.id, output.clone());
 
                     // 分析是否需要更多用户输入
@@ -631,23 +1340,89 @@ impl Executor {
                         retry_count: 0,
                     };
                     task_state.step_results.insert(step.id.clone(), result);
+
+                    // DAG 模式：标记步骤完成，解锁后续步骤
+                    if let Some(ref mut dag) = dag_scheduler {
+                        dag.mark_completed(&step.id);
+                    }
+
+                    // Skill 进化：记录成功
+                    if let Some(evolution) =
+                        crate::services::agent::skill_evolution::get_skill_evolution()
+                    {
+                        evolution
+                            .on_execution_complete(&step.capability_id, true, None)
+                            .await;
+                    }
+
+                    // 记录步骤追踪（成功）
+                    let tier_str = format!("{:?}", step_tier);
+                    *tier_usage.entry(tier_str.clone()).or_insert(0) += 1;
+                    step_traces.push(types::StepTrace {
+                        step_id: step.id.clone(),
+                        capability_id: step.capability_id.clone(),
+                        tier_used: tier_str,
+                        duration_ms,
+                        success: true,
+                        error: None,
+                    });
                 }
                 Err(e) => {
+                    Self::record_step_to_breaker(step_tier, false);
+                    // Skill 进化：记录失败
+                    if let Some(evolution) =
+                        crate::services::agent::skill_evolution::get_skill_evolution()
+                    {
+                        evolution
+                            .on_execution_complete(&step.capability_id, false, Some(&e))
+                            .await;
+                    }
+
                     let result = StepResult {
                         step_id: step.id.clone(),
                         success: false,
                         output: None,
-                        error: Some(e),
+                        error: Some(e.clone()),
                         duration_ms,
                         retry_count: 0,
                     };
                     task_state.step_results.insert(step.id.clone(), result);
+
+                    // 记录步骤追踪（失败）
+                    let tier_str = format!("{:?}", step_tier);
+                    *tier_usage.entry(tier_str.clone()).or_insert(0) += 1;
+                    step_traces.push(types::StepTrace {
+                        step_id: step.id.clone(),
+                        capability_id: step.capability_id.clone(),
+                        tier_used: tier_str,
+                        duration_ms,
+                        success: false,
+                        error: Some(e),
+                    });
                 }
             }
         }
 
-        // 完成
-        task_state.status = TaskStatus::Completed;
+        // 附加执行追踪
+        task_state.execution_trace = Some(types::ExecutionTrace {
+            trace_id,
+            steps: step_traces,
+            total_duration_ms: execution_start.elapsed().as_millis() as u64,
+            tier_usage,
+        });
+
+        // 根据步骤结果决定最终状态
+        let total_steps = task_state.step_results.len();
+        let failed_steps = task_state.step_results.values().filter(|r| !r.success).count();
+        if failed_steps > 0 && failed_steps == total_steps {
+            task_state.status = TaskStatus::Failed;
+            let errors: Vec<String> = task_state.step_results.values()
+                .filter_map(|r| r.error.clone())
+                .collect();
+            task_state.error = Some(errors.join("; "));
+        } else {
+            task_state.status = TaskStatus::Completed;
+        }
         task_state.completed_at = Some(chrono::Utc::now());
         task_state.progress = 100;
 
@@ -887,6 +1662,8 @@ impl Executor {
                 on_failure: FailureStrategy::Skip,
                 retry: None,
                 timeout_ms: None,
+                model_tier: None,
+                generator: None,
             };
 
             return StepAnalysisResult::GenerateSteps(vec![suggested_step]);
@@ -1151,6 +1928,8 @@ impl Executor {
                     on_failure: FailureStrategy::Abort,
                     retry: None,
                     timeout_ms: Some(10000),
+                    model_tier: None,
+                    generator: None,
                 };
 
                 context.queue_dynamic_steps(vec![subscribe_step]);
@@ -1385,6 +2164,8 @@ impl Executor {
                         on_failure: FailureStrategy::Skip,
                         retry: None,
                         timeout_ms: Some(5000),
+                        model_tier: None,
+                        generator: None,
                     };
 
                     matched_steps.push(interact_step);
@@ -1547,5 +2328,394 @@ impl Executor {
         _context: &mut ExecutionContext,
     ) {
         // 预留：可以根据 brew.page 的结果自动触发后续操作
+    }
+
+    // ======== 动态步骤生成器 ========
+
+    /// 处理步骤上的 StepGenerator，返回生成的动态步骤
+    async fn process_step_generator(
+        &self,
+        generator: &StepGenerator,
+        step: &RecipeStep,
+        output: &Value,
+        context: &mut ExecutionContext,
+    ) -> Vec<RecipeStep> {
+        match generator {
+            StepGenerator::ConditionalBranch {
+                condition,
+                if_true,
+                if_false,
+            } => {
+                let result = self.evaluate_condition(condition, &step.id, output, context);
+                let branch = if result { if_true } else { if_false };
+                tracing::info!(
+                    step_id = %step.id,
+                    condition = %condition,
+                    result = result,
+                    branch_steps = branch.len(),
+                    "[Generator] ConditionalBranch evaluated"
+                );
+                branch.clone()
+            }
+            StepGenerator::AiGenerated {
+                context_prompt,
+                capability_scope,
+            } => {
+                self.ai_generate_steps(context_prompt, capability_scope.as_deref(), step, context)
+                    .await
+            }
+            StepGenerator::UiInteractionFromAnalysis {
+                source_step,
+                operation_intent,
+            } => {
+                // 从源步骤输出中提取 UI 元素，生成交互步骤
+                let source_output = context.step_outputs.get(source_step.as_str());
+                if let Some(output) = source_output {
+                    if let Some(elements) = output.get("elements").and_then(|e| e.as_array()) {
+                        elements
+                            .iter()
+                            .take(5)
+                            .enumerate()
+                            .map(|(i, el)| {
+                                let mut params = HashMap::new();
+                                params.insert("element".to_string(), el.clone());
+                                params.insert(
+                                    "intent".to_string(),
+                                    Value::String(operation_intent.clone()),
+                                );
+                                RecipeStep {
+                                    id: format!("{}_ui_{}", step.id, i),
+                                    order: (step.order + 1 + i as u32),
+                                    capability_id: "tapp.interact".to_string(),
+                                    action: "interact".to_string(),
+                                    params,
+                                    depends_on: vec![step.id.clone()],
+                                    on_failure: FailureStrategy::Skip,
+                                    retry: None,
+                                    timeout_ms: Some(15_000),
+                                    model_tier: None,
+                                    generator: None,
+                                }
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            StepGenerator::IterateFromList {
+                source_step,
+                item_capability,
+            } => {
+                let source_output = context.step_outputs.get(source_step.as_str());
+                if let Some(output) = source_output {
+                    // 尝试从输出中找到列表数据
+                    let items = output
+                        .get("items")
+                        .or_else(|| output.get("data"))
+                        .or_else(|| output.get("list"))
+                        .and_then(|v| v.as_array());
+                    if let Some(items) = items {
+                        items
+                            .iter()
+                            .take(10) // 最多迭代 10 项
+                            .enumerate()
+                            .map(|(i, item)| {
+                                let mut params = HashMap::new();
+                                params.insert("item".to_string(), item.clone());
+                                params.insert(
+                                    "index".to_string(),
+                                    Value::Number(serde_json::Number::from(i)),
+                                );
+                                RecipeStep {
+                                    id: format!("{}_iter_{}", step.id, i),
+                                    order: (step.order + 1 + i as u32),
+                                    capability_id: item_capability.clone(),
+                                    action: "process".to_string(),
+                                    params,
+                                    depends_on: vec![step.id.clone()],
+                                    on_failure: FailureStrategy::Skip,
+                                    retry: None,
+                                    timeout_ms: Some(30_000),
+                                    model_tier: None,
+                                    generator: None,
+                                }
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            }
+        }
+    }
+
+    /// 评估条件表达式（支持简单的 dot-path 真值检查和比较运算）
+    fn evaluate_condition(
+        &self,
+        condition: &str,
+        current_step_id: &str,
+        current_output: &Value,
+        context: &ExecutionContext,
+    ) -> bool {
+        // 支持的格式：
+        // 1. "output.field" → 检查当前步骤输出中 field 的真值
+        // 2. "step_id.field" → 检查指定步骤输出中 field 的真值
+        // 3. "output.field == value" → 相等比较
+        // 4. "output.field > 0" → 数值比较
+        // 5. "output.field != null" → 非空检查
+
+        let condition = condition.trim();
+
+        // 解析比较运算符
+        let (path, op, expected) = if let Some(pos) = condition.find("!=") {
+            let (p, v) = condition.split_at(pos);
+            (p.trim(), "!=", v[2..].trim())
+        } else if let Some(pos) = condition.find("==") {
+            let (p, v) = condition.split_at(pos);
+            (p.trim(), "==", v[2..].trim())
+        } else if let Some(pos) = condition.find(">=") {
+            let (p, v) = condition.split_at(pos);
+            (p.trim(), ">=", v[2..].trim())
+        } else if let Some(pos) = condition.find("<=") {
+            let (p, v) = condition.split_at(pos);
+            (p.trim(), "<=", v[2..].trim())
+        } else if let Some(pos) = condition.find('>') {
+            let (p, v) = condition.split_at(pos);
+            (p.trim(), ">", v[1..].trim())
+        } else if let Some(pos) = condition.find('<') {
+            let (p, v) = condition.split_at(pos);
+            (p.trim(), "<", v[1..].trim())
+        } else {
+            // 纯路径：检查真值
+            (condition, "truthy", "")
+        };
+
+        // 解析 dot-path 取值
+        let value = self.resolve_dot_path(path, current_step_id, current_output, context);
+
+        match op {
+            "truthy" => Self::is_truthy(&value),
+            "==" => {
+                if expected == "null" || expected == "nil" {
+                    value.is_null()
+                } else if let Some(expected_num) = expected.parse::<f64>().ok() {
+                    value.as_f64().map_or(false, |v| (v - expected_num).abs() < f64::EPSILON)
+                } else {
+                    let expected_str = expected.trim_matches('"').trim_matches('\'');
+                    value.as_str().map_or(false, |v| v == expected_str)
+                }
+            }
+            "!=" => {
+                if expected == "null" || expected == "nil" {
+                    !value.is_null()
+                } else if let Some(expected_num) = expected.parse::<f64>().ok() {
+                    value.as_f64().map_or(true, |v| (v - expected_num).abs() >= f64::EPSILON)
+                } else {
+                    let expected_str = expected.trim_matches('"').trim_matches('\'');
+                    value.as_str().map_or(true, |v| v != expected_str)
+                }
+            }
+            ">" | ">=" | "<" | "<=" => {
+                let actual = value.as_f64().unwrap_or(0.0);
+                let expected_num = expected.parse::<f64>().unwrap_or(0.0);
+                match op {
+                    ">" => actual > expected_num,
+                    ">=" => actual >= expected_num,
+                    "<" => actual < expected_num,
+                    "<=" => actual <= expected_num,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// 解析 dot-path 从步骤输出中取值
+    fn resolve_dot_path(
+        &self,
+        path: &str,
+        _current_step_id: &str,
+        current_output: &Value,
+        context: &ExecutionContext,
+    ) -> Value {
+        let parts: Vec<&str> = path.split('.').collect();
+        if parts.is_empty() {
+            return Value::Null;
+        }
+
+        // 确定起始值
+        let (root, field_start) = if parts[0] == "output" {
+            // "output.xxx" → 当前步骤输出
+            (current_output, 1)
+        } else if context.step_outputs.contains_key(parts[0]) {
+            // "step_id.xxx" → 指定步骤输出
+            (context.step_outputs.get(parts[0]).unwrap(), 1)
+        } else {
+            // 没有前缀，尝试从当前步骤输出解析
+            (current_output, 0)
+        };
+
+        // 逐层取值
+        let mut current = root.clone();
+        for part in &parts[field_start..] {
+            current = if let Some(idx) = part.parse::<usize>().ok() {
+                current
+                    .as_array()
+                    .and_then(|arr| arr.get(idx).cloned())
+                    .unwrap_or(Value::Null)
+            } else {
+                current.get(part).cloned().unwrap_or(Value::Null)
+            };
+        }
+        current
+    }
+
+    /// 判断 JSON 值的真值
+    fn is_truthy(value: &Value) -> bool {
+        match value {
+            Value::Null => false,
+            Value::Bool(b) => *b,
+            Value::Number(n) => n.as_f64().map_or(false, |v| v != 0.0),
+            Value::String(s) => !s.is_empty(),
+            Value::Array(arr) => !arr.is_empty(),
+            Value::Object(obj) => !obj.is_empty(),
+        }
+    }
+
+    /// AI 动态生成步骤
+    async fn ai_generate_steps(
+        &self,
+        context_prompt: &str,
+        capability_scope: Option<&[String]>,
+        parent_step: &RecipeStep,
+        context: &ExecutionContext,
+    ) -> Vec<RecipeStep> {
+        let analyzer = match self.get_analyzer_for_tier(ModelTier::Standard) {
+            Some(a) => a,
+            None => {
+                tracing::warn!("[Generator] No AI analyzer available for AiGenerated");
+                return vec![];
+            }
+        };
+
+        // 构建能力列表
+        let capabilities = if let Some(scope) = capability_scope {
+            scope.join(", ")
+        } else {
+            let registry = get_registry().await;
+            registry.get_all().iter().take(30).map(|c| c.id.as_str()).collect::<Vec<_>>().join(", ")
+        };
+
+        // 构建上下文摘要
+        let outputs_summary: String = context
+            .step_outputs
+            .iter()
+            .take(5)
+            .map(|(id, val)| format!("- {}: {}", id, summarize_output(val).unwrap_or_default()))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let prompt = format!(
+            r#"根据以下上下文，生成接下来需要执行的步骤。
+
+## 上下文提示
+{}
+
+## 已完成步骤的输出
+{}
+
+## 可用能力
+{}
+
+## 输出格式
+返回 JSON 数组，每个元素格式：
+```json
+[{{"id": "gen_1", "capability_id": "...", "action": "...", "params": {{}}}}]
+```
+
+最多生成 5 个步骤。只输出 JSON 数组，不要其他文字。"#,
+            context_prompt, outputs_summary, capabilities
+        );
+
+        let result = analyzer.analyze(&prompt).await;
+        match result {
+            Ok(response) => {
+                let text = response.trim();
+                // 提取 JSON 数组
+                let json_str = if let Some(start) = text.find('[') {
+                    if let Some(end) = text.rfind(']') {
+                        &text[start..=end]
+                    } else {
+                        text
+                    }
+                } else {
+                    text
+                };
+
+                match serde_json::from_str::<Vec<Value>>(json_str) {
+                    Ok(items) => {
+                        items
+                            .into_iter()
+                            .take(5)
+                            .enumerate()
+                            .filter_map(|(i, item)| {
+                                let id = item
+                                    .get("id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let cap_id = item
+                                    .get("capability_id")
+                                    .and_then(|v| v.as_str())?
+                                    .to_string();
+                                let action = item
+                                    .get("action")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("process")
+                                    .to_string();
+                                let params: HashMap<String, Value> = item
+                                    .get("params")
+                                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                                    .unwrap_or_default();
+
+                                Some(RecipeStep {
+                                    id: if id.is_empty() {
+                                        format!("{}_ai_{}", parent_step.id, i)
+                                    } else {
+                                        id
+                                    },
+                                    order: parent_step.order + 1 + i as u32,
+                                    capability_id: cap_id,
+                                    action,
+                                    params,
+                                    depends_on: vec![parent_step.id.clone()],
+                                    on_failure: FailureStrategy::Skip,
+                                    retry: None,
+                                    timeout_ms: Some(30_000),
+                                    model_tier: None,
+                                    generator: None,
+                                })
+                            })
+                            .collect()
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "[Generator] Failed to parse AI-generated steps"
+                        );
+                        vec![]
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "[Generator] AI call failed");
+                vec![]
+            }
+        }
     }
 }

@@ -153,6 +153,158 @@ async fn run_server() -> anyhow::Result<()> {
                 services::brew_scheduler::init_brew_scheduler(db.clone()).await;
                 tracing::info!("✅ Brew scheduler engine initialized");
 
+                // Initialize Agent identity system (SOUL.md / USER.md)
+                let agent_data_dir = std::path::PathBuf::from("data/agent");
+                services::agent::identity::init_identity(agent_data_dir.clone()).await;
+                tracing::info!("✅ Agent identity system initialized");
+
+                // Initialize Agent skill system
+                services::agent::skill::init_skills(agent_data_dir.join("skills")).await;
+                tracing::info!("✅ Agent skill system initialized");
+
+                // Initialize Agent skill evolution system
+                services::agent::skill_evolution::init_skill_evolution(
+                    agent_data_dir.join("skills"),
+                ).await;
+                tracing::info!("✅ Agent skill evolution system initialized");
+
+                // Initialize Agent memory system
+                services::agent::memory::init_memory(agent_data_dir.join("memory")).await;
+                tracing::info!("✅ Agent memory system initialized");
+
+                // Initialize Agent notification system
+                services::agent::notifications::init_notifications();
+                tracing::info!("✅ Agent notification system initialized");
+
+                // Initialize MCP (Model Context Protocol) client
+                services::agent::mcp::init_mcp(
+                    &agent_data_dir.join("mcp_servers.json"),
+                ).await;
+                tracing::info!("✅ MCP client initialized");
+
+                // Initialize Agent task store (DB persistence + recovery)
+                services::agent::init_task_store(db.clone()).await;
+                tracing::info!("✅ Agent task store initialized");
+
+                // Initialize Agent heartbeat system
+                services::agent::heartbeat::init_heartbeat(
+                    agent_data_dir.join("HEARTBEAT.md"),
+                )
+                .await;
+                tracing::info!("✅ Agent heartbeat system initialized");
+
+                // Spawn heartbeat background worker
+                {
+                    let heartbeat_db = db.clone();
+                    tokio::spawn(async move {
+                        // Heartbeat 独立 Semaphore（上限 2，防止风暴）
+                        let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
+                        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+
+                        loop {
+                            interval.tick().await;
+
+                            let hb = match services::agent::heartbeat::get_heartbeat() {
+                                Some(hb) => hb,
+                                None => continue,
+                            };
+
+                            let due_tasks = hb.check_due_tasks().await;
+                            for task in due_tasks {
+                                let permit = match semaphore.clone().try_acquire_owned() {
+                                    Ok(p) => p,
+                                    Err(_) => {
+                                        tracing::warn!(
+                                            "[Heartbeat] Concurrency limit reached, deferring task '{}'",
+                                            task.id
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                let task_db = heartbeat_db.clone();
+                                let hb_ref = hb.clone();
+                                tokio::spawn(async move {
+                                    let _permit = permit; // 持有到任务完成
+                                    tracing::info!(
+                                        task_id = %task.id,
+                                        "[Heartbeat] Executing due task: {}",
+                                        task.name
+                                    );
+
+                                    let request = services::agent::UserRequest {
+                                        raw_input: task.action.clone(),
+                                        timestamp: chrono::Utc::now(),
+                                        user_id: 0, // 系统用户
+                                        context: None,
+                                    };
+
+                                    let agent = services::agent::Agent::new(task_db).await;
+                                    let task_name = task.name.clone();
+                                    match agent.process(request).await {
+                                        Ok(response) => {
+                                            let result_summary = response.message.chars().take(100).collect::<String>();
+                                            hb_ref.record_result(&task.id, &result_summary).await;
+                                            // 推送通知
+                                            if let Some(nm) = services::agent::notifications::get_notification_manager() {
+                                                nm.notify_heartbeat_result(&task_name, &result_summary, true).await;
+                                            }
+                                            tracing::info!(
+                                                task_id = %task.id,
+                                                "[Heartbeat] Task completed: {}",
+                                                result_summary
+                                            );
+                                        }
+                                        Err(e) => {
+                                            let err_msg = format!("ERROR: {}", e);
+                                            hb_ref.record_result(&task.id, &err_msg).await;
+                                            // 推送失败通知
+                                            if let Some(nm) = services::agent::notifications::get_notification_manager() {
+                                                nm.notify_heartbeat_result(&task_name, &err_msg, false).await;
+                                            }
+                                            tracing::warn!(
+                                                task_id = %task.id,
+                                                error = %e,
+                                                "[Heartbeat] Task failed"
+                                            );
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    });
+                    tracing::info!("✅ Heartbeat background worker started");
+                }
+
+                // Spawn skill evolution pruning worker (daily)
+                tokio::spawn(async move {
+                    // 初始延迟 1 小时，避免启动时负担
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(86400));
+                    loop {
+                        interval.tick().await;
+                        // 清理过期 Skill
+                        if let Some(evolution) =
+                            services::agent::skill_evolution::get_skill_evolution()
+                        {
+                            let pruned = evolution.prune_skills().await;
+                            if !pruned.is_empty() {
+                                tracing::info!(
+                                    "[SkillEvolution] Pruned {} low-quality skills: {:?}",
+                                    pruned.len(),
+                                    pruned
+                                );
+                            }
+                        }
+                        // 清理过期记忆日志（保留 30 天）
+                        if let Some(mem) = services::agent::memory::get_memory() {
+                            mem.cleanup_old_logs(30).await;
+                        }
+                    }
+                });
+                tracing::info!("✅ Skill evolution pruning worker started");
+
                 // Initialize Federation delivery worker (MFP Activity delivery queue)
                 federation::delivery::spawn_delivery_worker(db.clone());
                 tracing::info!("✅ Federation delivery worker started");
@@ -1291,6 +1443,37 @@ async fn federation_get_room_wrapper(req: axum::extract::Request) -> Response {
     }
 }
 
+async fn federation_update_room_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Not authenticated"}))).into_response(),
+    };
+    let path = req.uri().path().to_string();
+    let room_id = path
+        .strip_prefix("/api/federation/rooms/")
+        .unwrap_or("")
+        .to_string();
+    let body = match axum::body::to_bytes(req.into_body(), 1024 * 64).await {
+        Ok(b) => b,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid body"}))).into_response(),
+    };
+    let parsed: federation::room::UpdateRoomRequest = match serde_json::from_slice(&body) {
+        Ok(p) => p,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid JSON"}))).into_response(),
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::room::update_room(user_id, &claims.username, &room_id, db, &parsed).await {
+                Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "Database not connected"}))).into_response(),
+    }
+}
+
 async fn federation_get_room_members_wrapper(req: axum::extract::Request) -> Response {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
         Some(c) => c,
@@ -2205,6 +2388,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route(
             "/api/federation/rooms/{room_id}",
             get(federation_get_room_wrapper)
+                .put(federation_update_room_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(

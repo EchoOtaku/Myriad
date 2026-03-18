@@ -12,11 +12,11 @@ use std::collections::HashMap;
 pub async fn execute(
     capability_id: &str,
     params: &HashMap<String, Value>,
-    _ctx: &HandlerContext<'_>,
+    ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     match capability_id {
         "data.transform" => execute_data_transform(params).await,
-        "scheduler.create" => execute_scheduler_create(params).await,
+        "scheduler.create" => execute_scheduler_create(params, ctx).await,
         "scheduler.trigger" => execute_scheduler_trigger(params).await,
         "system.metrics" => execute_system_metrics().await,
         "cache.status" => execute_cache_status(params).await,
@@ -110,9 +110,18 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
         }
     }
 
+    let count = items.len();
     Ok(json!({
         "data": items,
-        "count": items.len()
+        "count": count,
+        "frontendAction": {
+            "type": "show_data",
+            "params": {
+                "count": count,
+                "preview": items.iter().take(3).cloned().collect::<Vec<_>>()
+            },
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        }
     }))
 }
 
@@ -120,33 +129,106 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
 // 调度器
 // ============================================================================
 
-async fn execute_scheduler_create(params: &HashMap<String, Value>) -> Result<Value, String> {
+async fn execute_scheduler_create(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     let config = params.get("config").cloned().unwrap_or(json!({}));
     let name = params
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("未命名任务");
+    let schedule = params
+        .get("schedule")
+        .and_then(|v| v.as_str())
+        .or_else(|| params.get("cron").and_then(|v| v.as_str()));
+    let action = params
+        .get("action")
+        .and_then(|v| v.as_str())
+        .or_else(|| params.get("prompt").and_then(|v| v.as_str()));
 
-    let task_id = uuid::Uuid::new_v4().to_string();
+    let task_id = format!("schedule_{}", chrono::Utc::now().timestamp_millis());
+    let now = chrono::Utc::now();
+
+    let schedule_data = json!({
+        "id": task_id,
+        "name": name,
+        "schedule": schedule,
+        "action": action,
+        "config": config,
+        "enabled": true,
+        "createdAt": now.to_rfc3339(),
+        "nextRun": (now + chrono::Duration::hours(1)).to_rfc3339()
+    });
+
+    // Persist to tapp_storage
+    use crate::models::entities::tapp_storage;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+
+    let new_record = tapp_storage::ActiveModel {
+        tapp_id: Set("agent_schedules".to_string()),
+        user_id: Set(ctx.user_id),
+        key: Set(task_id.clone()),
+        value: Set(schedule_data),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    };
+    new_record
+        .insert(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to save schedule: {}", e))?;
+
+    tracing::info!(task_id = %task_id, name = %name, "[SchedulerCreate] Schedule persisted");
 
     Ok(json!({
         "success": true,
         "taskId": task_id,
         "name": name,
         "config": config,
-        "nextRun": chrono::Utc::now() + chrono::Duration::hours(1)
+        "schedule": schedule,
+        "nextRun": (now + chrono::Duration::hours(1)).to_rfc3339(),
+        "frontendAction": {
+            "type": "show_notification",
+            "params": {
+                "title": format!("定时任务已创建: {}", name),
+                "message": schedule.map(|s| format!("调度: {}", s)).unwrap_or_default(),
+                "taskId": task_id
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 
 async fn execute_scheduler_trigger(params: &HashMap<String, Value>) -> Result<Value, String> {
     let tapp_id = params.get("tapp_id").and_then(|v| v.as_str());
 
-    Ok(json!({
-        "triggered": true,
-        "tapp_id": tapp_id,
-        "message": "Scheduler trigger initiated",
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    }))
+    // 尝试通过 brew scheduler 触发
+    if let Some(scheduler) = get_brew_scheduler() {
+        if let Some(tid) = tapp_id {
+            if let Ok(source_id) = tid.parse::<i32>() {
+                match scheduler.refresh_source(source_id).await {
+                    Ok(new_count) => {
+                        return Ok(json!({
+                            "triggered": true,
+                            "tapp_id": tapp_id,
+                            "newItems": new_count,
+                            "message": format!("已触发刷新，获取 {} 条新内容", new_count),
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        }));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "[scheduler.trigger] 刷新失败");
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "无法触发调度任务{}。调度器未运行或任务 ID 无效。请使用 brew.schedule 的 refresh 操作代替。",
+        tapp_id.map(|t| format!(" ({})", t)).unwrap_or_default()
+    ))
 }
 
 // ============================================================================
@@ -397,11 +479,46 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
         export_data["databases"] = db_data;
     }
 
+    let now = chrono::Utc::now();
+    // Write export to a temp file for download
+    let export_id = format!("export_{}", now.timestamp_millis());
+    let export_path = format!("cache/exports/{}.{}", export_id, format);
+    let export_content = match format {
+        "json" => serde_json::to_string_pretty(&export_data).unwrap_or_default(),
+        "csv" => {
+            // Simple CSV: flatten top-level keys
+            let mut csv = String::new();
+            if let Value::Object(map) = &export_data {
+                for (key, val) in map {
+                    csv.push_str(&format!("{},{}\n", key, val));
+                }
+            }
+            csv
+        }
+        _ => serde_json::to_string(&export_data).unwrap_or_default(),
+    };
+
+    // Ensure dir exists and write
+    let _ = tokio::fs::create_dir_all("cache/exports").await;
+    let _ = tokio::fs::write(&export_path, &export_content).await;
+
     Ok(json!({
         "format": format,
         "data_type": data_type,
         "data": export_data,
-        "exported_at": chrono::Utc::now().to_rfc3339()
+        "exportId": export_id,
+        "exportPath": export_path,
+        "exported_at": now.to_rfc3339(),
+        "frontendAction": {
+            "type": "download_file",
+            "params": {
+                "exportId": export_id,
+                "filename": format!("myriad_export_{}.{}", data_type, format),
+                "format": format,
+                "path": export_path
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 

@@ -226,6 +226,143 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
+    // Bilibili 追番查询
+    registry.register(Capability {
+        id: "bilibili.bangumi".to_string(),
+        name: "Bilibili 追番查询".to_string(),
+        description: "查询用户的 Bilibili 追番/追剧列表".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "uid": { "type": "integer" },
+                "type": { "type": "string", "enum": ["bangumi", "cinema"], "default": "bangumi" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "items": { "type": "array" },
+                "total": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["bilibili:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // Bilibili 视频查询
+    registry.register(Capability {
+        id: "bilibili.video".to_string(),
+        name: "Bilibili 视频查询".to_string(),
+        description: "通过 BV 号或 AV 号查询 Bilibili 视频详情".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "bvid": { "type": "string" },
+                "aid": { "type": "integer" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "title": { "type": "string" },
+                "desc": { "type": "string" },
+                "owner": { "type": "object" },
+                "stat": { "type": "object" }
+            }
+        }),
+        required_permissions: vec!["bilibili:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // Steam 愿望单
+    registry.register(Capability {
+        id: "steam.wishlist".to_string(),
+        name: "Steam 愿望单".to_string(),
+        description: "查询用户 Steam 愿望单".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "steamId": { "type": "string" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "items": { "type": "array" },
+                "total": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["steam:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // Steam 游戏详情
+    registry.register(Capability {
+        id: "steam.game".to_string(),
+        name: "Steam 游戏详情".to_string(),
+        description: "查询 Steam 游戏详细信息".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "appId": { "type": "integer" }
+            },
+            "required": ["appId"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "genres": { "type": "array" },
+                "price": { "type": "object" }
+            }
+        }),
+        required_permissions: vec!["steam:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // 平台连接状态
+    registry.register(Capability {
+        id: "platform.connection".to_string(),
+        name: "平台连接状态".to_string(),
+        description: "查询各平台数据连接和同步状态".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "platform": { "type": "string" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "connections": { "type": "array" },
+                "status": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["platform:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(200),
+        ..Default::default()
+    });
+
     // 网易云歌单搜索
     registry.register(Capability {
         id: "netease.searchPlaylist".to_string(),

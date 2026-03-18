@@ -38,7 +38,7 @@ pub async fn webfinger(
         })?;
 
     // 获取本实例域名
-    let base_url = get_base_url();
+    let base_url = get_base_url().await;
     let our_domain = extract_domain(&base_url).unwrap_or_default();
 
     // 仅处理本实例的用户
@@ -90,7 +90,7 @@ pub async fn webfinger(
             WebFingerLink {
                 rel: "http://webfinger.net/rel/profile-page".to_string(),
                 link_type: Some("text/html".to_string()),
-                href: Some(format!("{}/profile/{}", get_frontend_url(), username)),
+                href: Some(format!("{}/profile/{}", get_frontend_url().await, username)),
                 template: None,
             },
         ],
@@ -104,7 +104,7 @@ pub async fn webfinger(
 /// NodeInfo 发现文档 — 告知其他实例 NodeInfo 端点位置
 pub async fn nodeinfo_wellknown(
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let base_url = get_base_url();
+    let base_url = get_base_url().await;
 
     let response = NodeInfoWellKnown {
         links: vec![NodeInfoWellKnownLink {
@@ -136,7 +136,7 @@ pub async fn nodeinfo(
             name: "myriad".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             repository: Some("https://github.com/myriad-project/myriad".to_string()),
-            homepage: Some(get_base_url()),
+            homepage: Some(get_base_url().await),
         },
         protocols: vec!["activitypub".to_string()],
         usage: NodeInfoUsage {
@@ -176,22 +176,18 @@ fn parse_acct_uri(resource: &str) -> Option<(String, String)> {
     }
 }
 
-/// 获取实例 base URL（从配置中取）
-fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.blocking_read();
-    config
-        .base_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
-}
-
 /// 获取前端 URL
-fn get_frontend_url() -> String {
-    let config = crate::GLOBAL_CONFIG.blocking_read();
+async fn get_frontend_url() -> String {
+    let config = crate::GLOBAL_CONFIG.read().await;
     config
         .frontend_url
         .clone()
-        .unwrap_or_else(|| get_base_url())
+        .unwrap_or_else(|| {
+            config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+        })
 }
 
 /// 获取数据库连接

@@ -1548,6 +1548,7 @@ export interface TranslationKeys {
 
     // 空状态
     emptyNoSources: string
+    addSourceHint: string
     emptyCategoryNoSources: string
 
     // 搜索
@@ -1963,6 +1964,7 @@ export interface TranslationKeys {
     title: string
     subtitle: string
     timeline: string
+    profile: string
     following: string
     followers: string
     published: string
@@ -2013,6 +2015,89 @@ export interface TranslationKeys {
     syncFailed: string
     lastSync: string
     config: string
+  }
+
+  // Arael AI 助手
+  arael: {
+    // 问候语
+    greeting: {
+      lateNight: string
+      morning: string
+      afternoon: string
+      evening: string
+    }
+    // 页面提示
+    pageHints: {
+      library: string[]
+      brew: string[]
+      reports: string[]
+      config: string[]
+      dataManagement: string[]
+      tapp: string[]
+    }
+    generalHints: string[]
+    // 空状态
+    heroSub: string
+    recentConversations: string
+    noRecentConversations: string
+    unnamedConversation: string
+    // 输入
+    inputPlaceholder: string
+    recording: string
+    recognizing: string
+    stopRecording: string
+    voiceInput: string
+    stopConversation: string
+    stop: string
+    // 会话列表
+    historyTitle: string
+    newSession: string
+    noHistory: string
+    messageCount: string
+    // 相对时间
+    timeJustNow: string
+    timeMinutesAgo: string
+    timeHoursAgo: string
+    timeDaysAgo: string
+    // 管理面板
+    tabHeartbeat: string
+    tabSkills: string
+    tabMemory: string
+    emptyHeartbeat: string
+    emptySkills: string
+    emptyMemory: string
+    cronEveryMinutes: string
+    cronDaily: string
+    originManual: string
+    originAuto: string
+    originImproved: string
+    statSuccess: string
+    statFail: string
+    memPreference: string
+    memFact: string
+    memDecision: string
+    memNote: string
+    // 聊天消息
+    waiting: string
+    failed: string
+    retryRequest: string
+    // 执行详情
+    loading: string
+    autoDegraded: string
+    retryCount: string
+    recalledMemories: string
+    skill: string
+    // 收藏
+    run: string
+    unfavorite: string
+    // 任务状态
+    processing: string
+    interrupted: string
+    executionFailed: string
+    unknownError: string
+    partialComplete: string
+    failReason: string
+    answerFailed: string
   }
 }
 

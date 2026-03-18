@@ -19,7 +19,8 @@ import {
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 
 import type { ImportProgress } from './types'
-import { SPRING_SNAPPY } from './constants'
+import { IslandShell } from '../../../shared/control-island'
+import { ISLAND_BTN, ISLAND_BTN_DANGER, ISLAND_DIVIDER } from './constants'
 
 export interface EditModeProps {
   variant: 'mobile' | 'desktop'
@@ -81,17 +82,10 @@ export function EditMode({
   // 移动端版本 - 简化
   if (isMobile) {
     return (
-      <motion.div
-        key="edit-bar-mobile"
-        initial={{ opacity: 0, y: -8, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -8, scale: 0.96 }}
-        transition={SPRING_SNAPPY}
-        className="flex items-center gap-1.5 px-2 py-2 rounded-2xl bg-gray-50/95 dark:bg-neutral-800/95 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10"
-      >
+      <IslandShell variant="mobile" editStyle motionKey="edit-bar-mobile">
         <button
           onClick={onSelectAll}
-          className="p-2.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-neutral-700/60 rounded-xl transition-colors disabled:opacity-50"
+          className={ISLAND_BTN}
           title={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
           aria-label={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
         >
@@ -107,7 +101,7 @@ export function EditMode({
                   <Square className="w-5 h-5" />
                 )}
         </button>
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-300 min-w-[4.5rem] text-center">
+        <span className="text-sm font-medium text-gray-600 dark:text-gray-300 min-w-[4.5rem] text-center tabular-nums">
           {selectedIds.size}
           {' '}
           /
@@ -116,57 +110,50 @@ export function EditMode({
         <button
           onClick={onBatchDelete}
           disabled={isDeleting || selectedIds.size === 0}
-          className="p-2.5 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+          className={ISLAND_BTN_DANGER}
           title={t.deleteSelected}
           aria-label={t.deleteSelected}
         >
-          <Trash2 className="w-5 h-5" />
+          <Trash2 className="w-4.5 h-4.5" />
         </button>
         <button
           onClick={onBatchRefresh}
           disabled={isRefreshing || totalCount === 0}
-          className="p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-neutral-700/60 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+          className={`${ISLAND_BTN} disabled:opacity-30 disabled:cursor-not-allowed`}
           title={t.refreshAllSources}
           aria-label={t.refreshAllSources}
         >
-          <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`} />
         </button>
         {isAuthenticated && onMarkAllSourcesRead && (
           <button
             onClick={onMarkAllSourcesRead}
-            className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+            className={`${ISLAND_BTN} hover:text-green-600! dark:hover:text-green-400! hover:bg-green-500/10!`}
             title={t.markAllAsRead}
             aria-label={t.markAllAsRead}
           >
-            <CheckCircle className="w-5 h-5" />
+            <CheckCircle className="w-4.5 h-4.5" />
           </button>
         )}
         <button
           onClick={onClose}
-          className="ml-auto p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700/60 rounded-xl transition-colors"
+          className={`ml-auto ${ISLAND_BTN}`}
           title={t.exitEdit}
           aria-label={t.exitEdit}
         >
-          <X className="w-5 h-5" />
+          <X className="w-4.5 h-4.5" />
         </button>
-      </motion.div>
+      </IslandShell>
     )
   }
 
   // 桌面端版本 - 完整功能
   return (
-    <motion.div
-      key="edit-bar"
-      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-      transition={SPRING_SNAPPY}
-      className="flex items-center gap-1.5 px-2 py-2 rounded-2xl bg-gray-50/95 dark:bg-neutral-800/95 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10"
-    >
+    <IslandShell variant="desktop" editStyle motionKey="edit-bar">
       {/* 全选按钮 */}
       <button
         onClick={onSelectAll}
-        className="p-2.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-neutral-700/60 rounded-xl transition-colors disabled:opacity-50"
+        className={ISLAND_BTN}
         title={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
         aria-label={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
       >
@@ -184,7 +171,7 @@ export function EditMode({
       </button>
 
       {/* 选中数量 */}
-      <span className="text-sm font-medium text-gray-600 dark:text-gray-300 min-w-[4.5rem] text-center">
+      <span className="text-sm font-medium text-gray-600 dark:text-gray-300 min-w-[4.5rem] text-center tabular-nums">
         {selectedIds.size}
         {' '}
         /
@@ -195,60 +182,60 @@ export function EditMode({
       <button
         onClick={onBatchDelete}
         disabled={isDeleting || selectedIds.size === 0}
-        className="p-2.5 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+        className={ISLAND_BTN_DANGER}
         title={t.deleteSelected}
         aria-label={t.deleteSelected}
       >
-        <Trash2 className="w-5 h-5" />
+        <Trash2 className="w-4.5 h-4.5" />
       </button>
 
       {/* 全部刷新按钮 */}
       <button
         onClick={onBatchRefresh}
         disabled={isRefreshing || totalCount === 0}
-        className="p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-neutral-700/60 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+        className={`${ISLAND_BTN} disabled:opacity-30 disabled:cursor-not-allowed`}
         title={t.refreshAllSources}
         aria-label={t.refreshAllSources}
       >
-        <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+        <RefreshCw className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`} />
       </button>
 
       {/* 全部已读按钮 */}
       {isAuthenticated && onMarkAllSourcesRead && (
         <button
           onClick={onMarkAllSourcesRead}
-          className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+          className={`${ISLAND_BTN} hover:text-green-600! dark:hover:text-green-400! hover:bg-green-500/10!`}
           title={t.markAllAsRead}
           aria-label={t.markAllAsRead}
         >
-          <CheckCircle className="w-5 h-5" />
+          <CheckCircle className="w-4.5 h-4.5" />
         </button>
       )}
 
       {/* 分隔线 */}
-      <div className="w-px h-6 bg-gray-200 dark:bg-neutral-700 mx-1" />
+      <div className={`${ISLAND_DIVIDER} mx-0.5`} />
 
       {/* 导出按钮 */}
       {onBrewExport && (
         <button
           onClick={onBrewExport}
           disabled={importExportLoading || sourcesCount === 0}
-          className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-colors"
+          className={`${ISLAND_BTN} hover:text-blue-600! dark:hover:text-blue-400! hover:bg-blue-500/10! disabled:opacity-30 disabled:cursor-not-allowed`}
           title={t.exportBrewpack}
           aria-label={t.exportBrewpack}
         >
-          <Download className={`w-5 h-5 ${importExportLoading ? 'animate-pulse' : ''}`} />
+          <Download className={`w-4.5 h-4.5 ${importExportLoading ? 'animate-pulse' : ''}`} />
         </button>
       )}
 
       {/* 导入按钮 */}
       {onBrewImportFile && (
         <label
-          className={`p-2.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors ${importExportLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          className={`${ISLAND_BTN} hover:text-blue-600! dark:hover:text-blue-400! hover:bg-blue-500/10! ${importExportLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           title={t.importBrewpack}
           aria-label={t.importBrewpack}
         >
-          <Upload className={`w-5 h-5 ${importExportLoading ? 'animate-pulse' : ''}`} />
+          <Upload className={`w-4.5 h-4.5 ${importExportLoading ? 'animate-pulse' : ''}`} />
           <input
             ref={brewExportInputRef}
             type="file"
@@ -272,7 +259,7 @@ export function EditMode({
             className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50"
           >
             <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
-            <span className="truncate max-w-[10rem]">{importProgress.step}</span>
+            <span className="truncate max-w-40">{importProgress.step}</span>
             {importProgress.total > 0 && (
               <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40">
                 {importProgress.current}
@@ -305,7 +292,7 @@ export function EditMode({
               : (
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 )}
-            <span className="truncate max-w-[12rem]">{importExportSuccess || importExportError}</span>
+            <span className="truncate max-w-48">{importExportSuccess || importExportError}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -313,12 +300,12 @@ export function EditMode({
       {/* 退出按钮 */}
       <button
         onClick={onClose}
-        className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700/60 rounded-xl transition-colors"
+        className={ISLAND_BTN}
         title={t.exitEdit}
         aria-label={t.exitEdit}
       >
-        <X className="w-5 h-5" />
+        <X className="w-4.5 h-4.5" />
       </button>
-    </motion.div>
+    </IslandShell>
   )
 }

@@ -194,8 +194,24 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
         .map_err(|e| format!("查询待处理任务失败: {}", e))?;
 
     let mut store = TASK_STORE.write().await;
+    let mut recovered = 0u32;
     for task_model in pending_tasks {
-        if let Ok(task_state) = task_model_to_state(&task_model) {
+        if let Ok(mut task_state) = task_model_to_state(&task_model) {
+            // 服务重启时，Running/WaitingForInput 状态的任务无法恢复执行，标记为 Cancelled
+            if matches!(
+                task_state.status,
+                TaskStatus::Running | TaskStatus::WaitingForInput
+            ) {
+                tracing::warn!(
+                    task_id = %task_state.task_id,
+                    old_status = ?task_state.status,
+                    "[TaskStore] Task interrupted by server restart, marking as Cancelled"
+                );
+                task_state.status = TaskStatus::Cancelled;
+                task_state.error =
+                    Some("任务因服务重启而中断，请重新提交".to_string());
+                recovered += 1;
+            }
             let user_id = task_model.user_id;
             let task_id = task_state.task_id.clone();
             store.tasks.insert(task_id.clone(), task_state);
@@ -203,6 +219,9 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
         }
     }
 
+    if recovered > 0 {
+        tracing::info!("标记了 {} 个中断任务为 Cancelled", recovered);
+    }
     tracing::info!("从数据库加载了 {} 个待处理任务", store.tasks.len());
     Ok(())
 }
@@ -245,6 +264,9 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         progress: model.progress as u8,
         pending_question,
         execution_context,
+        lane_id: None,
+        execution_trace: None,
+        recipe: None, // Recipe 不持久化到 DB，仅在内存中保持
     })
 }
 
@@ -304,6 +326,10 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             execution_context: Set(task.execution_context.as_ref().map(|c| json!(c))),
             original_request: Set(None),
             updated_at: Set(chrono::Utc::now().into()),
+            session_id: Set(None),
+            lane_id: Set(task.lane_id.clone()),
+            name: Set(None),
+            total_steps: Set(None),
         };
 
         new_task
@@ -449,6 +475,9 @@ mod tests {
             progress: 0,
             pending_question: None,
             execution_context: None,
+            lane_id: None,
+            execution_trace: None,
+            recipe: None,
         };
 
         // 直接插入，不触发异步数据库保存

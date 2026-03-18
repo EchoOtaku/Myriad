@@ -299,6 +299,57 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
+    // 权限检查
+    registry.register(Capability {
+        id: "permission.check".to_string(),
+        name: "权限检查".to_string(),
+        description: "检查用户对指定操作的权限状态".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "permission": { "type": "string" },
+                "tappId": { "type": "string" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "granted": { "type": "boolean" },
+                "permission": { "type": "string" }
+            }
+        }),
+        required_permissions: vec![],
+        requires_ai: false,
+        estimated_duration_ms: Some(50),
+        ..Default::default()
+    });
+
+    // 统计概览
+    registry.register(Capability {
+        id: "stats.overview".to_string(),
+        name: "统计概览".to_string(),
+        description: "获取跨平台数据统计概览".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query, IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {}
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "platforms": { "type": "object" },
+                "totalItems": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["platform:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(500),
+        ..Default::default()
+    });
+
     // 存储数据
     registry.register(Capability {
         id: "storage.set".to_string(),

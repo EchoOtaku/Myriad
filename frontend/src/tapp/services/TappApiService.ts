@@ -177,6 +177,10 @@ interface InstallTappRequest {
   widgetCss?: string
   /** Page 专用 CSS */
   pageCss?: string
+  /** i18n 翻译数据 (lang_code → JSON) */
+  i18n?: Record<string, unknown>
+  /** Page 模块文件 (filename → code) */
+  pageModules?: Record<string, string>
   // store 模式
   storeSource?: string
   tappId?: string
@@ -196,12 +200,24 @@ export async function installTapp(
   code: TappCodeStructure,
   permissions?: string[],
 ): Promise<TappListItem> {
-  // 合并 JS 代码（core + widget + page）
-  const jsCode = [
-    code.core,
-    code.widget ? `\n// ========== Widget Code ==========\n${code.widget}` : '',
-    code.page ? `\n// ========== Page Code ==========\n${code.page}` : '',
-  ].join('')
+  // 有 pageModules 时，main.js 只存 widget 相关代码（模块化的页面代码已在 pageModules 中）
+  // 无 pageModules 时，main.js 存完整合并代码（core + widget + page 单体回退）
+  const hasPageModules = code.pageModules && Object.keys(code.pageModules).length > 0
+  let jsCode: string
+  if (hasPageModules) {
+    // 模块化模式：main.js 仅保留 widget 部分（如果有的话）
+    jsCode = [
+      code.widget ? `// ========== Widget Code ==========\n${code.widget}` : '',
+    ].filter(Boolean).join('\n')
+  }
+  else {
+    // 单体模式：合并所有代码
+    jsCode = [
+      code.core,
+      code.widget ? `\n// ========== Widget Code ==========\n${code.widget}` : '',
+      code.page ? `\n// ========== Page Code ==========\n${code.page}` : '',
+    ].join('')
+  }
 
   const requestBody: InstallTappRequest = {
     source: 'direct',
@@ -232,6 +248,14 @@ export async function installTapp(
     }
   }
 
+  // 添加 i18n 和 pageModules
+  if (code.i18n && Object.keys(code.i18n).length > 0) {
+    requestBody.i18n = code.i18n
+  }
+  if (code.pageModules && Object.keys(code.pageModules).length > 0) {
+    requestBody.pageModules = code.pageModules
+  }
+
   return apiRequest('/api/tapps/install', {
     method: 'POST',
     body: JSON.stringify(requestBody),
@@ -260,6 +284,7 @@ export async function installFromCode(manifest: TappManifest, code: TappCodeStru
     code.styles || '',
     code.core || '',
     code.page || '',
+    ...Object.values(code.pageModules || {}),
   ].join('\n')
   const pageCss = generateOnDemandTailwindCSS(pageSources)
 
@@ -392,6 +417,12 @@ export interface TappResources {
   pageTemplate?: string
   /** CSS 架构模式 */
   cssMode?: 'unified' | 'separated'
+  /** i18n 翻译数据（语言代码 → 键值对） */
+  i18n?: Record<string, unknown>
+  /** Page 模块文件（文件名 → 代码内容） */
+  pageModules?: Record<string, string>
+  /** Page 模块加载顺序 */
+  pageModuleOrder?: string[]
 }
 
 /** 后端原始响应格式（snake_case） */
@@ -405,6 +436,9 @@ interface TappResourcesRaw {
   widget_templates?: Record<string, string>
   page_template?: string
   css_mode?: 'unified' | 'separated'
+  i18n?: Record<string, unknown>
+  page_modules?: Record<string, string>
+  page_module_order?: string[]
 }
 
 /**
@@ -438,6 +472,9 @@ export async function getTappResources(tappId: string): Promise<TappResources> {
     widgetTemplates: raw.widget_templates,
     pageTemplate: raw.page_template,
     cssMode: raw.css_mode,
+    i18n: raw.i18n,
+    pageModules: raw.page_modules,
+    pageModuleOrder: raw.page_module_order,
   }
 }
 

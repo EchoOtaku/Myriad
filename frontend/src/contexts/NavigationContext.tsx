@@ -73,10 +73,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setSecondaryNav(config)
   }, [])
 
-  // 注销二级导航
+  // 注销二级导航（导航到子路由时保留，避免二级导航闪烁消失）
   const unregisterSecondaryNav = useCallback((routePath: string) => {
     setSecondaryNav((prev) => {
       if (prev?.routePath === routePath) {
+        // 如果当前在子路由（如 /federation/room/xxx），保留二级导航
+        if (window.location.pathname.startsWith(routePath + '/')) {
+          return prev
+        }
         return null
       }
       return prev
@@ -128,9 +132,13 @@ export function useSecondaryNav(config: {
   /** 展开按钮的提示文案 */
   expandHint?: string
 }) {
-  const { registerSecondaryNav, unregisterSecondaryNav, updateSecondaryNav } = useNavigation()
-  const [activeId, setActiveIdLocal] = useState(config.defaultActiveId)
-  const [expanded, setExpandedLocal] = useState(false)
+  const { secondaryNav, registerSecondaryNav, unregisterSecondaryNav, updateSecondaryNav } = useNavigation()
+  // 如果已有相同 routePath 的二级导航（从子路由返回/进入时保留的），复用其 activeId 和 expanded
+  const isSameGroup = secondaryNav?.routePath === config.routePath
+  const existingActiveId = isSameGroup ? secondaryNav.activeId : null
+  const existingExpanded = isSameGroup ? (secondaryNav.expanded ?? false) : false
+  const [activeId, setActiveIdLocal] = useState(existingActiveId ?? config.defaultActiveId)
+  const [expanded, setExpandedLocal] = useState(existingExpanded)
 
   // 用 ref 追踪当前值，避免在 state updater 内部调用 updateSecondaryNav
   // （在 updater 中调用另一个组件的 setState 会触发 React 18 的 "setState during render" 警告）

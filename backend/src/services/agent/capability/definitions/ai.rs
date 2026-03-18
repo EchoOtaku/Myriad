@@ -120,7 +120,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         }),
         required_permissions: vec!["ai:image".to_string()],
         requires_ai: true,
-        estimated_duration_ms: Some(15000),
+        estimated_duration_ms: Some(90000),
         ..Default::default()
     });
 
@@ -329,17 +329,19 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "prompt.generate".to_string(),
         name: "提示词生成".to_string(),
-        description: "为图片生成提供优化的提示词".to_string(),
+        description: "为图片生成提供优化的提示词。务必在 description 中传入尽可能详细的描述，包括角色名、出处、外貌特征、场景和风格等".to_string(),
         category: CapabilityCategory::AiProcess,
         supported_actions: vec![IntentAction::Create],
         input_schema: json!({
             "type": "object",
             "properties": {
-                "title": { "type": "string" },
-                "summary": { "type": "string" },
-                "category": { "type": "string" }
+                "title": { "type": "string", "description": "主题/标题" },
+                "summary": { "type": "string", "description": "简要说明" },
+                "description": { "type": "string", "description": "详细描述：角色全名、来源作品、外貌特征（发型发色、瞳色、服装配饰等）、场景、姿势、画风等" },
+                "category": { "type": "string" },
+                "style": { "type": "string", "description": "画风偏好，例如 anime, photorealistic, watercolor 等" }
             },
-            "required": ["title", "summary"]
+            "required": ["title"]
         }),
         output_schema: json!({
             "type": "object",
@@ -350,7 +352,64 @@ pub fn register(registry: &mut CapabilityRegistry) {
         }),
         required_permissions: vec!["prompt:write".to_string()],
         requires_ai: true,
-        estimated_duration_ms: Some(500),
+        estimated_duration_ms: Some(15000),
+        ..Default::default()
+    });
+
+    // 文本翻译
+    registry.register(Capability {
+        id: "translate.text".to_string(),
+        name: "文本翻译".to_string(),
+        description: "使用 AI 翻译文本内容，支持中英日韩等多语言".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Create],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "text": { "type": "string" },
+                "targetLang": { "type": "string", "enum": ["zh-CN", "zh-TW", "en", "ja", "ko"], "default": "zh-CN" },
+                "sourceLang": { "type": "string" }
+            },
+            "required": ["text"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "translated": { "type": "string" },
+                "targetLang": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["ai:analyze".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // 代码解释
+    registry.register(Capability {
+        id: "code.explain".to_string(),
+        name: "代码解释".to_string(),
+        description: "使用 AI 解释代码功能和逻辑".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![IntentAction::Analyze],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "code": { "type": "string" },
+                "language": { "type": "string" }
+            },
+            "required": ["code"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "explanation": { "type": "string" },
+                "complexity": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["ai:analyze".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(5000),
         ..Default::default()
     });
 

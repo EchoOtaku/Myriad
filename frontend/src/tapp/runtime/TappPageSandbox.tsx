@@ -4,25 +4,37 @@
  * 用于渲染 Tapp 的页面模式（全屏应用）
  */
 
+import type { TappCodeStructure } from '../examples/tapps/types'
+import type { TappInstance } from '../types'
 import type { AnimationConfigRef, SafeInsets, TappNotificationOptions } from './sandbox'
+import type { TappBridge } from './TappBridge'
+import type { TappPermissionController } from './TappPermission'
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useI18n } from '../../contexts/I18nContext'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { getIsDarkMode } from '../../utils/themeSubscriber'
+import { getCodeForMode } from '../examples/tapps/types'
+import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
-  IFRAME_SANDBOX_ATTRS,
-  PAGE_STATIC_CSS,
   generateCSP,
   generateFullSDK,
   generateNonce,
   generateSecurityWrapper,
   generateSessionToken,
   generateThemeCSS,
+  IFRAME_SANDBOX_ATTRS,
+  PAGE_STATIC_CSS,
 } from './sandbox'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  registerAIHandlers,
   registerAdvancedHandlers,
+  registerAIHandlers,
   registerAnimationHandlers,
   registerBackgroundHandlers,
+  registerBrewListHandlers,
   registerContextHandlers,
   registerDynamicContentHandlers,
+  registerFederationHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
@@ -30,53 +42,31 @@ import {
   registerReportHandlers,
   registerSpeechHandlers,
   registerStorageHandlers,
+  registerTappListHandlers,
   registerUIHandlers,
   registerUserHandlers,
   registerWidgetHandlers,
 } from './sandbox/handlers'
-import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
-
-import type { TappBridge } from './TappBridge'
-import type { TappCodeStructure } from '../examples/tapps/types'
-import type { TappInstance } from '../types'
-import type { TappPermissionController } from './TappPermission'
-import { createPermissionController } from './TappPermission'
 import { createTappBridge } from './TappBridge'
-import { getCodeForMode } from '../examples/tapps/types'
-import { getIsDarkMode } from '../../utils/themeSubscriber'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { useI18n } from '../../contexts/I18nContext'
+import { createPermissionController } from './TappPermission'
 import { useSandboxSubscriptions } from './useSandboxSubscriptions'
 
 // 核心模块
 
-
-
-
-
 // 处理器
-
-
-
-
-
-
-
-
-
-
-
-
 
 // 🎯 WebKit/Safari 检测（仅在模块加载时计算一次）
 // Safari 及 iOS 浏览器存在合成层 bug，需要将 iframe portal 到 body
 // 检测策略：UA + vendor 双重验证，避免单一信号误判
+const RE_APPLE_WEBKIT = /\bAppleWebKit\b/
+const RE_CHROMIUM = /\bChrom(e|ium)\b/
 export const isWebKit: boolean = (() => {
-  if (typeof navigator === 'undefined') return false
+  if (typeof navigator === 'undefined')
+    return false
   const ua = navigator.userAgent
   // UA 检测：包含 AppleWebKit 但排除桌面版 Chrome/Chromium
   // iOS 上所有浏览器（CriOS、FxiOS 等）不含 Chrome/Chromium 标识，会被正确识别
-  const uaIsWebKit = /\bAppleWebKit\b/.test(ua) && !/\bChrom(e|ium)\b/.test(ua)
+  const uaIsWebKit = RE_APPLE_WEBKIT.test(ua) && !RE_CHROMIUM.test(ua)
   // vendor 检测：Apple 平台的 WebKit 浏览器 vendor 固定为 "Apple Computer, Inc."
   // 包括 macOS Safari、iOS Safari/Chrome/Firefox 等
   const isAppleVendor = navigator.vendor === 'Apple Computer, Inc.'
@@ -127,6 +117,7 @@ function generatePageHTML(
   code: TappCodeStructure,
   sessionToken: string,
   safeInsets?: SafeInsets,
+  launchParams?: Record<string, string>,
 ): string {
   const { manifest } = tappInstance
   const isDark = getIsDarkMode()
@@ -156,7 +147,45 @@ function generatePageHTML(
     || pageHtmlContent.includes('id=\'tapp-content\'')
 
   // JS 代码 - 混合模式下也会加载
-  const pageCode = getCodeForMode(code, 'page')
+  // 🎯 page 模块化：如果有 pageModules，按顺序拼装替代 core+page 标记分割
+  let pageCode: string
+  let loadingMode: 'modular' | 'monolith'
+  let loadedModules: string[] = []
+  if (code.pageModules && Object.keys(code.pageModules).length > 0) {
+    loadingMode = 'modular'
+    // 优先使用 code.pageModuleOrder（从后端资源响应，始终最新），
+    // 其次 manifest.pageModules（可能因 DB 序列化丢失），
+    // 最后按字母序（index.js 最后）
+    const moduleOrder = code.pageModuleOrder
+      || tappInstance.manifest.pageModules
+    const moduleNames = moduleOrder && moduleOrder.length > 0
+      ? moduleOrder.filter(name => name in code.pageModules!)
+      : Object.keys(code.pageModules).sort((a, b) => {
+          if (a === 'index.js')
+            return 1
+          if (b === 'index.js')
+            return -1
+          return a.localeCompare(b)
+        })
+    loadedModules = moduleNames
+    pageCode = moduleNames
+      .map(name => `// ===== ${name} =====\n${code.pageModules![name]}`)
+      .join('\n\n')
+  }
+  else {
+    loadingMode = 'monolith'
+    pageCode = getCodeForMode(code, 'page')
+  }
+
+  // 🎯 加载模式标识（用于调试和验证）
+  const loadingModeScript = loadedModules.length > 0
+    ? `window._TAPP_LOADING_MODE = '${loadingMode}';\n    window._TAPP_LOADED_MODULES = ${JSON.stringify(loadedModules)};`
+    : `window._TAPP_LOADING_MODE = '${loadingMode}';`
+
+  // 🎯 i18n 注入脚本
+  const i18nScript = code.i18n && Object.keys(code.i18n).length > 0
+    ? `window._TAPP_I18N = ${JSON.stringify(code.i18n)};`
+    : ''
 
   // 🎯 使用安装时预编译的 CSS
   const tailwindCSS = code.pageCSS || ''
@@ -199,7 +228,10 @@ function generatePageHTML(
 
   <script nonce="${nonce}">
     window._TAPP_MODE = 'page';
+    window._TAPP_LAUNCH_PARAMS = ${JSON.stringify(launchParams || {})};
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
+    ${loadingModeScript}
+    ${i18nScript}
     window._TAPP_INITIAL_SAFE_INSETS = {
       top: ${safeInsets?.top ?? 0},
       right: ${safeInsets?.right ?? 0},
@@ -234,6 +266,8 @@ function generatePageHTML(
   <script nonce="${nonce}">
     (function() {
       'use strict';
+      console.log('[Tapp] Loading mode: ' + window._TAPP_LOADING_MODE
+        + (window._TAPP_LOADED_MODULES ? ' (' + window._TAPP_LOADED_MODULES.length + ' modules: ' + window._TAPP_LOADED_MODULES.join(', ') + ')' : ''));
       try {
         ${pageCode}
       } catch (error) {
@@ -314,7 +348,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     const ph = code.pageHtml || ''
     const st = code.styles || ''
     const js = getCodeForMode(code, 'page') || ''
-    return `${ph.length}:${st.length}:${js.length}`
+    const pm = code.pageModules ? Object.keys(code.pageModules).join(',') : ''
+    const il = code.i18n ? Object.keys(code.i18n).join(',') : ''
+    return `${ph.length}:${st.length}:${js.length}:${pm}:${il}`
   }, [code])
 
   const localeRef = useRef(locale)
@@ -535,6 +571,8 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerFileHandlers(bridge)
     registerWidgetHandlers(bridge, currentTappInstance)
     registerPlatformHandlers(bridge, currentTappInstance)
+    registerTappListHandlers(bridge, currentTappInstance)
+    registerBrewListHandlers(bridge, currentTappInstance)
     registerAIHandlers(bridge, permission, currentTappInstance)
     registerReportHandlers(bridge, currentTappInstance)
     registerMediaHandlers(bridge, currentTappInstance)
@@ -543,10 +581,19 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerAnimationHandlers(bridge, animationConfigRef)
     registerDynamicContentHandlers(bridge, currentTappInstance)
     registerAdvancedHandlers(bridge, currentTappInstance)
+    registerFederationHandlers(bridge, currentTappInstance)
     registerContextHandlers(bridge, currentTappInstance)
 
+    // 收集 URL 启动参数传递给沙箱
+    const launchParams: Record<string, string> = {}
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      sp.forEach((v, k) => { launchParams[k] = v })
+    }
+    catch (_) { /* ignore */ }
+
     // 生成 HTML（使用预生成的 session token）
-    const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current)
+    const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current, launchParams)
 
     // 清理函数列表
     const cleanups: (() => void)[] = []
@@ -581,7 +628,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
       requestAnimationFrame(syncPosition)
       const syncInterval = setInterval(syncPosition, 200)
-      const stopPolling = setTimeout(() => clearInterval(syncInterval), 2000)
+      const stopPolling = setTimeout(clearInterval, 2000, syncInterval)
 
       document.body.appendChild(iframe)
       iframe.srcdoc = html

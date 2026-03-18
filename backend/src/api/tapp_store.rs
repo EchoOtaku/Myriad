@@ -110,6 +110,12 @@ pub struct TappManifest {
     #[serde(default)]
     pub has_page: bool,
     pub settings: Option<Vec<TappSettingDef>>,
+    /// 应用分类（如 social, tool, game 等）
+    pub category: Option<String>,
+    /// Page 模块加载顺序（文件名数组）
+    /// 当使用 page/ 文件夹模块化开发时，指定加载顺序
+    #[serde(default)]
+    pub page_modules: Option<Vec<String>>,
     /// Tapp API 声明
     /// 允许 Tapp 声明可调用的外部 API，后端自动注入上下文和密钥
     #[serde(default)]
@@ -444,6 +450,8 @@ async fn fetch_from_store(
         Option<String>,
         Option<String>,
         Option<std::collections::HashMap<String, String>>,
+        Option<std::collections::HashMap<String, serde_json::Value>>,
+        Option<std::collections::HashMap<String, String>>,
     ),
     (StatusCode, Json<ApiResponse<()>>),
 > {
@@ -662,6 +670,44 @@ async fn fetch_from_store(
         Some(widget_templates)
     };
 
+    // 下载 i18n 翻译文件
+    let mut i18n_data: std::collections::HashMap<String, serde_json::Value> =
+        std::collections::HashMap::new();
+    if let Some(i18n_files) = download.get("i18n").and_then(|v| v.as_object()) {
+        for (lang_code, path) in i18n_files {
+            if let Some(i18n_path) = path.as_str() {
+                let i18n_url = format!("{}/{}", base_url, i18n_path);
+                if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&i18n_url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(json) = resp.json::<serde_json::Value>().await {
+                            i18n_data.insert(lang_code.clone(), json);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let i18n_opt = if i18n_data.is_empty() { None } else { Some(i18n_data) };
+
+    // 下载 Page 模块文件
+    let mut page_modules_data: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    if let Some(pm_files) = download.get("page_modules").and_then(|v| v.as_object()) {
+        for (filename, path) in pm_files {
+            if let Some(pm_path) = path.as_str() {
+                let pm_url = format!("{}/{}", base_url, pm_path);
+                if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&pm_url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(content) = resp.text().await {
+                            page_modules_data.insert(filename.clone(), content);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let page_modules_opt = if page_modules_data.is_empty() { None } else { Some(page_modules_data) };
+
     Ok((
         manifest,
         code,
@@ -670,6 +716,8 @@ async fn fetch_from_store(
         page_styles_content,
         page_template_content,
         widget_templates_opt,
+        i18n_opt,
+        page_modules_opt,
     ))
 }
 
@@ -699,6 +747,10 @@ struct InstallTappRequest {
     widget_css: Option<String>,
     /// Page 专用 Tailwind CSS（可选）
     page_css: Option<String>,
+    /// i18n 翻译数据（可选，lang_code → JSON 对象）
+    i18n: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Page 模块文件（可选，filename → code）
+    page_modules: Option<std::collections::HashMap<String, String>>,
 
     // ===== store 模式需要的字段 =====
     /// 商店源 URL 或 ID（store 模式必需）
@@ -727,7 +779,7 @@ async fn install_tapp(
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
 
     // 根据来源获取 manifest 和代码
-    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates) =
+    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates, store_i18n, store_page_modules) =
         match req.source.as_str() {
             "direct" => {
                 // 直接安装：从请求中获取
@@ -751,6 +803,8 @@ async fn install_tapp(
                     None::<String>, // page_styles - 直接安装暂不支持
                     req.page_template,
                     req.widget_templates,
+                    None::<std::collections::HashMap<String, serde_json::Value>>,
+                    None::<std::collections::HashMap<String, String>>,
                 )
             }
             "store" => {
@@ -776,6 +830,8 @@ async fn install_tapp(
                     page_styles,
                     page_template,
                     widget_templates,
+                    i18n,
+                    page_modules,
                 ) = fetch_from_store(&db, &store_source, &tapp_id).await?;
                 (
                     manifest,
@@ -785,6 +841,8 @@ async fn install_tapp(
                     page_styles,
                     page_template,
                     widget_templates,
+                    i18n,
+                    page_modules,
                 )
             }
             _ => {
@@ -866,6 +924,30 @@ async fn install_tapp(
         for (size, content) in templates {
             let widget_path = tapp_dir.join(format!("widget-{}.html", size));
             let _ = fs::write(&widget_path, content).await;
+        }
+    }
+
+    // 保存 i18n 翻译文件（direct 模式从 req.i18n，store 模式从 store_i18n）
+    let i18n_to_save = req.i18n.as_ref().or(store_i18n.as_ref());
+    if let Some(i18n) = i18n_to_save {
+        let i18n_dir = tapp_dir.join("i18n");
+        let _ = fs::create_dir_all(&i18n_dir).await;
+        for (lang_code, data) in i18n {
+            let i18n_path = i18n_dir.join(format!("{}.json", lang_code));
+            if let Ok(json_str) = serde_json::to_string_pretty(data) {
+                let _ = fs::write(&i18n_path, json_str).await;
+            }
+        }
+    }
+
+    // 保存 Page 模块文件（direct 模式从 req.page_modules，store 模式从 store_page_modules）
+    let pm_to_save = req.page_modules.as_ref().or(store_page_modules.as_ref());
+    if let Some(page_modules) = pm_to_save {
+        let page_dir = tapp_dir.join("page");
+        let _ = fs::create_dir_all(&page_dir).await;
+        for (filename, code_content) in page_modules {
+            let page_path = page_dir.join(filename);
+            let _ = fs::write(&page_path, code_content).await;
         }
     }
 
@@ -1062,12 +1144,15 @@ async fn install_tapp_file(
         )
     })?;
 
-    // 🎯 直接解压所有文件到目标文件夹（完全避免兼容性问题）
+    // 🎯 解压所有文件到目标文件夹，保留允许的子目录结构（i18n/, page/）
     let tapp_dir_clone = tapp_dir.clone();
     let file_data_clone = file_data.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
         use std::io::Read;
+
+        // 允许的子目录白名单
+        const ALLOWED_SUBDIRS: &[&str] = &["i18n", "page"];
 
         let cursor = std::io::Cursor::new(&file_data_clone);
         let mut archive = zip::ZipArchive::new(cursor)?;
@@ -1081,13 +1166,27 @@ async fn install_tapp_file(
                 continue;
             }
 
-            // 只提取文件名，忽略路径（防止目录遍历）
-            let safe_name = std::path::Path::new(&file_name)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&file_name);
+            let path = std::path::Path::new(&file_name);
+            let components: Vec<_> = path.components().collect();
 
-            let out_path = tapp_dir_clone.join(safe_name);
+            let out_path = if components.len() == 2 {
+                // 文件在子目录中，如 "i18n/zh.json" 或 "page/state.js"
+                let dir_name = components[0].as_os_str().to_str().unwrap_or("");
+                if ALLOWED_SUBDIRS.contains(&dir_name) {
+                    let subdir = tapp_dir_clone.join(dir_name);
+                    std::fs::create_dir_all(&subdir)?;
+                    let fname = components[1].as_os_str().to_str().unwrap_or("");
+                    subdir.join(fname)
+                } else {
+                    // 非白名单子目录 → 扁平化到根
+                    let safe_name = path.file_name().and_then(|n| n.to_str()).unwrap_or(&file_name);
+                    tapp_dir_clone.join(safe_name)
+                }
+            } else {
+                // 根目录文件或深层嵌套 → 只提取文件名
+                let safe_name = path.file_name().and_then(|n| n.to_str()).unwrap_or(&file_name);
+                tapp_dir_clone.join(safe_name)
+            };
 
             let mut content = Vec::new();
             file.read_to_end(&mut content)?;
@@ -1367,6 +1466,15 @@ struct TappResourcesResponse {
     /// CSS 架构模式：unified（统一）或 separated（分离）
     #[serde(skip_serializing_if = "Option::is_none")]
     css_mode: Option<String>,
+    /// i18n 翻译数据（语言代码 → 键值对）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    i18n: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Page 模块文件（文件名 → 代码内容）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page_modules: Option<std::collections::HashMap<String, String>>,
+    /// Page 模块加载顺序（从 manifest.json 读取）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page_module_order: Option<Vec<String>>,
 }
 
 /// 获取 Tapp 完整资源（代码 + CSS + HTML 模板）
@@ -1529,6 +1637,56 @@ async fn get_tapp_resources(
         None
     };
 
+    // 读取 i18n 翻译文件（可选）
+    let i18n = {
+        let i18n_dir = tapp_dir.join("i18n");
+        if i18n_dir.is_dir() {
+            let mut translations: std::collections::HashMap<String, serde_json::Value> =
+                std::collections::HashMap::new();
+            if let Ok(mut entries) = tokio::fs::read_dir(&i18n_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                        if let Some(lang) = path.file_stem().and_then(|s| s.to_str()) {
+                            if let Ok(content) = fs::read_to_string(&path).await {
+                                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                                    translations.insert(lang.to_string(), value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if translations.is_empty() { None } else { Some(translations) }
+        } else {
+            None
+        }
+    };
+
+    // 读取 page 模块文件（可选）
+    let page_modules = {
+        let page_dir = tapp_dir.join("page");
+        if page_dir.is_dir() {
+            let mut modules: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
+            if let Ok(mut entries) = tokio::fs::read_dir(&page_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("js") {
+                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                            if let Ok(content) = fs::read_to_string(&path).await {
+                                modules.insert(name.to_string(), content);
+                            }
+                        }
+                    }
+                }
+            }
+            if modules.is_empty() { None } else { Some(modules) }
+        } else {
+            None
+        }
+    };
+
     Ok(Json(TappResourcesResponse {
         code,
         styles,
@@ -1543,6 +1701,25 @@ async fn get_tapp_resources(
         },
         page_template,
         css_mode,
+        i18n,
+        page_module_order: page_modules.as_ref().and_then(|_| {
+            // 从磁盘 manifest.json 读取 pageModules 加载顺序
+            // 优先使用磁盘版本（始终最新），DB manifest 可能缺少此字段
+            let manifest_path = tapp_dir.join("manifest.json");
+            std::fs::read_to_string(&manifest_path).ok().and_then(|content| {
+                serde_json::from_str::<serde_json::Value>(&content).ok().and_then(|v| {
+                    v.get("pageModules").and_then(|arr| arr.as_array()).map(|arr| {
+                        arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                    })
+                })
+            }).or_else(|| {
+                // 回退到 DB manifest
+                manifest.get("pageModules").and_then(|arr| arr.as_array()).map(|arr| {
+                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                })
+            })
+        }),
+        page_modules,
     }))
 }
 
@@ -2090,7 +2267,7 @@ async fn update_tapp(
         .ok_or_else(|| (StatusCode::NOT_FOUND, api_error("Tapp not installed")))?;
 
     // 从商店获取最新版本
-    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates) =
+    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates, i18n_data, page_modules_data) =
         fetch_from_store(&db, &store_source, &tapp_id).await?;
 
     // 获取 Tapp 目录
@@ -2141,6 +2318,28 @@ async fn update_tapp(
         for (size, content) in templates {
             let widget_path = tapp_dir.join(format!("widget-{}.html", size));
             let _ = fs::write(&widget_path, content).await;
+        }
+    }
+
+    // 更新 i18n 翻译文件
+    if let Some(i18n) = &i18n_data {
+        let i18n_dir = tapp_dir.join("i18n");
+        let _ = fs::create_dir_all(&i18n_dir).await;
+        for (lang_code, data) in i18n {
+            let i18n_path = i18n_dir.join(format!("{}.json", lang_code));
+            if let Ok(json_str) = serde_json::to_string_pretty(data) {
+                let _ = fs::write(&i18n_path, json_str).await;
+            }
+        }
+    }
+
+    // 更新 Page 模块文件
+    if let Some(page_modules) = &page_modules_data {
+        let page_dir = tapp_dir.join("page");
+        let _ = fs::create_dir_all(&page_dir).await;
+        for (filename, code_content) in page_modules {
+            let page_path = page_dir.join(filename);
+            let _ = fs::write(&page_path, code_content).await;
         }
     }
 

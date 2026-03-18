@@ -3,7 +3,7 @@
 //! 处理 tapp.generate, report.create, reminder.create 等资源创建类能力
 
 use super::HandlerContext;
-use crate::models::entities::tapp_storage;
+use crate::models::entities::{tapp_storage, tapps};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde_json::{json, Value};
@@ -30,7 +30,8 @@ pub async fn execute(
 ) -> Result<Value, String> {
     match capability_id {
         "tapp.generate" => execute_tapp_generate(params, ctx).await,
-        "report.create" => execute_report_create(params).await,
+        "tapp.install" => execute_tapp_install(params, ctx).await,
+        "report.create" => execute_report_create(params, ctx).await,
         "report.comprehensive" => execute_report_comprehensive(params, ctx).await,
         "reminder.create" => execute_reminder_create(params, ctx).await,
         "note.create" => execute_note_create(params, ctx).await,
@@ -60,23 +61,39 @@ async fn execute_tapp_generate(
         .or_else(|| params.get("requirements").and_then(|v| v.as_str()))
         .unwrap_or("一个简单的 Tapp 应用");
 
+    // 读取上游步骤通过 inputFrom 解析后注入的数据
+    let input_data = params.get("input").or_else(|| params.get("data"));
+    let input_context = if let Some(data) = input_data {
+        let truncated = serde_json::to_string(data)
+            .unwrap_or_default()
+            .chars()
+            .take(4000)
+            .collect::<String>();
+        format!(
+            "\n\n以下是需要可视化/展示的数据（来自上游步骤的输出）：\n```json\n{}\n```\n\n请基于这些数据生成可视化看板或交互界面。",
+            truncated
+        )
+    } else {
+        String::new()
+    };
+
     let prompt = format!(
         r#"请根据以下描述生成一个 Myriad Tapp 应用的代码。
 
-描述：{}
+描述：{description}{input_context}
 
 要求：
 1. 使用 TypeScript 编写
-2. 遵循 Tapp API 规范
+2. 遵循 Tapp API 规范（通过 window.TappSDK 访问 API）
 3. 包含必要的 manifest 信息
 4. 代码简洁、可运行
+5. 如果有数据输入，将数据内嵌到代码中直接展示
 
 请返回 JSON 格式：
 {{
-  "manifest": {{ "name": "...", "version": "1.0.0", ... }},
+  "manifest": {{ "name": "...", "version": "1.0.0", "description": "..." }},
   "code": "完整的 TypeScript 代码"
-}}"#,
-        description
+}}"#
     );
 
     let result = analyzer
@@ -92,9 +109,168 @@ async fn execute_tapp_generate(
         }
     }));
 
+    let tapp_id = format!("agent.generated.{}", Utc::now().timestamp_millis());
+    let tapp_name = parsed
+        .get("manifest")
+        .and_then(|m| m.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Agent Generated Tapp")
+        .to_string();
+    let tapp_description = parsed
+        .get("manifest")
+        .and_then(|m| m.get("description"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let code_content = parsed
+        .get("code")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let manifest = parsed.get("manifest").cloned().unwrap_or(json!({
+        "name": tapp_name,
+        "version": "1.0.0"
+    }));
+
+    // 写入代码文件
+    let code_dir = format!("data/tapps/{}", tapp_id);
+    let code_path = format!("{}/index.ts", code_dir);
+    let file_path = format!("{}/manifest.json", code_dir);
+    tokio::fs::create_dir_all(&code_dir)
+        .await
+        .map_err(|e| format!("Failed to create tapp directory: {}", e))?;
+    tokio::fs::write(&code_path, &code_content)
+        .await
+        .map_err(|e| format!("Failed to write tapp code: {}", e))?;
+    tokio::fs::write(
+        &file_path,
+        serde_json::to_string_pretty(&manifest).unwrap_or_default(),
+    )
+    .await
+    .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
+    // 持久化到 tapps 表
+    let now = Utc::now();
+    let new_tapp = tapps::ActiveModel {
+        tapp_id: Set(tapp_id.clone()),
+        user_id: Set(ctx.user_id),
+        name: Set(tapp_name.clone()),
+        version: Set("1.0.0".to_string()),
+        description: Set(tapp_description),
+        author: Set(Some(json!({"name": "Arael Agent", "type": "ai_generated"}))),
+        icon: Set(None),
+        theme_color: Set(None),
+        manifest: Set(manifest.clone()),
+        status: Set(tapps::TappStatus::Installed),
+        granted_permissions: Set(json!([])),
+        file_path: Set(file_path),
+        code_path: Set(code_path),
+        installed_at: Set(now.into()),
+        last_run_at: Set(None),
+        updated_at: Set(now.into()),
+        error_message: Set(None),
+        ..Default::default()
+    };
+    let saved = new_tapp
+        .insert(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to persist tapp: {}", e))?;
+
+    tracing::info!(
+        tapp_id = %tapp_id,
+        name = %tapp_name,
+        "[TappGenerate] Tapp created and persisted (db id={})",
+        saved.id
+    );
+
     Ok(json!({
         "success": true,
-        "tapp": parsed
+        "tappId": tapp_id,
+        "name": tapp_name,
+        "tapp": parsed,
+        "frontendAction": {
+            "type": "open_window",
+            "tappId": tapp_id,
+            "timestamp": now.timestamp_millis()
+        }
+    }))
+}
+
+// ============================================================================
+// Tapp 安装
+// ============================================================================
+
+async fn execute_tapp_install(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let code = params
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing code parameter. Provide Tapp code to install.")?;
+
+    let tapp_id = format!("agent.installed.{}", Utc::now().timestamp_millis());
+    let name = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Installed Tapp");
+
+    let manifest = json!({
+        "name": name,
+        "version": "1.0.0"
+    });
+
+    // Write code to file
+    let code_dir = format!("data/tapps/{}", tapp_id);
+    let code_path = format!("{}/index.ts", code_dir);
+    let file_path = format!("{}/manifest.json", code_dir);
+    tokio::fs::create_dir_all(&code_dir)
+        .await
+        .map_err(|e| format!("Failed to create tapp directory: {}", e))?;
+    tokio::fs::write(&code_path, code)
+        .await
+        .map_err(|e| format!("Failed to write tapp code: {}", e))?;
+    tokio::fs::write(
+        &file_path,
+        serde_json::to_string_pretty(&manifest).unwrap_or_default(),
+    )
+    .await
+    .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
+    let now = Utc::now();
+    let new_tapp = tapps::ActiveModel {
+        tapp_id: Set(tapp_id.clone()),
+        user_id: Set(ctx.user_id),
+        name: Set(name.to_string()),
+        version: Set("1.0.0".to_string()),
+        description: Set(None),
+        author: Set(Some(json!({"name": "Agent Install", "type": "user_install"}))),
+        icon: Set(None),
+        theme_color: Set(None),
+        manifest: Set(manifest),
+        status: Set(tapps::TappStatus::Installed),
+        granted_permissions: Set(json!([])),
+        file_path: Set(file_path),
+        code_path: Set(code_path),
+        installed_at: Set(now.into()),
+        last_run_at: Set(None),
+        updated_at: Set(now.into()),
+        error_message: Set(None),
+        ..Default::default()
+    };
+    new_tapp
+        .insert(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to persist tapp: {}", e))?;
+
+    Ok(json!({
+        "success": true,
+        "tappId": tapp_id,
+        "name": name,
+        "frontendAction": {
+            "type": "open_window",
+            "tappId": tapp_id,
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 
@@ -102,13 +278,22 @@ async fn execute_tapp_generate(
 // 报告创建
 // ============================================================================
 
-async fn execute_report_create(params: &HashMap<String, Value>) -> Result<Value, String> {
+async fn execute_report_create(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     let title = params
         .get("title")
         .and_then(|v| v.as_str())
         .unwrap_or("未命名报告");
 
-    let analysis = params.get("analysis").cloned().unwrap_or(json!({}));
+    // 读取上游步骤通过 inputFrom/analysisFrom 解析后注入的数据
+    let analysis = params
+        .get("analysis")
+        .or_else(|| params.get("input"))
+        .or_else(|| params.get("data"))
+        .cloned()
+        .unwrap_or(json!({}));
 
     let format = params
         .get("format")
@@ -136,12 +321,50 @@ async fn execute_report_create(params: &HashMap<String, Value>) -> Result<Value,
         .unwrap_or_default(),
     };
 
-    Ok(json!({
-        "success": true,
-        "reportId": uuid::Uuid::new_v4().to_string(),
+    let report_id = format!("report_{}", Utc::now().timestamp_millis());
+    let now = Utc::now();
+
+    // 持久化到 tapp_storage
+    let report_data = json!({
+        "id": report_id,
         "title": title,
         "format": format,
-        "content": content
+        "content": content,
+        "analysis": analysis,
+        "createdAt": now.to_rfc3339()
+    });
+
+    let new_record = tapp_storage::ActiveModel {
+        tapp_id: Set("agent_reports".to_string()),
+        user_id: Set(ctx.user_id),
+        key: Set(report_id.clone()),
+        value: Set(report_data),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    };
+    new_record
+        .insert(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to save report: {}", e))?;
+
+    tracing::info!(report_id = %report_id, title = %title, "[ReportCreate] Report persisted");
+
+    Ok(json!({
+        "success": true,
+        "reportId": report_id,
+        "title": title,
+        "format": format,
+        "content": content,
+        "frontendAction": {
+            "type": "show_report",
+            "params": {
+                "reportId": report_id,
+                "title": title,
+                "format": format
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 
@@ -189,14 +412,26 @@ async fn execute_report_comprehensive(
         _ => "使用轻松、友好的语言风格",
     };
 
+    let platform_data_str = serde_json::to_string_pretty(&platform_data).unwrap_or_default();
+    let truncated_data: String = platform_data_str.chars().take(10000).collect();
+
     let prompt = format!(
-        "请根据以下多平台数据生成一份综合分析报告。\n\n\
+        "你是一个专业的数据分析师。请根据以下用户的多平台数据生成一份综合分析报告。\n\n\
         风格要求：{}\n\n\
         平台数据：\n{}\n\n\
-        请包含：用户画像概述、各平台使用习惯分析、兴趣爱好总结、跨平台关联发现、个性化建议\n\n\
-        请以 Markdown 格式输出。",
-        style_instruction,
-        serde_json::to_string_pretty(&platform_data).unwrap_or_default()
+        报告结构要求（使用 Markdown 格式）：\n\
+        ## 用户画像概述\n\
+        简要描述用户的整体数字形象\n\n\
+        ## 各平台使用习惯\n\
+        逐平台分析用户的使用模式和特点\n\n\
+        ## 兴趣爱好总结\n\
+        归纳用户的核心兴趣领域，提供具体证据\n\n\
+        ## 跨平台关联发现\n\
+        分析平台间的关联和交叉兴趣\n\n\
+        ## 个性化建议\n\
+        基于数据分析给出 3-5 条具体建议\n\n\
+        请确保分析基于实际数据，不要编造信息。报告长度约 800-1500 字。",
+        style_instruction, truncated_data
     );
 
     let result = analyzer
@@ -204,7 +439,8 @@ async fn execute_report_comprehensive(
         .await
         .map_err(|e| format!("Comprehensive report generation failed: {}", e))?;
 
-    let report_id = uuid::Uuid::new_v4().to_string();
+    let report_id = format!("report_{}", Utc::now().timestamp_millis());
+    let now = Utc::now();
 
     let insights: Vec<String> = result
         .lines()
@@ -217,6 +453,34 @@ async fn execute_report_comprehensive(
         })
         .collect();
 
+    // 持久化到 tapp_storage
+    let report_data = json!({
+        "id": report_id,
+        "title": "综合分析报告",
+        "format": "markdown",
+        "content": result,
+        "platforms": platforms,
+        "style": style,
+        "insights": insights,
+        "createdAt": now.to_rfc3339()
+    });
+
+    let new_record = tapp_storage::ActiveModel {
+        tapp_id: Set("agent_reports".to_string()),
+        user_id: Set(ctx.user_id),
+        key: Set(report_id.clone()),
+        value: Set(report_data),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    };
+    new_record
+        .insert(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to save comprehensive report: {}", e))?;
+
+    tracing::info!(report_id = %report_id, "[ReportComprehensive] Report persisted");
+
     Ok(json!({
         "success": true,
         "reportId": report_id,
@@ -224,7 +488,16 @@ async fn execute_report_comprehensive(
         "style": style,
         "summary": result,
         "insights": insights,
-        "generatedAt": Utc::now().to_rfc3339()
+        "generatedAt": now.to_rfc3339(),
+        "frontendAction": {
+            "type": "show_report",
+            "params": {
+                "reportId": report_id,
+                "title": "综合分析报告",
+                "format": "markdown"
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 
@@ -281,7 +554,16 @@ async fn execute_reminder_create(
         "title": title,
         "datetime": datetime,
         "repeat": repeat,
-        "message": "Reminder created and saved"
+        "message": "Reminder created and saved",
+        "frontendAction": {
+            "type": "show_notification",
+            "params": {
+                "title": format!("提醒已创建: {}", title),
+                "message": format!("将在 {} 提醒你", datetime),
+                "reminderId": reminder_id
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 
@@ -289,10 +571,23 @@ async fn execute_note_create(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let content = params
+    // 支持从上游步骤通过 inputFrom 解析后注入的内容
+    let content_str = params
         .get("content")
         .and_then(|v| v.as_str())
-        .ok_or("Missing content")?;
+        .map(|s| s.to_string());
+    let content = if let Some(s) = content_str {
+        s
+    } else if let Some(input) = params.get("input").or_else(|| params.get("data")) {
+        // 上游步骤的输出作为笔记内容
+        match input.as_str() {
+            Some(s) => s.to_string(),
+            None => serde_json::to_string_pretty(input).unwrap_or_default(),
+        }
+    } else {
+        return Err("Missing content".to_string());
+    };
+
     let title = params.get("title").and_then(|v| v.as_str());
     let tags = params
         .get("tags")
@@ -336,7 +631,15 @@ async fn execute_note_create(
         "title": auto_title,
         "content": content,
         "tags": tags,
-        "createdAt": now.to_rfc3339()
+        "createdAt": now.to_rfc3339(),
+        "frontendAction": {
+            "type": "show_notification",
+            "params": {
+                "title": format!("笔记已保存: {}", auto_title),
+                "noteId": note_id
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }
 
@@ -439,6 +742,15 @@ async fn execute_bookmark_save(
         "title": final_title,
         "description": description,
         "tags": tags,
-        "createdAt": now.to_rfc3339()
+        "createdAt": now.to_rfc3339(),
+        "frontendAction": {
+            "type": "show_notification",
+            "params": {
+                "title": format!("书签已保存: {}", final_title),
+                "bookmarkId": bookmark_id,
+                "url": url
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }

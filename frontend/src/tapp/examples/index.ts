@@ -10,9 +10,11 @@
 // 导入用于聚合
 import type { ExampleTapp } from './tapps/types'
 import { helloWorldTapp } from './tapps/helloWorld'
+import { aroTapp } from './tapps/aro'
 
-// 导出 Hello World 示例（用于教学演示）
+// 导出示例
 export { helloWorldTapp } from './tapps/helloWorld'
+export { aroTapp } from './tapps/aro'
 
 export type { ExampleTapp } from './tapps/types'
 
@@ -22,6 +24,7 @@ export type { ExampleTapp } from './tapps/types'
  */
 export const EXAMPLE_TAPPS: ExampleTapp[] = [
   helloWorldTapp,
+  aroTapp,
 ]
 
 /**
@@ -48,6 +51,7 @@ export const CATEGORY_NAMES: Record<string, string> = {
   game: '游戏',
   entertainment: '娱乐',
   social: '社交',
+  communication: '通讯',
   utilities: '实用工具',
   development: '开发',
   media: '媒体',

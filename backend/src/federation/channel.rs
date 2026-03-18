@@ -42,6 +42,7 @@ pub struct ChannelSummary {
     pub channel_id: String,
     pub remote_actor_url: String,
     pub remote_actor_name: Option<String>,
+    pub remote_actor_avatar: Option<String>,
     pub channel_type: String,
     pub status: String,
     pub transport: String,
@@ -57,6 +58,7 @@ pub struct ChannelDetail {
     pub channel_id: String,
     pub remote_actor_url: String,
     pub remote_actor_name: Option<String>,
+    pub remote_actor_avatar: Option<String>,
     pub channel_type: String,
     pub status: String,
     pub transport: String,
@@ -149,6 +151,7 @@ pub async fn create_channel(
             channel_id: row.try_get("", "channel_id").unwrap_or_default(),
             remote_actor_url: req.remote_actor.clone(),
             remote_actor_name: remote.username.clone(),
+            remote_actor_avatar: None,
             channel_type: channel_type.to_string(),
             status: row.try_get::<String>("", "status").unwrap_or_default(),
             transport: row.try_get::<String>("", "transport").unwrap_or_default(),
@@ -251,6 +254,7 @@ pub async fn create_channel(
         channel_id,
         remote_actor_url: req.remote_actor.clone(),
         remote_actor_name: remote.username.clone(),
+        remote_actor_avatar: None,
         channel_type: channel_type.to_string(),
         status: "pending".to_string(),
         transport: transport.to_string(),
@@ -276,7 +280,7 @@ pub async fn list_channels(
             DatabaseBackend::Postgres,
             r#"SELECT c.channel_id, c.channel_type, c.status, c.transport, c.initiated_by,
                       c.last_activity_at, c.created_at,
-                      ra.actor_url, ra.preferred_username,
+                      ra.actor_url, ra.preferred_username, ra.avatar_url,
                       COALESCE((SELECT COUNT(*) FROM federation_channel_messages m
                                 WHERE m.channel_id = c.channel_id
                                   AND m.sender_actor != $2
@@ -296,6 +300,7 @@ pub async fn list_channels(
             channel_id: row.try_get("", "channel_id").unwrap_or_default(),
             remote_actor_url: row.try_get("", "actor_url").unwrap_or_default(),
             remote_actor_name: row.try_get::<Option<String>>("", "preferred_username").unwrap_or(None),
+            remote_actor_avatar: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
             channel_type: row.try_get("", "channel_type").unwrap_or_default(),
             status: row.try_get("", "status").unwrap_or_default(),
             transport: row.try_get("", "transport").unwrap_or_default(),
@@ -327,7 +332,7 @@ pub async fn get_channel(
             DatabaseBackend::Postgres,
             r#"SELECT c.channel_id, c.channel_type, c.status, c.transport, c.tapp_id,
                       c.properties, c.initiated_by, c.last_activity_at, c.created_at,
-                      ra.actor_url, ra.preferred_username
+                      ra.actor_url, ra.preferred_username, ra.avatar_url
                FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.user_id = $1 AND c.channel_id = $2"#,
@@ -346,6 +351,7 @@ pub async fn get_channel(
         channel_id: row.try_get("", "channel_id").unwrap_or_default(),
         remote_actor_url: row.try_get("", "actor_url").unwrap_or_default(),
         remote_actor_name: row.try_get::<Option<String>>("", "preferred_username").unwrap_or(None),
+        remote_actor_avatar: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
         channel_type: row.try_get("", "channel_type").unwrap_or_default(),
         status: row.try_get("", "status").unwrap_or_default(),
         transport: row.try_get("", "transport").unwrap_or_default(),
@@ -512,10 +518,10 @@ pub async fn send_message(
         })?;
 
     let status: String = ch_row.try_get("", "status").unwrap_or_default();
-    if !["active", "accepted", "pending"].contains(&status.as_str()) {
+    if !["active", "accepted"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Channel is {}, cannot send messages", status)})),
+            Json(json!({"error": format!("Channel is {}, cannot send messages (must be accepted first)", status)})),
         ));
     }
 
@@ -543,8 +549,8 @@ pub async fn send_message(
     .await
     .map_err(db_err)?;
 
-    // 更新通道最后活动时间；如果 pending → active
-    let new_status = if status == "pending" { "active" } else { &status };
+    // 更新通道最后活动时间；如果 accepted → active
+    let new_status = if status == "accepted" { "active" } else { &status };
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_channels SET last_activity_at = NOW(), status = $2 WHERE channel_id = $1",
@@ -803,6 +809,7 @@ pub async fn handle_channel_open(
 /// 处理收到的 ChannelMessage Activity
 pub async fn handle_channel_message(
     db: &DatabaseConnection,
+    actor_url_str: &str,
     activity: &serde_json::Value,
 ) -> Result<(), String> {
     let object = activity.get("object").ok_or("Missing object")?;
@@ -810,6 +817,34 @@ pub async fn handle_channel_message(
         .get("channel")
         .and_then(|v| v.as_str())
         .ok_or("Missing channel")?;
+
+    // 验证通道存在且发送方是该通道的远程方
+    let ch_check = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT c.status FROM federation_channels c
+               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
+            [channel_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if ch_check.is_none() {
+        return Err(format!(
+            "Channel {} not found or actor {} is not the remote party",
+            channel_id, actor_url_str
+        ));
+    }
+
+    let ch_status: String = ch_check
+        .as_ref()
+        .and_then(|r| r.try_get::<String>("", "status").ok())
+        .unwrap_or_default();
+    if ch_status == "closed" {
+        return Err(format!("Channel {} is closed", channel_id));
+    }
+
     let fallback_msg_id = generate_message_id();
     let message_id = object
         .get("messageId")
@@ -880,6 +915,7 @@ pub async fn handle_channel_message(
 /// 处理收到的 ChannelClose Activity
 pub async fn handle_channel_close(
     db: &DatabaseConnection,
+    actor_url_str: &str,
     activity: &serde_json::Value,
 ) -> Result<(), String> {
     let object = activity.get("object").ok_or("Missing object")?;
@@ -887,6 +923,25 @@ pub async fn handle_channel_close(
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or("Missing channel id")?;
+
+    // 验证发送方是该通道的远程方
+    let ch_check = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT 1 FROM federation_channels c
+               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
+            [channel_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if ch_check.is_none() {
+        return Err(format!(
+            "Channel {} not found or actor {} is not the remote party",
+            channel_id, actor_url_str
+        ));
+    }
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,

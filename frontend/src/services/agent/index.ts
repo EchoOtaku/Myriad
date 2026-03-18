@@ -45,10 +45,16 @@ export type {
   DataDisplayHint,
 
   ErrorEvent,
+  // 执行追踪
+  ExecutionTrace,
   FrontendAction,
   // 前端动作
   FrontendActionType,
+  // Heartbeat
+  HeartbeatTask,
   InteractionCommand,
+  // 记忆
+  MemoryEntry,
   PageElementTarget,
   // 预设
   PresetType,
@@ -60,13 +66,19 @@ export type {
   ProgressEvent,
   ProgressUpdateEvent,
 
+  // 队列
+  QueueStatus,
   ReadingListPayload,
   ScrollOptions,
   // 会话
   SessionInfo,
   SessionMessage,
+  // 技能
+  SkillInfo,
   StepCompletedEvent,
   StepStartedEvent,
+  StepTrace,
+  SummaryTokenEvent,
   TaskCompletedEvent,
   // SSE 事件
   TaskCreatedEvent,

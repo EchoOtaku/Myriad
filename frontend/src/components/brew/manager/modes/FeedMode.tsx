@@ -11,8 +11,8 @@ import {
 } from '@lib/icons'
 
 import type { FeedModeConfig } from './types'
-import { SPRING_SNAPPY } from './constants'
-import { motionShim as motion } from '@lib/motionShim'
+import { IslandShell } from '../../../shared/control-island'
+import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
 
 export interface FeedModeProps {
   variant: 'mobile' | 'desktop'
@@ -39,27 +39,19 @@ export function FeedMode({
   const isMobile = variant === 'mobile'
 
   return (
-    <motion.div
-      key={`feed-bar-${variant}`}
-      initial={{ opacity: 0, y: isMobile ? -8 : 8, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: isMobile ? -8 : 8, scale: 0.96 }}
-      transition={SPRING_SNAPPY}
-      className="flex items-center gap-1.5 px-2 py-2 rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10"
-    >
+    <IslandShell variant={variant} motionKey={`feed-bar-${variant}`}>
       {/* 返回按钮 */}
-      <motion.button
+      <button
         onClick={feedMode.onBack}
-        className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-xl transition-colors"
-        whileTap={{ scale: 0.95 }}
+        className={ISLAND_BTN}
         title={t.backToSourceList}
         aria-label={t.backToSourceList}
       >
-        <ChevronLeft className="w-5 h-5" />
-      </motion.button>
+        <ChevronLeft className="w-4.5 h-4.5" />
+      </button>
 
       {/* 订阅源信息 */}
-      <div className="flex items-center gap-2 h-10 px-2 min-w-0 flex-1">
+      <div className="flex items-center gap-2 h-9 px-2 min-w-0 flex-1">
         {feedMode.source.icon
           ? (
               <img
@@ -95,49 +87,46 @@ export function FeedMode({
       </div>
 
       {/* 分隔线 */}
-      <div className="w-px h-6 bg-gray-200 dark:bg-neutral-700" />
+      <div className={ISLAND_DIVIDER} />
 
       {/* 刷新按钮 - 仅管理员可见 */}
       {isAdmin && (
-        <motion.button
+        <button
           onClick={feedMode.onRefresh}
           disabled={feedMode.isRefreshing}
-          className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-xl transition-colors disabled:opacity-50"
-          whileTap={{ scale: 0.95 }}
+          className={`${ISLAND_BTN} disabled:opacity-50`}
           title={t.refreshSource}
           aria-label={t.refreshSource}
         >
           <RefreshCw className={`w-4 h-4 ${feedMode.isRefreshing ? 'animate-spin' : ''}`} />
-        </motion.button>
+        </button>
       )}
 
       {/* 全部已读按钮 */}
       {isAuthenticated && feedMode.source.unread_count > 0 && (
-        <motion.button
+        <button
           onClick={feedMode.onMarkAllRead}
-          className="p-2.5 text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl transition-colors"
-          whileTap={{ scale: 0.95 }}
+          className={`${ISLAND_BTN} hover:text-green-600! dark:hover:text-green-400! hover:bg-green-500/10!`}
           title={t.markAllAsRead}
           aria-label={t.markAllAsRead}
         >
           <CheckCircle className="w-4 h-4" />
-        </motion.button>
+        </button>
       )}
 
       {/* 访问网站按钮 */}
       {feedMode.source.site_url && (
-        <motion.a
+        <a
           href={feedMode.source.site_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="p-2.5 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
-          whileTap={{ scale: 0.95 }}
+          className={`${ISLAND_BTN} hover:text-blue-500! hover:bg-blue-500/10!`}
           title={t.visitWebsite}
           aria-label={t.visitWebsite}
         >
           <ExternalLink className="w-4 h-4" />
-        </motion.a>
+        </a>
       )}
-    </motion.div>
+    </IslandShell>
   )
 }

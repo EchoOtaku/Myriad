@@ -1,10 +1,20 @@
 /* ==========================================
-   Arael AI 助手 - 控制岛风格（重构版）
-   使用 Framer Motion 动画
+   Arael AI Assistant - Modern Chat UI
+   Control Island style with glassmorphism
    ========================================== */
 
 /* ==========================================
-   1. 主面板容器
+   CSS Custom Properties
+   ========================================== */
+:root {
+  --arael-success: #10b981;
+  --arael-error: #ef4444;
+  --arael-warning: #f59e0b;
+  --arael-info: #3b82f6;
+}
+
+/* ==========================================
+   1. Panel Container & Shell
    ========================================== */
 
 .arael-panel-container {
@@ -34,8 +44,6 @@
 .arael-panel {
   position: relative;
   width: 100%;
-
-  /* 控制岛风格 */
   background: rgba(255, 255, 255, 0.94);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
@@ -45,16 +53,22 @@
     0 12px 48px rgba(0, 0, 0, 0.1),
     0 4px 16px rgba(0, 0, 0, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
-
-  /* 尺寸 */
   min-width: 380px;
   max-width: min(90vw, 480px);
-
   overflow: hidden;
   will-change: transform, opacity;
 }
 
-/* 进行中状态 - 动态渐变边框（流动效果） */
+html.dark .arael-panel {
+  background: rgba(24, 24, 27, 0.94);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.55),
+    0 4px 16px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Processing state - animated gradient border */
 .arael-panel.arael-panel-processing {
   background:
     linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)) padding-box,
@@ -74,15 +88,6 @@
     arael-gradient-flow-y 5s ease-in-out infinite;
 }
 
-html.dark .arael-panel {
-  background: rgba(24, 24, 27, 0.94);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.55),
-    0 4px 16px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
 html.dark .arael-panel.arael-panel-processing {
   background:
     linear-gradient(rgba(24, 24, 27, 0.94), rgba(24, 24, 27, 0.94)) padding-box,
@@ -98,47 +103,23 @@ html.dark .arael-panel.arael-panel-processing {
   border: 3px solid transparent;
 }
 
-/* 渐变流动动画 - 不规则路径 */
 @keyframes arael-gradient-flow-angle {
-  0%,
-  100% {
-    --arael-gradient-angle: 0deg;
-  }
-  25% {
-    --arael-gradient-angle: 120deg;
-  }
-  50% {
-    --arael-gradient-angle: 200deg;
-  }
-  75% {
-    --arael-gradient-angle: 300deg;
-  }
+  0%, 100% { --arael-gradient-angle: 0deg; }
+  25% { --arael-gradient-angle: 120deg; }
+  50% { --arael-gradient-angle: 200deg; }
+  75% { --arael-gradient-angle: 300deg; }
 }
 
 @keyframes arael-gradient-flow-x {
-  0%,
-  100% {
-    --arael-gradient-x: 30%;
-  }
-  33% {
-    --arael-gradient-x: 70%;
-  }
-  66% {
-    --arael-gradient-x: 20%;
-  }
+  0%, 100% { --arael-gradient-x: 30%; }
+  33% { --arael-gradient-x: 70%; }
+  66% { --arael-gradient-x: 20%; }
 }
 
 @keyframes arael-gradient-flow-y {
-  0%,
-  100% {
-    --arael-gradient-y: 20%;
-  }
-  40% {
-    --arael-gradient-y: 80%;
-  }
-  70% {
-    --arael-gradient-y: 40%;
-  }
+  0%, 100% { --arael-gradient-y: 20%; }
+  40% { --arael-gradient-y: 80%; }
+  70% { --arael-gradient-y: 40%; }
 }
 
 @property --arael-gradient-angle {
@@ -160,24 +141,17 @@ html.dark .arael-panel.arael-panel-processing {
 }
 
 /* ==========================================
-   2. 任务区域
+   2. Header / Title Bar
    ========================================== */
 
-/* 使用 CSS Grid 技巧实现平滑高度动画 */
 .arael-tasks-wrapper {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.25s ease;
-  border-bottom: 1px solid transparent;
 }
 
 .arael-tasks-wrapper[data-expanded='true'] {
   grid-template-rows: 1fr;
-  border-bottom-color: rgba(0, 0, 0, 0.06);
-}
-
-html.dark .arael-tasks-wrapper[data-expanded='true'] {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 .arael-tasks-inner {
@@ -200,12 +174,6 @@ html.dark .arael-tasks-wrapper[data-expanded='true'] {
   color: var(--text-secondary, #6b7280);
 }
 
-.arael-tasks-title .qwitcher-grypen {
-  font-size: 2em;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--color-primary);
-}
 
 .arael-tasks-title-rest {
   align-self: center;
@@ -219,143 +187,74 @@ html.dark .arael-tasks-title {
 .arael-tasks-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
-.arael-logs-btn {
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  background: transparent;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 12px;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-html.dark .arael-logs-btn {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.arael-logs-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text-secondary, #6b7280);
-}
-
-html.dark .arael-logs-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e5e7eb;
-}
-
-.arael-pulse-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--color-primary, #10b981);
-  border-radius: 50%;
-  animation: arael-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes arael-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
-  }
-  50% {
-    opacity: 0.6;
-    transform: scale(1.1);
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary, #10b981) 10%, transparent);
-  }
-}
-
-.arael-clear-btn {
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  background: transparent;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 12px;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-html.dark .arael-clear-btn {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.arael-clear-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text-secondary, #6b7280);
-}
-
-html.dark .arael-clear-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e5e7eb;
-}
-
-/* ==========================================
-   3. 任务列表
-   ========================================== */
-
-.arael-tasks-list {
-  overflow-x: hidden;
-  padding: 0 12px 12px;
-}
-
-.arael-task-item {
-  background: rgba(0, 0, 0, 0.02);
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  border-radius: 14px;
-  margin-bottom: 8px;
-  overflow: hidden;
-  transition: all 0.15s ease;
-  will-change: transform, opacity;
-}
-
-html.dark .arael-task-item {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.06);
-}
-
-.arael-task-item:last-child {
-  margin-bottom: 0;
-}
-
-.arael-task-item:hover {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-html.dark .arael-task-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* 任务头部 */
-.arael-task-header {
-  display: flex;
+.arael-debug-badge {
+  font-size: 9px;
+  font-family: monospace;
+  white-space: nowrap;
+  height: 18px;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: none;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+  color: var(--text-muted, #9ca3af);
   cursor: pointer;
-  user-select: none;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
 }
 
-.arael-task-status {
-  width: 20px;
-  height: 20px;
+.arael-debug-badge:hover {
+  opacity: 1;
+}
+
+.arael-debug-badge:active {
+  opacity: 0.3;
+}
+
+/* Header icon buttons */
+.arael-header-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  transition: all 0.15s ease;
+  opacity: 0.6;
 }
 
+.arael-header-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary, #6b7280);
+  opacity: 1;
+}
+
+html.dark .arael-header-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+}
+
+.arael-header-btn.active {
+  color: var(--color-primary, #10b981);
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, transparent);
+}
+
+/* Processing dot */
+
+/* ==========================================
+   3. Shared Spinners & Animations
+   ========================================== */
+
 .arael-spinner-small {
+  display: inline-block;
   width: 14px;
   height: 14px;
   border: 2px solid color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
@@ -364,336 +263,539 @@ html.dark .arael-task-item:hover {
   animation: arael-spin 0.7s linear infinite;
 }
 
+.arael-spinner-step {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
+.arael-spinner-waiting {
+  border-color: rgba(245, 158, 11, 0.2);
+  border-top-color: #f59e0b;
+}
+
+.arael-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: arael-spin 0.7s linear infinite;
+}
+
 @keyframes arael-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes arael-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.arael-icon-waiting {
-  font-size: 14px;
-}
+/* ==========================================
+   4. Chat Message List
+   ========================================== */
 
-.arael-icon-success {
-  color: var(--color-primary, #10b981);
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.arael-icon-error {
-  color: var(--color-light, #ef4444);
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.arael-task-info {
-  flex: 1;
-  min-width: 0;
+.arael-msg-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 16px 12px;
+  scroll-behavior: smooth;
 }
 
-.arael-task-input {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary, #1a1a1a);
-  /* 允许换行但限制最大行数 */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-word;
+.arael-msg-list::-webkit-scrollbar {
+  width: 4px;
 }
 
-html.dark .arael-task-input {
-  color: #fff;
+.arael-msg-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.arael-task-message {
+.arael-msg-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+
+html.dark .arael-msg-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Empty state */
+.arael-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 28px 16px 12px;
+}
+
+/* Hero greeting */
+.arael-empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.arael-empty-hero-name {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.1;
+  background: linear-gradient(135deg, var(--color-primary, #10b981), color-mix(in srgb, var(--color-primary, #10b981) 60%, #3b82f6));
+  background-size: 200% 200%;
+  animation: arael-name-shimmer 3s ease infinite, arael-name-breathe 4s ease-in-out infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent));
+  letter-spacing: -0.02em;
+  position: relative;
+}
+
+.arael-empty-hero-name::after {
+  content: 'Arael';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: arael-name-glint 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes arael-name-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes arael-name-breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 24px color-mix(in srgb, var(--color-primary, #10b981) 50%, transparent));
+    transform: scale(1.02);
+  }
+}
+
+@keyframes arael-name-glint {
+  0%, 100% { background-position: -200% 0; }
+  50% { background-position: 200% 0; }
+}
+
+.arael-empty-hero-sub {
   font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary, #6b7280);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-word;
+  color: var(--text-muted, #9ca3af);
+  letter-spacing: 0.02em;
 }
 
-html.dark .arael-task-message {
-  color: #9ca3af;
+.arael-empty-hint {
+  font-size: 12px;
+  color: var(--text-muted, #9ca3af);
 }
 
-.arael-task-actions {
+/* Recent sessions section */
+.arael-empty-recent {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.arael-empty-recent-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.arael-task-progress {
+  gap: 5px;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--color-primary, #10b981);
-  font-variant-numeric: tabular-nums;
-}
-
-.arael-task-expand {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  font-size: 10px;
   color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
+  padding-left: 2px;
 }
 
-.arael-task-expand:hover {
-  opacity: 1;
-}
-
-/* 关闭按钮（用于历史任务） */
-.arael-task-close {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  opacity: 0.6;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease;
-}
-
-.arael-task-close:hover {
-  opacity: 1;
-  color: #ef4444;
-}
-
-/* 历史任务图标 */
-.arael-icon-history {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted, #9ca3af);
-  transition: color 0.15s ease;
-}
-
-/* 历史任务卡片 - 可点击运行 */
-.arael-task-history {
-  cursor: pointer;
+.arael-empty-recent-label svg {
+  flex-shrink: 0;
   opacity: 0.7;
 }
 
-.arael-task-history:hover {
-  opacity: 1;
+.arael-empty-continue-list {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
-.arael-task-history:hover .arael-icon-history {
-  color: var(--color-primary, #10b981);
+.arael-empty-continue-btn {
+  display: flex;
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  min-height: 48px;
 }
 
-/* 历史任务文本颜色稍淡 */
-.arael-task-history .arael-task-input {
+.arael-empty-continue-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 8%, white);
+  border-color: color-mix(in srgb, var(--color-primary, #10b981) 22%, transparent);
+}
+
+.arael-empty-continue-title {
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--text-secondary, #6b7280);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-html.dark .arael-task-history .arael-task-input {
+html.dark .arael-empty-continue-btn {
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 6%, rgba(24, 24, 27, 0.7));
+  border-color: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+}
+
+html.dark .arael-empty-continue-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, rgba(24, 24, 27, 0.9));
+}
+
+html.dark .arael-empty-continue-title {
   color: #9ca3af;
 }
 
-.arael-task-history:hover .arael-task-input {
-  color: var(--text-primary, #1a1a1a);
-}
-
-html.dark .arael-task-history:hover .arael-task-input {
-  color: #fff;
-}
-
-/* 历史记录分页容器 */
-.arael-history-pager {
-  position: relative;
-  overflow: hidden;
-}
-
-/* 历史记录页面 - 用于动画 */
-.arael-history-page {
-  display: flex;
-  flex-direction: column;
-}
-
-/* 分页指示器 */
-.arael-history-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 0 4px;
-}
-
-.arael-history-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.15);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-html.dark .arael-history-dot {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.arael-history-dot:hover {
-  background: rgba(0, 0, 0, 0.3);
-  transform: scale(1.2);
-}
-
-html.dark .arael-history-dot:hover {
-  background: rgba(255, 255, 255, 0.4);
-}
-
-.arael-history-dot.active {
-  width: 16px;
-  border-radius: 3px;
-  background: var(--color-primary, #10b981);
-}
-
-html.dark .arael-history-dot.active {
-  background: var(--color-primary, #10b981);
-}
-
-/* 收藏按钮 */
-.arael-task-favorite {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  border-radius: 50%;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  opacity: 0.6;
-  transition: all 0.15s ease;
-}
-
-.arael-task-favorite:hover {
-  opacity: 1;
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-}
-
 /* ==========================================
-   4. 任务详情（展开）- 使用 Grid 高度动画
+   5. Message Bubbles
    ========================================== */
 
-.arael-task-details-wrapper {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease;
-}
-
-.arael-task-details-wrapper[data-expanded='true'] {
-  grid-template-rows: 1fr;
-}
-
-.arael-task-details {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.arael-task-details-wrapper[data-expanded='true'] .arael-task-details {
-  padding: 0 12px 12px;
-}
-
-.arael-task-progress-bar {
-  height: 3px;
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 2px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-
-html.dark .arael-task-progress-bar {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.arael-task-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--color-primary, #10b981), var(--color-secondary, #34d399));
-  border-radius: 2px;
-}
-
-.arael-task-steps {
+.arael-msg {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
+  gap: 8px;
+  max-width: 100%;
+  animation: arael-msg-in 0.2s ease-out;
 }
 
-.arael-step {
+/* User message - right aligned */
+.arael-msg-user {
+  justify-content: flex-end;
+}
+
+.arael-msg-user .arael-msg-bubble {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, white);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 14px;
+  max-width: 85%;
+}
+
+html.dark .arael-msg-user .arael-msg-bubble {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 18%, rgba(24, 24, 27, 0.9));
+  border-color: color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+}
+
+/* Assistant message - left aligned */
+.arael-msg-assistant {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.arael-msg-body {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.arael-msg-assistant .arael-msg-bubble {
+  background: rgba(0, 0, 0, 0.025);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 4px 18px 18px 18px;
+  padding: 10px 14px;
+}
+
+html.dark .arael-msg-assistant .arael-msg-bubble {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* System message - centered divider */
+.arael-msg-system {
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.arael-msg-system-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html.dark .arael-msg-system-line {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.arael-msg-system-text {
+  font-size: 11px;
+  color: var(--text-muted, #9ca3af);
+  white-space: nowrap;
+}
+
+/* Process status message — shown during execution */
+.arael-msg-status {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 12px;
   padding: 4px 0;
 }
 
-.arael-step-marker {
-  width: 14px;
-  text-align: center;
-  flex-shrink: 0;
+.arael-msg-status span {
+  background: linear-gradient(
+    90deg,
+    var(--text-muted, #9ca3af) 0%,
+    var(--text-muted, #9ca3af) 35%,
+    color-mix(in srgb, var(--color-primary, #10b981) 80%, white) 50%,
+    var(--text-muted, #9ca3af) 65%,
+    var(--text-muted, #9ca3af) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: arael-status-shimmer 2s ease-in-out infinite;
 }
 
-.arael-step-pending .arael-step-marker {
+@keyframes arael-status-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+html.dark .arael-msg-status span {
+  background: linear-gradient(
+    90deg,
+    #9ca3af 0%,
+    #9ca3af 35%,
+    color-mix(in srgb, var(--color-primary, #10b981) 80%, white) 50%,
+    #9ca3af 65%,
+    #9ca3af 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: arael-status-shimmer 2s ease-in-out infinite;
+}
+
+/* Message content */
+.arael-msg-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary, #1f2937);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+html.dark .arael-msg-content {
+  color: #e5e7eb;
+}
+
+/* Message time */
+.arael-msg-time {
+  font-size: 10px;
+  color: var(--text-muted, #9ca3af);
+  opacity: 0.6;
+}
+
+/* Message footer — time left, actions right */
+.arael-msg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  gap: 8px;
+}
+
+.arael-msg-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Compact execution hint — inline button at bottom-right */
+.arael-exec-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: rgba(0, 0, 0, 0.04);
   color: var(--text-muted, #9ca3af);
 }
 
-.arael-step-running .arael-step-marker {
-  color: var(--color-primary, #10b981);
-  animation: arael-pulse-simple 1s ease-in-out infinite;
+html.dark .arael-exec-hint {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-/* 步骤标记的简单呼吸动画（只有透明度变化） */
-@keyframes arael-pulse-simple {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
+.arael-exec-hint:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
-.arael-step-completed .arael-step-marker {
+html.dark .arael-exec-hint:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.arael-exec-hint-processing {
   color: var(--color-primary, #10b981);
 }
 
-.arael-step-error .arael-step-marker {
-  color: var(--color-light, #ef4444);
+.arael-exec-hint-completed {
+  color: var(--arael-success, #10b981);
 }
 
-.arael-step-text {
+.arael-exec-hint-error {
+  color: var(--arael-error, #ef4444);
+}
+
+/* Retry button */
+.arael-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+html.dark .arael-retry-btn {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.arael-retry-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
+  color: var(--color-primary, #10b981);
+}
+
+/* Message image */
+.arael-msg-image {
+  margin-top: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.arael-msg-image img {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+/* Multiple images grid */
+.arael-msg-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.arael-msg-image-grid img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+/* ==========================================
+   6. Execution Details (expandable, inside bubble)
+   ========================================== */
+
+/* Expandable details */
+.arael-exec-details {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+}
+
+.arael-exec-details[data-expanded='true'] {
+  max-height: 500px;
+  padding: 8px 0 0;
+  margin-top: 8px;
+}
+
+/* Steps */
+.arael-exec-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.arael-exec-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.arael-step-icon {
+  flex-shrink: 0;
+  color: var(--text-muted, #9ca3af);
+}
+
+.arael-step-icon-ok {
+  color: var(--arael-success);
+}
+
+.arael-step-icon-err {
+  color: var(--arael-error);
+}
+
+.arael-exec-step-running .arael-step-icon {
+  color: var(--color-primary, #10b981);
+}
+
+.arael-step-role-label {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(99, 102, 241, 0.08);
+  color: rgba(99, 102, 241, 0.7);
+  flex-shrink: 0;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+html.dark .arael-step-role-label {
+  background: rgba(99, 102, 241, 0.15);
+  color: rgba(165, 180, 252, 0.8);
+}
+
+.arael-exec-step-text {
   color: var(--text-secondary, #6b7280);
   flex: 1;
   min-width: 0;
@@ -702,165 +804,212 @@ html.dark .arael-task-progress-bar {
   text-overflow: ellipsis;
 }
 
-html.dark .arael-step-text {
+html.dark .arael-exec-step-text {
   color: #9ca3af;
 }
 
-.arael-step-completed .arael-step-text {
+.arael-exec-step-completed .arael-exec-step-text {
   color: var(--text-primary, #374151);
 }
 
-html.dark .arael-step-completed .arael-step-text {
+html.dark .arael-exec-step-completed .arael-exec-step-text {
   color: #e5e7eb;
 }
 
-/* 展开时的完整消息显示 */
-.arael-task-full-message {
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 10px;
-  margin-bottom: 10px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-secondary, #4b5563);
-  word-break: break-word;
-  white-space: pre-wrap;
-  max-height: 200px;
-  overflow-y: auto;
+/* Step images */
+.arael-step-image {
+  margin-top: 6px;
+  width: 100%;
 }
 
-html.dark .arael-task-full-message {
-  background: rgba(255, 255, 255, 0.03);
-  color: #d1d5db;
+.arael-step-image img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--bg-secondary, #f3f4f6);
+  cursor: pointer;
+  transition: opacity 0.2s;
 }
 
-/* 任务结果 */
-.arael-task-result {
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 10px;
-  margin-bottom: 10px;
+.arael-step-image img:hover {
+  opacity: 0.9;
 }
 
-html.dark .arael-task-result {
-  background: rgba(255, 255, 255, 0.03);
+html.dark .arael-step-image img {
+  background: #1f2937;
 }
 
-.arael-result-text {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-primary, #374151);
-  margin: 0 0 8px;
+/* Agent tags */
+.arael-exec-agent-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
 }
 
-html.dark .arael-result-text {
-  color: #e5e7eb;
+.arael-agent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  color: rgba(0, 0, 0, 0.6);
 }
 
-/* 问题选项按钮区域 */
+html.dark .arael-agent-tag {
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.arael-agent-tag[data-tier='pro'] {
+  background: rgba(168, 85, 247, 0.06);
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+html.dark .arael-agent-tag[data-tier='pro'] {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.25);
+}
+
+.arael-agent-name {
+  font-weight: 500;
+}
+
+.arael-agent-count {
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+.arael-agent-count::before {
+  content: '\00D7';
+}
+
+/* Interrupt button */
+.arael-exec-interrupt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.arael-exec-interrupt:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+html.dark .arael-exec-interrupt {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+/* ==========================================
+   7. Question Options & Suggestion Chips
+   ========================================== */
+
 .arael-question-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+html.dark .arael-question-options {
+  border-top-color: rgba(255, 255, 255, 0.06);
 }
 
 .arael-option-btn {
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, white);
-  border: 1px solid color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
-  border-radius: 20px;
-  color: var(--color-primary, #10b981);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.arael-option-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 20%, white);
-  border-color: var(--color-primary, #10b981);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
-}
-
-.arael-option-btn:active {
-  transform: translateY(0);
-  box-shadow: none;
-}
-
-/* 任务底部区域（完成按钮） */
-.arael-task-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.arael-complete-btn {
-  padding: 6px 16px;
+  padding: 7px 14px;
   font-size: 12px;
   font-weight: 500;
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #888) 50%, transparent);
-  border-radius: 16px;
-  color: var(--color-primary, #888);
+  background: color-mix(in srgb, var(--color-primary, #10b981) 8%, white);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+  border-radius: 20px;
+  color: var(--color-primary, #10b981);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.arael-complete-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #888) 15%, transparent);
-  border-color: var(--color-primary, #888);
+.arael-option-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 18%, white);
+  border-color: var(--color-primary, #10b981);
+  transform: translateY(-1px);
+}
+
+.arael-option-btn:active {
+  transform: translateY(0);
+}
+
+html.dark .arael-option-btn {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, rgba(24, 24, 27, 0.9));
 }
 
 /* ==========================================
-   5. 输入区域（极简）
+   8. Input Section
    ========================================== */
 
 .arael-input-section {
-  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 10px;
 }
 
 .arael-input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.8);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 20px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
+}
+
+html.dark .arael-input-wrapper {
+  background: rgba(40, 40, 44, 0.75);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
 
 .arael-input {
-  flex: 1;
-  height: 40px;
+  width: 100%;
+  height: 38px;
   padding: 0 16px;
   border: none;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.05);
+  background: transparent;
   font-size: 14px;
   font-weight: 450;
   color: var(--text-primary, #1a1a1a);
   outline: none;
   min-width: 0;
-  transition: all 0.2s ease;
 }
 
 html.dark .arael-input {
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   color: #fff;
 }
 
-.arael-input:focus {
-  background: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
-}
-
-html.dark .arael-input:focus {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
+.arael-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .arael-input::placeholder {
@@ -873,213 +1022,35 @@ html.dark .arael-input:focus {
   cursor: not-allowed;
 }
 
-/* ==========================================
-   5.1 任务收藏按钮
-   ========================================== */
-
-.arael-task-favorite {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 50%;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  opacity: 0.6;
-}
-
-.arael-task-favorite:hover {
-  opacity: 1;
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-  transform: scale(1.1);
-}
-
-.arael-task-favorite:active {
-  transform: scale(0.95);
-}
-
-/* ==========================================
-   5.1.1 继续对话按钮
-   ========================================== */
-
-.arael-task-continue {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 50%;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  opacity: 0.6;
-}
-
-.arael-task-continue:hover {
-  opacity: 1;
-  color: var(--color-primary, #10b981);
-  background: rgba(16, 185, 129, 0.1);
-  transform: scale(1.1);
-}
-
-.arael-task-continue:active {
-  transform: scale(0.95);
-}
-
-/* 历史记录中有对话的徽章 */
-.arael-task-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 4px;
-  color: var(--color-primary, #10b981);
-  opacity: 0.7;
-}
-
-/* ==========================================
-   5.2 收藏预设区域
-   ========================================== */
-
-.arael-presets-section {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.04);
-}
-
-html.dark .arael-presets-section {
-  border-top-color: rgba(255, 255, 255, 0.06);
-}
-
-.arael-presets-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.arael-presets-title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #f59e0b;
-}
-
-.arael-presets-toggle {
-  padding: 2px 8px;
-  font-size: 10px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.arael-presets-toggle:hover {
-  color: var(--text-secondary, #6b7280);
-}
-
-.arael-presets-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 32px;
-  overflow: hidden;
-  transition: max-height 0.2s ease;
-}
-
-.arael-presets-list.arael-presets-expanded {
-  max-height: 120px;
-  overflow-y: auto;
-}
-
-.arael-preset-capsule {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px 4px 10px;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.2);
-  border-radius: 14px;
-  font-size: 11px;
-  color: var(--text-secondary, #6b7280);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  max-width: 160px;
-}
-
-html.dark .arael-preset-capsule {
-  background: rgba(245, 158, 11, 0.1);
-  border-color: rgba(245, 158, 11, 0.25);
-  color: #d1d5db;
-}
-
-.arael-preset-capsule:hover {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: rgba(245, 158, 11, 0.4);
-  transform: translateY(-1px);
-}
-
-.arael-preset-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.arael-preset-delete {
-  width: 14px;
-  height: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 50%;
-  font-size: 12px;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  opacity: 0.5;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.arael-preset-delete:hover {
-  opacity: 1;
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-/* 语音按钮 - 默认透明，hover 时显示背景 */
+/* Voice button — floating island */
 .arael-voice-btn {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 50%;
-  font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.8);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
   color: var(--text-muted, #9ca3af);
-  box-shadow: none;
+}
+
+html.dark .arael-voice-btn {
+  background: rgba(40, 40, 44, 0.75);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
 
 .arael-voice-btn:hover:not(:disabled) {
   transform: scale(1.05);
-  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, transparent);
   color: var(--color-primary, #10b981);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
 }
 
 .arael-voice-btn:active:not(:disabled) {
@@ -1089,10 +1060,8 @@ html.dark .arael-preset-capsule {
 .arael-voice-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  animation: none;
 }
 
-/* 语音按钮 - 录音中状态 */
 .arael-voice-btn.arael-voice-recording {
   background: #ef4444;
   color: white;
@@ -1102,12 +1071,10 @@ html.dark .arael-preset-capsule {
 .arael-voice-btn.arael-voice-recording:hover:not(:disabled) {
   background: #dc2626;
   color: white;
-  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.4);
 }
 
 @keyframes arael-recording-pulse {
-  0%,
-  100% {
+  0%, 100% {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
   }
@@ -1117,312 +1084,738 @@ html.dark .arael-preset-capsule {
   }
 }
 
-/* 语音按钮 - 识别中状态 */
 .arael-voice-btn.arael-voice-processing {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, transparent);
   color: var(--color-primary, #10b981);
 }
 
-/* 发送按钮 */
+/* Send / Stop button — floating capsule */
 .arael-send-btn {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  height: 38px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-primary, #10b981), var(--color-secondary, #059669));
+  gap: 5px;
+  background: var(--color-primary, #10b981);
   border: none;
-  border-radius: 50%;
+  border-radius: 19px;
   color: white;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow:
-    0 2px 10px color-mix(in srgb, var(--color-primary, #10b981) 40%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
 }
 
 .arael-send-btn:hover:not(:disabled) {
-  transform: scale(1.08);
-  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-primary, #10b981) 50%, transparent);
+  filter: brightness(1.08);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
 }
 
 .arael-send-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.97);
 }
 
 .arael-send-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
-.arael-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: arael-spin 0.7s linear infinite;
+.arael-send-btn.arael-stop-btn {
+  background: #ef4444;
+  opacity: 1;
+}
+
+.arael-send-btn.arael-stop-btn:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.35);
 }
 
 /* ==========================================
-   6. 日志面板
+   9. Session List
    ========================================== */
 
-.arael-logs-toggle {
+.arael-sessions {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.arael-sessions-loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.arael-sessions-items {
+  padding: 4px 6px;
+}
+
+.arael-sessions-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
-  padding: 8px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted, #9ca3af);
-  background: none;
-  border: none;
-  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s ease;
+  text-align: left;
+  margin-bottom: 2px;
 }
 
-html.dark .arael-logs-toggle {
-  border-top-color: rgba(255, 255, 255, 0.06);
+.arael-sessions-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.04);
 }
 
-.arael-logs-toggle:hover {
+html.dark .arael-sessions-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.arael-sessions-item.active {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 8%, white);
+  border-color: color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
+}
+
+html.dark .arael-sessions-item.active {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, rgba(24, 24, 27, 0.9));
+  border-color: color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+}
+
+.arael-sessions-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.arael-sessions-item-icon {
+  flex-shrink: 0;
+  color: var(--text-muted, #9ca3af);
+  opacity: 0.5;
+}
+
+.arael-sessions-item-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.dark .arael-sessions-item-title {
+  color: #e5e7eb;
+}
+
+.arael-sessions-item-time {
+  font-size: 10px;
+  color: var(--text-muted, #9ca3af);
+  flex-shrink: 0;
+}
+
+.arael-sessions-item-sub {
+  font-size: 11px;
+  color: var(--text-muted, #9ca3af);
+  padding-left: 22px;
+}
+
+.arael-sessions-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted, #9ca3af);
+}
+
+/* ==========================================
+   10. Manage Panel (sidebar layout)
+   ========================================== */
+
+.arael-manage {
+  display: flex;
+  max-height: 55vh;
+  overflow: hidden;
+}
+
+/* Left sidebar */
+.arael-manage-sidebar {
+  width: 56px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.015);
+}
+
+html.dark .arael-manage-sidebar {
+  border-right-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.arael-manage-back-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-primary, #10b981);
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 4px;
+}
+
+.arael-manage-back-icon:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html.dark .arael-manage-back-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.arael-manage-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.arael-manage-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.arael-manage-nav-item:hover {
+  background: rgba(0, 0, 0, 0.05);
   color: var(--text-secondary, #6b7280);
-  background: rgba(0, 0, 0, 0.02);
 }
 
-html.dark .arael-logs-toggle:hover {
-  color: #9ca3af;
-  background: rgba(255, 255, 255, 0.03);
+html.dark .arael-manage-nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #d1d5db;
 }
 
-.arael-logs-wrapper {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease;
+.arael-manage-nav-item.active {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, transparent);
+  color: var(--color-primary, #10b981);
 }
 
-.arael-logs-wrapper[data-expanded='true'] {
-  grid-template-rows: 1fr;
+html.dark .arael-manage-nav-item.active {
+  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
 }
 
-.arael-logs-panel {
-  border-top: 1px solid rgba(0, 0, 0, 0.04);
-  max-height: 200px;
+.arael-manage-nav-label {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+/* Right content area */
+.arael-manage-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-html.dark .arael-logs-panel {
-  border-top-color: rgba(255, 255, 255, 0.06);
+.arael-manage-main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
 }
 
-.arael-logs-header {
+.arael-manage-loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.arael-manage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.arael-manage-empty {
+  text-align: center;
+  padding: 28px 16px;
+  font-size: 12px;
+  color: var(--text-muted, #9ca3af);
+}
+
+/* Heartbeat items */
+.arael-hb-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+html.dark .arael-hb-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.arael-hb-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.arael-hb-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+}
+
+html.dark .arael-hb-name {
+  color: #e5e7eb;
+}
+
+.arael-hb-schedule {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted, #9ca3af);
+  margin-top: 2px;
+}
+
+.arael-hb-result {
+  font-size: 11px;
+  color: var(--text-secondary, #6b7280);
+  margin-top: 4px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+html.dark .arael-hb-result {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.arael-hb-toggle {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.arael-hb-toggle.on {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.arael-hb-toggle.off {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.4);
+}
+
+html.dark .arael-hb-toggle.off {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Skill items */
+.arael-skill-item {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+html.dark .arael-skill-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.arael-skill-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  background: rgba(0, 0, 0, 0.02);
+}
+
+.arael-skill-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+}
+
+html.dark .arael-skill-name {
+  color: #e5e7eb;
+}
+
+.arael-skill-origin {
   font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted, #9ca3af);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 500;
 }
 
-html.dark .arael-logs-header {
-  background: rgba(255, 255, 255, 0.02);
+.arael-skill-origin-manual {
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
 }
 
-.arael-logs-header button {
-  padding: 3px 8px;
-  background: transparent;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
-  font-size: 10px;
-  color: var(--text-muted, #9ca3af);
-  cursor: pointer;
-  transition: all 0.15s ease;
+.arael-skill-origin-agent_generated {
+  background: rgba(245, 158, 11, 0.08);
+  color: #d97706;
 }
 
-html.dark .arael-logs-header button {
-  border-color: rgba(255, 255, 255, 0.08);
+.arael-skill-origin-agent_improved {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
 }
 
-.arael-logs-header button:hover {
-  background: rgba(0, 0, 0, 0.03);
+.arael-skill-desc {
+  font-size: 11px;
   color: var(--text-secondary, #6b7280);
+  margin-top: 4px;
+  line-height: 1.3;
 }
 
-.arael-logs-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-  font-size: 10px;
-  line-height: 1.4;
+html.dark .arael-skill-desc {
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.arael-logs-empty {
-  text-align: center;
-  color: var(--text-muted, #9ca3af);
-  padding: 16px;
-}
-
-.arael-log-entry {
+.arael-skill-stats {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.02);
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
 }
 
-html.dark .arael-log-entry {
-  border-bottom-color: rgba(255, 255, 255, 0.03);
+.arael-skill-stat-ok {
+  color: #059669;
 }
 
-.arael-log-entry:last-of-type {
-  border-bottom: none;
-}
-
-.arael-log-time {
-  color: var(--text-muted, #9ca3af);
-  font-size: 9px;
-}
-
-.arael-log-type {
-  font-weight: 600;
-  font-size: 8px;
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.arael-log-info .arael-log-type {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-
-.arael-log-success .arael-log-type {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-}
-
-.arael-log-warning .arael-log-type {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-
-.arael-log-error .arael-log-type {
-  background: rgba(239, 68, 68, 0.1);
+.arael-skill-stat-fail {
   color: #ef4444;
 }
 
-.arael-log-debug .arael-log-type {
-  background: rgba(107, 114, 128, 0.1);
-  color: #6b7280;
+.arael-tier-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
 }
 
-.arael-log-message {
-  flex: 1;
+.arael-tier-badge.arael-tier-pro {
+  background: rgba(124, 58, 237, 0.1);
+  color: #7c3aed;
+}
+
+.arael-tier-badge.arael-tier-standard,
+.arael-tier-badge.arael-tier-std {
+  background: rgba(5, 150, 105, 0.1);
+  color: #059669;
+}
+
+/* Memory items */
+.arael-mem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+html.dark .arael-mem-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.arael-mem-type {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.08);
+  color: rgba(99, 102, 241, 0.8);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.arael-mem-content {
+  font-size: 12px;
   color: var(--text-secondary, #6b7280);
+  line-height: 1.4;
+}
+
+html.dark .arael-mem-content {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ==========================================
+   11. Trace Detail
+   ========================================== */
+
+.arael-trace-detail {
+  margin-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding-top: 4px;
+}
+
+html.dark .arael-trace-detail {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.arael-trace-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+  width: 100%;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+html.dark .arael-trace-toggle {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.arael-trace-toggle:hover {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+html.dark .arael-trace-toggle:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.arael-trace-chevron {
+  flex-shrink: 0;
+}
+
+.arael-trace-label {
+  flex-shrink: 0;
+}
+
+.arael-trace-summary {
+  color: rgba(0, 0, 0, 0.3);
+  font-size: 10px;
+}
+
+html.dark .arael-trace-summary {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.arael-trace-tiers {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.arael-tier-pro {
+  color: #7c3aed;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.arael-tier-std {
+  color: #059669;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.arael-trace-content {
+  padding: 4px 0 4px 12px;
+}
+
+.arael-trace-loading {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+}
+
+html.dark .arael-trace-loading {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.arael-trace-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.arael-trace-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+html.dark .arael-trace-step {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.arael-trace-step-failed {
+  color: #ef4444;
+}
+
+.arael-trace-step-label {
+  font-size: 9px;
+  font-weight: 700;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: rgba(99, 102, 241, 0.06);
+  color: rgba(99, 102, 241, 0.6);
+}
+
+html.dark .arael-trace-step-label {
+  background: rgba(99, 102, 241, 0.12);
+  color: rgba(165, 180, 252, 0.7);
+}
+
+.arael-trace-step-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arael-trace-step-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.arael-trace-step-duration {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.3);
+  font-variant-numeric: tabular-nums;
+}
+
+html.dark .arael-trace-step-duration {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.arael-trace-step-note {
+  font-size: 10px;
+  color: rgba(245, 158, 11, 0.75);
+  padding-left: 24px;
+  margin-top: 1px;
+}
+
+.arael-trace-step-error {
+  font-size: 10px;
+  color: rgba(239, 68, 68, 0.8);
+  padding-left: 24px;
+  margin-top: 2px;
+  line-height: 1.3;
   word-break: break-word;
 }
 
-.arael-log-data {
-  width: 100%;
-  margin-top: 3px;
+html.dark .arael-trace-step-error {
+  color: rgba(248, 113, 113, 0.85);
 }
 
-.arael-log-data summary {
-  cursor: pointer;
-  color: var(--text-muted, #9ca3af);
-  font-size: 9px;
+.arael-trace-memories {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(99, 102, 241, 0.04);
+  border-radius: 6px;
+  font-size: 11px;
 }
 
-.arael-log-data summary:hover {
-  color: var(--text-secondary, #6b7280);
+html.dark .arael-trace-memories {
+  background: rgba(99, 102, 241, 0.08);
 }
 
-.arael-log-data pre {
-  margin: 3px 0 0;
-  padding: 6px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 5px;
-  font-size: 9px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
+.arael-trace-memories-label {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 10px;
+  font-weight: 500;
 }
 
-html.dark .arael-log-data pre {
-  background: rgba(255, 255, 255, 0.03);
+html.dark .arael-trace-memories-label {
+  color: rgba(255, 255, 255, 0.4);
 }
 
-/* ==========================================
-   7. 响应式适配
-   ========================================== */
+.arael-trace-memory-item {
+  color: rgba(0, 0, 0, 0.55);
+  padding-left: 8px;
+  margin-top: 2px;
+  font-style: italic;
+}
 
-@media (max-width: 480px) {
-  .arael-panel-container {
-    top: 0.5rem;
-    left: 0.5rem;
-    right: 0.5rem;
-    margin: 0;
-    max-width: none;
-    min-width: auto;
-  }
+html.dark .arael-trace-memory-item {
+  color: rgba(255, 255, 255, 0.45);
+}
 
-  .arael-panel {
-    border-radius: 20px;
-  }
+.arael-trace-skill {
+  margin-top: 4px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 
-  .arael-input-section {
-    padding: 12px 14px;
-  }
+.arael-trace-skill-label {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 10px;
+  font-weight: 500;
+}
 
-  .arael-input-wrapper {
-    padding: 5px 6px 5px 14px;
-  }
+html.dark .arael-trace-skill-label {
+  color: rgba(255, 255, 255, 0.4);
+}
 
-  .arael-input {
-    font-size: 14px;
-  }
-
-  .arael-send-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 13px;
-  }
-
-  .arael-tasks-list {
-    max-height: 200px;
-  }
+.arael-trace-skill-name {
+  font-family: monospace;
+  font-size: 10px;
+  color: rgba(99, 102, 241, 0.75);
 }
 
 /* ==========================================
-   8. 动画偏好
-   ========================================== */
-
-@media (prefers-reduced-motion: reduce) {
-  .arael-panel,
-  .arael-send-btn,
-  .arael-suggestion-chip,
-  .arael-close-btn,
-  .arael-task-item {
-    transition-duration: 0.01ms !important;
-  }
-
-  .arael-spinner,
-  .arael-spinner-small,
-  .arael-pulse-dot {
-    animation: none;
-  }
-}
-
-/* ==========================================
-   9. 收藏胶囊（独立显示在面板下方）
+   12. Favorite Capsules
    ========================================== */
 
 .arael-favorite-capsule {
@@ -1432,11 +1825,8 @@ html.dark .arael-log-data pre {
   gap: 6px;
   padding: 8px 12px;
   margin-top: 4px;
-
-  /* 与主面板一致的毛玻璃风格 */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
-  /* 动态渐变边框 - 流动效果 */
   background:
     linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)) padding-box,
     conic-gradient(
@@ -1458,7 +1848,6 @@ html.dark .arael-log-data pre {
     arael-gradient-flow-angle 4s ease-in-out infinite,
     arael-gradient-flow-x 7s ease-in-out infinite,
     arael-gradient-flow-y 5s ease-in-out infinite;
-
   font-size: 12px;
   color: var(--text-secondary, #6b7280);
   cursor: pointer;
@@ -1494,7 +1883,6 @@ html.dark .arael-favorite-capsule {
   font-weight: 500;
 }
 
-/* 悬浮操作层 - 覆盖在胶囊上方 */
 .arael-favorite-actions {
   position: absolute;
   inset: 0;
@@ -1527,7 +1915,6 @@ html.dark .arael-favorite-capsule {
   opacity: 0.7;
 }
 
-/* 运行按钮 - 占据剩余空间 */
 .arael-favorite-run {
   flex: 1;
   color: var(--text-secondary, #6b7280);
@@ -1540,7 +1927,6 @@ html.dark .arael-favorite-run {
   color: #d1d5db;
 }
 
-/* 取消收藏按钮 - 固定宽度 */
 .arael-favorite-unfav {
   width: 32px;
   flex-shrink: 0;
@@ -1552,264 +1938,8 @@ html.dark .arael-favorite-unfav {
   color: #fbbf24;
 }
 
-@media (max-width: 480px) {
-  .arael-favorite-capsule {
-    padding: 6px 10px 6px 8px;
-    font-size: 11px;
-    max-width: 160px;
-    margin-top: 6px;
-  }
-}
-
 /* ==========================================
-   13. 会话管理器
-   ========================================== */
-
-.arael-session-manager {
-  position: relative;
-  width: 100%;
-  margin-bottom: 8px;
-}
-
-/* 会话指示器按钮 */
-.arael-session-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.03);
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-size: 13px;
-  color: #374151;
-  text-align: left;
-}
-
-.arael-session-indicator:hover {
-  background: rgba(0, 0, 0, 0.06);
-}
-
-html.dark .arael-session-indicator {
-  background: rgba(255, 255, 255, 0.05);
-  color: #d1d5db;
-}
-
-html.dark .arael-session-indicator:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.arael-session-icon {
-  font-size: 10px;
-  opacity: 0.5;
-  transition: transform 0.2s;
-}
-
-.arael-session-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.arael-session-count {
-  font-size: 11px;
-  opacity: 0.6;
-  flex-shrink: 0;
-}
-
-/* 会话下拉列表 */
-.arael-session-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 4px;
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  overflow: hidden;
-  z-index: 100;
-}
-
-html.dark .arael-session-dropdown {
-  background: rgba(30, 30, 32, 0.98);
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-/* 搜索框 */
-.arael-session-search {
-  position: relative;
-  padding: 8px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-html.dark .arael-session-search {
-  border-bottom-color: rgba(255, 255, 255, 0.05);
-}
-
-.arael-session-search-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  font-size: 13px;
-  background: transparent;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.arael-session-search-input:focus {
-  border-color: var(--color-primary, #10b981);
-}
-
-html.dark .arael-session-search-input {
-  border-color: rgba(255, 255, 255, 0.1);
-  color: #e5e7eb;
-}
-
-.arael-session-search-loading {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 14px;
-}
-
-/* 新建会话按钮 */
-.arael-session-new-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-primary, #10b981);
-  font-weight: 500;
-  transition: background 0.2s;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.arael-session-new-btn:hover {
-  background: rgba(16, 185, 129, 0.08);
-}
-
-html.dark .arael-session-new-btn {
-  border-bottom-color: rgba(255, 255, 255, 0.05);
-}
-
-.arael-session-new-icon {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-/* 会话列表 */
-.arael-session-list {
-  max-height: 280px;
-  overflow-y: auto;
-}
-
-.arael-session-loading,
-.arael-session-empty {
-  padding: 20px;
-  text-align: center;
-  color: #9ca3af;
-  font-size: 13px;
-}
-
-/* 会话项 */
-.arael-session-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
-}
-
-.arael-session-item:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.arael-session-item.active {
-  background: rgba(16, 185, 129, 0.08);
-}
-
-html.dark .arael-session-item {
-  border-bottom-color: rgba(255, 255, 255, 0.03);
-}
-
-html.dark .arael-session-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-html.dark .arael-session-item.active {
-  background: rgba(16, 185, 129, 0.12);
-}
-
-.arael-session-item-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.arael-session-item-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1f2937;
-}
-
-html.dark .arael-session-item-title {
-  color: #e5e7eb;
-}
-
-.arael-session-item-time {
-  font-size: 11px;
-  color: #9ca3af;
-  flex-shrink: 0;
-}
-
-.arael-session-item-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.arael-session-item-count {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-.arael-session-item-archive {
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  opacity: 0.5;
-  transition: opacity 0.2s;
-}
-
-.arael-session-item-archive:hover {
-  opacity: 1;
-}
-
-/* ==========================================
-   长按提示动效 - 使用壁纸色 --color-primary
-   总时长 500ms：0-220ms 圆点变形 → 140ms 圆环展开 → 持续呼吸至触发
+   13. Long Press Indicator
    ========================================== */
 
 .arael-longpress-indicator {
@@ -1827,7 +1957,6 @@ html.dark .arael-session-item-title {
   opacity: 1;
 }
 
-/* 中心圆点 - 出现后膨胀变空心，无缝过渡为圆环 */
 .arael-lp-dot {
   position: absolute;
   width: 32px;
@@ -1848,7 +1977,6 @@ html.dark .arael-session-item-title {
   0% {
     transform: translate(-50%, -50%) scale(0);
     background: var(--color-primary, #6366f1);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--color-primary, #6366f1) 40%, transparent);
     opacity: 1;
   }
   35% {
@@ -1859,22 +1987,17 @@ html.dark .arael-session-item-title {
   70% {
     transform: translate(-50%, -50%) scale(0.88);
     background: transparent;
-    box-shadow:
-      inset 0 0 0 2.5px var(--color-primary, #6366f1),
-      0 0 8px color-mix(in srgb, var(--color-primary, #6366f1) 35%, transparent);
+    box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
     opacity: 1;
   }
   100% {
     transform: translate(-50%, -50%) scale(1);
     background: transparent;
-    box-shadow:
-      inset 0 0 0 2.5px var(--color-primary, #6366f1),
-      0 0 10px color-mix(in srgb, var(--color-primary, #6366f1) 20%, transparent);
+    box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
     opacity: 0;
   }
 }
 
-/* 外圈脉冲光晕 - 与圆环展开同步 */
 .arael-lp-pulse {
   position: absolute;
   inset: -8px;
@@ -1893,20 +2016,11 @@ html.dark .arael-session-item-title {
 }
 
 @keyframes arael-lp-pulse {
-  0% {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  30% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(2.2);
-  }
+  0% { opacity: 0; transform: scale(0.3); }
+  30% { opacity: 0.9; }
+  100% { opacity: 0; transform: scale(2.2); }
 }
 
-/* SVG 圆环容器 - 140ms 后展开，随后持续呼吸缩放 */
 .arael-lp-svg {
   position: absolute;
   inset: 0;
@@ -1923,38 +2037,77 @@ html.dark .arael-session-item-title {
 }
 
 @keyframes arael-lp-svg-expand {
-  0% {
-    transform: scale(0.85);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+  0% { transform: scale(0.85); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 @keyframes arael-lp-breathe {
-  from {
-    transform: scale(0.92);
-    opacity: 0.7;
-  }
-  to {
-    transform: scale(1.06);
-    opacity: 1;
-  }
+  from { transform: scale(0.92); opacity: 0.7; }
+  to { transform: scale(1.06); opacity: 1; }
 }
 
-/* 底层轨道 */
 .arael-lp-track {
   fill: none;
   stroke: color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
   stroke-width: 2.5;
 }
 
-/* 完整圆环 */
 .arael-lp-ring {
   fill: none;
   stroke: var(--color-primary, #6366f1);
   stroke-width: 2.5;
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary, #6366f1) 45%, transparent));
+}
+
+/* ==========================================
+   14. Responsive
+   ========================================== */
+
+@media (max-width: 480px) {
+  .arael-panel-container {
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
+    margin: 0;
+    max-width: none;
+    min-width: auto;
+  }
+
+  .arael-panel {
+    border-radius: 20px;
+    min-width: auto;
+  }
+
+  .arael-input-section {
+    padding: 6px 8px 10px;
+  }
+
+  .arael-send-btn {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 11px;
+  }
+
+  .arael-favorite-capsule {
+    padding: 6px 10px 6px 8px;
+    font-size: 11px;
+    max-width: 160px;
+    margin-top: 6px;
+  }
+}
+
+/* ==========================================
+   15. Reduced Motion
+   ========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .arael-panel,
+  .arael-send-btn {
+    transition-duration: 0.01ms !important;
+  }
+
+  .arael-spinner,
+  .arael-spinner-small {
+    animation: none;
+  }
 }

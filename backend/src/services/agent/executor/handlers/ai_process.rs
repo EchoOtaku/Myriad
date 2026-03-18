@@ -3,9 +3,72 @@
 //! 处理 ai.summarize, ai.analyze, ai.chat, ai.groundingSearch 等 AI 类能力
 
 use super::HandlerContext;
+use crate::models::entities::brew_items;
 use crate::GLOBAL_DYNAMIC_CONFIG;
+use sea_orm::EntityTrait;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+
+/// 注入执行上下文到 AI 参数：角色身份 + 对话历史
+fn inject_role_identity(
+    capability_id: &str,
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> HashMap<String, Value> {
+    let mut params = params.clone();
+
+    let exec_ctx = match &ctx.execution_context {
+        Some(ec) => ec,
+        None => return params,
+    };
+
+    // 1. 注入角色身份到 systemPrompt
+    if !exec_ctx.role_contexts.is_empty() {
+        let router = crate::services::agent::routing::get_router();
+        let role = router.route_capability(capability_id);
+        let role_key = format!("{:?}", role);
+
+        if let Some(role_identity) = exec_ctx.role_contexts.get(&role_key) {
+            let existing = params
+                .get("systemPrompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let enhanced = if existing.is_empty() {
+                role_identity.clone()
+            } else {
+                format!("{}\n\n{}", role_identity, existing)
+            };
+            params.insert("systemPrompt".to_string(), Value::String(enhanced));
+        }
+    }
+
+    // 2. 注入对话历史（仅对话/分析类能力需要，纯处理类不注入）
+    let needs_context = matches!(capability_id,
+        "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content"
+    );
+    if needs_context && !params.contains_key("context") {
+        if let Some(ref history) = exec_ctx.conversation_context {
+            if !history.is_empty() {
+                // 限制最近 20 条，与 Planner 保持一致
+                let ctx_array: Vec<Value> = history
+                    .iter()
+                    .rev()
+                    .take(20)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|msg| serde_json::json!({
+                        "role": msg.role,
+                        "content": msg.content,
+                    }))
+                    .collect();
+                params.insert("context".to_string(), Value::Array(ctx_array));
+            }
+        }
+    }
+
+    params
+}
 
 /// 执行 AI 处理能力
 pub async fn execute(
@@ -18,21 +81,25 @@ pub async fn execute(
         .ai_analyzer
         .ok_or("AI analyzer not configured")?;
 
+    // 注入角色身份上下文到 systemPrompt（如果 Orchestrator 提供了角色 identity）
+    let params = inject_role_identity(capability_id, params, ctx);
+
     match capability_id {
-        "ai.summarize" => execute_ai_summarize(params, analyzer).await,
-        "ai.analyze" => execute_ai_analyze(params, analyzer).await,
-        "ai.recommend" => execute_ai_recommend(params, analyzer).await,
-        "ai.chat" => execute_ai_chat(params, analyzer).await,
-        "ai.webSearch" | "ai.groundingSearch" => execute_gemini_grounding_search_wrapper(params).await,
-        "brewlia.annotate" => execute_brewlia_annotate(params, analyzer).await,
-        "brewlia.podcast" => execute_brewlia_podcast(params, analyzer).await,
-        "speech.tts" => execute_speech_tts(params).await,
-        "smart.filter" => execute_smart_filter(params, analyzer).await,
-        "compare.content" => execute_compare_content(params, analyzer).await,
-        "icon.recommend" => execute_icon_recommend(params).await,
-        "prompt.generate" => execute_prompt_generate(params, analyzer).await,
-        "translate.text" => execute_translate_text(params, analyzer).await,
-        "code.explain" => execute_code_explain(params, analyzer).await,
+        "ai.summarize" => execute_ai_summarize(&params, analyzer).await,
+        "ai.analyze" => execute_ai_analyze(&params, analyzer).await,
+        "ai.recommend" => execute_ai_recommend(&params, analyzer).await,
+        "ai.chat" => execute_ai_chat(&params, analyzer).await,
+        "ai.webSearch" | "ai.groundingSearch" => execute_gemini_grounding_search_wrapper(&params).await,
+        "brewlia.annotate" => execute_brewlia_annotate(&params, analyzer, ctx).await,
+        "brewlia.podcast" => execute_brewlia_podcast(&params, analyzer, ctx).await,
+        "speech.tts" => execute_speech_tts(&params).await,
+        "smart.filter" => execute_smart_filter(&params, analyzer).await,
+        "compare.content" => execute_compare_content(&params, analyzer).await,
+        "icon.recommend" => execute_icon_recommend(&params).await,
+        "prompt.generate" => execute_prompt_generate(&params, analyzer).await,
+        "translate.text" => execute_translate_text(&params, analyzer).await,
+        "code.explain" => execute_code_explain(&params, analyzer).await,
+        "ai.image" => execute_ai_image(&params).await,
         _ => Err(format!(
             "Unknown AI capability: {} (action: {})",
             capability_id, action
@@ -53,15 +120,39 @@ async fn execute_ai_summarize(
         .get("style")
         .and_then(|v| v.as_str())
         .unwrap_or("brief");
+    let max_length = params.get("maxLength").and_then(|v| v.as_u64());
+
+    let (style_instruction, format_guide) = match style {
+        "detailed" => (
+            "详细总结",
+            "请提供完整的结构化总结，包含主要观点、关键论据和结论。使用清晰的段落结构。",
+        ),
+        "bullet" => (
+            "要点式总结",
+            "请以要点列表形式返回，每个要点一行（使用 - 开头），提取 5-10 个最重要的要点。",
+        ),
+        _ => (
+            "简要总结",
+            "请用 2-3 句话概括核心内容，抓住最关键的信息。",
+        ),
+    };
+
+    let length_hint = match max_length {
+        Some(n) => format!("总结长度不超过 {} 字。", n),
+        None => String::new(),
+    };
+
+    let input_str = serde_json::to_string_pretty(&input).unwrap_or_default();
+    // 截断过长的输入，避免 token 溢出
+    let truncated_input: String = input_str.chars().take(8000).collect();
 
     let prompt = format!(
-        "请对以下内容进行{}总结：\n\n{}",
-        match style {
-            "detailed" => "详细",
-            "bullet" => "要点式",
-            _ => "简要",
-        },
-        serde_json::to_string_pretty(&input).unwrap_or_default()
+        "你是一个专业的内容分析师。请对以下内容进行{}。\n\n\
+        {}\n\
+        {}\n\n\
+        请使用与原文相同的语言回复。\n\n\
+        内容：\n{}",
+        style_instruction, format_guide, length_hint, truncated_input
     );
 
     let result = analyzer
@@ -84,23 +175,59 @@ async fn execute_ai_analyze(
         .get("analysisType")
         .and_then(|v| v.as_str())
         .unwrap_or("general");
+    let instruction = params.get("instruction").and_then(|v| v.as_str());
+
+    let input_str = serde_json::to_string_pretty(&input).unwrap_or_default();
+    let truncated_input: String = input_str.chars().take(8000).collect();
+
+    let custom_instruction = instruction
+        .map(|i| format!("\n用户额外指示：{}", i))
+        .unwrap_or_default();
 
     let prompt = match analysis_type {
         "trend" => format!(
-            "请分析以下数据的趋势：\n\n{}",
-            serde_json::to_string_pretty(&input).unwrap_or_default()
+            "你是一个数据分析专家。请分析以下数据中的趋势和模式。\n\n\
+            要求：\n\
+            1. 识别数据中的增长/下降趋势\n\
+            2. 指出异常值或转折点\n\
+            3. 提供可能的原因解释\n\
+            4. 给出趋势预测\n\
+            {}\n\n\
+            数据：\n{}",
+            custom_instruction, truncated_input
         ),
         "sentiment" => format!(
-            "请分析以下内容的情感倾向：\n\n{}",
-            serde_json::to_string_pretty(&input).unwrap_or_default()
+            "你是一个情感分析专家。请分析以下内容的情感倾向。\n\n\
+            要求：\n\
+            1. 判断整体情感（正面/中性/负面）及置信度\n\
+            2. 识别关键情感词汇和表达\n\
+            3. 如果有多个主题，分别分析每个主题的情感\n\
+            4. 总结情感分布\n\
+            {}\n\n\
+            内容：\n{}",
+            custom_instruction, truncated_input
         ),
         "compare" => format!(
-            "请比较以下数据的异同：\n\n{}",
-            serde_json::to_string_pretty(&input).unwrap_or_default()
+            "你是一个数据比较分析专家。请对以下数据进行对比分析。\n\n\
+            要求：\n\
+            1. 列出各项数据的关键维度\n\
+            2. 逐维度对比异同\n\
+            3. 总结主要差异和共同点\n\
+            4. 给出比较结论和建议\n\
+            {}\n\n\
+            数据：\n{}",
+            custom_instruction, truncated_input
         ),
         _ => format!(
-            "请分析以下数据并提供见解：\n\n{}",
-            serde_json::to_string_pretty(&input).unwrap_or_default()
+            "你是一个数据分析专家。请深入分析以下数据并提供洞察。\n\n\
+            要求：\n\
+            1. 概括数据的整体特征\n\
+            2. 提取 3-5 个关键发现\n\
+            3. 指出值得注意的亮点或问题\n\
+            4. 给出可行的建议\n\
+            {}\n\n\
+            数据：\n{}",
+            custom_instruction, truncated_input
         ),
     };
 
@@ -120,12 +247,31 @@ async fn execute_ai_recommend(
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
     let context = params.get("context").cloned().unwrap_or(json!({}));
+    let preferences = params.get("preferences").cloned().unwrap_or(json!({}));
     let count = params.get("count").and_then(|v| v.as_u64()).unwrap_or(5);
 
+    let context_str = serde_json::to_string_pretty(&context).unwrap_or_default();
+    let truncated_context: String = context_str.chars().take(6000).collect();
+
+    let prefs_str = if preferences != json!({}) {
+        format!(
+            "\n用户偏好：\n{}",
+            serde_json::to_string_pretty(&preferences).unwrap_or_default()
+        )
+    } else {
+        String::new()
+    };
+
     let prompt = format!(
-        "基于以下用户数据，推荐 {} 个相关内容：\n\n{}",
-        count,
-        serde_json::to_string_pretty(&context).unwrap_or_default()
+        "你是一个个性化推荐专家。基于以下用户数据，推荐 {} 个用户可能感兴趣的内容。\n\n\
+        要求：\n\
+        1. 每条推荐包含名称和推荐理由\n\
+        2. 推荐应多样化，覆盖用户的不同兴趣点\n\
+        3. 优先推荐与用户已有偏好相关但可能尚未发现的内容\n\
+        4. 请直接返回 JSON 数组格式：[{{\"name\": \"...\", \"reason\": \"...\"}}]\n\
+        {}\n\n\
+        用户数据：\n{}",
+        count, prefs_str, truncated_context
     );
 
     let result = analyzer
@@ -133,8 +279,17 @@ async fn execute_ai_recommend(
         .await
         .map_err(|e| format!("AI recommendation failed: {}", e))?;
 
+    // 尝试解析 JSON 数组，否则回退到文本
+    let recommendations: Value = extract_json_array_from_text(&result)
+        .first()
+        .map(|_| {
+            let arr = extract_json_array_from_text(&result);
+            json!(arr)
+        })
+        .unwrap_or_else(|| json!(result));
+
     Ok(json!({
-        "recommendations": result,
+        "recommendations": recommendations,
         "count": count
     }))
 }
@@ -151,7 +306,7 @@ async fn execute_ai_chat(
     let system_prompt = params
         .get("systemPrompt")
         .and_then(|v| v.as_str())
-        .unwrap_or("你是一个友好的AI助手，擅长帮助用户处理各种问题。");
+        .unwrap_or("你是 Arael，Myriad 平台的 AI 助手。你友好、博学，擅长帮助用户处理各种问题。回复时保持简洁和有用。");
 
     let context = params.get("context").and_then(|v| v.as_array());
 
@@ -430,19 +585,40 @@ fn extract_json_array_from_text(text: &str) -> Vec<Value> {
 async fn execute_brewlia_annotate(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
+    ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     let item_id = params
         .get("itemId")
         .and_then(|v| v.as_i64())
         .ok_or("Missing itemId parameter")?;
 
+    // 从数据库获取文章实际内容
+    let item = brew_items::Entity::find_by_id(item_id as i32)
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| format!("Article with ID {} not found", item_id))?;
+
+    let title = &item.title;
+    let content = item
+        .content
+        .as_deref()
+        .unwrap_or_else(|| item.summary.as_deref().unwrap_or(""));
+    // 截断过长文章，保留核心内容
+    let truncated_content: String = content.chars().take(6000).collect();
+
     let prompt = format!(
-        "为文章ID {} 生成阅读注释，包括：\n\
-        1. 关键术语解释\n\
-        2. 背景知识补充\n\
-        3. 相关概念链接\n\
-        请以JSON数组格式返回注释列表。",
-        item_id
+        "你是一个专业的阅读理解助手。请为以下文章生成详细的阅读注释。\n\n\
+        文章标题：{}\n\
+        文章内容：\n{}\n\n\
+        请生成以下类型的注释：\n\
+        1. 关键术语解释 — 文章中的专业术语、缩写、技术概念等\n\
+        2. 背景知识补充 — 帮助读者理解的相关背景信息\n\
+        3. 延伸阅读建议 — 相关主题和概念\n\n\
+        请以 JSON 数组格式返回，每个元素包含：\n\
+        {{\"type\": \"term|background|extension\", \"term\": \"关键词\", \"explanation\": \"解释内容\"}}\n\n\
+        请直接返回 JSON 数组，不要包含 markdown 标记。",
+        title, truncated_content
     );
 
     let result = analyzer
@@ -450,11 +626,18 @@ async fn execute_brewlia_annotate(
         .await
         .map_err(|e| format!("Annotation generation failed: {}", e))?;
 
-    let annotations: Value = serde_json::from_str(&result).unwrap_or(json!([{
-        "type": "note",
-        "term": "AI 生成注释",
-        "explanation": result
-    }]));
+    let annotations: Value = {
+        let arr = extract_json_array_from_text(&result);
+        if arr.is_empty() {
+            json!([{
+                "type": "note",
+                "term": "AI 生成注释",
+                "explanation": result
+            }])
+        } else {
+            json!(arr)
+        }
+    };
 
     Ok(json!({
         "annotations": annotations,
@@ -466,6 +649,7 @@ async fn execute_brewlia_annotate(
 async fn execute_brewlia_podcast(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
+    ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     let item_id = params
         .get("itemId")
@@ -477,21 +661,42 @@ async fn execute_brewlia_podcast(
         .and_then(|v| v.as_str())
         .unwrap_or("casual");
 
+    // 从数据库获取文章实际内容
+    let item = brew_items::Entity::find_by_id(item_id as i32)
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| format!("Article with ID {} not found", item_id))?;
+
+    let title = &item.title;
+    let content = item
+        .content
+        .as_deref()
+        .unwrap_or_else(|| item.summary.as_deref().unwrap_or(""));
+    let truncated_content: String = content.chars().take(6000).collect();
+    let author = item.author.as_deref().unwrap_or("未知");
+
     let style_desc = match style {
-        "professional" => "专业、正式的商业播客风格",
-        "educational" => "教育性质、通俗易懂的讲解风格",
-        _ => "轻松、对话式的闲聊风格",
+        "professional" => "专业、正式的商业播客风格。使用严谨的语言，适当引用数据",
+        "educational" => "教育性质、通俗易懂的讲解风格。多用类比和举例帮助理解",
+        _ => "轻松、对话式的闲聊风格。语气亲切自然，可以加入幽默元素",
     };
 
     let prompt = format!(
-        "将文章ID {} 转换为播客对话文稿。\n\
-        风格要求：{}\n\
+        "你是一个专业的播客编剧。请将以下文章转换为双人播客对话文稿。\n\n\
+        文章标题：{}\n\
+        文章作者：{}\n\
+        文章内容：\n{}\n\n\
+        风格要求：{}\n\n\
         格式要求：\n\
-        - 两个主持人对话\n\
-        - 开场介绍、正文讨论、结尾总结\n\
-        - 每段对话标注说话人\n\
+        - 两个主持人（A 和 B）的对话\n\
+        - 结构：开场介绍（简要引出话题）→ 正文讨论（深入探讨文章要点）→ 结尾总结（核心观点回顾）\n\
+        - 每段对话以 A：或 B：开头\n\
+        - 对话应自然流畅，A 主要负责引导话题，B 负责补充观点和提问\n\
+        - 忠实于原文内容，不要编造文章中没有的事实\n\
+        - 总长度约 800-1500 字\n\n\
         请直接输出对话文稿。",
-        item_id, style_desc
+        title, author, truncated_content, style_desc
     );
 
     let result = analyzer
@@ -499,7 +704,8 @@ async fn execute_brewlia_podcast(
         .await
         .map_err(|e| format!("Podcast script generation failed: {}", e))?;
 
-    let estimated_duration = result.chars().count() as f64 / 150.0;
+    // 基于中文平均语速约 200 字/分钟估算
+    let estimated_duration = result.chars().count() as f64 / 200.0;
 
     Ok(json!({
         "script": result,
@@ -513,27 +719,8 @@ async fn execute_brewlia_podcast(
 // 其他 AI 能力
 // ============================================================================
 
-async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let text = params
-        .get("text")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing text parameter")?;
-
-    let voice = params
-        .get("voice")
-        .and_then(|v| v.as_str())
-        .unwrap_or("default");
-
-    let speed = params.get("speed").and_then(|v| v.as_f64()).unwrap_or(1.0);
-
-    Ok(json!({
-        "success": true,
-        "text": text,
-        "voice": voice,
-        "speed": speed,
-        "message": "TTS request queued. Actual audio generation requires speech service integration.",
-        "estimatedDuration": text.chars().count() as f64 / 5.0
-    }))
+async fn execute_speech_tts(_params: &HashMap<String, Value>) -> Result<Value, String> {
+    Err("TTS 服务未配置。请在设置中配置语音合成服务后重试。".to_string())
 }
 
 async fn execute_smart_filter(
@@ -564,15 +751,24 @@ async fn execute_smart_filter(
     let raw_file = format!("cache/raw/{}.json", platform); // platform 已经过白名单校验
     if let Ok(content) = tokio::fs::read_to_string(&raw_file).await {
         if let Ok(raw_data) = serde_json::from_str::<Value>(&content) {
+            let raw_str = serde_json::to_string_pretty(&raw_data).unwrap_or_default();
+            let truncated: String = raw_str.chars().take(5000).collect();
+            // 检查截断是否在 JSON 中间，尝试保持完整性
+            let safe_truncated = if truncated.len() < raw_str.len() {
+                format!("{}... (数据已截断)", truncated)
+            } else {
+                truncated
+            };
+
             let prompt = format!(
-                "请分析以下 {} 平台的数据，提取关键信息并分类：\n\n{}\n\n\
-                请返回JSON格式的分析结果。",
-                platform,
-                serde_json::to_string_pretty(&raw_data)
-                    .unwrap_or_default()
-                    .chars()
-                    .take(5000)
-                    .collect::<String>()
+                "你是一个平台数据分析专家。请分析以下 {} 平台的数据，提取关键信息并进行分类。\n\n\
+                要求：\n\
+                1. 提取用户活跃度指标（数量、频率等）\n\
+                2. 识别内容类型和偏好分布\n\
+                3. 标注有价值的数据点\n\
+                4. 返回结构化的 JSON 结果\n\n\
+                数据：\n{}",
+                platform, safe_truncated
             );
 
             let result = analyzer
@@ -609,18 +805,26 @@ async fn execute_compare_content(
 
     if let Ok(content) = tokio::fs::read_to_string(&cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
+            let data_str = serde_json::to_string_pretty(&data).unwrap_or_default();
+            let truncated: String = data_str.chars().take(5000).collect();
+
+            let time_range = match (start_date, end_date) {
+                (Some(s), Some(e)) => format!("时间范围：{} 到 {}", s, e),
+                (Some(s), None) => format!("起始时间：{}", s),
+                (None, Some(e)) => format!("截止时间：{}", e),
+                _ => "时间范围：全部可用数据".to_string(),
+            };
+
             let prompt = format!(
-                "请分析以下 {} 平台数据的变化趋势：\n\n{}\n\n\
-                时间范围：{} 到 {}\n\n\
-                请分析：数据量变化、内容偏好变化、活跃度变化、重要发现",
-                platform,
-                serde_json::to_string_pretty(&data)
-                    .unwrap_or_default()
-                    .chars()
-                    .take(5000)
-                    .collect::<String>(),
-                start_date.unwrap_or("开始"),
-                end_date.unwrap_or("现在")
+                "你是一个数据分析专家。请分析以下 {} 平台的数据快照，提供洞察和分析。\n\n\
+                {}\n\n\
+                注意：这是当前时间点的数据快照。请基于数据中可见的信息进行分析：\n\
+                1. 数据量和内容分布概况\n\
+                2. 用户的内容偏好和兴趣方向\n\
+                3. 活跃度评估\n\
+                4. 值得关注的发现或亮点\n\n\
+                数据：\n{}",
+                platform, time_range, truncated
             );
 
             let result = analyzer
@@ -680,17 +884,49 @@ async fn execute_prompt_generate(
 ) -> Result<Value, String> {
     let title = params.get("title").and_then(|v| v.as_str()).unwrap_or("");
     let summary = params.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+    let description = params.get("description").and_then(|v| v.as_str()).unwrap_or("");
     let category = params.get("category").and_then(|v| v.as_str());
+    let style = params.get("style").and_then(|v| v.as_str());
+
+    let style_hint = match style {
+        Some(s) => format!("Preferred style: {}", s),
+        None => match category {
+            Some("anime") => "Preferred style: high quality anime illustration, anime key visual".to_string(),
+            Some("photo") => "Preferred style: photorealistic, 8k UHD, DSLR".to_string(),
+            _ => "Preferred style: detailed digital art, high quality".to_string(),
+        },
+    };
+
+    // 构建丰富的上下文信息
+    let mut context_parts: Vec<String> = Vec::new();
+    if !title.is_empty() {
+        context_parts.push(format!("Subject/Title: {}", title));
+    }
+    if !summary.is_empty() {
+        context_parts.push(format!("Summary: {}", summary));
+    }
+    if !description.is_empty() {
+        context_parts.push(format!("Detailed description: {}", description));
+    }
+    context_parts.push(style_hint);
 
     let prompt = format!(
-        "为以下活动生成 Studio Ghibli 风格的 AI 绘画提示词：\n\
-        标题：{}\n\
-        描述：{}\n\
-        类别：{}\n\n\
-        请生成英文提示词。",
-        title,
-        summary,
-        category.unwrap_or("general")
+        "You are an expert AI image prompt engineer. Your task is to generate a highly detailed, \
+        accurate image generation prompt (for Stable Diffusion / DALL-E / Flux) based on the following request.\n\n\
+        {}\n\n\
+        CRITICAL INSTRUCTIONS:\n\
+        1. If the subject is a known character (from anime, games, manga, etc.), you MUST use your knowledge \
+        to include their EXACT visual features: specific hair color and style, eye color, signature outfit/clothing \
+        details, accessories, and any unique physical traits. Do NOT guess or generalize — be precise.\n\
+        2. Describe the character's appearance in meticulous detail: hairstyle, hair color, eye color (heterochromia if applicable), \
+        clothing (specific garments, colors, patterns, accessories like hats/ribbons/capes), body pose, and expression.\n\
+        3. Include composition details: background scene, lighting (e.g. dramatic rim lighting, soft sunlight), \
+        camera angle (close-up, full body, portrait), atmosphere and mood.\n\
+        4. Include quality boosting tags: masterpiece, best quality, highly detailed, sharp focus, etc.\n\
+        5. The prompt must be in English. Be as specific and descriptive as possible.\n\
+        6. Maximum 800 characters.\n\n\
+        Output ONLY the raw prompt text. No explanations, no markdown, no quotes, no formatting.",
+        context_parts.join("\n")
     );
 
     let result = analyzer
@@ -698,9 +934,19 @@ async fn execute_prompt_generate(
         .await
         .map_err(|e| format!("Prompt generation failed: {}", e))?;
 
+    // 清理：去除 AI 可能添加的引号和多余空白
+    let cleaned = result.trim().trim_matches('"').trim_matches('`').trim();
+
+    // 根据类别生成更合适的 negative prompt
+    let negative_prompt = match category {
+        Some("anime") => "low quality, worst quality, blurry, deformed, ugly, bad anatomy, bad hands, extra fingers, missing fingers, extra limbs, bad proportions, watermark, text, signature, 3d, realistic",
+        Some("photo") => "low quality, blurry, deformed, ugly, bad anatomy, cartoon, anime, drawing, painting, watermark, text",
+        _ => "low quality, worst quality, blurry, deformed, ugly, bad anatomy, bad hands, extra fingers, missing fingers, extra limbs, bad proportions, watermark, text, signature",
+    };
+
     Ok(json!({
-        "prompt": result,
-        "negativePrompt": "background, scenery, landscape, low quality, blurry",
+        "prompt": cleaned,
+        "negativePrompt": negative_prompt,
         "title": title
     }))
 }
@@ -782,4 +1028,293 @@ async fn execute_code_explain(
         "explanation": result,
         "complexity": complexity
     }))
+}
+
+// ============================================================================
+// AI 图片生成
+// ============================================================================
+
+async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
+    // prompt 可能是字符串，也可能是上一步输出的对象（包含 .prompt 字段）
+    let prompt = params
+        .get("prompt")
+        .and_then(|v| {
+            v.as_str().map(|s| s.to_string()).or_else(|| {
+                // 如果是对象（如 prompt.generate 的输出），尝试提取 .prompt 字段
+                v.get("prompt").and_then(|inner| inner.as_str()).map(|s| s.to_string())
+            })
+        })
+        .ok_or("Missing prompt parameter")?;
+    let prompt = prompt.as_str();
+
+    if prompt.len() > 1000 {
+        return Err("Prompt too long (max 1000 characters)".to_string());
+    }
+
+    // 安全校验（复用 tapp_runtime 的逻辑）
+    let prompt_lower = prompt.to_lowercase();
+    let blocked_patterns = [
+        "nsfw", "nude", "naked", "porn", "sex", "hentai",
+        "gore", "blood", "murder", "kill", "violence",
+        "child", "minor", "underage", "loli", "shota",
+    ];
+    for pattern in &blocked_patterns {
+        if prompt_lower.contains(pattern) {
+            return Err(format!("Prompt contains disallowed content: {}", pattern));
+        }
+    }
+
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let provider = config.ai_image_provider.clone();
+    let model = config.ai_image_model.clone();
+    let default_width = config.ai_image_width as u32;
+    let default_height = config.ai_image_height as u32;
+    let pixai_api_key = config.pixai_api_key.clone();
+    drop(config);
+
+    let width = params
+        .get("width")
+        .and_then(|v| v.as_u64())
+        .map(|v| (v as u32).clamp(256, 2048))
+        .unwrap_or(default_width);
+    let height = params
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .map(|v| (v as u32).clamp(256, 2048))
+        .unwrap_or(default_height);
+
+    match provider.as_str() {
+        "pollinations" => {
+            let encoded_prompt = urlencoding::encode(prompt);
+            let url = format!(
+                "https://image.pollinations.ai/prompt/{}?width={}&height={}&model={}&nologo=true&private=true&enhance=true",
+                encoded_prompt, width, height, model
+            );
+
+            Ok(json!({
+                "imageUrl": url,
+                "width": width,
+                "height": height,
+                "provider": "pollinations"
+            }))
+        }
+        "pixai" => {
+            let api_key = pixai_api_key
+                .filter(|k| !k.is_empty())
+                .ok_or("PixAI API key not configured")?;
+
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .map_err(|e| format!("HTTP client error: {}", e))?;
+
+            // 1. 提交生成任务
+            let response = client
+                .post("https://api.pixai.art/v1/task")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .header("x-apollo-operation-name", "createTask")
+                .json(&json!({
+                    "parameters": {
+                        "prompts": prompt,
+                        "modelId": model,
+                        "width": width,
+                        "height": height,
+                        "batchSize": 1
+                    }
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("PixAI API request failed: {}", e))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                return Err(format!("PixAI API error: {}", status));
+            }
+
+            let raw_result: Value = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse PixAI response: {}", e))?;
+
+            tracing::info!("[ai.image] PixAI create task response: {}",
+                serde_json::to_string(&raw_result).unwrap_or_default());
+
+            // PixAI 可能返回 GraphQL 格式 {"data": {"task": {...}}} 或 REST 格式 {...}
+            let result = raw_result
+                .get("data")
+                .and_then(|d| d.get("task").or(Some(d)))
+                .unwrap_or(&raw_result);
+
+            // PixAI 的 id 可能是数字类型
+            let task_id_str = result
+                .get("id")
+                .or_else(|| result.get("taskId"))
+                .map(|v| match v {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) => n.to_string(),
+                    _ => v.to_string().trim_matches('"').to_string(),
+                })
+                .unwrap_or_default();
+
+            if task_id_str.is_empty() {
+                return Err("PixAI returned empty task ID".to_string());
+            }
+
+            tracing::info!("[ai.image] PixAI task submitted: {}", task_id_str);
+
+            // 2. 轮询等待完成（最多 120 秒，每 3 秒查一次）
+            let max_polls = 40;
+            let poll_interval = std::time::Duration::from_secs(3);
+
+            for attempt in 0..max_polls {
+                tokio::time::sleep(poll_interval).await;
+
+                let status_resp = client
+                    .get(format!("https://api.pixai.art/v1/task/{}", task_id_str))
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .header("Content-Type", "application/json")
+                    .header("x-apollo-operation-name", "getTask")
+                    .send()
+                    .await;
+
+                let status_resp = match status_resp {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!("[ai.image] PixAI poll #{} failed: {}", attempt, e);
+                        continue;
+                    }
+                };
+
+                if !status_resp.status().is_success() {
+                    tracing::warn!("[ai.image] PixAI poll #{} HTTP {}", attempt, status_resp.status());
+                    continue;
+                }
+
+                let raw_data: Value = match status_resp.json().await {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                // PixAI 可能返回 GraphQL 格式 {"data": {...}} 或直接 REST 格式 {...}
+                let task_data = raw_data
+                    .get("data")
+                    .and_then(|d| d.get("task").or(Some(d)))
+                    .unwrap_or(&raw_data);
+
+                // status 可能在顶层或嵌套
+                let status = task_data
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+
+                tracing::debug!("[ai.image] PixAI poll #{}: status={}, raw: {}",
+                    attempt, status,
+                    serde_json::to_string(&raw_data).unwrap_or_default());
+
+                match status {
+                    "completed" => {
+                        // 记录完整响应以便调试
+                        tracing::info!("[ai.image] PixAI task completed, full response: {}",
+                            serde_json::to_string(&task_data).unwrap_or_default());
+
+                        // 从响应中提取图片 URL，尝试多种字段路径
+                        let image_url = extract_pixai_image_url(&task_data);
+
+                        if image_url.is_empty() {
+                            tracing::warn!("[ai.image] PixAI completed but could not extract image URL");
+                            // 返回任务数据让前端自行处理
+                            return Ok(json!({
+                                "provider": "pixai",
+                                "taskId": task_id_str,
+                                "status": "completed",
+                                "width": width,
+                                "height": height,
+                                "taskData": task_data,
+                                "message": "图片生成完成，但无法提取图片 URL，请查看任务详情"
+                            }));
+                        }
+
+                        tracing::info!("[ai.image] PixAI image URL: {}", image_url);
+                        return Ok(json!({
+                            "imageUrl": image_url,
+                            "width": width,
+                            "height": height,
+                            "provider": "pixai",
+                            "taskId": task_id_str,
+                            "status": "completed"
+                        }));
+                    }
+                    "failed" | "cancelled" => {
+                        let error = task_data
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
+                        return Err(format!("PixAI image generation failed: {}", error));
+                    }
+                    // "waiting" | "running" | "queued" 等状态继续轮询
+                    _ => {}
+                }
+            }
+
+            Err("PixAI image generation timed out (120s)".to_string())
+        }
+        _ => Err(format!("Unknown image provider: {}", provider)),
+    }
+}
+
+/// 从 PixAI 任务响应中提取图片 URL
+///
+/// PixAI 实际返回格式：
+/// ```json
+/// {
+///   "outputs": {
+///     "mediaUrls": ["https://d2doj8oszwtcqy.cloudfront.net/images/temp/..."],
+///     "mediaIds": ["700145165991970298"]
+///   }
+/// }
+/// ```
+fn extract_pixai_image_url(task_data: &Value) -> String {
+    let outputs = match task_data.get("outputs") {
+        Some(o) => o,
+        None => return String::new(),
+    };
+
+    // 主路径: outputs.mediaUrls[0]（PixAI 实际格式：签名 CloudFront CDN URL）
+    if let Some(url) = outputs
+        .get("mediaUrls")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+    {
+        return url.to_string();
+    }
+
+    // 备用路径: outputs.mediaIds[0] → API 下载链接
+    if let Some(mid) = outputs
+        .get("mediaIds")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+    {
+        let mid_str = match mid {
+            Value::String(s) => s.clone(),
+            Value::Number(n) => n.to_string(),
+            _ => return String::new(),
+        };
+        return format!("https://api.pixai.art/v1/media/{}/download", mid_str);
+    }
+
+    // 兼容旧格式: outputs 是数组 [{"url": "..."} 或 {"mediaId": "..."}]
+    if let Some(arr) = outputs.as_array() {
+        if let Some(first) = arr.first() {
+            if let Some(url) = first.get("url").and_then(|v| v.as_str()) {
+                return url.to_string();
+            }
+            if let Some(url) = first.get("mediaUrl").and_then(|v| v.as_str()) {
+                return url.to_string();
+            }
+        }
+    }
+
+    String::new()
 }

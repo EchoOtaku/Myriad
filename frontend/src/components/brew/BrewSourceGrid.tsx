@@ -735,16 +735,18 @@ export default function BrewSourceGrid({
           isAuthenticated={isAuthenticated}
         />
 
-        <div className="flex flex-col items-center justify-center py-20 text-gray-500 dark:text-gray-400">
-          <div className="w-20 h-20 rounded-2xl bg-orange-500/10 flex items-center justify-center mb-4">
-            <Rss className="w-10 h-10 text-orange-500/50" />
+        <div className="flex flex-col items-start py-8">
+          <div className="rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-100/80 dark:bg-white/5 flex items-center justify-center text-gray-400 dark:text-gray-500 shrink-0">
+              <Rss className="w-5.5 h-5.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                {category ? t.brew.emptyCategoryNoSources.replace('{category}', category) : t.brew.emptyNoSources}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">{t.brew.addSourceHint}</p>
+            </div>
           </div>
-          <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
-            {category ? t.brew.emptyCategoryNoSources.replace('{category}', category) : t.brew.emptyNoSources}
-          </p>
-          <p className="text-sm mt-1 opacity-70">
-            点击右下角的添加按钮开始订阅
-          </p>
         </div>
       </div>
     )

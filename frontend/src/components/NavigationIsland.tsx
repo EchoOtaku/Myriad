@@ -50,11 +50,6 @@ const IconReports = (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
   </svg>
 )
-const IconFederation = (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-  </svg>
-)
 
 /**
  * 设备感知的动画时序配置
@@ -263,9 +258,12 @@ export function NavigationIsland() {
   // 追踪 handleTransition 内部定时器，组件卸载时清理
   const exitRafRef = useRef<number>(0)
   const exitTimerRef = useRef<number>(0)
+  // 用 ref 追踪 secondaryNav，供路由变化 effect 读取（不加入 deps）
+  const secondaryNavRef = useRef(secondaryNav)
+  secondaryNavRef.current = secondaryNav
 
-  // 当前是否显示二级导航
-  const showSecondary = secondaryNav?.expanded && secondaryNav.routePath === location.pathname
+  // 当前是否显示二级导航（子路由也匹配，如 /federation/room/xxx 匹配 /federation）
+  const showSecondary = secondaryNav?.expanded && location.pathname.startsWith(secondaryNav.routePath)
 
   // 动画期间锁定的渲染模式
   const currentRenderMode = isAnimating ? renderModeRef.current : (showSecondary ? 'secondary' : 'normal')
@@ -323,6 +321,7 @@ export function NavigationIsland() {
   // 路由切换时重置状态
   useEffect(() => {
     if (prevPathnameRef.current !== location.pathname) {
+      const prevPath = prevPathnameRef.current
       prevPathnameRef.current = location.pathname
 
       // 中断进行中的 handleTransition — 防止退出定时器在路由切换后
@@ -352,10 +351,23 @@ export function NavigationIsland() {
         }
       }
 
-      // 路由切换时重置为正常模式
-      lastModeRef.current = 'normal'
-      renderModeRef.current = 'normal'
-      setIsAnimating(false)
+      // 判断是否在同一二级导航组内导航（如 /federation → /federation/room/xxx）
+      const nav = secondaryNavRef.current
+      const stayingInSecondary = nav?.expanded
+        && prevPath.startsWith(nav.routePath)
+        && location.pathname.startsWith(nav.routePath)
+
+      if (stayingInSecondary) {
+        // 同组内导航：保持二级模式，不触发过渡动画
+        lastModeRef.current = 'secondary'
+        renderModeRef.current = 'secondary'
+        setIsAnimating(false)
+      } else {
+        // 离开二级导航组：完整重置为正常模式
+        lastModeRef.current = 'normal'
+        renderModeRef.current = 'normal'
+        setIsAnimating(false)
+      }
       // 重置自动展开标记，允许新页面自动展开
       autoExpandedRef.current = null
     }
@@ -384,7 +396,7 @@ export function NavigationIsland() {
     // 条件：有二级导航配置、当前在对应路由、尚未展开、未在动画中、还未自动展开过
     if (
       secondaryNav
-      && secondaryNav.routePath === location.pathname
+      && location.pathname.startsWith(secondaryNav.routePath)
       && !secondaryNav.expanded
       && !isAnimating
       && autoExpandedRef.current !== location.pathname
@@ -629,9 +641,11 @@ export function NavigationIsland() {
         island.removeAttribute('data-entering')
       }
     }
-  // deps 故意宽于严格最小集 — lastModeRef guard 确保只在实际模式切换时执行动画,
-  // 多余的 re-fire 被 guard 短路，不会产生副作用
-  }, [showSecondary, isAnimating, renderModeRef, secondaryNav, setIsAnimating, getCachedPadding, updateModeMetrics])
+  // deps: showSecondary 是模式切换的唯一信号；不包含 secondaryNav 以避免
+  // activeId 变化时触发 cleanup（会中断进行中的进入动画）。
+  // lastModeRef guard 确保只在实际模式切换时执行动画。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSecondary, isAnimating, setIsAnimating, getCachedPadding, updateModeMetrics])
 
   // 首次挂载时初始化导航岛高度，并缓存 padding
   useEffect(() => {
@@ -772,7 +786,13 @@ export function NavigationIsland() {
               {secondaryNav.items.map(item => (
                 <div key={item.id} className="nav-group nav-group-spaced" data-group={item.id}>
                   <button
-                    onClick={() => secondaryNav.onChange(item.id)}
+                    onClick={() => {
+                      secondaryNav.onChange(item.id)
+                      // 在子路由（如 /federation/room/xxx）点击导航项时，返回基础路由
+                      if (location.pathname !== secondaryNav.routePath && location.pathname.startsWith(secondaryNav.routePath + '/')) {
+                        navigate(secondaryNav.routePath)
+                      }
+                    }}
                     className={`nav-item ${secondaryNav.activeId === item.id ? 'active-secondary' : ''}`}
                     data-tooltip={item.title || item.label}
                     aria-label={item.ariaLabel || item.label}
@@ -843,19 +863,6 @@ export function NavigationIsland() {
                 >
                   <SiAppstore className="w-5 h-5" />
                 </a>
-              </div>
-
-              {/* 联邦按钮 */}
-              <div className="nav-group nav-group-spaced" data-group="federation">
-                <button
-                  className={`nav-item ${location.pathname === '/federation' ? 'active' : ''}`}
-                  data-tooltip={t.nav.federation}
-                  aria-label={t.nav.federation}
-                  aria-current={location.pathname === '/federation' ? 'page' : undefined}
-                  onClick={() => handleNavToPage('/federation')}
-                >
-                  {IconFederation}
-                </button>
               </div>
 
             </div>

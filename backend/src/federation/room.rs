@@ -17,9 +17,21 @@ use crate::federation::types::*;
 pub struct CreateRoomRequest {
     pub name: String,
     pub description: Option<String>,
+    pub avatar_url: Option<String>,
     /// owner / democratic / open
     pub governance_type: Option<String>,
     /// admin-only / member-invite / open
+    pub invite_policy: Option<String>,
+    pub max_members: Option<i32>,
+    pub is_public: Option<bool>,
+}
+
+/// 更新 Room 请求
+#[derive(Debug, Deserialize)]
+pub struct UpdateRoomRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
     pub invite_policy: Option<String>,
     pub max_members: Option<i32>,
     pub is_public: Option<bool>,
@@ -49,6 +61,7 @@ pub struct RoomSummary {
     pub room_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub avatar_url: Option<String>,
     pub owner_actor: String,
     pub governance_type: String,
     pub invite_policy: String,
@@ -67,6 +80,7 @@ pub struct RoomDetail {
     pub room_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub avatar_url: Option<String>,
     pub owner_actor: String,
     pub home_server: String,
     pub governance_type: String,
@@ -247,13 +261,14 @@ pub async fn create_room(
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_rooms
-           (room_id, name, description, owner_actor, home_server, governance_type, invite_policy,
+           (room_id, name, description, avatar_url, owner_actor, home_server, governance_type, invite_policy,
             max_members, is_public, distribution_strategy, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'fan-out', NOW())"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'fan-out', NOW())"#,
         [
             room_id.clone().into(),
             req.name.clone().into(),
             req.description.clone().into(),
+            req.avatar_url.clone().into(),
             local_actor.clone().into(),
             home_server.clone().into(),
             governance.into(),
@@ -282,6 +297,7 @@ pub async fn create_room(
         room_id,
         name: req.name.clone(),
         description: req.description.clone(),
+        avatar_url: req.avatar_url.clone(),
         owner_actor: local_actor,
         home_server,
         governance_type: governance.to_string(),
@@ -297,6 +313,116 @@ pub async fn create_room(
     })
 }
 
+/// 更新 Room 信息（仅 owner/admin 可操作）
+pub async fn update_room(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+    req: &UpdateRoomRequest,
+) -> Result<RoomDetail, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    // 验证权限：必须是 owner 或 admin
+    let my_role = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": "Not a member of this room"}))))?;
+
+    if !is_admin_role(&my_role) {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Only owner or admin can update room"}))));
+    }
+
+    // 验证字段
+    if let Some(ref name) = req.name {
+        if name.is_empty() || name.len() > 500 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Room name must be 1-500 characters"}))));
+        }
+    }
+    if let Some(ref desc) = req.description {
+        if desc.len() > 5000 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Description must be at most 5000 characters"}))));
+        }
+    }
+    if let Some(ref avatar) = req.avatar_url {
+        if avatar.len() > 2048 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Avatar URL too long"}))));
+        }
+    }
+    if let Some(ref policy) = req.invite_policy {
+        if !["admin-only", "member-invite", "open"].contains(&policy.as_str()) {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid invite_policy"}))));
+        }
+    }
+    if let Some(max) = req.max_members {
+        if max < 2 || max > 5000 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "max_members must be between 2 and 5000"}))));
+        }
+    }
+
+    // 构建动态 SET 子句
+    let mut set_parts = Vec::new();
+    let mut values: Vec<sea_orm::Value> = Vec::new();
+    let mut idx = 1u32;
+
+    if let Some(ref name) = req.name {
+        set_parts.push(format!("name = ${}", idx));
+        values.push(name.clone().into());
+        idx += 1;
+    }
+    if let Some(ref desc) = req.description {
+        set_parts.push(format!("description = ${}", idx));
+        values.push(desc.clone().into());
+        idx += 1;
+    }
+    if let Some(ref avatar) = req.avatar_url {
+        set_parts.push(format!("avatar_url = ${}", idx));
+        values.push(avatar.clone().into());
+        idx += 1;
+    }
+    if let Some(ref policy) = req.invite_policy {
+        set_parts.push(format!("invite_policy = ${}", idx));
+        values.push(policy.clone().into());
+        idx += 1;
+    }
+    if let Some(max) = req.max_members {
+        set_parts.push(format!("max_members = ${}", idx));
+        values.push(max.into());
+        idx += 1;
+    }
+    if let Some(public) = req.is_public {
+        set_parts.push(format!("is_public = ${}", idx));
+        values.push(public.into());
+        idx += 1;
+    }
+
+    if set_parts.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "No fields to update"}))));
+    }
+
+    set_parts.push(format!("updated_at = NOW()"));
+    let set_clause = set_parts.join(", ");
+    let sql = format!(
+        "UPDATE federation_rooms SET {} WHERE room_id = ${}",
+        set_clause, idx
+    );
+    values.push(room_id.into());
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        &sql,
+        values,
+    ))
+    .await
+    .map_err(db_err)?;
+
+    tracing::info!("[Room] Updated room {} by {}", room_id, username);
+
+    // 返回更新后的详情
+    get_room(user_id, username, room_id, db).await
+}
+
 /// 获取用户参与的所有 Room
 pub async fn list_rooms(
     user_id: i32,
@@ -309,7 +435,7 @@ pub async fn list_rooms(
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT r.room_id, r.name, r.description, r.owner_actor,
+            r#"SELECT r.room_id, r.name, r.description, r.avatar_url, r.owner_actor,
                       r.governance_type, r.invite_policy, r.max_members, r.is_public,
                       r.created_at,
                       rm.role AS my_role,
@@ -340,6 +466,7 @@ pub async fn list_rooms(
             room_id: row.try_get("", "room_id").unwrap_or_default(),
             name: row.try_get("", "name").unwrap_or_default(),
             description: row.try_get::<Option<String>>("", "description").unwrap_or(None),
+            avatar_url: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
             owner_actor: row.try_get("", "owner_actor").unwrap_or_default(),
             governance_type: row.try_get("", "governance_type").unwrap_or_default(),
             invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
@@ -376,7 +503,7 @@ pub async fn get_room(
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT r.room_id, r.name, r.description, r.owner_actor, r.home_server,
+            r#"SELECT r.room_id, r.name, r.description, r.avatar_url, r.owner_actor, r.home_server,
                       r.governance_type, r.governance_config, r.invite_policy,
                       r.distribution_strategy, r.max_members, r.is_public,
                       r.enabled_tapps, r.created_at,
@@ -400,6 +527,7 @@ pub async fn get_room(
         room_id: row.try_get("", "room_id").unwrap_or_default(),
         name: row.try_get("", "name").unwrap_or_default(),
         description: row.try_get::<Option<String>>("", "description").unwrap_or(None),
+        avatar_url: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
         owner_actor: row.try_get("", "owner_actor").unwrap_or_default(),
         home_server: row.try_get("", "home_server").unwrap_or_default(),
         governance_type: row.try_get("", "governance_type").unwrap_or_default(),
@@ -1086,10 +1214,30 @@ pub async fn handle_room_invite(
 /// 处理远程 RoomMessage
 pub async fn handle_room_message(
     db: &DatabaseConnection,
+    actor_url_str: &str,
     activity: &serde_json::Value,
 ) -> Result<(), String> {
     let object = activity.get("object").ok_or("Missing object")?;
     let room_id = object.get("room").and_then(|v| v.as_str()).ok_or("Missing room")?;
+
+    // 验证发送方是该 Room 的成员
+    let sender_actor = object.get("from").and_then(|v| v.as_str()).unwrap_or(actor_url_str);
+    let is_member = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            [room_id.into(), sender_actor.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if is_member.is_none() {
+        return Err(format!(
+            "Actor {} is not a member of room {}",
+            sender_actor, room_id
+        ));
+    }
+
     let fallback_msg_id = generate_message_id();
     let message_id = object.get("messageId").and_then(|v| v.as_str()).unwrap_or(&fallback_msg_id);
     let sender = object.get("from").and_then(|v| v.as_str()).unwrap_or("unknown");

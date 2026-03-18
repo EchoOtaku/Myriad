@@ -638,6 +638,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(FederationRooms::Description).text())
+                    .col(ColumnDef::new(FederationRooms::AvatarUrl).text())
                     // 房主 Actor URL
                     .col(
                         ColumnDef::new(FederationRooms::OwnerActor)
@@ -1283,6 +1284,7 @@ pub enum FederationRooms {
     RoomId,
     Name,
     Description,
+    AvatarUrl,
     OwnerActor,
     HomeServer,
     GovernanceType,

@@ -28,6 +28,18 @@ export interface ExecutionStep {
   name: string
   status: 'pending' | 'running' | 'completed' | 'error'
   message?: string
+  /** 能力分类（用于角色图标） */
+  capabilityCategory?: string
+  /** 使用的模型层级（仅在执行详情中展示） */
+  tierUsed?: 'pro' | 'standard'
+  /** 是否降级执行 */
+  degraded?: boolean
+  /** 步骤耗时 ms */
+  durationMs?: number
+  /** 重试次数 */
+  retryAttempt?: number
+  /** 图片生成结果 URL */
+  imageUrl?: string
 }
 
 /** 日志条目 */
@@ -47,20 +59,81 @@ export interface PendingQuestion {
   options?: string[]
 }
 
-/** 任务项 */
-export interface TaskItem {
+/** 执行追踪汇总 */
+export interface ExecutionTrace {
+  totalDurationMs: number
+  tierUsage: Record<string, number>
+  steps: Array<{
+    stepId: string
+    capabilityId: string
+    tierUsed: string
+    durationMs: number
+    success: boolean
+    error?: string
+  }>
+}
+
+/** 多 Agent 协作分配信息 */
+export interface MultiAgentAssignment {
+  agents: Array<{
+    role: string
+    displayName: string
+    icon: string
+    tier: string
+    capabilities: string[]
+  }>
+  totalAgents: number
+  isMultiAgent: boolean
+  tierMix: string
+}
+
+/** 数据展示提示 */
+export interface DataDisplayHint {
+  type: string
+  [key: string]: unknown
+}
+
+// ============ 对话系统类型 ============
+
+/** 聊天消息 — 核心状态单元 */
+export interface ChatMessage {
   id: string
-  taskId?: string // 后端的 taskId，用于回答问题
-  input: string
+  sessionId: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  createdAt: Date
+  /** assistant 消息的任务执行可视化 */
+  taskExecution?: TaskExecution
+  suggestions?: string[]
+  pendingQuestion?: PendingQuestion
+  dataDisplay?: DataDisplayHint
+  data?: unknown
+  /** 图片生成结果 URL（支持多张） */
+  imageUrls?: string[]
+}
+
+/** 嵌入式任务执行状态 */
+export interface TaskExecution {
+  taskId: string
   status: 'processing' | 'waiting' | 'completed' | 'error'
   progress: number
-  message: string
   steps: ExecutionStep[]
-  createdAt: Date
-  pendingQuestion?: PendingQuestion // 等待用户回答的问题
-  result?: {
-    success: boolean
-    content: string
-    suggestions?: string[]
-  }
+  executionTrace?: ExecutionTrace
+  recalledMemories?: string[]
+  skillId?: string
+  skillName?: string
+  assignment?: MultiAgentAssignment
+  /** 队列位置 */
+  queuePosition?: number
+  /** 过程状态文本（进度描述、步骤摘要等） */
+  statusMessage?: string
+}
+
+/** 会话 */
+export interface ChatSession {
+  id: string
+  title: string | null
+  messageCount: number
+  lastActiveAt: string
+  createdAt?: string
 }

@@ -326,9 +326,10 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "github.repos" => "GitHub 仓库查询。查询 GitHub 仓库、贡献和活动",
 
         // ============ 音乐播放器 ============
-        "music.control" => "【播放控制】音乐播放器控制。用户说'播放'、'暂停'、'下一首'、'上一首'、'静音'、'调节音量'时使用",
+        "music.control" => "【播放器控制】直接控制音乐播放器的当前状态。仅用于纯播放器操作：播放/暂停/下一首/上一首/静音/调音量。注意：用户说'放点音乐'、'找点音乐听'、'播放ACG音乐'等要求搜索音乐内容的，不要用这个，应该用 netease.searchPlaylist + music.playlist",
         "music.status" => "播放状态查询。用户问'现在放的什么歌'、'当前播放'时使用",
-        "music.playlist" => "加载歌单。用户说'播放xxx歌单'、'放点音乐'时使用",
+        "music.playlist" => "根据歌单ID加载并播放指定歌单。需要先通过 netease.searchPlaylist 获取歌单ID，然后用本能力加载。不要单独使用",
+        "netease.searchPlaylist" => "搜索网易云歌单。用户说'放点音乐'、'找点音乐听'、'播放ACG音乐'、'推荐个歌单'时，先用这个搜索，然后配合 music.playlist 播放",
 
         // ============ Tapp 应用系统 ============
         "tapp.list" => "Tapp 应用列表。用户说'有哪些应用'、'应用列表'时使用",
@@ -418,7 +419,7 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
 
         // ============ 其他 ============
         "icon.recommend" => "图标推荐。根据平台名称推荐合适的图标",
-        "prompt.generate" => "提示词生成。为图片生成提供优化的提示词",
+        "prompt.generate" => "提示词生成。为图片生成提供优化的提示词。必须在 description 参数中传入角色/场景的详细描述（角色全名、来源作品、外貌特征含发型发色瞳色服装等、场景、画风）。你应该利用自己的知识补充角色细节",
         "random.content" => "随机内容。获取随机推荐内容",
         "content.write" => "内容写入。写入内容数据",
         "context.reference" => "上下文引用。处理对话中的上下文引用",
@@ -442,8 +443,8 @@ pub fn get_quick_reference() -> Value {
             "Steam/游戏": ["platform.read", "steam.user"],
             "GitHub/代码/仓库": ["platform.read", "github.repos"],
             "网易云/音乐数据": ["platform.read", "netease.playlist"],
-            "播放音乐/暂停/下一首/上一首": ["music.control"],
-            "播放歌单/加载歌单": ["music.playlist"],
+            "播放/暂停/下一首/上一首/音量": ["music.control"],
+            "放点音乐/找点音乐听/播放ACG音乐": ["netease.searchPlaylist", "music.playlist"],
             "当前播放什么/播放状态": ["music.status"],
             "Tapp/应用列表": ["tapp.list"],
             "打开应用/Tapp窗口": ["tapp.window.open"],
@@ -464,7 +465,8 @@ pub fn get_quick_reference() -> Value {
             "用户在brew页面说'总结' -> ai.summarize (使用pageContext)",
             "涉及'当前页面'/'这个'时 -> target.type=current_page",
             "用户说'播放/暂停/下一首/上一首' -> music.control",
-            "用户说'播放xxx歌单' -> music.playlist",
+            "用户说'放点音乐/找点音乐听/播放ACG音乐' -> netease.searchPlaylist + music.playlist (两步)",
+            "用户说'播放歌单ID xxx' -> music.playlist",
             "用户说'给我推荐/找几篇文章/生成阅读列表' -> brew.generateReadingList"
         ]
     })

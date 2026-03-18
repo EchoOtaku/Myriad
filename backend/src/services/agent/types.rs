@@ -2,6 +2,7 @@
 //!
 //! 定义 AI Agent 系统的核心类型结构
 
+use crate::config::ModelTier;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -36,6 +37,9 @@ pub struct RequestContext {
     pub conversation_history: Option<Vec<ConversationMessage>>,
     /// 自定义数据（如当前阅读的文章内容）
     pub custom_data: Option<Value>,
+    /// Lane key（由 LaneQueue 分配，用于队列追踪）
+    #[serde(default)]
+    pub lane_key: Option<String>,
 }
 
 /// 对话消息
@@ -63,8 +67,8 @@ pub struct ParsedIntent {
     pub constraints: IntentConstraints,
     /// 置信度 (0.0 - 1.0)
     pub confidence: f32,
-    /// 需要澄清的点
-    pub clarifications_needed: Vec<ClarificationPoint>,
+    /// 需要澄清的点（legacy，始终为空）
+    pub clarifications_needed: Vec<String>,
     /// 子意图（复杂任务拆解）
     pub sub_intents: Vec<ParsedIntent>,
     /// AI 建议使用的能力列表
@@ -110,6 +114,7 @@ pub enum IntentAction {
 }
 
 impl IntentAction {
+    #[allow(dead_code)]
     pub fn from_verb(verb: &str) -> Self {
         match verb.to_lowercase().as_str() {
             "查" | "看" | "获取" | "读取" | "显示" | "列出" | "query" | "get" | "show" | "list" => {
@@ -230,36 +235,6 @@ pub enum OutputFormat {
     Chart,
 }
 
-/// 需要澄清的点
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClarificationPoint {
-    /// 问题 ID
-    pub id: String,
-    /// 澄清类型
-    pub clarification_type: ClarificationType,
-    /// 问题描述
-    pub question: String,
-    /// 可能的选项
-    pub options: Vec<String>,
-    /// 默认值
-    pub default: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ClarificationType {
-    /// 时间范围不明确
-    TimeRange,
-    /// 目标不明确
-    Target,
-    /// 动作不明确
-    Action,
-    /// 参数缺失
-    MissingParameter,
-    /// 歧义
-    Ambiguity,
-}
-
 // ============ 能力注册相关类型 ============
 
 /// 系统能力定义
@@ -362,6 +337,9 @@ pub struct Recipe {
     /// 对话历史上下文（用于继续对话模式）
     #[serde(default)]
     pub conversation_context: Option<Vec<ConversationMessage>>,
+    /// Lane key（用于队列追踪）
+    #[serde(default)]
+    pub lane_key: Option<String>,
 }
 
 /// 执行类型
@@ -399,6 +377,12 @@ pub struct RecipeStep {
     pub retry: Option<RetryConfig>,
     /// 超时时间（毫秒）
     pub timeout_ms: Option<u64>,
+    /// 模型层级（可选，覆盖 TierRouter 自动推断）
+    #[serde(default)]
+    pub model_tier: Option<ModelTier>,
+    /// 动态步骤生成器（步骤完成后触发）
+    #[serde(default)]
+    pub generator: Option<StepGenerator>,
 }
 
 /// 失败处理策略
@@ -424,6 +408,114 @@ pub struct RetryConfig {
     pub delay_ms: u64,
     /// 指数退避
     pub exponential_backoff: bool,
+}
+
+// ============ AI Recipe 生成相关类型 ============
+
+/// LLM 生成的单个 recipe 步骤
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiRecipeStep {
+    /// 步骤 ID（如 "step_1"）
+    pub id: String,
+    /// 能力 ID（如 "ai.summarize"）
+    pub capability_id: String,
+    /// 动作（如 "summarize"）
+    pub action: String,
+    /// 参数（AI 根据 schema 生成）
+    #[serde(default)]
+    pub params: HashMap<String, Value>,
+    /// 依赖的步骤 ID 列表
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// 失败策略: "abort" | "skip"
+    #[serde(default = "default_on_failure")]
+    pub on_failure: String,
+    /// 超时时间（毫秒）
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+fn default_on_failure() -> String {
+    "abort".to_string()
+}
+
+impl AiRecipeStep {
+    /// 转换为 RecipeStep，设置 order 和 model_tier
+    pub fn into_recipe_step(self, order: u32, tier: Option<ModelTier>) -> RecipeStep {
+        let failure_strategy = match self.on_failure.as_str() {
+            "skip" => FailureStrategy::Skip,
+            _ => FailureStrategy::Abort,
+        };
+
+        RecipeStep {
+            id: self.id,
+            order,
+            capability_id: self.capability_id,
+            action: self.action,
+            params: self.params,
+            depends_on: self.depends_on,
+            on_failure: failure_strategy,
+            retry: None,
+            timeout_ms: self.timeout_ms.or(Some(30000)),
+            model_tier: tier,
+            generator: None,
+        }
+    }
+}
+
+// ============ Planner 输出类型 ============
+
+/// Planner 输出（合并意图分析 + Recipe 生成为单次 Pro AI 调用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannerOutput {
+    /// 输出状态
+    pub status: PlannerStatus,
+    /// 置信度 0.0-1.0
+    #[serde(default = "default_confidence")]
+    pub confidence: f32,
+    /// AI 推理说明
+    #[serde(default)]
+    pub reasoning: Option<String>,
+    /// 执行步骤（status=plan 时使用）
+    #[serde(default)]
+    pub steps: Vec<AiRecipeStep>,
+    /// 澄清信息（status=clarify 时使用）
+    #[serde(default)]
+    pub clarification: Option<PlannerClarification>,
+    /// 不支持原因（status=unsupported 时使用）
+    #[serde(default)]
+    pub unsupported_reason: Option<String>,
+    /// 直接回复（status=chat 时使用）
+    #[serde(default)]
+    pub chat_reply: Option<String>,
+}
+
+fn default_confidence() -> f32 {
+    0.8
+}
+
+/// Planner 状态
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlannerStatus {
+    /// 生成执行计划
+    Plan,
+    /// 需要用户澄清
+    Clarify,
+    /// 不支持的请求
+    Unsupported,
+    /// 直接对话回复（无需调用能力）
+    Chat,
+}
+
+/// Planner 澄清信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannerClarification {
+    /// 澄清消息
+    pub message: String,
+    /// 可选的选项
+    #[serde(default)]
+    pub options: Vec<String>,
 }
 
 // ============ 执行状态相关类型 ============
@@ -456,6 +548,39 @@ pub struct TaskState {
     /// 注意：此字段现在会被序列化以支持任务持久化和动态步骤恢复
     #[serde(default)]
     pub execution_context: Option<ExecutionContext>,
+    /// Lane ID（用于队列追踪）
+    #[serde(default)]
+    pub lane_id: Option<String>,
+    /// 执行追踪（可观测性）
+    #[serde(default)]
+    pub execution_trace: Option<ExecutionTrace>,
+    /// 原始 Recipe（用于 resume_with_answer 恢复执行）
+    #[serde(default)]
+    pub recipe: Option<Recipe>,
+}
+
+/// 执行追踪 — 记录整个任务的执行链路
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExecutionTrace {
+    /// 追踪 ID
+    pub trace_id: String,
+    /// 各步骤追踪
+    pub steps: Vec<StepTrace>,
+    /// 总耗时（毫秒）
+    pub total_duration_ms: u64,
+    /// 各 tier 使用次数
+    pub tier_usage: std::collections::HashMap<String, u32>,
+}
+
+/// 步骤追踪 — 记录单步执行详情
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepTrace {
+    pub step_id: String,
+    pub capability_id: String,
+    pub tier_used: String,
+    pub duration_ms: u64,
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 /// 用户问题 - Agent 向用户提出的澄清问题
@@ -559,67 +684,6 @@ pub struct StepResult {
     pub duration_ms: u64,
     /// 重试次数
     pub retry_count: u32,
-}
-
-// ============ 监控任务相关类型 ============
-
-/// 监控任务配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MonitorConfig {
-    /// 监控 ID
-    pub id: String,
-    /// 检查间隔（秒）
-    pub interval_secs: u64,
-    /// 触发条件
-    pub trigger_conditions: Vec<TriggerCondition>,
-    /// 通知方式
-    pub notify_methods: Vec<NotifyMethod>,
-    /// 有效期
-    pub valid_until: Option<chrono::DateTime<chrono::Utc>>,
-    /// 是否启用
-    pub enabled: bool,
-}
-
-/// 触发条件
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TriggerCondition {
-    /// 条件类型
-    pub condition_type: ConditionType,
-    /// 目标字段
-    pub field: String,
-    /// 比较操作符
-    pub operator: String,
-    /// 阈值
-    pub threshold: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConditionType {
-    /// 数值变化
-    ValueChange,
-    /// 新增项目
-    NewItem,
-    /// 阈值突破
-    ThresholdBreak,
-    /// 关键词匹配
-    KeywordMatch,
-    /// 时间触发
-    TimeTrigger,
-}
-
-/// 通知方式
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum NotifyMethod {
-    /// 系统通知
-    SystemNotification,
-    /// Toast 消息
-    Toast,
-    /// 生成报告
-    Report,
-    /// 触发 Tapp
-    TriggerTapp(String),
 }
 
 // ============ Agent 响应类型 ============
@@ -880,7 +944,6 @@ pub struct PendingConfirmation {
 
 /// 用户确认响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct UserConfirmation {
     /// 确认 ID
     pub confirmation_id: String,
@@ -965,6 +1028,7 @@ impl Default for Capability {
     }
 }
 
+#[allow(dead_code)]
 impl Recipe {
     pub fn new(name: &str, original_request: &str, execution_type: ExecutionType) -> Self {
         Self {
@@ -979,6 +1043,7 @@ impl Recipe {
             metadata: HashMap::new(),
             page_context: None,
             conversation_context: None,
+            lane_key: None,
         }
     }
 
@@ -1024,6 +1089,9 @@ impl TaskState {
             progress: 0,
             pending_question: None,
             execution_context: None,
+            lane_id: None,
+            execution_trace: None,
+            recipe: Some(recipe.clone()),
         }
     }
 
@@ -1098,7 +1166,6 @@ pub struct DynamicStepConfig {
 }
 
 /// 步骤生成器类型
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StepGenerator {
@@ -1165,6 +1232,10 @@ pub struct ExecutionContext {
     /// 包含之前的对话消息，让 AI 能够理解上下文
     #[serde(default)]
     pub conversation_context: Option<Vec<ConversationMessage>>,
+    /// 角色身份上下文（Orchestrator 注入）
+    /// key = capability_id prefix (如 "ai"), value = 该角色的 SOUL 身份文本
+    #[serde(default)]
+    pub role_contexts: HashMap<String, String>,
 }
 
 /// 不确定性 - 执行过程中发现的需要澄清的点
@@ -1547,6 +1618,13 @@ pub enum AgentProgressEvent {
         #[serde(rename = "totalSteps")]
         total_steps: u32,
     },
+    /// 任务已分配给多个 Agent（多 Agent 协作时发送）
+    TaskAssigned {
+        #[serde(rename = "taskId")]
+        task_id: String,
+        /// Agent 分配详情
+        assignment: Box<super::routing::TaskAssignment>,
+    },
     /// 步骤开始
     StepStarted {
         #[serde(rename = "stepId")]
@@ -1570,6 +1648,9 @@ pub enum AgentProgressEvent {
         duration_ms: u64,
         #[serde(rename = "outputSummary", skip_serializing_if = "Option::is_none")]
         output_summary: Option<String>,
+        /// 图片生成结果 URL（ai.image 能力输出）
+        #[serde(rename = "imageUrl", skip_serializing_if = "Option::is_none")]
+        image_url: Option<String>,
     },
     /// 进度更新
     Progress {
@@ -1600,6 +1681,18 @@ pub enum AgentProgressEvent {
         question: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         options: Option<Vec<String>>,
+    },
+    /// 会话已创建/确认（通知前端 session_id）
+    SessionCreated {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
+    /// AI 汇总流式 token（逐步推送主 Agent 生成的汇总文本）
+    SummaryToken {
+        /// 文本片段
+        token: String,
+        /// 是否为最后一个 token
+        done: bool,
     },
     /// 错误
     Error {

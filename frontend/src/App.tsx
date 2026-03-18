@@ -11,13 +11,11 @@ import CustomScrollbar from './components/CustomScrollbar'
 import RouteLoader from './components/RouteLoader'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { I18nProvider } from './contexts/I18nContext'
 
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
 import { NavigationProvider } from './contexts/NavigationContext'
-import { NotificationProvider } from './contexts/NotificationContext'
-
 import { PageContentProvider } from './contexts/PageContentContext'
 import { ReadingListProvider } from './contexts/ReadingListContext'
 import { useRouteScheduler } from './hooks/animation'
@@ -56,41 +54,14 @@ const TappDetail = lazy(() => import('./views/TappDetailView.tsx'))
 const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
 
 /**
- * 路由守卫：检查认证状态
- * ✅ 使用 API 验证（HttpOnly Cookie 无法被 JS 读取）
+ * 路由守卫：复用全局 AuthContext 认证状态
+ * 避免每次路由切换都重新发起 /api/auth/me 请求
  */
 function RequireAuth({ children, requiresAdmin }: { children: React.ReactNode, requiresAdmin?: boolean }) {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { isAuthenticated, isAdmin, hasChecked } = useAuth()
 
-  useEffect(() => {
-    async function checkAuth() {
-      try {
-        const response = await fetch('/api/auth/me', {
-          credentials: 'include',
-        })
-
-        if (response.ok) {
-          const userData = await response.json()
-          setIsAuthenticated(true)
-          setIsAdmin(userData.is_admin || false)
-        }
-        else {
-          // 401 是正常的未登录状态，静默处理
-          setIsAuthenticated(false)
-        }
-      }
-      catch {
-        // 网络错误时静默处理
-        setIsAuthenticated(false)
-      }
-    }
-
-    checkAuth()
-  }, [])
-
-  // 加载中
-  if (isAuthenticated === null) {
+  // AuthContext 尚未完成首次检查
+  if (!hasChecked) {
     return <LoadingFallback />
   }
 
@@ -137,19 +108,24 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
  * 带动画的页面包装器
  * 确保 AnimatePresence 直接包裹 motion 组件
  */
-function AnimatedPage({ children, useFixedWrapper = false }: { children: React.ReactNode, useFixedWrapper?: boolean }) {
+function AnimatedPage({ children, animationKey, animationStyle }: {
+  children: React.ReactNode
+  animationKey?: string
+  animationStyle?: 'normal' | 'fixed' | 'opacity-only'
+}) {
   const location = useLocation()
+  const style = animationStyle ?? 'normal'
 
-  // 🎯 根据页面类型选择不同的动画配置
-  const variants = useFixedWrapper ? fixedPageVariants : pageVariants
-  const wrapperStyle = useFixedWrapper
+  // 选择动画变体和包装样式
+  const variants = style === 'normal' ? pageVariants : fixedPageVariants
+  const wrapperStyle = style === 'fixed'
     ? { position: 'absolute' as const, inset: 0 }
     : { width: '100%' }
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={location.pathname}
+        key={animationKey ?? location.pathname}
         variants={variants}
         initial="initial"
         animate="enter"
@@ -221,8 +197,15 @@ const fixedPageVariants = {
 function AppRoutes() {
   const location = useLocation()
 
-  // 🎯 判断是否是 fixed 布局页面（如 TappRunPage、多任务模式）
-  const isFixedLayoutPage = location.pathname.startsWith('/tapp/run/') || location.pathname === '/tapp/run'
+  // 🎯 动画风格选择：
+  // - 'fixed': 绝对定位包装器（仅 tapp/run 等自带 fixed 全屏布局的页面）
+  // - 'normal': 正常页面（带 transform 动画）
+  const animationStyle: 'normal' | 'fixed' | 'opacity-only' = location.pathname.startsWith('/tapp/run')
+    ? 'fixed'
+    : 'normal'
+
+  // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙
+  const animationKey = location.pathname
 
   // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
   // 这会在路由切换时清理旧页面的订阅并初始化新页面
@@ -240,7 +223,7 @@ function AppRoutes() {
   }, [location.pathname])
 
   return (
-    <AnimatedPage useFixedWrapper={isFixedLayoutPage}>
+    <AnimatedPage animationStyle={animationStyle} animationKey={animationKey}>
       <Routes location={location}>
         <Route path="/" element={<SuspensePage><Home /></SuspensePage>} />
         <Route path="/library" element={<SuspensePage><Library /></SuspensePage>} />
@@ -320,36 +303,34 @@ export function App() {
       <I18nProvider>
         <AnimationPreferenceProvider>
           <AuthProvider>
-            <NotificationProvider>
-              <MusicPlayerProvider>
-                <NavigationProvider>
-                  <PageContentProvider>
-                    <ReadingListProvider>
-                      {/* Agent 全局动作处理器 - 处理路由导航和页面元素交互 */}
-                      <AgentGlobalActions />
-                      {/* Arael AI 助手浮动面板 - 长按触发 */}
+            <MusicPlayerProvider>
+              <NavigationProvider>
+                <PageContentProvider>
+                  <ReadingListProvider>
+                    {/* Agent 全局动作处理器 - 处理路由导航和页面元素交互 */}
+                    <AgentGlobalActions />
+                    {/* Arael AI 助手浮动面板 - 长按触发 */}
+                    <Suspense fallback={null}>
+                      <AraelPanel />
+                    </Suspense>
+                    <RouteLoader />
+                    <CustomScrollbar />
+                    <Suspense fallback={null}>
+                      <TappBackgroundRunner />
+                    </Suspense>
+                    <AppLayout>
+                      <AppRoutes />
+                    </AppLayout>
+                    {/* 开发环境下显示合并的性能监控工具 */}
+                    {import.meta.env.DEV && (
                       <Suspense fallback={null}>
-                        <AraelPanel />
+                        {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
                       </Suspense>
-                      <RouteLoader />
-                      <CustomScrollbar />
-                      <Suspense fallback={null}>
-                        <TappBackgroundRunner />
-                      </Suspense>
-                      <AppLayout>
-                        <AppRoutes />
-                      </AppLayout>
-                      {/* 开发环境下显示合并的性能监控工具 */}
-                      {import.meta.env.DEV && (
-                        <Suspense fallback={null}>
-                          {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
-                        </Suspense>
-                      )}
-                    </ReadingListProvider>
-                  </PageContentProvider>
-                </NavigationProvider>
-              </MusicPlayerProvider>
-            </NotificationProvider>
+                    )}
+                  </ReadingListProvider>
+                </PageContentProvider>
+              </NavigationProvider>
+            </MusicPlayerProvider>
           </AuthProvider>
         </AnimationPreferenceProvider>
       </I18nProvider>

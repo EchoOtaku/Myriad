@@ -202,7 +202,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "brew.subscribe".to_string(),
         name: "添加订阅".to_string(),
         description: "添加新的 RSS/Atom 订阅源".to_string(),
-        category: CapabilityCategory::ResourceCreate,
+        category: CapabilityCategory::DataWrite,
         supported_actions: vec![IntentAction::Create],
         input_schema: json!({
             "type": "object",
@@ -226,6 +226,34 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["brew:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(5000),
+        ..Default::default()
+    });
+
+    // 标记文章状态
+    registry.register(Capability {
+        id: "brew.mark".to_string(),
+        name: "标记文章状态".to_string(),
+        description: "标记 Brew 文章为已读/未读/收藏/稍后阅读".to_string(),
+        category: CapabilityCategory::DataWrite,
+        supported_actions: vec![IntentAction::Update],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "itemId": { "type": "integer", "description": "文章 ID" },
+                "action": { "type": "string", "enum": ["read", "unread", "star", "unstar", "later"] }
+            },
+            "required": ["itemId", "action"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "success": { "type": "boolean" },
+                "status": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["brew:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(200),
         ..Default::default()
     });
 
@@ -256,7 +284,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         }),
         required_permissions: vec!["brew:read".to_string()],
         requires_ai: true,
-        estimated_duration_ms: Some(10000),
+        estimated_duration_ms: Some(60000),
         ..Default::default()
     });
 

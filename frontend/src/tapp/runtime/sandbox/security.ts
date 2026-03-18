@@ -52,9 +52,9 @@ const CSP_BASE_DIRECTIVES = [
   'default-src \'none\'',
   // style-src 允许 unsafe-inline 和 Google Fonts CSS
   'style-src \'unsafe-inline\' https://fonts.googleapis.com',
-  // 🔒 安全加强：只允许 data:、blob: 和可信图片源
-  // 网易云音乐图片域名：p1.music.126.net, p2.music.126.net 等
-  'img-src data: blob: https://*.music.126.net https://*.netease.com',
+  // 🔒 安全加强：允许 data:、blob:、https: 图片加载
+  // https: 需要用于联邦头像等跨域图片。iframe sandbox 隔离确保无 cookie 泄露
+  'img-src data: blob: https:',
   // font-src 允许 data: URI 和 Google Fonts 字体文件
   'font-src data: https://fonts.gstatic.com',
   'connect-src \'none\'',

@@ -81,6 +81,8 @@ tokio-stream = "0.1"                                    # For SSE streaming
 zip = "2.4"                                             # For .tapp file handling
 md5 = "0.8"
 quick-xml = "0.37.4"
+serde_yaml = "0.9.34"
+scraper = "0.22"                                        # HTML parsing for web.scrape capability
 
 [dev-dependencies]
 mockall = "0.13"

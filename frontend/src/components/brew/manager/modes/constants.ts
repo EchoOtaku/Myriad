@@ -1,31 +1,30 @@
 /**
  * ControlIsland 模式组件共享常量
+ * 从共享 control-island 包重导出 + Brew 专属工具函数
  */
 
-// Framer Motion transition 配置常量
-export const SPRING_SNAPPY = { type: 'spring', stiffness: 400, damping: 25 } as const
-export const SPRING_SMOOTH = { type: 'spring', stiffness: 350, damping: 28 } as const
-export const TRANSITION_QUICK = { duration: 0.12 } as const
-export const TRANSITION_NORMAL = { duration: 0.15 } as const
-export const TRANSITION_SLOW = { duration: 0.25, ease: 'easeOut' } as const
+// 从共享包重导出 —— 动画、样式、图标处理
+export {
+  API_URL,
+  getIconUrl,
+  ISLAND_BADGE,
+  ISLAND_BTN,
+  ISLAND_BTN_DANGER,
+  ISLAND_BTN_PRIMARY,
+  ISLAND_DIVIDER,
+  ISLAND_GLASS,
+  ISLAND_GLASS_EDIT,
+  ISLAND_INPUT,
+  ISLAND_INPUT_STYLE,
+  ISLAND_SELECT,
+  SPRING_SMOOTH,
+  SPRING_SNAPPY,
+  TRANSITION_NORMAL,
+  TRANSITION_QUICK,
+  TRANSITION_SLOW,
+} from '../../../shared/control-island'
 
-// API URL
-export const API_URL = import.meta.env.PUBLIC_API_URL || ''
-
-/**
- * 处理图标 URL - 确保正确的完整路径
- */
-export function getIconUrl(iconUrl: string | null | undefined): string | null {
-  if (!iconUrl)
-    return null
-  if (iconUrl.startsWith('/api/')) {
-    return `${API_URL}${iconUrl}`
-  }
-  if (iconUrl.startsWith('http://') || iconUrl.startsWith('https://')) {
-    return `${API_URL}/api/proxy/image?url=${encodeURIComponent(iconUrl)}`
-  }
-  return iconUrl
-}
+// ==================== Brew 专属工具 ====================
 
 /**
  * 判断是否为 base64 图片数据

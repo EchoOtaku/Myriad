@@ -9,7 +9,7 @@ import { getLibraryDataDeduped } from '../utils/requestDedup'
 import { useI18n } from '../contexts/I18nContext'
 import { useLibraryIntersectionObserver } from '../hooks/animation'
 import { useMusicPlayerControl } from '../contexts/MusicPlayerContext'
-import { useNotification } from '../contexts/NotificationContext'
+import { showInfo } from '../utils/toastManager'
 import { useSharedResize } from '../hooks/useSharedEventListener'
 
 // 添加样式到页面
@@ -229,14 +229,11 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
   const containerWidthRef = useRef<number>(0) // 🔧 缓存容器宽度，避免重复读取
-  const { showInfo } = useNotification()
   const { playSong, currentSong, isPlaying: globalIsPlaying, musicColor } = useMusicPlayerControl()
   const { t } = useI18n()
 
   // 使用 ref 存储回调函数，避免在依赖中频繁更新
-  const showInfoRef = useRef(showInfo)
   const playSongRef = useRef(playSong)
-  showInfoRef.current = showInfo
   playSongRef.current = playSong
 
   // 筛选后的所有项目
@@ -586,19 +583,15 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     return result
   }
 
-  // 显示错误通知 - 使用 ref 避免依赖变化
-  useEffect(() => {
-    if (error) {
-      showInfoRef.current(t.library.emptyLibrary)
-    }
-  }, [error, t])
+  // 空状态图标
+  const emptyIcon = useMemo(() => (
+    <svg className="w-5.5 h-5.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+    </svg>
+  ), [])
 
-  // 显示空状态通知 - 使用 ref 避免依赖变化
-  useEffect(() => {
-    if (!loading && filteredAllItems.length === 0 && !error) {
-      showInfoRef.current(t.library.emptyCategory)
-    }
-  }, [loading, filteredAllItems.length, error, t])
+  const emptyTitle = error ? t.library.emptyLibrary : t.library.emptyCategory
+  const showEmpty = !loading && filteredAllItems.length === 0
 
   const getPlatformColor = useCallback((platform: string) => {
     switch (platform.toLowerCase()) {
@@ -645,13 +638,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const musicState = (window as any).__musicPlayerState
     if (musicState?.currentSong?.id === songId) {
       window.dispatchEvent(new CustomEvent('open-control-panel'))
-      showInfoRef.current(t.library.alreadyPlaying)
+      showInfo(t.library.alreadyPlaying)
       return
     }
 
     const isVip = item.metadata.isVip || item.metadata.fee === 1 || item.metadata.fee === 4
     if (isVip) {
-      showInfoRef.current(t.library.vipSongWarning)
+      showInfo(t.library.vipSongWarning)
     }
 
     const name = item.metadata.name || item.title
@@ -695,7 +688,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
     playSongRef.current(song)
     window.dispatchEvent(new CustomEvent('open-control-panel'))
-    showInfoRef.current(t.library.nowPlaying.replace('{name}', name))
+    showInfo(t.library.nowPlaying.replace('{name}', name))
   }, [t])
 
   const needsTransition = (from: string, to: string) => {
@@ -725,8 +718,17 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
-      {error ? (
-        <div className="flex items-center justify-center min-h-100"></div>
+      {(error || showEmpty) ? (
+        <div className="flex flex-col items-start py-8">
+          <div className="rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-100/80 dark:bg-white/5 flex items-center justify-center text-gray-400 dark:text-gray-500 shrink-0">
+              {emptyIcon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{emptyTitle}</p>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="space-y-8">
           <QuickTransition transitioning={isTransitioning}>

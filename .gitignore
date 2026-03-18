@@ -65,3 +65,5 @@ out/
 .env
 /.astro
 /.claude
+/backend/data/agent/memory
+/backend/data/agent/skills

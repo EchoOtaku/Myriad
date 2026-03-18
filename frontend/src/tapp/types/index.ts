@@ -106,6 +106,16 @@ export interface TappManifest {
   /** 页面 HTML 模板文件路径 */
   pageTemplate?: string
 
+  /**
+   * Page 模块加载顺序（文件名数组）
+   * 当使用 page/ 文件夹模块化开发时，指定加载顺序
+   * 未指定时按字母序加载，index.js 最后
+   */
+  pageModules?: string[]
+
+  /** 应用分类（如 social, tool, game 等） */
+  category?: string
+
   /** 设置项定义 */
   settings?: TappSettingItem[]
 }
@@ -200,6 +210,18 @@ export type TappPermission
   // P4: 语音服务权限
     | 'speech:tts'
     | 'speech:asr'
+  // Tapp 列表权限
+    | 'tappList:read'
+    | 'tappList:manage'
+  // Brew 权限
+    | 'brew:read'
+    | 'brew:write'
+    | 'brew:comment'
+    | 'brew:manage'
+  // 联邦权限
+    | 'federation:read'
+    | 'federation:write'
+    | 'federation:message'
 
 // ============ 用户角色 ============
 

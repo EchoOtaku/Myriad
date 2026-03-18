@@ -8,13 +8,19 @@ import type {
   AgentResponse,
   Capability,
   ClarifyRequest,
-  ConversationMessage,
   CreatePresetRequest,
   ErrorEvent,
+  ExecutionTrace,
+  HeartbeatTask,
+  MemoryEntry,
   ProcessContext,
   ProcessRequest,
   ProgressCallback,
   ProgressEvent,
+  QueueStatus,
+  SessionInfo,
+  SessionMessage,
+  SkillInfo,
   TaskCompletedEvent,
   TaskDetail,
   TaskInfo,
@@ -222,28 +228,7 @@ class AgentService {
   }
 
   /**
-   * 保存到历史记录
-   */
-  async saveToHistory(
-    input: string,
-    parsedSteps?: unknown,
-    intentSummary?: string,
-    title?: string,
-    conversationData?: ConversationMessage[],
-  ): Promise<TaskPreset> {
-    return this.createPreset({
-      input,
-      presetType: 'history',
-      parsedSteps,
-      intentSummary,
-      title,
-      conversationData,
-    })
-  }
-
-  /**
    * 添加到收藏
-   * 注意：收藏的任务默认使用「重新运行」模式，不保存对话历史
    */
   async addToFavorites(
     input: string,
@@ -256,21 +241,6 @@ class AgentService {
       parsedSteps,
       intentSummary,
       // 收藏不保存对话数据，始终为「重新运行」模式
-    })
-  }
-
-  /**
-   * 更新预设的对话数据
-   * 用于在对话过程中持续保存对话历史
-   */
-  async updatePresetConversation(
-    presetId: number,
-    title: string,
-    conversationData: ConversationMessage[],
-  ): Promise<TaskPreset> {
-    return apiService.patch<TaskPreset>(`${this.baseUrl}/presets/${presetId}/conversation`, {
-      title,
-      conversationData,
     })
   }
 
@@ -308,6 +278,161 @@ class AgentService {
       undefined,
       onProgress,
     )
+  }
+
+  // ============ 队列管理 (Phase 1A) ============
+
+  /**
+   * 获取队列状态
+   */
+  async getQueueStatus(): Promise<QueueStatus> {
+    return apiService.get<QueueStatus>(`${this.baseUrl}/queue/status`)
+  }
+
+  /**
+   * 中断当前会话，替换为新请求
+   */
+  async interruptSession(input: string): Promise<{ success: boolean, cancelled_tasks: number, response: AgentResponse }> {
+    return apiService.post(`${this.baseUrl}/session/interrupt`, { input })
+  }
+
+  /**
+   * 向当前会话注入转向指令
+   */
+  async steerSession(instruction: string): Promise<{ success: boolean, message: string }> {
+    return apiService.post(`${this.baseUrl}/session/steer`, { instruction })
+  }
+
+  // ============ Heartbeat (Phase 4) ============
+
+  /**
+   * 获取 Heartbeat 任务列表
+   */
+  async getHeartbeatTasks(): Promise<HeartbeatTask[]> {
+    const response = await apiService.get<{ tasks: HeartbeatTask[] }>(`${this.baseUrl}/heartbeat`)
+    return response.tasks
+  }
+
+  /**
+   * 切换 Heartbeat 任务启停
+   */
+  async toggleHeartbeat(taskId: string): Promise<{ task_id: string, enabled: boolean }> {
+    return apiService.post(`${this.baseUrl}/heartbeat/${taskId}/toggle`)
+  }
+
+  // ============ 执行追踪 ============
+
+  /**
+   * 获取执行追踪列表
+   */
+  async getTraces(limit: number = 20): Promise<{ traces: ExecutionTrace[], total: number }> {
+    return apiService.get(`${this.baseUrl}/traces?limit=${limit}`)
+  }
+
+  /**
+   * 获取任务详情（含执行追踪）
+   */
+  async getTaskWithTrace(taskId: string): Promise<TaskDetail & { executionTrace?: ExecutionTrace }> {
+    const response = await apiService.get<{
+      success: boolean
+      task: TaskInfo
+      results: Record<string, unknown>
+      startedAt: string
+      completedAt?: string
+      executionTrace?: ExecutionTrace
+    }>(`${this.baseUrl}/tasks/${taskId}`)
+
+    return {
+      taskId: response.task.taskId,
+      recipeId: '',
+      status: response.task.status,
+      progress: response.task.progress,
+      startedAt: response.startedAt,
+      completedAt: response.completedAt,
+      results: response.results,
+      executionTrace: response.executionTrace,
+    }
+  }
+
+  // ============ 记忆 (Phase 3) ============
+
+  /**
+   * 获取记忆条目（通过 recall）
+   */
+  async getMemories(): Promise<MemoryEntry[]> {
+    // 记忆通过 recall 接口获取，这里使用 capabilities 路径下的记忆端点
+    // 如果后端没有专门的记忆列表 API，则通过任务详情中的 recalledMemories 获取
+    try {
+      const response = await apiService.get<{ memories: MemoryEntry[] }>(`${this.baseUrl}/memory`)
+      return response.memories
+    }
+    catch {
+      // 记忆 API 可能尚未实现，graceful fallback
+      return []
+    }
+  }
+
+  // ============ 技能 (Phase 2B) ============
+
+  /**
+   * 获取可用技能列表
+   */
+  async getSkills(): Promise<SkillInfo[]> {
+    try {
+      const response = await apiService.get<{ skills: SkillInfo[] }>(`${this.baseUrl}/skills`)
+      return response.skills
+    }
+    catch {
+      // 技能 API 可能尚未实现，graceful fallback
+      return []
+    }
+  }
+
+  // ============ 会话管理 ============
+
+  /**
+   * 创建新会话
+   */
+  async createSession(): Promise<SessionInfo> {
+    return apiService.post<SessionInfo>(`${this.baseUrl}/sessions`)
+  }
+
+  /**
+   * 列出最近会话
+   */
+  async listSessions(page: number = 1, limit: number = 20): Promise<SessionInfo[]> {
+    const response = await apiService.get<{ sessions: SessionInfo[] }>(
+      `${this.baseUrl}/sessions?page=${page}&limit=${limit}`,
+    )
+    return response.sessions
+  }
+
+  /**
+   * 获取会话消息
+   */
+  async getSessionMessages(
+    sessionId: string,
+    page: number = 1,
+    limit: number = 50,
+  ): Promise<SessionMessage[]> {
+    const response = await apiService.get<{ messages: SessionMessage[] }>(
+      `${this.baseUrl}/sessions/${sessionId}/messages?page=${page}&limit=${limit}`,
+    )
+    return response.messages
+  }
+
+  /**
+   * 归档会话
+   */
+  async archiveSession(sessionId: string): Promise<{ success: boolean }> {
+    return apiService.delete<{ success: boolean }>(`${this.baseUrl}/sessions/${sessionId}`)
+  }
+
+  /**
+   * 更新会话标题
+   */
+  async updateSessionTitle(sessionId: string, title: string): Promise<SessionInfo> {
+    return apiService.patch<SessionInfo>(`${this.baseUrl}/sessions/${sessionId}`, { title })
   }
 
   // ============ 内部方法 ============

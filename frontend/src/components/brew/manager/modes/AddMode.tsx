@@ -23,7 +23,7 @@ import {
 } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import type { ChangeEvent, FormEvent } from 'react'
-import { SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
+import { ISLAND_GLASS, SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
 import { useRef, useState } from 'react'
 
 interface DiscoveredFeed {
@@ -301,7 +301,7 @@ export function AddMode({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 12, scale: 0.95 }}
       transition={SPRING_SMOOTH}
-      className="flex flex-col rounded-2xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 w-96 max-w-[90vw] overflow-hidden"
+      className={`flex flex-col ${ISLAND_GLASS} w-96 max-w-[90vw] overflow-hidden`}
     >
       {/* 内容区域 */}
       <div className="p-4 max-h-[50vh] overflow-y-auto">

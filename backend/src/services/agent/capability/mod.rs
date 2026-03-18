@@ -269,17 +269,6 @@ pub async fn capability_requires_confirmation_async(
         .map(|(msg, risk)| (msg.to_string(), *risk))
 }
 
-/// 查找匹配意图的能力
-pub async fn find_capabilities_for_intent(intent: &ParsedIntent) -> Vec<Capability> {
-    let registry = get_registry().await;
-    registry
-        .get_by_action(&intent.action)
-        .into_iter()
-        .filter(|cap| registry.matches_target(cap, &intent.target))
-        .cloned()
-        .collect()
-}
-
 /// 获取能力摘要（用于 AI 提示）
 pub async fn get_capability_summary() -> Value {
     let registry = get_registry().await;
@@ -306,6 +295,93 @@ pub async fn get_capability_summary() -> Value {
         "byCategory": by_category,
         "quickReference": get_quick_reference()
     })
+}
+
+/// 获取能力紧凑索引（用于 AI 提示的渐进式披露）
+///
+/// 返回仅包含 ID + 一句话 hint 的轻量列表，大幅减少 prompt token 用量。
+/// AI 根据此索引选出 `suggested_capabilities`，后续再按需加载完整 schema。
+pub async fn get_compact_index() -> Value {
+    let registry = get_registry().await;
+
+    let mut by_category: std::collections::HashMap<String, Vec<Value>> =
+        std::collections::HashMap::new();
+
+    for cap in registry.get_all() {
+        let hint = get_capability_usage_hint(&cap.id);
+        let category = get_capability_category_name(&cap.category);
+
+        // 提取必需参数名（帮助 AI 正确构建 params）
+        let mut entry = json!({ "id": cap.id, "h": hint });
+        if let Some(required) = cap.input_schema.get("required").and_then(|v| v.as_array()) {
+            let param_names: Vec<&str> = required
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            if !param_names.is_empty() {
+                entry.as_object_mut().unwrap().insert(
+                    "p".to_string(),
+                    json!(param_names),
+                );
+            }
+        }
+
+        by_category
+            .entry(category)
+            .or_default()
+            .push(entry);
+    }
+
+    // 合并动态 Skills 到索引
+    let mut total = registry.get_all().len();
+    if let Some(skill_registry) = super::skill::get_skill_registry() {
+        let skill_index = skill_registry.get_compact_index().await;
+        if !skill_index.is_empty() {
+            total += skill_index.len();
+            by_category
+                .entry("动态技能".to_string())
+                .or_default()
+                .extend(skill_index);
+        }
+    }
+
+    // 合并 MCP 工具到索引
+    if let Some(mcp_manager) = super::mcp::get_mcp_manager() {
+        let mcp_tools = mcp_manager.list_tools().await;
+        if !mcp_tools.is_empty() {
+            total += mcp_tools.len();
+            let mcp_entries: Vec<Value> = mcp_tools
+                .iter()
+                .map(|(server_id, tool)| {
+                    json!({
+                        "id": format!("mcp.{}.{}", server_id, tool.name),
+                        "h": if tool.description.is_empty() {
+                            format!("MCP tool from {}", server_id)
+                        } else {
+                            tool.description.chars().take(80).collect::<String>()
+                        }
+                    })
+                })
+                .collect();
+            by_category
+                .entry("MCP 工具".to_string())
+                .or_default()
+                .extend(mcp_entries);
+        }
+    }
+
+    json!({
+        "total": total,
+        "caps": by_category
+    })
+}
+
+/// 根据 ID 列表获取完整能力定义（渐进式披露第二阶段）
+pub async fn get_capabilities_by_ids(ids: &[String]) -> Vec<Capability> {
+    let registry = get_registry().await;
+    ids.iter()
+        .filter_map(|id| registry.get(id).cloned())
+        .collect()
 }
 
 /// 获取能力类别的友好名称

@@ -49,9 +49,24 @@ pub fn levenshtein_similar(a: &str, b: &str) -> bool {
     distance <= threshold.max(2)
 }
 
+/// 从步骤输出中提取图片 URL（如果存在）
+pub fn extract_image_url(output: &Value) -> Option<String> {
+    output
+        .as_object()
+        .and_then(|obj| obj.get("imageUrl"))
+        .and_then(|v| v.as_str())
+        .filter(|url| !url.starts_with("pixai://")) // pixai:// 是异步任务，不是真实 URL
+        .map(|s| s.to_string())
+}
+
 /// 简化输出摘要（用于实时进度显示）
 pub fn summarize_output(output: &Value) -> Option<String> {
     if let Some(obj) = output.as_object() {
+        // 图片生成结果：返回人类可读摘要，不嵌入 URL（URL 通过 StepCompleted.image_url 单独传递）
+        if obj.get("imageUrl").and_then(|v| v.as_str()).is_some() {
+            let provider = obj.get("provider").and_then(|v| v.as_str()).unwrap_or("AI");
+            return Some(format!("已通过 {} 生成图片", provider));
+        }
         if let Some(msg) = obj.get("message").and_then(|v| v.as_str()) {
             return Some(msg.to_string());
         }

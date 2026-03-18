@@ -299,11 +299,9 @@ pub async fn leave_ring(
 
     // 通知所有 peer 我们要离开
     let local_actor = actor_url(&base_url, username);
-    let activity_id = generate_activity_id(&base_url);
-    let leave_activity = json!({
+    let leave_base = json!({
         "@context": build_context(),
         "type": "myriad:RingLeave",
-        "id": &activity_id,
         "actor": &local_actor,
         "object": {
             "type": "myriad:Ring",
@@ -314,6 +312,10 @@ pub async fn leave_ring(
     // 向每个 peer 投递离开通知
     let local_user_id = resolve_user_id(db, username).await?;
     for peer in &peers {
+        // 为每个 peer 生成独立的 activity_id，避免 DB 冲突
+        let activity_id = generate_activity_id(&base_url);
+        let mut leave_activity = leave_base.clone();
+        leave_activity["id"] = json!(&activity_id);
         if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, peer).await {
             if !remote.inbox_url.is_empty() {
                 let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
@@ -423,7 +425,7 @@ pub async fn add_peer(
             )
         })?;
 
-    let mut peers_json: serde_json::Value = ring_row.try_get("", "known_peers").unwrap_or(json!([]));
+    let peers_json: serde_json::Value = ring_row.try_get("", "known_peers").unwrap_or(json!([]));
 
     // 验证远程 actor 存在
     let remote = crate::federation::actor::fetch_remote_actor(db, &req.peer)
@@ -445,15 +447,11 @@ pub async fn add_peer(
         }
     }
 
-    // 添加到 known_peers
-    if let Some(arr) = peers_json.as_array_mut() {
-        arr.push(json!(req.peer));
-    }
-
+    // 原子追加到 known_peers，避免并发读-改-写竞争
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "UPDATE federation_ring_memberships SET known_peers = $2 WHERE ring_id = $1",
-        [ring_id.into(), peers_json.into()],
+        "UPDATE federation_ring_memberships SET known_peers = known_peers || $2::jsonb WHERE ring_id = $1",
+        [ring_id.into(), json!([&req.peer]).into()],
     ))
     .await
     .map_err(db_err)?;
@@ -803,7 +801,7 @@ pub async fn handle_ring_join(
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or("Missing ring id")?;
-    let ring_type = object
+    let _ring_type = object
         .get("ringType")
         .and_then(|v| v.as_str())
         .unwrap_or("instance-directory");
@@ -819,38 +817,36 @@ pub async fn handle_ring_join(
         .map_err(|e| e.to_string())?;
 
     if let Some(row) = existing {
-        // Ring 已存在，添加这个 actor 到 peers
-        let mut peers: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
-        if let Some(arr) = peers.as_array_mut() {
-            if !arr.iter().any(|v| v.as_str() == Some(actor_url_str)) {
-                arr.push(json!(actor_url_str));
+        // Ring 已存在，原子追加 actor 到 peers（避免并发竞争）
+        let peers: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
+        if let Some(arr) = peers.as_array() {
+            if arr.iter().any(|v| v.as_str() == Some(actor_url_str)) {
+                // 已存在，跳过
+                tracing::debug!("[Ring] Peer {} already in ring {}", actor_url_str, ring_id);
+                return Ok(());
             }
         }
         db.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "UPDATE federation_ring_memberships SET known_peers = $2 WHERE ring_id = $1",
-            [ring_id.into(), peers.into()],
+            r#"UPDATE federation_ring_memberships
+               SET known_peers = CASE
+                 WHEN NOT (known_peers @> $2::jsonb)
+                 THEN known_peers || $2::jsonb
+                 ELSE known_peers
+               END
+               WHERE ring_id = $1"#,
+            [ring_id.into(), json!([actor_url_str]).into()],
         ))
         .await
         .map_err(|e| e.to_string())?;
     } else {
-        // 新 Ring — 自动加入并把来源作为第一个 peer
-        let gossip_config = json!({"fanout": 3, "ttl": 5, "interval": 300});
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_ring_memberships
-               (ring_id, ring_name, ring_type, gossip_config, known_peers, joined_at)
-               VALUES ($1, NULL, $2, $3, $4, NOW())
-               ON CONFLICT (ring_id) DO NOTHING"#,
-            [
-                ring_id.into(),
-                ring_type.into(),
-                gossip_config.into(),
-                json!([actor_url_str]).into(),
-            ],
-        ))
-        .await
-        .map_err(|e| e.to_string())?;
+        // 未知 Ring — 不自动创建，仅记录日志
+        // 安全考量：自动加入任何远程 Ring 会允许恶意实例注入数据到本地 timeline
+        tracing::warn!(
+            "[Ring] Received RingJoin for unknown ring {} from {}, ignoring (auto-join disabled)",
+            ring_id, actor_url_str
+        );
+        return Ok(());
     }
 
     tracing::info!("[Ring] Received RingJoin for {} from {}", ring_id, actor_url_str);
@@ -894,6 +890,18 @@ pub async fn handle_ring_sync(
         return Ok(());
     }
 
+    // 获取本地用户 ID（用于 timeline 和转发）
+    let first_user: i32 = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM users ORDER BY id LIMIT 1",
+            [],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get("", "id").ok())
+        .unwrap_or(1);
+
     // 处理收到的条目 — 存入 Timeline
     let mut imported = 0;
     for entry in &entries {
@@ -921,18 +929,6 @@ pub async fn handle_ring_sync(
         if exists.is_some() {
             continue;
         }
-
-        // 存入 Timeline（关联到实例第一个用户）
-        let first_user: i32 = db
-            .query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT id FROM users ORDER BY id LIMIT 1",
-                [],
-            ))
-            .await
-            .map_err(|e| e.to_string())?
-            .and_then(|r| r.try_get("", "id").ok())
-            .unwrap_or(1);
 
         let _ = db
             .execute(Statement::from_sql_and_values(
@@ -973,10 +969,91 @@ pub async fn handle_ring_sync(
         actor_url_str, ring_id, entries.len(), imported, ttl
     );
 
-    // Gossip 转发（如果 TTL > 0，继续传播）
+    // Gossip 转发（如果 TTL > 0 且有新数据导入，继续传播给其他 peer）
     if ttl > 0 && imported > 0 {
-        tracing::debug!("[Ring] Would forward gossip with ttl={}, but forward not implemented in inbox handler", ttl);
-        // 实际的 gossip 转发可通过后台任务实现，这里仅记录
+        // 获取本地已知 peer 列表，排除发送方
+        let ring_row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT known_peers, gossip_config FROM federation_ring_memberships WHERE ring_id = $1",
+                [ring_id.into()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(row) = ring_row {
+            let local_peers: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
+            let config: serde_json::Value = row.try_get("", "gossip_config").unwrap_or(json!({}));
+            let fanout = config.get("fanout").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+
+            let forward_peers: Vec<String> = local_peers
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .filter(|p| p != actor_url_str) // 不回传给发送方
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            if !forward_peers.is_empty() {
+                // 只转发新导入的条目
+                let new_entries: Vec<&serde_json::Value> = entries.iter().take(imported).collect();
+                let base_url = get_base_url().await;
+
+                // 选取最多 fanout 个 peer
+                let targets: Vec<&String> = forward_peers.iter().take(fanout).collect();
+
+                for target in &targets {
+                    let fwd_activity_id = generate_activity_id(&base_url);
+                    let fwd_activity = json!({
+                        "@context": build_context(),
+                        "type": "myriad:RingSync",
+                        "id": &fwd_activity_id,
+                        "actor": actor_url_str,
+                        "to": [target],
+                        "object": {
+                            "type": "myriad:RingSyncPayload",
+                            "ring": ring_id,
+                            "ringType": _ring_type,
+                            "entries": &new_entries,
+                            "ttl": ttl - 1
+                        }
+                    });
+
+                    if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, target).await {
+                        if !remote.inbox_url.is_empty() {
+                            let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
+                            let act_row = db
+                                .query_one(Statement::from_sql_and_values(
+                                    DatabaseBackend::Postgres,
+                                    r#"INSERT INTO federation_activities
+                                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+                                       VALUES ($1, $2, 'RingSync', 'Ring', $3, false, NOW())
+                                       RETURNING id"#,
+                                    [fwd_activity_id.into(), first_user.into(), fwd_activity.into()],
+                                ))
+                                .await;
+
+                            if let Ok(Some(r)) = act_row {
+                                if let Ok(act_id) = r.try_get::<i32>("", "id") {
+                                    let _ = db
+                                        .execute(Statement::from_sql_and_values(
+                                            DatabaseBackend::Postgres,
+                                            r#"INSERT INTO federation_delivery_queue
+                                               (activity_id, target_inbox, target_domain, status, created_at)
+                                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                                            [act_id.into(), remote.inbox_url.into(), domain.into()],
+                                        ))
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+                }
+                tracing::info!("[Ring] Forwarded gossip for ring {} to {} peers, ttl={}", ring_id, targets.len(), ttl - 1);
+            }
+        }
     }
 
     Ok(())
@@ -994,29 +1071,20 @@ pub async fn handle_ring_leave(
         .and_then(|v| v.as_str())
         .ok_or("Missing ring id")?;
 
-    // 从 known_peers 中移除
-    let row = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT known_peers FROM federation_ring_memberships WHERE ring_id = $1",
-            [ring_id.into()],
-        ))
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if let Some(row) = row {
-        let mut peers: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
-        if let Some(arr) = peers.as_array_mut() {
-            arr.retain(|v| v.as_str() != Some(actor_url_str));
-        }
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "UPDATE federation_ring_memberships SET known_peers = $2 WHERE ring_id = $1",
-            [ring_id.into(), peers.into()],
-        ))
-        .await
-        .map_err(|e| e.to_string())?;
-    }
+    // 原子地从 known_peers 中移除（与 remove_peer 一致）
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_ring_memberships
+           SET known_peers = (
+               SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+               FROM jsonb_array_elements(known_peers) AS elem
+               WHERE elem #>> '{}' != $2
+           )
+           WHERE ring_id = $1"#,
+        [ring_id.into(), actor_url_str.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
 
     tracing::info!("[Ring] Peer {} left ring {}", actor_url_str, ring_id);
     Ok(())

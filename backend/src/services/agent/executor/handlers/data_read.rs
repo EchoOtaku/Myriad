@@ -42,7 +42,6 @@ pub async fn execute(
         // 音乐平台
         "netease.playlist" => execute_netease_playlist(params).await,
         "netease.searchPlaylist" => execute_netease_search_playlist(params, ctx).await,
-        "music.playlist" => execute_music_playlist(params).await,
         // GitHub
         "github.repos" => execute_github_repos(params).await,
         // 追加能力
@@ -744,6 +743,9 @@ async fn execute_brew_generate_reading_list(
     let criteria = params
         .get("criteria")
         .and_then(|v| v.as_str())
+        .or_else(|| params.get("keyword").and_then(|v| v.as_str()))
+        .or_else(|| params.get("topic").and_then(|v| v.as_str()))
+        .or_else(|| params.get("query").and_then(|v| v.as_str()))
         .unwrap_or("最新文章");
     let max_items = params
         .get("maxItems")
@@ -1735,9 +1737,15 @@ async fn ai_search_rss_feeds(query: &str, ctx: &HandlerContext<'_>) -> Result<Ve
     // 构建搜索查询
     let search_query = format!("{} RSS feed URL", query);
 
-    // 使用 AI 搜索
+    // 使用 AI 推断常见 RSS 地址（注意：AI 没有实时联网能力，依赖已有知识）
     let prompt = format!(
-        "搜索「{}」相关的 RSS 订阅源链接。请返回可用的 RSS/Atom feed URL 列表，格式为 JSON 数组。",
+        "根据你的知识，推断「{}」可能的 RSS/Atom 订阅源地址。\n\n\
+        规则：\n\
+        1. 优先返回常见平台的已知 RSS 格式（如 WordPress 的 /feed/、GitHub 的 .atom、Reddit 的 .rss 等）\n\
+        2. 可以返回 RSSHub (rsshub.app) 提供的路由\n\
+        3. 只返回你有较高把握的 URL，不确定的不要返回\n\
+        4. 以 JSON 数组格式返回：[{{\"url\": \"...\", \"name\": \"...\", \"confidence\": \"high|medium\"}}]\n\n\
+        请直接返回 JSON 数组。",
         search_query
     );
 
@@ -2821,91 +2829,6 @@ async fn execute_netease_search_playlist(
     }))
 }
 
-/// 通用音乐歌单能力
-async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let playlist_id = params
-        .get("playlistId")
-        .and_then(|v| v.as_str().or_else(|| v.as_i64().map(|n| {
-            // 将数字转为静态字符串（leak方式不推荐，使用其他方式）
-            Box::leak(n.to_string().into_boxed_str()) as &str
-        })));
-
-    let Some(playlist_id) = playlist_id else {
-        return Err("Missing playlistId parameter".to_string());
-    };
-
-    // 调用网易云获取歌单详情
-    let client_ip = get_random_china_ip();
-    let proxy_ip = get_random_china_ip();
-    let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
-    let user_agent = get_random_user_agent();
-
-    let detail_url = format!(
-        "https://music.163.com/api/playlist/detail?id={}",
-        playlist_id
-    );
-
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&detail_url)
-        .header("Referer", "https://music.163.com/")
-        .header("User-Agent", user_agent)
-        .header("X-Forwarded-For", forwarded_for.clone())
-        .header("X-Real-IP", client_ip.clone())
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch playlist: {}", e))?;
-
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    if let Some(result) = data.get("result") {
-        let tracks: Vec<Value> = result
-            .get("tracks")
-            .and_then(|t| t.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .take(50)
-                    .map(|track| {
-                        json!({
-                            "id": track.get("id"),
-                            "name": track.get("name"),
-                            "artist": track.get("artists")
-                                .and_then(|a| a.as_array())
-                                .and_then(|arr| arr.first())
-                                .and_then(|a| a.get("name")),
-                            "album": track.get("album").and_then(|a| a.get("name")),
-                            "duration": track.get("duration")
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        return Ok(json!({
-            "success": true,
-            "playlistId": playlist_id,
-            "name": result.get("name"),
-            "description": result.get("description"),
-            "coverUrl": result.get("coverImgUrl"),
-            "trackCount": result.get("trackCount"),
-            "playCount": result.get("playCount"),
-            "tracks": tracks,
-            "frontendAction": {
-                "type": "play_playlist",
-                "params": {
-                    "playlistId": playlist_id,
-                    "source": "netease"
-                }
-            }
-        }));
-    }
-
-    Err("Failed to get playlist details".to_string())
-}
-
 /// 读取 GitHub 仓库数据
 async fn execute_github_repos(params: &HashMap<String, Value>) -> Result<Value, String> {
     let query_type = params
@@ -3622,17 +3545,10 @@ async fn execute_rsshub_instances(params: &HashMap<String, Value>) -> Result<Val
 }
 
 /// 上下文引用能力
-async fn execute_context_reference(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let step_id = params.get("stepId").and_then(|v| v.as_str()).unwrap_or("");
-    let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
-
-    // 实际的值引用在参数解析阶段已经处理
-    Ok(json!({
-        "referenced": true,
-        "stepId": step_id,
-        "path": path,
-        "note": "值已在参数解析阶段注入"
-    }))
+async fn execute_context_reference(_params: &HashMap<String, Value>) -> Result<Value, String> {
+    // context.reference 不应被直接调用——步骤间数据传递通过 executor 的
+    // resolve_params() 自动处理 xxxFrom 引用。如果走到这里说明 recipe 配置有误。
+    Err("context.reference 不应被直接调用。请使用 xxxFrom 参数引用上游步骤的输出。".to_string())
 }
 
 // ============================================================================
@@ -3651,7 +3567,7 @@ async fn execute_database_query(capability_id: &str, params: &HashMap<String, Va
     let db_file = format!("data/{}_database.json", db_type);
     let content = tokio::fs::read_to_string(&db_file)
         .await
-        .unwrap_or_else(|_| "{}".to_string());
+        .map_err(|_| format!("{} 数据库文件不存在（{}）。请先导入相关数据。", db_type, db_file))?;
 
     let data: Value = serde_json::from_str(&content).unwrap_or(json!({}));
     let entries = data

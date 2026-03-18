@@ -72,9 +72,48 @@ impl ResultEvaluator {
         Self { min_data_count: 1 }
     }
 
+    /// 评估结果（无需 ParsedIntent，仅检测失败模式和数据充足性）
+    ///
+    /// 用于 Planner 管线的简化评估，不依赖旧的 ParsedIntent 类型。
+    pub fn evaluate_result(&self, result: &Value) -> Evaluation {
+        let mut eval = Evaluation::default();
+
+        // 第一层：失败模式检测
+        self.detect_failure_patterns(&mut eval, result);
+        if !eval.failure_patterns.is_empty() {
+            eval.is_satisfied = false;
+            eval.satisfaction_score = 0.0;
+            eval.reason = Some(self.describe_failure_patterns(&eval.failure_patterns));
+            eval.suggests_web_search = true;
+            eval.improvement_hints.push("本地数据不足，尝试联网搜索".to_string());
+            return eval;
+        }
+
+        // 第二层：数据源验证
+        let data_count = self.count_actual_data(result);
+        if data_count < self.min_data_count {
+            eval.is_satisfied = false;
+            eval.satisfaction_score = 0.1;
+            eval.failure_patterns.push(FailurePattern::ZeroCount);
+            eval.reason = Some(format!(
+                "数据不足：找到 {} 条有效数据，需要至少 {} 条",
+                data_count, self.min_data_count
+            ));
+            eval.suggests_web_search = true;
+            eval.improvement_hints.push("需要从网络获取实时数据".to_string());
+            return eval;
+        }
+
+        // 通用目标评估
+        self.evaluate_generic_goal(&mut eval, result);
+        eval
+    }
+
     /// 评估结果是否满足用户目标
     ///
     /// 这是一个**严格的**评估器，会检测各种失败模式
+    /// Legacy: 由 evaluate_result() 替代，保留供测试使用
+    #[allow(dead_code)]
     pub fn evaluate(&self, intent: &ParsedIntent, result: &Value) -> Evaluation {
         let mut eval = Evaluation::default();
 
@@ -407,7 +446,8 @@ impl ResultEvaluator {
         descriptions.join("；")
     }
 
-    /// 建议改进方向
+    /// 建议改进方向 (legacy — 由 evaluate() 调用)
+    #[allow(dead_code)]
     fn suggest_improvements(&self, eval: &mut Evaluation, intent: &ParsedIntent) {
         // 根据失败模式和意图类型给出建议
         for pattern in &eval.failure_patterns.clone() {
@@ -450,7 +490,8 @@ impl ResultEvaluator {
         }
     }
 
-    /// 评估查询目标
+    /// 评估查询目标 (legacy)
+    #[allow(dead_code)]
     fn evaluate_query_goal(&self, eval: &mut Evaluation, intent: &ParsedIntent, result: &Value) {
         // 提取关键词
         let keywords = self.extract_keywords_from_intent(intent);
@@ -482,7 +523,8 @@ impl ResultEvaluator {
         }
     }
 
-    /// 评估总结目标
+    /// 评估总结目标 (legacy)
+    #[allow(dead_code)]
     fn evaluate_summarize_goal(&self, eval: &mut Evaluation, intent: &ParsedIntent, result: &Value) {
         // 检查总结是否有实质内容
         let summary = if let Value::Object(obj) = result {
@@ -514,7 +556,8 @@ impl ResultEvaluator {
         }
     }
 
-    /// 评估分析目标
+    /// 评估分析目标 (legacy)
+    #[allow(dead_code)]
     fn evaluate_analyze_goal(&self, eval: &mut Evaluation, intent: &ParsedIntent, result: &Value) {
         // 分析需要足够的内容
         let text = self.extract_all_text(result);

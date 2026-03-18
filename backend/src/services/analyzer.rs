@@ -139,11 +139,18 @@ impl AiAnalyzer {
         {
             prompt.to_string()
         } else {
-            let system_prompt = "You are an expert data analyst specializing in social media and professional profiles.";
+            let system_prompt = "You are an expert data analyst. Analyze data thoroughly and provide structured, actionable insights. Always respond in the same language as the input data.";
+            let data_str = serde_json::to_string_pretty(profile_data)?;
+            // 截断过长数据以避免 token 溢出
+            let truncated: String = data_str.chars().take(15000).collect();
             format!(
-                "{}\n\nAnalyze the following user profile data and provide insights on their professional background, skills, interests, and online presence:\n\n{}",
+                "{}\n\nPlease analyze the following data and provide:\n\
+                1. Key findings and patterns\n\
+                2. Notable highlights\n\
+                3. Actionable insights\n\n\
+                Data:\n{}",
                 system_prompt,
-                serde_json::to_string_pretty(profile_data)?
+                truncated
             )
         };
 
@@ -354,4 +361,159 @@ impl AiAnalyzer {
     // TODO: Add more analysis methods
     // pub async fn generate_summary(&self, profiles: Vec<serde_json::Value>) -> Result<String>
     // pub async fn extract_skills(&self, profile_data: &serde_json::Value) -> Result<Vec<String>>
+
+    /// 流式分析（逐 token 返回）
+    ///
+    /// 通过 `on_token` 回调逐步返回文本片段，适用于需要实时展示 AI 回复的场景。
+    /// 回调返回 `false` 可提前终止流。
+    pub async fn analyze_stream<F>(&self, prompt: &str, mut on_token: F) -> Result<String>
+    where
+        F: FnMut(&str) -> bool + Send,
+    {
+        let mut full_text = String::new();
+        match self.provider {
+            AiProvider::Gemini => {
+                let request_body = GeminiRequest {
+                    contents: vec![GeminiContent {
+                        parts: vec![GeminiPart {
+                            text: prompt.to_string(),
+                        }],
+                    }],
+                };
+
+                let base_url = crate::services::http_client::GeminiApiUrl::get_base().await;
+                let url = format!(
+                    "{}/v1beta/models/{}:streamGenerateContent?alt=sse",
+                    base_url, self.model
+                );
+
+                let mut response = self
+                    .client
+                    .post(&url)
+                    .query(&[("key", &self.api_key)])
+                    .json(&request_body)
+                    .send()
+                    .await
+                    .context("Failed to send streaming request to Gemini API")?;
+
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_default();
+                    return Err(anyhow::anyhow!("Gemini streaming API error {}: {}", status, error_text));
+                }
+
+                let mut buffer = String::new();
+
+                loop {
+                    let chunk = response.chunk().await.context("Stream read error")?;
+                    match chunk {
+                        Some(bytes) => buffer.push_str(&String::from_utf8_lossy(&bytes)),
+                        None => break,
+                    }
+
+                    // Parse SSE lines: "data: {...}\n\n"
+                    while let Some(pos) = buffer.find("\n\n") {
+                        let event_block = buffer[..pos].to_string();
+                        buffer = buffer[pos + 2..].to_string();
+
+                        for line in event_block.lines() {
+                            let line = line.trim();
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                    if let Some(text) = json
+                                        .pointer("/candidates/0/content/parts/0/text")
+                                        .and_then(|v| v.as_str())
+                                    {
+                                        full_text.push_str(text);
+                                        if !on_token(text) {
+                                            return Ok(full_text);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            AiProvider::OpenAI => {
+                #[derive(Serialize)]
+                struct OpenAIStreamRequest {
+                    model: String,
+                    messages: Vec<OpenAIMessage>,
+                    stream: bool,
+                }
+
+                let request_body = OpenAIStreamRequest {
+                    model: self.model.clone(),
+                    messages: vec![OpenAIMessage {
+                        role: "user".to_string(),
+                        content: prompt.to_string(),
+                    }],
+                    stream: true,
+                };
+
+                let base_url = self.base_url.as_deref().unwrap_or("https://api.openai.com/v1");
+                let url = if base_url.ends_with("/chat/completions") {
+                    base_url.to_string()
+                } else if base_url.ends_with('/') {
+                    format!("{}chat/completions", base_url)
+                } else {
+                    format!("{}/chat/completions", base_url)
+                };
+
+                let mut response = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header("Content-Type", "application/json")
+                    .json(&request_body)
+                    .send()
+                    .await
+                    .context("Failed to send streaming request to OpenAI API")?;
+
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_default();
+                    return Err(anyhow::anyhow!("OpenAI streaming API error {}: {}", status, error_text));
+                }
+
+                let mut buffer = String::new();
+
+                loop {
+                    let chunk = response.chunk().await.context("Stream read error")?;
+                    match chunk {
+                        Some(bytes) => buffer.push_str(&String::from_utf8_lossy(&bytes)),
+                        None => break,
+                    }
+
+                    while let Some(pos) = buffer.find('\n') {
+                        let line = buffer[..pos].trim().to_string();
+                        buffer = buffer[pos + 1..].to_string();
+
+                        if line.is_empty() {
+                            continue;
+                        }
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data.trim() == "[DONE]" {
+                                break;
+                            }
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                if let Some(content) = json
+                                    .pointer("/choices/0/delta/content")
+                                    .and_then(|v| v.as_str())
+                                {
+                                    full_text.push_str(content);
+                                    if !on_token(content) {
+                                        return Ok(full_text);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(full_text)
+    }
 }

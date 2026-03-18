@@ -14,7 +14,8 @@ import {
   LuSearch as Search,
 } from '@lib/icons'
 import type { ControlMode, DynamicTip, SortMode, SortOption } from './types'
-import { SPRING_SNAPPY, TRANSITION_NORMAL, TRANSITION_SLOW } from './constants'
+import { ISLAND_BTN, ISLAND_GLASS, TRANSITION_NORMAL, TRANSITION_SLOW } from './constants'
+import { IslandShell } from '../../../shared/control-island'
 
 export interface DefaultModeProps {
   variant: 'mobile' | 'desktop'
@@ -71,16 +72,9 @@ export function DefaultMode({
   // 移动端版本 - 简化（只保留动态信息和排序）
   if (isMobile) {
     return (
-      <motion.div
-        key="default-bar-mobile"
-        initial={{ opacity: 0, y: -8, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -8, scale: 0.96 }}
-        transition={SPRING_SNAPPY}
-        className="flex items-center gap-1.5 px-2 py-2 rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10"
-      >
+      <IslandShell variant="mobile" motionKey="default-bar-mobile">
         {/* 动态提示 */}
-        <div className="flex items-center gap-2 h-10 px-2 min-w-0 flex-1 overflow-hidden">
+        <div className="flex items-center gap-2 h-9 px-2 min-w-0 flex-1 overflow-hidden">
           <AnimatePresence mode="wait">
             <motion.div
               key={tipKey}
@@ -121,15 +115,14 @@ export function DefaultMode({
 
         {/* 排序按钮 */}
         <div className="relative" ref={sortDropdownRef}>
-          <motion.button
+          <button
             onClick={() => setShowSortDropdown(!showSortDropdown)}
-            className="p-2.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-xl transition-colors"
-            whileTap={{ scale: 0.95 }}
+            className={ISLAND_BTN}
             title={t.sortMethod}
             aria-label={t.sortMethod}
           >
             <ArrowUpDown className="w-4 h-4" />
-          </motion.button>
+          </button>
 
           <AnimatePresence>
             {showSortDropdown && (
@@ -138,7 +131,7 @@ export function DefaultMode({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.95 }}
                 transition={TRANSITION_NORMAL}
-                className="absolute top-full mt-2 right-0 w-36 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-lg overflow-hidden py-1 z-100"
+                className={`absolute top-full mt-2 right-0 w-36 ${ISLAND_GLASS} overflow-hidden py-1 z-100`}
               >
                 {sortOptions.map(option => (
                   <button
@@ -147,10 +140,10 @@ export function DefaultMode({
                       onSortModeChange?.(option.value)
                       setShowSortDropdown(false)
                     }}
-                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors ${
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors ${
                       sortMode === option.value
-                        ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                        : 'text-gray-600 dark:text-gray-300'
+                        ? 'text-orange-500 bg-orange-500/10'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-black/4 dark:hover:bg-white/6'
                     }`}
                   >
                     {option.icon}
@@ -162,22 +155,15 @@ export function DefaultMode({
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+      </IslandShell>
     )
   }
 
   // 桌面端版本 - 完整功能
   return (
-    <motion.div
-      key="default-bar"
-      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-      transition={SPRING_SNAPPY}
-      className="flex flex-col sm:flex-row items-center gap-1.5 px-2 py-2 rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10"
-    >
+    <IslandShell variant="desktop" motionKey="default-bar" className="flex-col sm:flex-row">
       {/* 动态提示 */}
-      <div className="flex items-center gap-2 h-10 px-2.5 min-w-[11rem] overflow-hidden">
+      <div className="flex items-center gap-2 h-9 px-2.5 min-w-44 overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div
             key={tipKey}
@@ -205,10 +191,10 @@ export function DefaultMode({
               {tip.icon}
             </span>
             <div className="flex flex-col justify-center leading-tight">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate max-w-[9rem]">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate max-w-36">
                 {tip.main}
               </span>
-              <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[9rem]">
+              <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-36">
                 {tip.sub}
               </span>
             </div>
@@ -220,18 +206,16 @@ export function DefaultMode({
       <div className="flex items-center gap-1.5">
         {/* 排序按钮 */}
         <div className="relative" ref={sortDropdownRef}>
-          <motion.button
+          <button
             onClick={() => setShowSortDropdown(!showSortDropdown)}
-            className="group flex items-center gap-1.5 px-3 py-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            className={`${ISLAND_BTN} group`}
             title={t.sortMethod}
             aria-label={t.sortMethod}
           >
             <ArrowUpDown className="w-4 h-4" />
             <span className="text-xs font-medium hidden sm:inline">{t[currentSortOption.labelKey]}</span>
             <ChevronDown className={`w-3 h-3 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
-          </motion.button>
+          </button>
 
           <AnimatePresence>
             {showSortDropdown && (
@@ -240,7 +224,7 @@ export function DefaultMode({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 4, scale: 0.95 }}
                 transition={TRANSITION_NORMAL}
-                className="absolute bottom-full mb-2 left-0 w-36 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-lg overflow-hidden py-1"
+                className={`absolute bottom-full mb-2 left-0 w-36 ${ISLAND_GLASS} overflow-hidden py-1`}
               >
                 {sortOptions.map(option => (
                   <button
@@ -249,10 +233,10 @@ export function DefaultMode({
                       onSortModeChange?.(option.value)
                       setShowSortDropdown(false)
                     }}
-                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors ${
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors ${
                       sortMode === option.value
-                        ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                        : 'text-gray-600 dark:text-gray-300'
+                        ? 'text-orange-500 bg-orange-500/10'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-black/4 dark:hover:bg-white/6'
                     }`}
                   >
                     {option.icon}
@@ -266,61 +250,53 @@ export function DefaultMode({
         </div>
 
         {/* 搜索按钮 */}
-        <motion.button
+        <button
           onClick={() => onModeChange('search')}
-          className="group flex items-center gap-1.5 px-3 py-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          className={ISLAND_BTN}
           title={t.search}
           aria-label={t.search}
         >
           <Search className="w-4 h-4" />
           <span className="text-xs font-medium hidden sm:inline">{t.search}</span>
-        </motion.button>
+        </button>
 
         {/* 编辑模式按钮 - 仅管理员可见 */}
         {isAdmin && (
-          <motion.button
+          <button
             onClick={() => onModeChange('edit')}
-            className="group flex items-center gap-1.5 px-3 py-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            className={ISLAND_BTN}
             title={t.editMode}
             aria-label={t.editMode}
           >
             <Edit3 className="w-4 h-4" />
             <span className="text-xs font-medium hidden sm:inline">{t.edit}</span>
-          </motion.button>
+          </button>
         )}
 
         {/* 快捷键按钮 */}
-        <motion.button
+        <button
           onClick={() => onModeChange('keyboard')}
-          className="group flex items-center gap-1.5 px-3 py-2 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          className={ISLAND_BTN}
           title={t.shortcuts}
           aria-label={t.shortcuts}
         >
           <Keyboard className="w-4 h-4" />
           <span className="text-xs font-medium hidden sm:inline">{t.shortcuts}</span>
-        </motion.button>
+        </button>
 
         {/* 添加订阅按钮 - 仅管理员可见 */}
         {isAdmin && hasAddSource && (
-          <motion.button
+          <button
             onClick={() => onModeChange('add')}
-            className="group flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white transition-colors"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            className="flex items-center justify-center gap-1.5 h-9 px-4 rounded-xl bg-linear-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-sm font-medium shadow-sm shadow-orange-500/25 hover:shadow-md hover:shadow-orange-500/30 hover:scale-102 active:scale-97 transition-all duration-200 ease-out"
             title={t.addSubscription}
             aria-label={t.addSubscription}
           >
             <Plus className="w-4 h-4" />
             <span className="text-xs font-medium">{t.add}</span>
-          </motion.button>
+          </button>
         )}
       </div>
-    </motion.div>
+    </IslandShell>
   )
 }

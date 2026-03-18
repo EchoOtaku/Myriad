@@ -121,6 +121,12 @@ export interface TaskCreatedEvent {
   taskId: string
   message: string
   totalSteps: number
+  /** 队列位置，0=立即执行 */
+  queuePosition?: number
+  /** 触发的技能 ID */
+  skillId?: string
+  /** 触发的技能名称 */
+  skillName?: string
 }
 
 /** 步骤开始事件 */
@@ -131,6 +137,10 @@ export interface StepStartedEvent {
   totalSteps: number
   capabilityName: string
   description: string
+  /** 能力分类，用于显示角色图标 */
+  capabilityCategory?: string
+  /** 重试次数（0=首次） */
+  retryAttempt?: number
 }
 
 /** 步骤完成事件 */
@@ -141,6 +151,12 @@ export interface StepCompletedEvent {
   success: boolean
   durationMs: number
   outputSummary?: string
+  /** 实际使用的模型层级 */
+  tierUsed?: 'pro' | 'standard'
+  /** 是否经历了降级（Pro→Standard） */
+  degraded?: boolean
+  /** 图片生成结果 URL */
+  imageUrl?: string
 }
 
 /** 进度更新事件 */
@@ -180,15 +196,64 @@ export interface ErrorEvent {
   code: string
 }
 
+/** AI 总结流式 token 事件 */
+export interface SummaryTokenEvent {
+  type: 'summary_token'
+  token: string
+  done: boolean
+}
+
+/** 任务分配事件（多 Agent 协作时发送） */
+export interface TaskAssignedEvent {
+  type: 'task_assigned'
+  taskId: string
+  assignment: TaskAssignment
+}
+
+/** 任务分配详情 */
+export interface TaskAssignment {
+  agents: AgentAssignment[]
+  totalAgents: number
+  isMultiAgent: boolean
+  tierMix: 'pro' | 'standard' | 'mixed'
+}
+
+/** 单个 Agent 分配 */
+export interface AgentAssignment {
+  role: AgentRole
+  agentId: string
+  displayName: string
+  icon: string
+  tier: 'Pro' | 'Standard'
+  capabilities: string[]
+}
+
+/** Agent 角色 */
+export type AgentRole
+  = | 'orchestrator'
+    | 'data_worker'
+    | 'content_worker'
+    | 'creative_worker'
+    | 'system_worker'
+
+/** 会话创建/确认事件 */
+export interface SessionCreatedEvent {
+  type: 'session_created'
+  sessionId: string
+}
+
 /** 所有进度事件类型 */
 export type ProgressEvent
   = | TaskCreatedEvent
+    | TaskAssignedEvent
     | StepStartedEvent
     | StepCompletedEvent
     | ProgressUpdateEvent
     | TaskCompletedEvent
     | WaitingForInputEvent
     | ErrorEvent
+    | SessionCreatedEvent
+    | SummaryTokenEvent
 
 /** 进度回调函数 */
 export type ProgressCallback = (event: ProgressEvent) => void
@@ -406,4 +471,96 @@ export interface SessionMessage {
   taskId?: string
   metadata?: Record<string, unknown>
   createdAt: string
+}
+
+// ============ 队列状态 (Phase 1A) ============
+
+/** 队列状态 */
+export interface QueueStatus {
+  total_lanes: number
+  max_concurrent: number
+  available_permits: number
+}
+
+// ============ Heartbeat (Phase 4) ============
+
+/** Heartbeat 定时任务 */
+export interface HeartbeatTask {
+  id: string
+  name: string
+  schedule: string
+  action: string
+  enabled: boolean
+  lastRun?: string
+  lastResult?: string
+}
+
+// ============ 执行追踪 ============
+
+/** 步骤追踪详情 */
+export interface StepTrace {
+  stepId: string
+  capabilityId: string
+  tierUsed: string
+  durationMs: number
+  tokensIn?: number
+  tokensOut?: number
+  success: boolean
+  error?: string
+}
+
+/** 执行追踪 */
+export interface ExecutionTrace {
+  traceId: string
+  totalDurationMs: number
+  tierUsage: Record<string, number>
+  steps: StepTrace[]
+}
+
+// ============ 记忆 (Phase 3) ============
+
+/** 记忆条目 */
+export interface MemoryEntry {
+  memoryType: 'preference' | 'fact' | 'interaction' | 'decision'
+  content: string
+  source?: string
+  createdAt: string
+}
+
+// ============ 技能 (Phase 2B) ============
+
+/** 技能信息 */
+export interface SkillInfo {
+  id: string
+  name: string
+  description: string
+  category: string
+  origin: 'manual' | 'agent_generated' | 'agent_improved'
+  successCount?: number
+  failureCount?: number
+  tierHint?: 'pro' | 'standard'
+}
+
+// ============ 中断/转向 (Phase 1A) ============
+
+/** 中断会话请求 */
+export interface InterruptRequest {
+  input: string
+}
+
+/** 转向会话请求 */
+export interface SteerRequest {
+  instruction: string
+}
+
+// ============ 多 Agent (Phase 6) ============
+
+/** Agent 配置信息 */
+export interface AgentProfile {
+  id: string
+  role: AgentRole
+  description: string
+  defaultTier: string
+  maxConcurrency: number
+  capabilityPrefixes: string[]
 }

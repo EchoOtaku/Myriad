@@ -161,12 +161,104 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
+    // Tapp 页面内容（详细）
+    registry.register(Capability {
+        id: "tapp.pageContent".to_string(),
+        name: "Tapp 页面内容详情".to_string(),
+        description: "读取 Tapp 应用页面的详细内容，包括应用列表、详情、组件、存储、任务、执行记录等多层级查询".to_string(),
+        category: CapabilityCategory::UiControl,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "level": {
+                    "type": "string",
+                    "enum": ["apps", "detail", "widgets", "storage", "tasks", "executions"],
+                    "description": "查询层级"
+                },
+                "tappId": { "type": "string" },
+                "taskId": { "type": "string" },
+                "filter": { "type": "string", "enum": ["all", "running", "installed", "error"] },
+                "limit": { "type": "integer", "default": 20 }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "level": { "type": "string" },
+                "content": { "type": "object" },
+                "stats": { "type": "object" }
+            }
+        }),
+        required_permissions: vec!["tapp:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(200),
+        ..Default::default()
+    });
+
+    // Tapp 组件查询
+    registry.register(Capability {
+        id: "tapp.widget".to_string(),
+        name: "Tapp 组件查询".to_string(),
+        description: "查询 Tapp 应用的桌面组件信息".to_string(),
+        category: CapabilityCategory::DataRead,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "tappId": { "type": "string" },
+                "userId": { "type": "integer" }
+            }
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "widgets": { "type": "array" },
+                "total": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["tapp:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(200),
+        ..Default::default()
+    });
+
+    // Tapp 存储操作
+    registry.register(Capability {
+        id: "tapp.storage".to_string(),
+        name: "Tapp 存储操作".to_string(),
+        description: "读写 Tapp 应用的键值存储数据".to_string(),
+        category: CapabilityCategory::DataWrite,
+        supported_actions: vec![IntentAction::Query, IntentAction::Create, IntentAction::Update, IntentAction::Delete],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "tappId": { "type": "string" },
+                "action": { "type": "string", "enum": ["get", "set", "delete"] },
+                "key": { "type": "string" },
+                "value": {}
+            },
+            "required": ["tappId", "action"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "success": { "type": "boolean" },
+                "data": {}
+            }
+        }),
+        required_permissions: vec!["tapp:write".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(100),
+        ..Default::default()
+    });
+
     // Tapp UI 结构
     registry.register(Capability {
         id: "tapp.ui".to_string(),
         name: "Tapp UI 结构".to_string(),
         description: "解析 Tapp 应用的 HTML 结构，识别可交互元素（按钮、输入框、表单等），分析功能和可用操作".to_string(),
-        category: CapabilityCategory::DataRead,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query, IntentAction::Analyze],
         input_schema: json!({
             "type": "object",
@@ -236,7 +328,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "tapp.understand".to_string(),
         name: "Tapp UI 智能理解".to_string(),
         description: "使用 AI 分析 Tapp 的 UI 结构，理解每个控件的用途，并根据用户意图生成操作指令序列".to_string(),
-        category: CapabilityCategory::AiProcess,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Analyze, IntentAction::Execute],
         input_schema: json!({
             "type": "object",
@@ -414,7 +506,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "tapp.windows".to_string(),
         name: "窗口状态查询".to_string(),
         description: "查询当前打开的 Tapp 窗口状态，包括窗口位置、活跃窗口、各窗口中运行的应用等".to_string(),
-        category: CapabilityCategory::DataRead,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
             "type": "object",
@@ -669,7 +761,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "tapp.read".to_string(),
         name: "读取窗口数据".to_string(),
         description: "从指定 Tapp 窗口读取当前显示的数据或输入框的值".to_string(),
-        category: CapabilityCategory::DataRead,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
             "type": "object",

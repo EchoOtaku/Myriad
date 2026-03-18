@@ -1516,13 +1516,25 @@ export function generateThemeCSS(isDark: boolean, primaryColor: string): string 
   --tapp-primary: ${primaryColor};
   --tapp-primary-rgb: ${primaryRgb};
 
+  /* 语义色彩变量（供 Tapp 使用） */
+  --text-primary: ${isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a'};
+  --text-secondary: ${isDark ? 'rgba(255,255,255,.5)' : '#999'};
+  --bg-primary: ${isDark ? '#0a0a0a' : '#fff'};
+
   /* 缩放因子（由容器动态更新） */
   --tapp-scale: 1;
   --tapp-font-scale: 1;
 }
 
-/* 暗色模式标识 */
-${isDark ? '.dark { color-scheme: dark; }' : ''}
+/* 暗色模式 */
+.dark {
+  color-scheme: dark;
+  --text-primary: rgba(255,255,255,.92);
+  --text-secondary: rgba(255,255,255,.5);
+  --bg-primary: #0a0a0a;
+}
+body.dark { background: var(--bg-primary); color: var(--text-primary); }
+body.light { background: var(--bg-primary); color: var(--text-primary); }
 `
 
   themeCSSCache.set(cacheKey, css)
@@ -1548,6 +1560,8 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #1a1a1a);
 }
 `
 

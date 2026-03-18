@@ -1,12 +1,11 @@
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { API_URL } from '../config'
-import { useNotification } from '../contexts/NotificationContext'
+import { showError } from '../utils/toastManager'
 
 export function useSystemSetupCheck() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { showError } = useNotification()
 
   useEffect(() => {
     if (location.pathname === '/setup')
@@ -32,5 +31,5 @@ export function useSystemSetupCheck() {
     }
 
     checkSetup()
-  }, [location.pathname, navigate, showError])
+  }, [location.pathname, navigate])
 }

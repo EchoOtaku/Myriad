@@ -640,7 +640,7 @@ async fn handle_mfp_activity(
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:ChannelMessage" => {
-            crate::federation::channel::handle_channel_message(db, activity)
+            crate::federation::channel::handle_channel_message(db, actor_url_str, activity)
                 .await
                 .map_err(|e| {
                     tracing::error!("ChannelMessage handling failed: {}", e);
@@ -649,7 +649,7 @@ async fn handle_mfp_activity(
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:ChannelClose" => {
-            crate::federation::channel::handle_channel_close(db, activity)
+            crate::federation::channel::handle_channel_close(db, actor_url_str, activity)
                 .await
                 .map_err(|e| {
                     tracing::error!("ChannelClose handling failed: {}", e);
@@ -668,7 +668,7 @@ async fn handle_mfp_activity(
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomMessage" => {
-            crate::federation::room::handle_room_message(db, activity)
+            crate::federation::room::handle_room_message(db, actor_url_str, activity)
                 .await
                 .map_err(|e| {
                     tracing::error!("RoomMessage handling failed: {}", e);
@@ -720,6 +720,11 @@ async fn handle_mfp_activity(
                     tracing::error!("FileTransfer handling failed: {}", e);
                     (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
                 })?;
+            Ok(StatusCode::ACCEPTED)
+        }
+        // 白名单中已声明但尚未实现的 MFP 类型 — 明确记录
+        "myriad:ChannelAccept" | "myriad:RoomJoin" | "myriad:RoomGovernance" | "myriad:KeyExchange" => {
+            tracing::warn!("MFP activity type {} is accepted but not yet implemented", activity_type);
             Ok(StatusCode::ACCEPTED)
         }
         _ => {

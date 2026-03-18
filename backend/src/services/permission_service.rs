@@ -72,6 +72,10 @@ pub enum TappPermission {
     WidgetRegister,
     #[serde(rename = "platform:read")]
     PlatformRead,
+    #[serde(rename = "tappList:read")]
+    TappListRead,
+    #[serde(rename = "brew:read")]
+    BrewRead,
     #[serde(rename = "report:read")]
     ReportRead,
     #[serde(rename = "storage")]
@@ -100,6 +104,10 @@ pub enum TappPermission {
     AiImage,
     #[serde(rename = "report:write")]
     ReportWrite,
+    #[serde(rename = "brew:write")]
+    BrewWrite,
+    #[serde(rename = "brew:comment")]
+    BrewComment,
     #[serde(rename = "network:fetch")]
     NetworkFetch,
     #[serde(rename = "media:control")]
@@ -124,6 +132,10 @@ pub enum TappPermission {
     PlatformRegister,
     #[serde(rename = "component:agent")]
     ComponentAgent,
+    #[serde(rename = "tappList:manage")]
+    TappListManage,
+    #[serde(rename = "brew:manage")]
+    BrewManage,
 }
 
 impl TappPermission {
@@ -133,6 +145,8 @@ impl TappPermission {
             // Basic
             TappPermission::WidgetRegister
             | TappPermission::PlatformRead
+            | TappPermission::TappListRead
+            | TappPermission::BrewRead
             | TappPermission::ReportRead
             | TappPermission::Storage
             | TappPermission::UiNotification
@@ -148,6 +162,8 @@ impl TappPermission {
             | TappPermission::AiChat
             | TappPermission::AiImage
             | TappPermission::ReportWrite
+            | TappPermission::BrewWrite
+            | TappPermission::BrewComment
             | TappPermission::NetworkFetch
             | TappPermission::MediaControl
             | TappPermission::ComponentTheme
@@ -160,7 +176,9 @@ impl TappPermission {
             // Privileged
             TappPermission::PlatformWrite
             | TappPermission::PlatformRegister
-            | TappPermission::ComponentAgent => PermissionLevel::Privileged,
+            | TappPermission::ComponentAgent
+            | TappPermission::TappListManage
+            | TappPermission::BrewManage => PermissionLevel::Privileged,
         }
     }
 
@@ -170,6 +188,8 @@ impl TappPermission {
         match self {
             TappPermission::WidgetRegister => "注册小组件",
             TappPermission::PlatformRead => "读取平台数据",
+            TappPermission::TappListRead => "读取 Tapp 列表",
+            TappPermission::BrewRead => "读取 Brew 内容",
             TappPermission::PlatformWrite => "写入平台数据",
             TappPermission::PlatformRegister => "注册新平台",
             TappPermission::AiGenerate => "AI 生成",
@@ -178,6 +198,8 @@ impl TappPermission {
             TappPermission::AiImage => "AI 图片生成",
             TappPermission::ReportRead => "读取报告",
             TappPermission::ReportWrite => "生成报告",
+            TappPermission::BrewWrite => "编辑 Brew 内容",
+            TappPermission::BrewComment => "Brew 评论",
             TappPermission::Storage => "本地存储",
             TappPermission::UiNotification => "显示通知",
             TappPermission::UiFullscreen => "全屏模式",
@@ -188,6 +210,8 @@ impl TappPermission {
             TappPermission::MediaRead => "读取媒体",
             TappPermission::ComponentTheme => "注册主题",
             TappPermission::ComponentAgent => "注册 Agent",
+            TappPermission::TappListManage => "管理 Tapp",
+            TappPermission::BrewManage => "管理 Brew",
             TappPermission::ShortcutRegister => "注册快捷键",
             TappPermission::EventPublish => "发布事件",
             TappPermission::SchedulerRegister => "注册定时任务",
@@ -221,10 +245,14 @@ impl TappPermission {
         match s {
             "widget:register" => Some(TappPermission::WidgetRegister),
             "platform:read" => Some(TappPermission::PlatformRead),
+            "tappList:read" => Some(TappPermission::TappListRead),
+            "brew:read" => Some(TappPermission::BrewRead),
             "platform:write" => Some(TappPermission::PlatformWrite),
             "platform:register" => Some(TappPermission::PlatformRegister),
             "report:read" => Some(TappPermission::ReportRead),
             "report:write" => Some(TappPermission::ReportWrite),
+            "brew:write" => Some(TappPermission::BrewWrite),
+            "brew:comment" => Some(TappPermission::BrewComment),
             "storage" => Some(TappPermission::Storage),
             "ui:notification" => Some(TappPermission::UiNotification),
             "ui:fullscreen" => Some(TappPermission::UiFullscreen),
@@ -239,6 +267,8 @@ impl TappPermission {
             "media:read" => Some(TappPermission::MediaRead),
             "component:theme" => Some(TappPermission::ComponentTheme),
             "component:agent" => Some(TappPermission::ComponentAgent),
+            "tappList:manage" => Some(TappPermission::TappListManage),
+            "brew:manage" => Some(TappPermission::BrewManage),
             "shortcut:register" => Some(TappPermission::ShortcutRegister),
             "event:publish" => Some(TappPermission::EventPublish),
             "event:subscribe" => Some(TappPermission::EventSubscribe),
@@ -255,10 +285,14 @@ impl TappPermission {
         match self {
             TappPermission::WidgetRegister => "widget:register",
             TappPermission::PlatformRead => "platform:read",
+            TappPermission::TappListRead => "tappList:read",
+            TappPermission::BrewRead => "brew:read",
             TappPermission::PlatformWrite => "platform:write",
             TappPermission::PlatformRegister => "platform:register",
             TappPermission::ReportRead => "report:read",
             TappPermission::ReportWrite => "report:write",
+            TappPermission::BrewWrite => "brew:write",
+            TappPermission::BrewComment => "brew:comment",
             TappPermission::Storage => "storage",
             TappPermission::UiNotification => "ui:notification",
             TappPermission::UiFullscreen => "ui:fullscreen",
@@ -273,6 +307,8 @@ impl TappPermission {
             TappPermission::MediaRead => "media:read",
             TappPermission::ComponentTheme => "component:theme",
             TappPermission::ComponentAgent => "component:agent",
+            TappPermission::TappListManage => "tappList:manage",
+            TappPermission::BrewManage => "brew:manage",
             TappPermission::ShortcutRegister => "shortcut:register",
             TappPermission::EventPublish => "event:publish",
             TappPermission::EventSubscribe => "event:subscribe",

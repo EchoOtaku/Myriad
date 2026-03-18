@@ -11,8 +11,8 @@ use axum::{
 use chrono::Utc;
 use futures::stream::Stream;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -21,10 +21,11 @@ use std::time::Duration;
 use tokio_stream::StreamExt;
 
 use crate::middleware::auth::Claims;
-use crate::models::entities::agent_task_presets;
+use crate::models::entities::{agent_messages, agent_sessions, agent_task_presets};
+use crate::services::agent::queue::LaneQueue;
 use crate::services::agent::{
     Agent, AgentProgressEvent, AgentResponse, AgentResponseType, RequestContext, TaskState,
-    UserRequest,
+    UserAnswer, UserRequest, LANE_QUEUE,
 };
 
 // ============ 请求/响应类型 ============
@@ -209,6 +210,9 @@ pub struct TaskInfo {
     /// 步骤执行历史
     #[serde(rename = "stepHistory", skip_serializing_if = "Vec::is_empty")]
     pub step_history: Vec<StepExecution>,
+    /// 执行追踪（包含 tier 使用、总耗时等）
+    #[serde(rename = "executionTrace", skip_serializing_if = "Option::is_none")]
+    pub execution_trace: Option<Value>,
 }
 
 /// 当前步骤信息
@@ -244,6 +248,9 @@ pub struct StepExecution {
     /// 输出摘要（简短描述，非完整数据）
     #[serde(rename = "outputSummary", skip_serializing_if = "Option::is_none")]
     pub output_summary: Option<String>,
+    /// 错误信息（步骤失败时）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// 是否为动态生成的步骤
     #[serde(rename = "isDynamic")]
     pub is_dynamic: bool,
@@ -431,6 +438,7 @@ impl From<&TaskState> for TaskInfo {
                     },
                     duration_ms: Some(result.duration_ms),
                     output_summary,
+                    error: if result.success { None } else { result.error.clone() },
                     is_dynamic: step_id.starts_with("dynamic_"),
                 }
             })
@@ -447,6 +455,11 @@ impl From<&TaskState> for TaskInfo {
                 .map(|opts| opts.iter().map(|o| o.label.clone()).collect()),
         });
 
+        // 序列化执行追踪
+        let execution_trace = state.execution_trace.as_ref().and_then(|et| {
+            serde_json::to_value(et).ok()
+        });
+
         Self {
             task_id: state.task_id.clone(),
             status: format!("{:?}", state.status).to_lowercase(),
@@ -458,6 +471,7 @@ impl From<&TaskState> for TaskInfo {
             dynamic_steps_added,
             pending_question,
             step_history,
+            execution_trace,
         }
     }
 }
@@ -597,6 +611,7 @@ fn build_request_context(ctx: ProcessContext) -> RequestContext {
         session_id: ctx.session_id,
         conversation_history,
         custom_data: ctx.custom_data,
+        lane_key: None, // 由 API 层在调用处注入
     }
 }
 
@@ -697,12 +712,37 @@ pub async fn process(
         "[Agent API] Processing request"
     );
 
-    let user_request = UserRequest {
+    let session_id = req
+        .context
+        .as_ref()
+        .and_then(|c| c.session_id.as_deref());
+    let lane_key = LaneQueue::make_lane_key(user_id, session_id);
+
+    let mut user_request = UserRequest {
         raw_input: req.input,
         timestamp: chrono::Utc::now(),
         user_id,
         context: req.context.map(build_request_context),
     };
+
+    // 将 lane_key 注入到请求上下文
+    if let Some(ref mut ctx) = user_request.context {
+        ctx.lane_key = Some(lane_key.clone());
+    } else {
+        user_request.context = Some(RequestContext {
+            lane_key: Some(lane_key.clone()),
+            ..Default::default()
+        });
+    }
+
+    // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
+    let _guard = LANE_QUEUE.acquire(&lane_key).await.map_err(|e| {
+        tracing::warn!(error = %e, "[Agent API] Queue acquisition failed");
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": e })),
+        )
+    })?;
 
     // 创建 Agent 并处理请求
     let agent = Agent::new(db).await;
@@ -733,21 +773,113 @@ pub async fn process_stream(
         "[Agent API] Processing request with streaming"
     );
 
-    let user_request = UserRequest {
+    let client_session_id = req
+        .context
+        .as_ref()
+        .and_then(|c| c.session_id.as_deref())
+        .map(|s| s.to_string());
+
+    // 确保会话存在（自动创建或验证已有会话）
+    let session_id = match ensure_session(&db, client_session_id.as_deref(), user_id).await {
+        Ok(sid) => sid,
+        Err(e) => {
+            tracing::warn!("[Agent API] Failed to ensure session: {}", e);
+            // 不阻塞主流程，降级为无会话模式
+            String::new()
+        }
+    };
+
+    let has_session = !session_id.is_empty();
+
+    // 持久化用户消息
+    if has_session {
+        if let Err(e) = persist_user_message(&db, &session_id, &req.input).await {
+            tracing::warn!("[Agent API] Failed to persist user message: {}", e);
+        }
+    }
+
+    // 从数据库加载会话历史（替代前端传入的 conversation_history）
+    let conversation_history = if has_session {
+        let history = load_session_history(&db, &session_id, 20).await;
+        if !history.is_empty() {
+            tracing::info!(
+                session_id = %session_id,
+                history_count = history.len(),
+                "[Agent API] Loaded conversation history from DB"
+            );
+        }
+        Some(history)
+    } else {
+        None
+    };
+
+    let lane_key = LaneQueue::make_lane_key(user_id, Some(&session_id));
+
+    let mut user_request = UserRequest {
         raw_input: req.input,
         timestamp: chrono::Utc::now(),
         user_id,
         context: req.context.map(build_request_context),
     };
 
+    // 将 lane_key 和 session_id 注入到请求上下文
+    if let Some(ref mut ctx) = user_request.context {
+        ctx.lane_key = Some(lane_key.clone());
+        if has_session {
+            ctx.session_id = Some(session_id.clone());
+        }
+        // 用数据库加载的历史覆盖前端传入的（服务端为 source of truth）
+        if let Some(history) = conversation_history {
+            ctx.conversation_history = Some(history);
+        }
+    } else {
+        let mut new_ctx = RequestContext {
+            lane_key: Some(lane_key.clone()),
+            ..Default::default()
+        };
+        if has_session {
+            new_ctx.session_id = Some(session_id.clone());
+        }
+        if let Some(history) = conversation_history {
+            new_ctx.conversation_history = Some(history);
+        }
+        user_request.context = Some(new_ctx);
+    }
+
     // 创建进度通道
     let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(32);
 
     // 在后台执行任务
     let db_clone = db.clone();
+    let session_id_clone = session_id.clone();
+    let queue = LANE_QUEUE.clone();
     // tx 会被移动到 spawn 中，确保 channel 在任务完成前不会关闭
     tokio::spawn(async move {
-        let agent = Agent::new(db_clone).await;
+        // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
+        let _guard = match queue.acquire(&lane_key).await {
+            Ok(guard) => guard,
+            Err(e) => {
+                let _ = tx
+                    .send(AgentProgressEvent::Error {
+                        task_id: None,
+                        message: e,
+                        code: "QUEUE_FULL".to_string(),
+                    })
+                    .await;
+                return;
+            }
+        };
+
+        let agent = Agent::new(db_clone.clone()).await;
+
+        // 发送 session_id 给前端（让前端后续请求带上）
+        if !session_id_clone.is_empty() {
+            let _ = tx
+                .send(AgentProgressEvent::SessionCreated {
+                    session_id: session_id_clone.clone(),
+                })
+                .await;
+        }
 
         // 使用带进度回调的处理方法
         match agent.process_with_progress(user_request, tx.clone()).await {
@@ -759,6 +891,35 @@ pub async fn process_stream(
                     .map(|t| t.task_id.clone())
                     .unwrap_or_default();
                 let success = api_response.success;
+
+                // 持久化 assistant 消息
+                if !session_id_clone.is_empty() {
+                    let metadata = json!({
+                        "suggestions": &api_response.suggestions,
+                        "dataDisplay": &api_response.data_display,
+                        "frontendAction": &api_response.frontend_action,
+                        "data": &api_response.data,
+                    });
+                    if let Err(e) = persist_assistant_message(
+                        &db_clone,
+                        &session_id_clone,
+                        if task_id.is_empty() { None } else { Some(&task_id) },
+                        &api_response.message,
+                        Some(metadata),
+                    )
+                    .await
+                    {
+                        tracing::warn!("[Agent API] Failed to persist assistant message: {}", e);
+                    }
+                }
+
+                // 推送通知到通知系统
+                if let Some(nm) = crate::services::agent::notifications::get_notification_manager() {
+                    let title = if success { "任务完成" } else { "任务失败" };
+                    let summary = api_response.message.chars().take(120).collect::<String>();
+                    nm.notify_task_completed(&task_id, title, &summary, success).await;
+                }
+
                 // 序列化为 Value，避免 service 层依赖 API 类型
                 let response_value = serde_json::to_value(&api_response)
                     .unwrap_or_else(|_| json!({"error": "serialization failed"}));
@@ -779,6 +940,19 @@ pub async fn process_stream(
             }
             Err(e) => {
                 tracing::error!(error = %e, "[Agent API] Processing failed, sending error event");
+
+                // 持久化错误消息
+                if !session_id_clone.is_empty() {
+                    let _ = persist_assistant_message(
+                        &db_clone,
+                        &session_id_clone,
+                        None,
+                        &format!("处理失败: {}", e),
+                        Some(json!({"error": true})),
+                    )
+                    .await;
+                }
+
                 let _ = tx
                     .send(AgentProgressEvent::Error {
                         task_id: None,
@@ -820,13 +994,31 @@ pub async fn get_task(
     let task = agent.get_task_for_user(&task_id, user_id).await;
 
     match task {
-        Some(task_state) => Ok(Json(json!({
-            "success": true,
-            "task": TaskInfo::from(&task_state),
-            "results": task_state.step_results,
-            "startedAt": task_state.started_at.to_rfc3339(),
-            "completedAt": task_state.completed_at.map(|t| t.to_rfc3339())
-        }))),
+        Some(task_state) => {
+            let trace = task_state.execution_trace.as_ref().map(|t| {
+                serde_json::json!({
+                    "traceId": t.trace_id,
+                    "totalDurationMs": t.total_duration_ms,
+                    "tierUsage": t.tier_usage,
+                    "steps": t.steps.iter().map(|s| serde_json::json!({
+                        "stepId": s.step_id,
+                        "capabilityId": s.capability_id,
+                        "tierUsed": s.tier_used,
+                        "durationMs": s.duration_ms,
+                        "success": s.success,
+                        "error": s.error,
+                    })).collect::<Vec<_>>(),
+                })
+            });
+            Ok(Json(json!({
+                "success": true,
+                "task": TaskInfo::from(&task_state),
+                "results": task_state.step_results,
+                "startedAt": task_state.started_at.to_rfc3339(),
+                "completedAt": task_state.completed_at.map(|t| t.to_rfc3339()),
+                "executionTrace": trace,
+            })))
+        }
         None => Err((
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "Task not found or access denied" })),
@@ -895,6 +1087,55 @@ pub async fn list_tasks(
     })))
 }
 
+/// 获取执行追踪列表
+/// GET /api/agent/traces?limit=20
+pub async fn list_traces(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Query(pagination): Query<TaskListQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+    let limit = pagination.limit.min(50);
+
+    let agent = Agent::new(db).await;
+    let all_tasks = agent.get_user_tasks(user_id).await;
+
+    // 只返回有 execution_trace 的已完成任务
+    let traces: Vec<Value> = all_tasks
+        .iter()
+        .rev()
+        .filter_map(|t| {
+            t.execution_trace.as_ref().map(|trace| {
+                json!({
+                    "traceId": trace.trace_id,
+                    "taskId": t.task_id,
+                    "recipeId": t.recipe_id,
+                    "status": format!("{:?}", t.status).to_lowercase(),
+                    "totalDurationMs": trace.total_duration_ms,
+                    "tierUsage": trace.tier_usage,
+                    "steps": trace.steps.iter().map(|s| json!({
+                        "stepId": s.step_id,
+                        "capabilityId": s.capability_id,
+                        "tierUsed": s.tier_used,
+                        "durationMs": s.duration_ms,
+                        "success": s.success,
+                        "error": s.error,
+                    })).collect::<Vec<_>>(),
+                    "startedAt": t.started_at.to_rfc3339(),
+                    "completedAt": t.completed_at.map(|time| time.to_rfc3339()),
+                })
+            })
+        })
+        .take(limit)
+        .collect();
+
+    Ok(Json(json!({
+        "success": true,
+        "traces": traces,
+        "total": traces.len(),
+    })))
+}
+
 /// 获取系统能力列表
 /// GET /api/agent/capabilities
 pub async fn list_capabilities(
@@ -952,6 +1193,8 @@ pub struct AnswerQuestionRequest {
 
 /// 回答任务中的问题
 /// POST /api/agent/tasks/{task_id}/answer
+///
+/// 使用 resume_with_answer 从暂停点恢复执行，而不是重新从头处理。
 pub async fn answer_task_question(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -964,61 +1207,27 @@ pub async fn answer_task_question(
         user_id = user_id,
         task_id = %task_id,
         question_id = %req.question_id,
-        "[Agent API] Answering task question"
+        "[Agent API] Answering task question (resume mode)"
     );
 
-    // 验证任务所有权：确认 task_id 属于当前用户
     let agent = Agent::new(db.clone()).await;
-    let user_tasks = agent.get_user_tasks(user_id).await;
-    let task = user_tasks.iter().find(|t| t.task_id == task_id);
 
-    let (original_question, original_input) = match task {
-        Some(t) => {
-            // 验证 question_id 是否匹配待回答问题
-            let q = t.pending_question.as_ref().filter(|q| q.question_id == req.question_id);
-            let input = t
-                .execution_context
-                .as_ref()
-                .map(|ctx| ctx.original_request.as_str())
-                .unwrap_or("")
-                .to_string();
-            (q.map(|q| q.question.clone()), input)
-        }
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Task not found or access denied" })),
-            ));
-        }
-    };
-
-    // 用用户回答 + 原始请求上下文重新处理
-    // 携带 question context 以便 agent 能理解这是对某个问题的回答
-    let new_input = if let Some(question) = original_question {
-        format!("{}\n问题：{}\n回答：{}", original_input, question, req.answer)
-    } else {
-        // question_id 不匹配，直接把回答作为新输入
-        req.answer.clone()
-    };
-
-    validate_input(&new_input)?;
-
-    let user_request = UserRequest {
-        raw_input: new_input,
-        timestamp: chrono::Utc::now(),
-        user_id,
-        context: None,
+    let answer = UserAnswer {
+        question_id: req.question_id,
+        task_id: task_id.clone(),
+        answer: req.answer,
+        skipped: false,
     };
 
     agent
-        .process(user_request)
+        .resume_task(&task_id, answer, user_id)
         .await
         .map(|response| Json(ApiResponse::from(response)))
         .map_err(|e| {
-            tracing::error!(error = %e, "[Agent API] Failed to process answer");
+            tracing::error!(error = %e, "[Agent API] Failed to resume task");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("处理回答失败: {}", e) })),
+                Json(json!({ "error": format!("恢复任务失败: {}", e) })),
             )
         })
 }
@@ -1071,6 +1280,47 @@ pub async fn clarify(
     })?;
 
     Ok(Json(response.into()))
+}
+
+/// 确认敏感操作
+/// POST /api/agent/confirm
+pub async fn confirm_operation(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<ConfirmRequest>,
+) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
+    let _user_id = parse_user_id(&claims)?;
+
+    tracing::info!(
+        confirmation_id = %req.confirmation_id,
+        confirmed = req.confirmed,
+        "[Agent API] Processing confirmation"
+    );
+
+    let confirmation = crate::services::agent::types::UserConfirmation {
+        confirmation_id: req.confirmation_id,
+        confirmed: req.confirmed,
+        user_note: req.note,
+    };
+
+    let agent = Agent::new(db).await;
+    let response = agent.process_confirmation(confirmation).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e })),
+        )
+    })?;
+
+    Ok(Json(response.into()))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfirmRequest {
+    #[serde(rename = "confirmationId")]
+    pub confirmation_id: String,
+    pub confirmed: bool,
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// 健康检查
@@ -1428,70 +1678,6 @@ pub async fn use_preset(
     Ok(Json(TaskPresetResponse::from(updated)))
 }
 
-/// 更新预设对话数据请求
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateConversationRequest {
-    /// 对话标题
-    pub title: String,
-    /// 对话记录
-    pub conversation_data: Vec<ConversationMessage>,
-}
-
-/// 更新预设的对话数据（用于「继续对话」功能）
-/// PATCH /api/agent/presets/{id}/conversation
-pub async fn update_preset_conversation(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    Path(preset_id): Path<i32>,
-    Json(request): Json<UpdateConversationRequest>,
-) -> Result<Json<TaskPresetResponse>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
-
-    let now = Utc::now().fixed_offset();
-
-    // 查找预设
-    let preset = agent_task_presets::Entity::find_by_id(preset_id)
-        .filter(agent_task_presets::Column::UserId.eq(user_id))
-        .one(&db)
-        .await
-        .map_err(|e| {
-            tracing::error!("[Agent Presets] Failed to find preset: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Preset not found" })),
-            )
-        })?;
-
-    // 更新对话数据
-    let mut active_model: agent_task_presets::ActiveModel = preset.into();
-    active_model.title = Set(Some(request.title));
-    active_model.conversation_data = Set(Some(serde_json::to_value(&request.conversation_data).unwrap_or_default()));
-    active_model.last_used_at = Set(now);
-
-    let updated = active_model.update(&db).await.map_err(|e| {
-        tracing::error!("[Agent Presets] Failed to update conversation: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to update conversation" })),
-        )
-    })?;
-
-    tracing::info!(
-        user_id = user_id,
-        preset_id = preset_id,
-        "[Agent Presets] Updated conversation data"
-    );
-
-    Ok(Json(TaskPresetResponse::from(updated)))
-}
-
 /// 执行任务预设
 /// POST /api/agent/presets/{id}/execute
 ///
@@ -1614,6 +1800,693 @@ pub async fn execute_preset(
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
+// ============ 队列状态 ============
+
+/// 获取 Lane Queue 状态
+async fn queue_status() -> Json<Value> {
+    let status = LANE_QUEUE.get_status().await;
+    Json(json!({
+        "total_lanes": status.total_lanes,
+        "max_concurrent": status.max_concurrent,
+        "available_permits": status.available_permits,
+    }))
+}
+
+// ============ Heartbeat ============
+
+/// 获取所有 Heartbeat 任务状态
+async fn heartbeat_tasks() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Heartbeat not initialized" })),
+        )
+    })?;
+
+    let tasks = manager.get_tasks().await;
+    Ok(Json(json!({ "tasks": tasks })))
+}
+
+/// 切换 Heartbeat 任务启用状态
+async fn toggle_heartbeat(
+    Path(task_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Heartbeat not initialized" })),
+        )
+    })?;
+
+    match manager.toggle_task(&task_id).await {
+        Some(enabled) => Ok(Json(json!({ "task_id": task_id, "enabled": enabled }))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Task '{}' not found", task_id) })),
+        )),
+    }
+}
+
+// ============ Skills & Memory ============
+
+/// 获取可用技能列表
+async fn list_skills() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let registry = crate::services::agent::skill::get_skill_registry().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Skill registry not initialized" })),
+        )
+    })?;
+
+    let skills = registry.get_all().await;
+    let skills_json: Vec<Value> = skills
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "name": s.name,
+                "description": s.description,
+                "category": s.category,
+                "origin": s.origin,
+                "successCount": 0,
+                "failureCount": 0,
+                "tierHint": s.tier_hint,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "skills": skills_json })))
+}
+
+/// 获取记忆条目
+async fn list_memories() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let memory = crate::services::agent::memory::get_memory().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Memory not initialized" })),
+        )
+    })?;
+
+    let entries = memory.list_recent(50).await;
+    let memories_json: Vec<Value> = entries
+        .iter()
+        .map(|e| {
+            json!({
+                "memoryType": e.memory_type,
+                "content": e.content,
+                "source": e.source,
+                "createdAt": e.created_at,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "memories": memories_json })))
+}
+
+// ============ Multi-Agent Routing ============
+
+/// 获取所有 Agent 配置信息
+async fn list_agents() -> Json<Value> {
+    let router = crate::services::agent::routing::get_router();
+    let profiles: Vec<Value> = router
+        .get_all_profiles()
+        .iter()
+        .map(|p| {
+            json!({
+                "id": p.id,
+                "role": p.role,
+                "description": p.description,
+                "defaultTier": format!("{:?}", p.default_tier),
+                "maxConcurrency": p.max_concurrency,
+                "capabilityPrefixes": p.capability_prefixes,
+            })
+        })
+        .collect();
+
+    Json(json!({ "agents": profiles }))
+}
+
+// ============ Session Control (Steer / Interrupt) ============
+
+/// 中断当前正在执行的任务并替换为新请求
+async fn interrupt_session(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+    let new_input = body
+        .get("input")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Missing 'input' field" })),
+            )
+        })?
+        .to_string();
+
+    // 取消当前用户所有运行中的任务
+    let agent = Agent::new(db.clone()).await;
+    let tasks = agent.get_user_tasks(user_id).await;
+    let mut cancelled_count = 0;
+    for task in &tasks {
+        if task.status == crate::services::agent::types::TaskStatus::Running {
+            agent.cancel_task_for_user(&task.task_id, user_id).await;
+            cancelled_count += 1;
+        }
+    }
+
+    // 提交新请求
+    let request = crate::services::agent::UserRequest {
+        raw_input: new_input.clone(),
+        timestamp: chrono::Utc::now(),
+        user_id,
+        context: None,
+    };
+
+    let new_agent = Agent::new(db).await;
+    match new_agent.process(request).await {
+        Ok(response) => Ok(Json(json!({
+            "success": true,
+            "cancelled_tasks": cancelled_count,
+            "response": response,
+        }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e })),
+        )),
+    }
+}
+
+/// 向当前会话注入补充指令（转向）
+async fn steer_session(
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let _user_id = parse_user_id(&claims)?;
+    let instruction = body
+        .get("instruction")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Missing 'instruction' field" })),
+            )
+        })?;
+
+    // 记录转向指令到记忆系统（供后续步骤参考）
+    if let Some(mem) = crate::services::agent::memory::get_memory() {
+        mem.remember(
+            &format!("用户中途转向指令: {}", instruction),
+            crate::services::agent::memory::MemoryType::Interaction,
+        )
+        .await;
+    }
+
+    Ok(Json(json!({
+        "success": true,
+        "message": "Steering instruction recorded",
+        "instruction": instruction,
+    })))
+}
+
+// ============ 会话管理 API ============
+
+/// 创建会话
+/// POST /api/agent/sessions
+pub async fn create_session(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+    let session_id = format!("ses_{}", uuid::Uuid::new_v4().simple());
+    let now = Utc::now().fixed_offset();
+
+    let session = agent_sessions::ActiveModel {
+        id: Set(session_id.clone()),
+        user_id: Set(user_id),
+        title: Set(None),
+        context: Set(None),
+        message_count: Set(0),
+        archived: Set(false),
+        created_at: Set(now),
+        last_active_at: Set(now),
+    };
+
+    agent_sessions::Entity::insert(session)
+        .exec(&db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to create session: {}", e)})),
+            )
+        })?;
+
+    Ok(Json(json!({
+        "id": session_id,
+        "title": null,
+        "messageCount": 0,
+        "lastActiveAt": now.to_rfc3339(),
+    })))
+}
+
+/// 会话列表查询参数
+#[derive(Debug, Deserialize)]
+pub struct SessionListQuery {
+    #[serde(default = "default_page")]
+    pub page: u64,
+    #[serde(default = "default_limit")]
+    pub limit: u64,
+}
+
+fn default_page() -> u64 { 1 }
+fn default_limit() -> u64 { 20 }
+
+/// 列出最近会话
+/// GET /api/agent/sessions
+pub async fn list_sessions(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Query(query): Query<SessionListQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+
+    let sessions = agent_sessions::Entity::find()
+        .filter(agent_sessions::Column::UserId.eq(user_id))
+        .filter(agent_sessions::Column::Archived.eq(false))
+        .order_by_desc(agent_sessions::Column::LastActiveAt)
+        .paginate(&db, query.limit)
+        .fetch_page(query.page.saturating_sub(1))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to list sessions: {}", e)})),
+            )
+        })?;
+
+    let sessions_json: Vec<Value> = sessions
+        .into_iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "title": s.title,
+                "messageCount": s.message_count,
+                "lastActiveAt": s.last_active_at.to_rfc3339(),
+                "createdAt": s.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "sessions": sessions_json })))
+}
+
+/// 获取会话消息
+/// GET /api/agent/sessions/:id/messages
+pub async fn get_session_messages(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(session_id): Path<String>,
+    Query(query): Query<SessionListQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+
+    // 验证会话归属
+    let session = agent_sessions::Entity::find_by_id(&session_id)
+        .filter(agent_sessions::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("DB error: {}", e)})),
+            )
+        })?;
+
+    if session.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Session not found"})),
+        ));
+    }
+
+    let messages = agent_messages::Entity::find()
+        .filter(agent_messages::Column::SessionId.eq(&session_id))
+        .order_by_asc(agent_messages::Column::CreatedAt)
+        .paginate(&db, query.limit)
+        .fetch_page(query.page.saturating_sub(1))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to list messages: {}", e)})),
+            )
+        })?;
+
+    let messages_json: Vec<Value> = messages
+        .into_iter()
+        .map(|m| {
+            json!({
+                "id": m.id,
+                "sessionId": m.session_id,
+                "taskId": m.task_id,
+                "role": m.role,
+                "content": m.content,
+                "metadata": m.metadata,
+                "createdAt": m.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "messages": messages_json })))
+}
+
+/// 归档会话
+/// DELETE /api/agent/sessions/:id
+pub async fn archive_session(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(session_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+
+    let session = agent_sessions::Entity::find_by_id(&session_id)
+        .filter(agent_sessions::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("DB error: {}", e)})),
+            )
+        })?;
+
+    if session.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Session not found"})),
+        ));
+    }
+
+    let mut active: agent_sessions::ActiveModel = session.unwrap().into();
+    active.archived = Set(true);
+    active.update(&db).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to archive session: {}", e)})),
+        )
+    })?;
+
+    Ok(Json(json!({"success": true})))
+}
+
+/// 更新会话标题请求
+#[derive(Debug, Deserialize)]
+pub struct UpdateSessionRequest {
+    pub title: Option<String>,
+}
+
+/// 更新会话标题
+/// PATCH /api/agent/sessions/:id
+pub async fn update_session(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(session_id): Path<String>,
+    Json(req): Json<UpdateSessionRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+
+    let session = agent_sessions::Entity::find_by_id(&session_id)
+        .filter(agent_sessions::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("DB error: {}", e)})),
+            )
+        })?;
+
+    if session.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Session not found"})),
+        ));
+    }
+
+    let mut active: agent_sessions::ActiveModel = session.unwrap().into();
+    if let Some(title) = req.title {
+        active.title = Set(Some(title));
+    }
+    let updated = active.update(&db).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to update session: {}", e)})),
+        )
+    })?;
+
+    Ok(Json(json!({
+        "id": updated.id,
+        "title": updated.title,
+        "messageCount": updated.message_count,
+        "lastActiveAt": updated.last_active_at.to_rfc3339(),
+    })))
+}
+
+/// 会话消息持久化辅助函数
+async fn persist_user_message(
+    db: &DatabaseConnection,
+    session_id: &str,
+    content: &str,
+) -> Result<(), String> {
+    let now = Utc::now().fixed_offset();
+    let msg = agent_messages::ActiveModel {
+        id: sea_orm::ActiveValue::NotSet,
+        session_id: Set(session_id.to_string()),
+        task_id: Set(None),
+        role: Set("user".to_string()),
+        content: Set(content.to_string()),
+        metadata: Set(None),
+        created_at: Set(now),
+    };
+    agent_messages::Entity::insert(msg)
+        .exec(db)
+        .await
+        .map_err(|e| format!("Failed to persist user message: {}", e))?;
+    Ok(())
+}
+
+async fn persist_assistant_message(
+    db: &DatabaseConnection,
+    session_id: &str,
+    task_id: Option<&str>,
+    content: &str,
+    metadata: Option<Value>,
+) -> Result<(), String> {
+    let now = Utc::now().fixed_offset();
+    let msg = agent_messages::ActiveModel {
+        id: sea_orm::ActiveValue::NotSet,
+        session_id: Set(session_id.to_string()),
+        task_id: Set(task_id.map(|s| s.to_string())),
+        role: Set("assistant".to_string()),
+        content: Set(content.to_string()),
+        metadata: Set(metadata),
+        created_at: Set(now),
+    };
+    agent_messages::Entity::insert(msg)
+        .exec(db)
+        .await
+        .map_err(|e| format!("Failed to persist assistant message: {}", e))?;
+
+    // 更新会话消息计数和最后活跃时间
+    if let Ok(Some(session)) = agent_sessions::Entity::find_by_id(session_id)
+        .one(db)
+        .await
+    {
+        let mut active: agent_sessions::ActiveModel = session.into();
+        active.last_active_at = Set(now);
+        // message_count 用 raw SQL 更新可能更好，但这里简单处理
+        if let Ok(count) = agent_messages::Entity::find()
+            .filter(agent_messages::Column::SessionId.eq(session_id))
+            .count(db)
+            .await
+        {
+            active.message_count = Set(count as i32);
+        }
+        let _ = active.update(db).await;
+    }
+
+    Ok(())
+}
+
+/// 加载会话历史消息作为对话上下文
+async fn load_session_history(
+    db: &DatabaseConnection,
+    session_id: &str,
+    max_messages: u64,
+) -> Vec<crate::services::agent::ConversationMessage> {
+    use crate::services::agent::ConversationMessage;
+
+    let messages = agent_messages::Entity::find()
+        .filter(agent_messages::Column::SessionId.eq(session_id))
+        .order_by_desc(agent_messages::Column::CreatedAt)
+        .paginate(db, max_messages)
+        .fetch_page(0)
+        .await
+        .unwrap_or_default();
+
+    // 反转为时间正序
+    messages
+        .into_iter()
+        .rev()
+        .map(|m| ConversationMessage {
+            role: m.role,
+            content: m.content,
+            created_at: Some(m.created_at.to_rfc3339()),
+        })
+        .collect()
+}
+
+/// 确保会话存在，如果 session_id 为 None 则自动创建
+async fn ensure_session(
+    db: &DatabaseConnection,
+    session_id: Option<&str>,
+    user_id: i32,
+) -> Result<String, String> {
+    if let Some(sid) = session_id {
+        // 验证会话存在
+        if agent_sessions::Entity::find_by_id(sid)
+            .one(db)
+            .await
+            .map_err(|e| format!("DB error: {}", e))?
+            .is_some()
+        {
+            return Ok(sid.to_string());
+        }
+    }
+
+    // 自动创建新会话
+    let new_id = format!("ses_{}", uuid::Uuid::new_v4().simple());
+    let now = Utc::now().fixed_offset();
+    let session = agent_sessions::ActiveModel {
+        id: Set(new_id.clone()),
+        user_id: Set(user_id),
+        title: Set(None),
+        context: Set(None),
+        message_count: Set(0),
+        archived: Set(false),
+        created_at: Set(now),
+        last_active_at: Set(now),
+    };
+    agent_sessions::Entity::insert(session)
+        .exec(db)
+        .await
+        .map_err(|e| format!("Failed to create session: {}", e))?;
+
+    Ok(new_id)
+}
+
+// ============ 通知 API ============
+
+/// 通知 SSE 流
+async fn notification_stream(
+    Extension(_claims): Extension<Claims>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::notifications::get_notification_manager().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "Notification system not initialized"})),
+    ))?;
+
+    let mut rx = manager.subscribe();
+    let (tx, mpsc_rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(32);
+
+    // 发送初始未读计数
+    let unread = manager.unread_count().await;
+    let init_data = json!({"event": "init", "unread_count": unread});
+    let _ = tx
+        .send(Ok(Event::default().data(
+            serde_json::to_string(&init_data).unwrap_or_default(),
+        )))
+        .await;
+
+    // 后台转发 broadcast → mpsc
+    tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let data = serde_json::to_string(&event).unwrap_or_default();
+                    if tx.send(Ok(Event::default().data(data))).await.is_err() {
+                        break; // 客户端断开
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("Notification stream lagged by {} messages", n);
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+
+    let stream = tokio_stream::wrappers::ReceiverStream::new(mpsc_rx);
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(30))))
+}
+
+/// 获取历史通知
+async fn list_notifications(
+    Extension(_claims): Extension<Claims>,
+    Query(params): Query<NotificationListParams>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::notifications::get_notification_manager().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "Notification system not initialized"})),
+    ))?;
+
+    let limit = params.limit.unwrap_or(50).min(200);
+    let notifications = manager.get_history(limit).await;
+    let unread = manager.unread_count().await;
+
+    Ok(Json(json!({
+        "notifications": notifications,
+        "unread_count": unread,
+        "total": notifications.len(),
+    })))
+}
+
+/// 标记通知已读
+async fn mark_notification_read(
+    Extension(_claims): Extension<Claims>,
+    Path(notification_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::notifications::get_notification_manager().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "Notification system not initialized"})),
+    ))?;
+
+    let found = manager.mark_read(&notification_id).await;
+    Ok(Json(json!({"success": found})))
+}
+
+/// 标记全部已读
+async fn mark_all_notifications_read(
+    Extension(_claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::notifications::get_notification_manager().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "Notification system not initialized"})),
+    ))?;
+
+    manager.mark_all_read().await;
+    Ok(Json(json!({"success": true})))
+}
+
+#[derive(Deserialize)]
+struct NotificationListParams {
+    limit: Option<usize>,
+}
+
 // ============ 路由构建 ============
 
 use axum::routing::{get, post};
@@ -1627,6 +2500,26 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
     Router::new()
         // 健康检查（公开）
         .route("/health", get(health))
+        // 队列状态（需要认证）
+        .route(
+            "/queue/status",
+            get(queue_status).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // Heartbeat 任务列表（需要认证）
+        .route(
+            "/heartbeat",
+            get(heartbeat_tasks).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 切换 Heartbeat 任务启用状态（需要认证）
+        .route(
+            "/heartbeat/{task_id}/toggle",
+            post(toggle_heartbeat).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // Agent 列表（需要认证）
+        .route(
+            "/agents",
+            get(list_agents).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         // 能力列表（需要认证）
         .route(
             "/capabilities",
@@ -1647,6 +2540,16 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
             "/clarify",
             post(clarify).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
+        // 确认敏感操作（需要认证）
+        .route(
+            "/confirm",
+            post(confirm_operation).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 执行追踪列表（需要认证）
+        .route(
+            "/traces",
+            get(list_traces).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         // 任务列表（需要认证）
         .route(
             "/tasks",
@@ -1666,6 +2569,44 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         .route(
             "/tasks/{task_id}/answer",
             post(answer_task_question).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 中断当前会话并替换为新请求（需要认证）
+        .route(
+            "/session/interrupt",
+            post(interrupt_session).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 向当前会话注入转向指令（需要认证）
+        .route(
+            "/session/steer",
+            post(steer_session).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // ============ 会话管理路由 ============
+        // 创建会话
+        .route(
+            "/sessions",
+            post(create_session).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 列出会话
+        .route(
+            "/sessions",
+            get(list_sessions).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 获取会话消息
+        .route(
+            "/sessions/{session_id}/messages",
+            get(get_session_messages).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 归档会话
+        .route(
+            "/sessions/{session_id}",
+            axum::routing::delete(archive_session)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 更新会话标题
+        .route(
+            "/sessions/{session_id}",
+            axum::routing::patch(update_session)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // ============ 任务预设路由 ============
         // 预设列表（需要认证）
@@ -1694,15 +2635,41 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
             "/presets/{preset_id}/use",
             post(use_preset).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
-        // 更新预设对话数据（用于「继续对话」功能）
-        .route(
-            "/presets/{preset_id}/conversation",
-            axum::routing::patch(update_preset_conversation)
-                .route_layer(from_fn(middleware::auth::auth_middleware)),
-        )
         // 执行预设（直接执行已保存的 recipe，跳过意图分析）
         .route(
             "/presets/{preset_id}/execute",
             post(execute_preset).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // ============ 技能/记忆路由 ============
+        // 技能列表（需要认证）
+        .route(
+            "/skills",
+            get(list_skills).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 记忆列表（需要认证）
+        .route(
+            "/memory",
+            get(list_memories).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // ============ 通知路由 ============
+        // 通知 SSE 流
+        .route(
+            "/notifications/stream",
+            get(notification_stream).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 获取历史通知
+        .route(
+            "/notifications",
+            get(list_notifications).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 标记通知已读
+        .route(
+            "/notifications/{notification_id}/read",
+            post(mark_notification_read).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 标记全部已读
+        .route(
+            "/notifications/read-all",
+            post(mark_all_notifications_read).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
 }

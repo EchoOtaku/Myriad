@@ -9,10 +9,10 @@ import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
 import { SiteFooter } from '../components/SiteFooter'
+import { ToastContainer } from '../components/ToastContainer'
 
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
-import { useNotification } from '../contexts/NotificationContext'
 import { useIdleEffect, useVisibilityInterval } from '../hooks/animation/atomicHooks'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper'
@@ -44,8 +44,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { t } = useI18n()
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null)
   const [hasEverConnected, setHasEverConnected] = useState(false)
-  const { notifications } = useNotification()
-
   // ℹ️ 性能优化: 移动端/低端设备禁用背景动画
   const anim = useAnimationLevel()
 
@@ -281,46 +279,10 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         )}
 
-        {/* 全局通知 - 从 NotificationContext 渲染 */}
-        {notifications.map(notification => (
-          <div key={notification.id} className="pointer-events-auto animate-fade-in">
-            <div className={`glass rounded-xl px-4 py-3 shadow-lg border backdrop-blur-md ${
-              notification.type === 'loading'
-                ? 'border-gray-200/50 dark:border-neutral-700/50'
-                : notification.type === 'error'
-                  ? 'border-red-200/50 dark:border-red-800/50 bg-red-50/80 dark:bg-red-950/80'
-                  : 'border-blue-200/50 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/80'
-            }`}
-            >
-              <div className="flex items-center gap-3">
-                {notification.type === 'loading' && (
-                  <div className="w-4 h-4 rounded-full bg-gradient-radial from-indigo-400/30 to-transparent animate-pulse"></div>
-                )}
-                {notification.type === 'error' && (
-                  <div className="shrink-0">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  </div>
-                )}
-                {notification.type === 'info' && (
-                  <div className="shrink-0">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  </div>
-                )}
-                <span className={`text-sm font-medium ${
-                  notification.type === 'error'
-                    ? 'text-red-900 dark:text-red-100'
-                    : notification.type === 'info'
-                      ? 'text-blue-900 dark:text-blue-100'
-                      : 'text-gray-700 dark:text-gray-200'
-                }`}
-                >
-                  {notification.message}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
       </div>
+
+      {/* 全局 Toast 通知 */}
+      <ToastContainer />
 
       {/* 主内容区域 */}
       <main className="relative z-10">

@@ -6,8 +6,21 @@ export { AddMode } from './AddMode'
 
 export { CategoryFeedMode } from './CategoryFeedMode'
 
-// 共享常量
-export { SPRING_SMOOTH, SPRING_SNAPPY, TRANSITION_NORMAL, TRANSITION_QUICK, TRANSITION_SLOW } from './constants'
+// 共享常量（从 shared/control-island 重导出）
+export {
+  ISLAND_BTN,
+  ISLAND_BTN_DANGER,
+  ISLAND_BTN_PRIMARY,
+  ISLAND_DIVIDER,
+  ISLAND_GLASS,
+  ISLAND_GLASS_EDIT,
+  ISLAND_INPUT,
+  SPRING_SMOOTH,
+  SPRING_SNAPPY,
+  TRANSITION_NORMAL,
+  TRANSITION_QUICK,
+  TRANSITION_SLOW,
+} from './constants'
 export { DefaultMode } from './DefaultMode'
 export { EditMode } from './EditMode'
 export { FeedMode } from './FeedMode'

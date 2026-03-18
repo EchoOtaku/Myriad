@@ -87,7 +87,7 @@ export interface PublishedListResponse {
 
 // ==================== 视图状态 ====================
 
-export type FederationTab = 'timeline' | 'following' | 'followers' | 'published' | 'channels' | 'rooms' | 'rings'
+export type FederationTab = 'timeline' | 'following' | 'followers' | 'published' | 'rings' | 'profile'
 
 // ==================== Channel 通信 ====================
 
@@ -102,6 +102,7 @@ export interface ChannelSummary {
   channel_id: string
   remote_actor_url: string
   remote_actor_name?: string
+  remote_actor_avatar?: string
   channel_type: string
   status: string
   transport: string
@@ -115,6 +116,7 @@ export interface ChannelDetail {
   channel_id: string
   remote_actor_url: string
   remote_actor_name?: string
+  remote_actor_avatar?: string
   channel_type: string
   status: string
   transport: string
@@ -175,7 +177,17 @@ export interface WsMessage {
 export interface CreateRoomRequest {
   name: string
   description?: string
+  avatar_url?: string
   governance_type?: 'owner' | 'democratic' | 'open'
+  invite_policy?: 'admin-only' | 'member-invite' | 'open'
+  max_members?: number
+  is_public?: boolean
+}
+
+export interface UpdateRoomRequest {
+  name?: string
+  description?: string
+  avatar_url?: string
   invite_policy?: 'admin-only' | 'member-invite' | 'open'
   max_members?: number
   is_public?: boolean
@@ -185,6 +197,7 @@ export interface RoomSummary {
   room_id: string
   name: string
   description?: string
+  avatar_url?: string
   owner_actor: string
   governance_type: string
   invite_policy: string
@@ -201,6 +214,7 @@ export interface RoomDetail {
   room_id: string
   name: string
   description?: string
+  avatar_url?: string
   owner_actor: string
   home_server: string
   governance_type: string
@@ -268,6 +282,13 @@ export interface SendRoomMessageResponse {
   success: boolean
   message_id: string
   room_id: string
+}
+
+export interface PinRoomMessageResponse {
+  success: boolean
+  room_id: string
+  message_id: string
+  is_pinned: boolean
 }
 
 // ==================== Ring 相关 ====================

@@ -22,16 +22,17 @@ pub struct HandlerContext<'a> {
     pub db: &'a DatabaseConnection,
     pub ai_analyzer: Option<&'a AiAnalyzer>,
     pub user_id: i32,
-    /// 执行上下文（包含对话历史等信息）
-    pub execution_context: Option<&'a ExecutionContext>,
+    /// 执行上下文快照（包含对话历史、角色身份等）
+    pub execution_context: Option<ExecutionContext>,
 }
 
 impl<'a> HandlerContext<'a> {
     /// 获取对话历史的格式化字符串
-    /// 用于 AI 提示词中添加上下文
+    /// 用于非 AI 类 handler 需要对话上下文时
     #[allow(dead_code)]
     pub fn get_conversation_context_prompt(&self) -> Option<String> {
         self.execution_context
+            .as_ref()
             .and_then(|ctx| ctx.conversation_context.as_ref())
             .filter(|history| !history.is_empty())
             .map(|history| {

@@ -139,6 +139,9 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
           pageHtml: resources.html,
           styles: resources.styles,
           pageCSS: resources.css,
+          i18n: resources.i18n,
+          pageModules: resources.pageModules,
+          pageModuleOrder: resources.pageModuleOrder,
         }
 
         if (!runtime.isRunning(tappId)) {

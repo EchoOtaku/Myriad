@@ -62,35 +62,6 @@ export const routes: RouteConfig[] = [
     component: () => import('../views/Setup.tsx'),
     title: '初始化设置 - Myriad',
   },
-  // 联邦路由
-  {
-    path: '/federation',
-    component: () => import('../views/Federation.tsx'),
-    title: '联邦网络 - Myriad',
-    description: '去中心化社交网络连接',
-    requiresAuth: true,
-  },
-  {
-    path: '/federation/chat/:channelId',
-    component: () => import('../views/FederationChat.tsx'),
-    title: '联邦聊天 - Myriad',
-    description: '联邦 Channel 实时通信',
-    requiresAuth: true,
-  },
-  {
-    path: '/federation/room/:roomId',
-    component: () => import('../views/FederationRoom.tsx'),
-    title: '联邦房间 - Myriad',
-    description: '联邦 Room 多人群聊',
-    requiresAuth: true,
-  },
-  {
-    path: '/federation/ring/:ringId',
-    component: () => import('../views/FederationRing.tsx'),
-    title: '联邦环网 - Myriad',
-    description: '联邦 Ring 去中心化环网',
-    requiresAuth: true,
-  },
   // Tapp 路由
   {
     path: '/tapp',

@@ -103,7 +103,7 @@ pub async fn execute(
     match capability_id {
         "platform.write" => execute_platform_write(params).await,
         "platform.refresh" => execute_platform_refresh(params).await,
-        "storage.set" => execute_storage_set(params).await,
+        "storage.set" => execute_storage_set(params, ctx).await,
         "tapp.storage" => execute_tapp_storage(params, ctx).await,
         "brew.subscribe" => execute_brew_subscribe(params, ctx).await,
         "brew.mark" => execute_brew_mark(params, ctx).await,
@@ -173,20 +173,37 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
         vec![platform]
     };
 
+    // 尝试通过后台处理器提交刷新任务
     let mut results = Vec::new();
-    for p in platforms_to_refresh {
-        results.push(json!({
-            "platform": p,
-            "status": "queued",
-            "message": format!("Refresh task queued for {}", p)
-        }));
+    for p in &platforms_to_refresh {
+        match crate::services::background_processor::BACKGROUND_PROCESSOR
+            .submit_task(p.to_string())
+            .await
+        {
+            Ok(task_id) => {
+                results.push(json!({
+                    "platform": p,
+                    "status": "submitted",
+                    "taskId": task_id,
+                    "message": format!("刷新任务已提交: {}", p)
+                }));
+            }
+            Err(e) => {
+                tracing::warn!(platform = %p, error = %e, "[platform.refresh] 提交失败");
+                results.push(json!({
+                    "platform": p,
+                    "status": "failed",
+                    "message": format!("提交失败: {}", e)
+                }));
+            }
+        }
     }
 
+    let submitted = results.iter().filter(|r| r["status"] == "submitted").count();
     Ok(json!({
-        "success": true,
-        "message": format!("Refresh triggered for {} platform(s)", results.len()),
-        "results": results,
-        "note": "Actual data fetching requires fetcher service integration"
+        "success": submitted > 0,
+        "message": format!("已提交 {}/{} 个平台的刷新任务", submitted, platforms_to_refresh.len()),
+        "results": results
     }))
 }
 
@@ -194,8 +211,65 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
 // Storage 相关
 // ============================================================================
 
-async fn execute_storage_set(_params: &HashMap<String, Value>) -> Result<Value, String> {
-    Ok(json!({ "success": true }))
+async fn execute_storage_set(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let key = params
+        .get("key")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing key parameter")?;
+    let value = params
+        .get("value")
+        .cloned()
+        .ok_or("Missing value parameter")?;
+    let namespace = params
+        .get("namespace")
+        .and_then(|v| v.as_str())
+        .unwrap_or("agent_storage");
+
+    let now = Utc::now();
+    let user_id = ctx.user_id;
+
+    // Upsert: check if key exists, update or insert
+    let existing = tapp_storage::Entity::find()
+        .filter(tapp_storage::Column::TappId.eq(namespace))
+        .filter(tapp_storage::Column::Key.eq(key))
+        .filter(tapp_storage::Column::UserId.eq(user_id))
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?;
+
+    if let Some(record) = existing {
+        let mut active: tapp_storage::ActiveModel = record.into();
+        active.value = Set(value.clone());
+        active.updated_at = Set(now.into());
+        active
+            .update(ctx.db)
+            .await
+            .map_err(|e| format!("Failed to update storage: {}", e))?;
+    } else {
+        let new_record = tapp_storage::ActiveModel {
+            tapp_id: Set(namespace.to_string()),
+            user_id: Set(user_id),
+            key: Set(key.to_string()),
+            value: Set(value.clone()),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            ..Default::default()
+        };
+        new_record
+            .insert(ctx.db)
+            .await
+            .map_err(|e| format!("Failed to insert storage: {}", e))?;
+    }
+
+    Ok(json!({
+        "success": true,
+        "namespace": namespace,
+        "key": key,
+        "value": value
+    }))
 }
 
 async fn execute_tapp_storage(
@@ -746,18 +820,63 @@ async fn execute_brew_mark(
 
 async fn execute_content_write(
     params: &HashMap<String, Value>,
-    _ctx: &HandlerContext<'_>,
+    ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     let content_type = params
         .get("type")
         .and_then(|v| v.as_str())
         .unwrap_or("text");
-    let content = params.get("content").cloned().unwrap_or(json!(null));
+    // 支持从上游步骤通过 inputFrom 解析后注入的内容
+    let content = params
+        .get("content")
+        .or_else(|| params.get("input"))
+        .or_else(|| params.get("data"))
+        .cloned()
+        .unwrap_or(json!(null));
+    let title = params
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("未命名内容");
+
+    let content_id = format!("content_{}", Utc::now().timestamp_millis());
+    let now = Utc::now();
+
+    let content_data = json!({
+        "id": content_id,
+        "type": content_type,
+        "title": title,
+        "content": content,
+        "createdAt": now.to_rfc3339()
+    });
+
+    // 持久化到 tapp_storage
+    let new_record = tapp_storage::ActiveModel {
+        tapp_id: Set("agent_content".to_string()),
+        user_id: Set(ctx.user_id),
+        key: Set(content_id.clone()),
+        value: Set(content_data),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    };
+    new_record
+        .insert(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to save content: {}", e))?;
 
     Ok(json!({
         "success": true,
+        "contentId": content_id,
         "type": content_type,
+        "title": title,
         "content": content,
-        "message": "Content write requires further implementation"
+        "frontendAction": {
+            "type": "show_notification",
+            "params": {
+                "title": format!("内容已保存: {}", title),
+                "contentId": content_id
+            },
+            "timestamp": now.timestamp_millis()
+        }
     }))
 }

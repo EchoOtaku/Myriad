@@ -9,6 +9,7 @@ import type { TaskPreset } from '../../../services/agent'
 
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import React from 'react'
+import { useI18n } from '../../../contexts/I18nContext'
 import { SPRING_SNAPPY } from '../types'
 
 /** 收藏胶囊 Props */
@@ -32,6 +33,7 @@ export const AraelPresets: React.FC<AraelPresetsProps> = ({
   onUsePreset,
   onToggleFavorite,
 }) => {
+  const { t } = useI18n()
   return (
     <AnimatePresence>
       {isVisible
@@ -58,9 +60,9 @@ export const AraelPresets: React.FC<AraelPresetsProps> = ({
                   e.stopPropagation()
                   onUsePreset(preset)
                 }}
-                title="运行"
+                title={t.arael.run}
               >
-                运行
+                {t.arael.run}
               </button>
               <button
                 className="arael-favorite-action arael-favorite-unfav"
@@ -68,7 +70,7 @@ export const AraelPresets: React.FC<AraelPresetsProps> = ({
                   e.stopPropagation()
                   onToggleFavorite(preset.id)
                 }}
-                title="取消收藏"
+                title={t.arael.unfavorite}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />

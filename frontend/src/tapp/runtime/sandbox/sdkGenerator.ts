@@ -78,6 +78,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   // 解决父窗口推送 mediaStateChange 早于 Tapp 代码注册 onStateChange 的竞态问题
   const _eventBuffer = new Map();
   const _BUFFERED_EVENTS = new Set(['mediaStateChange', 'mediaProgress', 'themeChange', 'primaryColorChange', 'localeChange']);
+  const _ACTION_TO_EVENT = { 'theme:change': 'themeChange', 'locale:change': 'localeChange', 'primaryColor:change': 'primaryColorChange' };
 
   // WebKit 专用沙箱会在注入 HTML 时显式设置该标记，避免 UA 嗅探。
   // 在 WebKit iframe 上，频繁切换 transform 合成层可能触发“空白/不绘制”回归。
@@ -204,9 +205,10 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
         _sessionToken: _SESSION_TOKEN,
       }, '*');
     } else if (message.type === 'event') {
-      // 缓存有状态事件的最新值
-      if (_BUFFERED_EVENTS.has(message.action)) {
-        _eventBuffer.set(message.action, message.payload);
+      // 缓存有状态事件的最新值（统一映射为 camelCase key，与 addEventListener 回放一致）
+      const _bufKey = _ACTION_TO_EVENT[message.action] || message.action;
+      if (_BUFFERED_EVENTS.has(_bufKey)) {
+        _eventBuffer.set(_bufKey, message.payload);
       }
       const listeners = eventListeners.get(message.action);
       listeners?.forEach((cb) => { try { cb(message.payload); } catch (e) {} });
@@ -228,6 +230,12 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
         root.style.setProperty('--tapp-border', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
         root.style.setProperty('--tapp-input-bg', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)');
         root.style.setProperty('--tapp-shadow', isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.08)');
+        // 语义色彩变量（供 Tapp CSS 使用）
+        root.style.setProperty('--text-primary', isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a');
+        root.style.setProperty('--text-secondary', isDark ? 'rgba(255,255,255,.5)' : '#999');
+        root.style.setProperty('--bg-primary', isDark ? '#0a0a0a' : '#fff');
+        document.body.style.background = isDark ? '#0a0a0a' : '#fff';
+        document.body.style.color = isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a';
         // 🎯 强制触发重绘（WebKit 走保守路径）
         _forceRepaint();
       }
@@ -284,6 +292,49 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       unregister: (id) => sendRequest('widget', 'unregister', [id]),
       listRegistered: () => sendRequest('widget', 'listRegistered', []),
       updateConfig: (id, cfg) => sendRequest('widget', 'updateConfig', [id, cfg]),
+    },
+
+    tappList: {
+      list: () => sendRequest('tappList', 'list', []),
+      get: (id) => sendRequest('tappList', 'get', [id]),
+      getRecent: (limit) => sendRequest('tappList', 'getRecent', [limit]),
+      install: (req) => sendRequest('tappList', 'install', [req]),
+      uninstall: (id) => sendRequest('tappList', 'uninstall', [id]),
+      start: (id) => sendRequest('tappList', 'start', [id]),
+      stop: (id) => sendRequest('tappList', 'stop', [id]),
+      export: (id) => sendRequest('tappList', 'export', [id]),
+    },
+
+    brewList: {
+      // 读取
+      list: (o) => sendRequest('brewList', 'list', [o]),
+      get: (id) => sendRequest('brewList', 'get', [id]),
+      sources: () => sendRequest('brewList', 'sources', []),
+      categories: () => sendRequest('brewList', 'categories', []),
+      stats: () => sendRequest('brewList', 'stats', []),
+      discover: (url) => sendRequest('brewList', 'discover', [url]),
+      exportOpml: () => sendRequest('brewList', 'exportOpml', []),
+      // 写入
+      markRead: (id) => sendRequest('brewList', 'markRead', [id]),
+      markUnread: (id) => sendRequest('brewList', 'markUnread', [id]),
+      star: (id) => sendRequest('brewList', 'star', [id]),
+      unstar: (id) => sendRequest('brewList', 'unstar', [id]),
+      markAllRead: (o) => sendRequest('brewList', 'markAllRead', [o]),
+      // 评论
+      getComments: (itemId) => sendRequest('brewList', 'getComments', [itemId]),
+      createComment: (itemId, req) => sendRequest('brewList', 'createComment', [itemId, req]),
+      updateComment: (commentId, req) => sendRequest('brewList', 'updateComment', [commentId, req]),
+      deleteComment: (commentId) => sendRequest('brewList', 'deleteComment', [commentId]),
+      getReplies: (commentId) => sendRequest('brewList', 'getReplies', [commentId]),
+      createReply: (itemId, parentId, content) => sendRequest('brewList', 'createReply', [itemId, parentId, content]),
+      // 管理
+      addSource: (req) => sendRequest('brewList', 'addSource', [req]),
+      updateSource: (id, req) => sendRequest('brewList', 'updateSource', [id, req]),
+      deleteSource: (id) => sendRequest('brewList', 'deleteSource', [id]),
+      refreshSource: (id) => sendRequest('brewList', 'refreshSource', [id]),
+      importOpml: (opml) => sendRequest('brewList', 'importOpml', [opml]),
+      createCategory: (req) => sendRequest('brewList', 'createCategory', [req]),
+      deleteCategory: (id) => sendRequest('brewList', 'deleteCategory', [id]),
     },
 
     platform: {
@@ -512,6 +563,53 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       asr: (r) => sendRequest('speech', 'asr', [r]),
     },
 
+    federation: {
+      // 时间线
+      getTimeline: () => sendRequest('federation', 'getTimeline', []),
+      // 关注
+      follow: (target) => sendRequest('federation', 'follow', [target]),
+      unfollow: (target) => sendRequest('federation', 'unfollow', [target]),
+      getFollowing: () => sendRequest('federation', 'getFollowing', []),
+      getFollowers: () => sendRequest('federation', 'getFollowers', []),
+      // 发布
+      publish: (req) => sendRequest('federation', 'publish', [req]),
+      unpublish: (req) => sendRequest('federation', 'unpublish', [req]),
+      getPublished: () => sendRequest('federation', 'getPublished', []),
+      // Channel
+      getChannels: () => sendRequest('federation', 'getChannels', []),
+      getChannel: (id) => sendRequest('federation', 'getChannel', [id]),
+      createChannel: (req) => sendRequest('federation', 'createChannel', [req]),
+      acceptChannel: (id) => sendRequest('federation', 'acceptChannel', [id]),
+      closeChannel: (id) => sendRequest('federation', 'closeChannel', [id]),
+      getMessages: (channelId, before, limit) => sendRequest('federation', 'getMessages', [channelId, before, limit]),
+      sendMessage: (channelId, req) => sendRequest('federation', 'sendMessage', [channelId, req]),
+      // Room
+      getRooms: () => sendRequest('federation', 'getRooms', []),
+      getRoom: (id) => sendRequest('federation', 'getRoom', [id]),
+      createRoom: (req) => sendRequest('federation', 'createRoom', [req]),
+      updateRoom: (id, req) => sendRequest('federation', 'updateRoom', [id, req]),
+      getRoomMembers: (roomId) => sendRequest('federation', 'getRoomMembers', [roomId]),
+      getRoomMessages: (roomId, before, limit) => sendRequest('federation', 'getRoomMessages', [roomId, before, limit]),
+      sendRoomMessage: (roomId, req) => sendRequest('federation', 'sendRoomMessage', [roomId, req]),
+      inviteMember: (roomId, req) => sendRequest('federation', 'inviteMember', [roomId, req]),
+      removeMember: (roomId, actorUrl) => sendRequest('federation', 'removeMember', [roomId, actorUrl]),
+      leaveRoom: (roomId) => sendRequest('federation', 'leaveRoom', [roomId]),
+      deleteRoom: (roomId) => sendRequest('federation', 'deleteRoom', [roomId]),
+      // Ring
+      getRings: () => sendRequest('federation', 'getRings', []),
+      getRing: (id) => sendRequest('federation', 'getRing', [id]),
+      getRingPeers: (id) => sendRequest('federation', 'getRingPeers', [id]),
+      createRing: (req) => sendRequest('federation', 'createRing', [req]),
+      leaveRing: (ringId) => sendRequest('federation', 'leaveRing', [ringId]),
+      addPeer: (ringId, req) => sendRequest('federation', 'addPeer', [ringId, req]),
+      removePeer: (ringId, peerUrl) => sendRequest('federation', 'removePeer', [ringId, peerUrl]),
+      triggerSync: (ringId) => sendRequest('federation', 'triggerSync', [ringId]),
+      // 事件
+      onMessage: (cb) => addEventListener('federation:message', cb),
+      onChannelUpdate: (cb) => addEventListener('federation:channelUpdate', cb),
+      onRoomUpdate: (cb) => addEventListener('federation:roomUpdate', cb),
+    },
+
     on: addEventListener,
     widgets: {},
     pages: {},
@@ -521,6 +619,8 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   Object.freeze(Tapp);
   Object.freeze(Tapp.lifecycle);
   Object.freeze(Tapp.widget);
+  Object.freeze(Tapp.tappList);
+  Object.freeze(Tapp.brewList);
   Object.freeze(Tapp.platform);
   Object.freeze(Tapp.ai);
   Object.freeze(Tapp.report);
@@ -542,6 +642,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
   Object.freeze(Tapp.dynamicContent);
   Object.freeze(Tapp.animation);
   Object.freeze(Tapp.speech);
+  Object.freeze(Tapp.federation);
 
   // 🔒 冻结 widgets 和 pages 容器（Tapp 代码可以添加内容，但不能替换整个对象）
   // 使用 Object.seal 允许添加属性但禁止删除
@@ -591,6 +692,7 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
   // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
   var _eventBuffer = new Map();
   var _BUFFERED_EVENTS = { mediaStateChange: 1, mediaProgress: 1, themeChange: 1, primaryColorChange: 1, localeChange: 1 };
+  var _ACTION_TO_EVENT = { 'theme:change': 'themeChange', 'locale:change': 'localeChange', 'primaryColor:change': 'primaryColorChange' };
 
   var generateId = function() { return 'widget-' + (++messageIdCounter) + '-' + Date.now(); };
 
@@ -664,9 +766,10 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
 
     // 处理事件
     if (msg.type === 'event') {
-      // 🎯 缓存有状态事件的最新值（供 addEventListener 回放）
-      if (_BUFFERED_EVENTS[msg.action]) {
-        _eventBuffer.set(msg.action, msg.payload);
+      // 🎯 缓存有状态事件的最新值（供 addEventListener 回放，统一 camelCase key）
+      var _bufKey = _ACTION_TO_EVENT[msg.action] || msg.action;
+      if (_BUFFERED_EVENTS[_bufKey]) {
+        _eventBuffer.set(_bufKey, msg.payload);
       }
       // 🎯 强制重绘辅助函数：WebKit 专用沙箱会设置 window._TAPP_DISABLE_TRANSFORM_REPAINT
       var forceRepaint = function () {
@@ -700,6 +803,12 @@ export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: str
         root.style.setProperty('--tapp-border', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
         root.style.setProperty('--tapp-input-bg', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)');
         root.style.setProperty('--tapp-shadow', isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.08)');
+        // 语义色彩变量（供 Tapp CSS 使用）
+        root.style.setProperty('--text-primary', isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a');
+        root.style.setProperty('--text-secondary', isDark ? 'rgba(255,255,255,.5)' : '#999');
+        root.style.setProperty('--bg-primary', isDark ? '#0a0a0a' : '#fff');
+        document.body.style.background = isDark ? '#0a0a0a' : '#fff';
+        document.body.style.color = isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a';
         // 🎯 强制触发重绘
         forceRepaint();
       }

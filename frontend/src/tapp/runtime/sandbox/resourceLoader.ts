@@ -64,6 +64,12 @@ export interface PageResources {
   css: string
   /** CSS 架构模式 */
   cssMode?: 'unified' | 'separated'
+  /** i18n 翻译数据（语言代码 → 键值对） */
+  i18n?: Record<string, unknown>
+  /** Page 模块文件（文件名 → 代码内容） */
+  pageModules?: Record<string, string>
+  /** Page 模块加载顺序 */
+  pageModuleOrder?: string[]
 }
 
 /** 分离式 CSS 结构 */
@@ -145,12 +151,14 @@ class CssSeparator {
     pageCode: string | undefined,
     pageHtml: string | undefined,
     styles: string | undefined,
+    pageModules?: Record<string, string>,
   ): string {
     const sources = [
       core || '',
       pageCode || '',
       pageHtml || '',
       styles || '',
+      ...Object.values(pageModules || {}),
     ].join('\n')
 
     return generateOnDemandTailwindCSS(sources)
@@ -364,6 +372,7 @@ export class TappResourceLoader {
         raw.pageTemplate,
         effectiveStyles,
         raw.pageCSS, // 使用后端预分离的 Page CSS
+        raw.pageModules,
       )
       // 合并：原生 CSS 在前，Tailwind 在后（Tailwind 可覆盖）
       const css = cssMode === 'separated' && effectiveStyles
@@ -377,6 +386,9 @@ export class TappResourceLoader {
         styles: effectiveStyles,
         css,
         cssMode,
+        i18n: raw.i18n,
+        pageModules: raw.pageModules,
+        pageModuleOrder: raw.pageModuleOrder,
       }
 
       // 存入缓存
@@ -451,6 +463,7 @@ export class TappResourceLoader {
     pageHtml: string | undefined,
     styles: string | undefined,
     precompiledPageCSS: string | undefined,
+    pageModules?: Record<string, string>,
   ): Promise<string> {
     const cacheKey = tappId
 
@@ -468,7 +481,7 @@ export class TappResourceLoader {
     }
     else {
       // 策略 2: 从源码生成 Page 专用 CSS
-      css = CssSeparator.generatePageCSS(coreCode, pageCode, pageHtml, styles)
+      css = CssSeparator.generatePageCSS(coreCode, pageCode, pageHtml, styles, pageModules)
     }
 
     // 缓存

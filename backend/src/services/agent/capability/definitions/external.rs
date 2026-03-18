@@ -143,6 +143,62 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
+    // 网易云歌曲详情
+    registry.register(Capability {
+        id: "netease.song".to_string(),
+        name: "网易云歌曲详情".to_string(),
+        description: "查询网易云音乐歌曲详细信息，可包含歌词".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "songId": { "type": "integer" },
+                "includeLyrics": { "type": "boolean", "default": false }
+            },
+            "required": ["songId"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "song": { "type": "object" },
+                "lyrics": { "type": "string" }
+            }
+        }),
+        required_permissions: vec!["netease:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // 网易云歌单详情
+    registry.register(Capability {
+        id: "netease.playlist.detail".to_string(),
+        name: "网易云歌单详情".to_string(),
+        description: "获取网易云歌单的详细信息和歌曲列表".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "playlistId": { "type": "integer" }
+            },
+            "required": ["playlistId"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "trackCount": { "type": "integer" },
+                "tracks": { "type": "array" }
+            }
+        }),
+        required_permissions: vec!["netease:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
     // 图片代理
     registry.register(Capability {
         id: "proxy.image".to_string(),
@@ -391,6 +447,38 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["random:read".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(200),
+        ..Default::default()
+    });
+
+    // 网页抓取
+    registry.register(Capability {
+        id: "web.scrape".to_string(),
+        name: "网页内容抓取".to_string(),
+        description: "抓取外部网页并提取可读文本，支持 CSS 选择器。可与 ai.summarize 联用实现「读这个网页并总结」".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "url": { "type": "string", "description": "要抓取的网页 URL" },
+                "selector": { "type": "string", "description": "CSS 选择器，默认 body" },
+                "max_length": { "type": "integer", "description": "最大返回字符数，默认 5000" }
+            },
+            "required": ["url"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "url": { "type": "string" },
+                "title": { "type": "string" },
+                "content": { "type": "string" },
+                "length": { "type": "integer" },
+                "truncated": { "type": "boolean" }
+            }
+        }),
+        required_permissions: vec!["web:scrape".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(5000),
         ..Default::default()
     });
 }

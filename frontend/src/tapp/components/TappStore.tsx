@@ -377,7 +377,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
         <div className="mt-auto">
           {/* 应用描述 - 最�?行可滚动 */}
           {app.description && (
-            <div className="max-h-[2.5rem] overflow-y-auto mb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+            <div className="max-h-10 overflow-y-auto mb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
               <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed pr-1">
                 {app.description}
               </p>
@@ -424,7 +424,7 @@ const UnifiedAppCard = forwardRef<HTMLDivElement, {
                       const elevatedPerms = ['ai:generate', 'ai:analyze', 'ai:chat', 'network:fetch', 'report:write', 'media:control']
 
                       // 按优先级排序：管�?> 提升 > 基础
-                      const sorted = [...app.permissions].sort((a, b) => {
+                      const sorted = app.permissions.toSorted((a, b) => {
                         const aLevel = adminPerms.includes(a) ? 2 : elevatedPerms.includes(a) ? 1 : 0
                         const bLevel = adminPerms.includes(b) ? 2 : elevatedPerms.includes(b) ? 1 : 0
                         return bLevel - aLevel
@@ -1163,7 +1163,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
     }
   }
 
-  const categories = Array.from(allCategories.entries()).map(([id, data]) => ({
+  const categories = Array.from(allCategories.entries(), ([id, data]) => ({
     id,
     name: data.name,
     count: data.count,

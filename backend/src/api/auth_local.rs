@@ -198,16 +198,22 @@ pub async fn local_login(
             )
         })?;
 
-    let user_row = user_result.ok_or_else(|| {
-        tracing::warn!("User not found: {}", request.username);
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": "Invalid credentials",
-                "message": "Username or password is incorrect"
-            })),
-        )
-    })?;
+    let user_row = match user_result {
+        Some(row) => row,
+        None => {
+            // 执行虚拟 Argon2 验证以防止时序攻击枚举用户名
+            let dummy_hash = "$argon2id$v=19$m=19456,t=2,p=1$dW5rbm93bnNhbHQ$dW5rbm93bmhhc2g";
+            let _ = verify_password(&request.password, dummy_hash);
+            tracing::warn!("User not found: {}", request.username);
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "Invalid credentials",
+                    "message": "Username or password is incorrect"
+                })),
+            ));
+        }
+    };
 
     // Extract user data
     let user_id: i32 = user_row.try_get("", "id").map_err(|_| {

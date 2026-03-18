@@ -87,6 +87,8 @@ pub async fn execute(
         "weather.get" => execute_weather_get(params).await,
         "netease.song" => execute_netease_song(params).await,
         "netease.playlist.detail" => execute_netease_playlist_detail(params).await,
+        "web.scrape" => execute_web_scrape(params).await,
+        cap_id if cap_id.starts_with("mcp.") => execute_mcp_tool(cap_id, params).await,
         _ => Err(format!("Unknown external capability: {}", capability_id)),
     }
 }
@@ -189,14 +191,51 @@ async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, 
 // ============================================================================
 
 async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let database_id = params.get("database_id").and_then(|v| v.as_str());
-    let filter = params.get("filter").cloned();
+    let api_key = std::env::var("NOTION_API_KEY")
+        .map_err(|_| "Notion API key 未配置。请在环境变量中设置 NOTION_API_KEY。".to_string())?;
+
+    let database_id = params
+        .get("database_id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing database_id parameter")?;
+    let filter = params.get("filter").cloned().unwrap_or(json!({}));
+
+    let client = reqwest::Client::new();
+    let url = format!("https://api.notion.com/v1/databases/{}/query", database_id);
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Notion-Version", "2022-06-28")
+        .header("Content-Type", "application/json")
+        .json(&json!({ "filter": filter }))
+        .send()
+        .await
+        .map_err(|e| format!("Notion API 请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Notion API 返回错误 {}: {}", status, body));
+    }
+
+    let data: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Notion 响应解析失败: {}", e))?;
+
+    let results_count = data
+        .get("results")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
 
     Ok(json!({
+        "success": true,
         "database_id": database_id,
-        "filter": filter,
-        "message": "Notion query requires API key configuration",
-        "hint": "Configure NOTION_API_KEY in environment"
+        "results": data.get("results").cloned().unwrap_or(json!([])),
+        "count": results_count,
+        "hasMore": data.get("has_more").and_then(|v| v.as_bool()).unwrap_or(false)
     }))
 }
 
@@ -524,4 +563,142 @@ async fn execute_steam_game(params: &HashMap<String, Value>) -> Result<Value, St
         }
         Err(e) => Err(format!("Steam API error: {}", e)),
     }
+}
+
+// ============================================================================
+// Web Scrape
+// ============================================================================
+
+/// 抓取外部网页并提取可读文本内容
+async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, String> {
+    let url = params
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing url parameter")?;
+
+    // SSRF 防护
+    validate_url_for_fetch(url)?;
+
+    let selector_str = params
+        .get("selector")
+        .and_then(|v| v.as_str())
+        .unwrap_or("body");
+    let max_length = params
+        .get("max_length")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5000) as usize;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|e| format!("Client error: {}", e))?;
+
+    let response = client
+        .get(url)
+        .header("User-Agent", "Mozilla/5.0 (compatible; Myriad/1.0)")
+        .header("Accept", "text/html,application/xhtml+xml,*/*")
+        .send()
+        .await
+        .map_err(|e| format!("Fetch failed: {}", e))?;
+
+    let status = response.status().as_u16();
+    if status >= 400 {
+        return Err(format!("HTTP {}: {}", status, url));
+    }
+
+    let html = response
+        .text()
+        .await
+        .map_err(|e| format!("Read failed: {}", e))?;
+
+    // 限制原始 HTML 大小
+    if html.len() > 5 * 1024 * 1024 {
+        return Err("Page too large (>5MB)".to_string());
+    }
+
+    let document = scraper::Html::parse_document(&html);
+
+    // 提取标题
+    let title = scraper::Selector::parse("title")
+        .ok()
+        .and_then(|s| document.select(&s).next())
+        .map(|el| el.text().collect::<String>().trim().to_string());
+
+    // 移除 script/style 标签后提取文本
+    let sel = scraper::Selector::parse(selector_str)
+        .map_err(|_| format!("Invalid CSS selector: {}", selector_str))?;
+
+    let skip_tags = ["script", "style", "noscript", "svg", "iframe"];
+
+    let text: String = document
+        .select(&sel)
+        .flat_map(|el| {
+            el.descendants().filter_map(|node| {
+                match node.value() {
+                    scraper::node::Node::Text(t) => {
+                        // 检查父元素是否为应跳过的标签
+                        let parent_tag = node
+                            .parent()
+                            .and_then(|p| p.value().as_element())
+                            .map(|e| e.name());
+                        if let Some(tag) = parent_tag {
+                            if skip_tags.contains(&tag) {
+                                return None;
+                            }
+                        }
+                        let s = t.trim();
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(s.to_string())
+                        }
+                    }
+                    _ => None,
+                }
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // 压缩连续空白
+    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let truncated = text.len() > max_length;
+    let text: String = text.chars().take(max_length).collect();
+
+    // 提取 meta description 作为额外上下文
+    let description = scraper::Selector::parse("meta[name=description]")
+        .ok()
+        .and_then(|s| document.select(&s).next())
+        .and_then(|el| el.value().attr("content"))
+        .map(|s| s.to_string());
+
+    Ok(json!({
+        "url": url,
+        "title": title,
+        "description": description,
+        "content": text,
+        "length": text.len(),
+        "truncated": truncated
+    }))
+}
+
+// ============================================================================
+// MCP Tool Dispatch
+// ============================================================================
+
+/// 调用 MCP 服务器工具
+async fn execute_mcp_tool(
+    capability_id: &str,
+    params: &HashMap<String, Value>,
+) -> Result<Value, String> {
+    let tool_name = capability_id
+        .strip_prefix("mcp.")
+        .ok_or("Invalid MCP capability ID")?;
+
+    let manager = crate::services::agent::mcp::get_mcp_manager()
+        .ok_or("MCP manager not initialized")?;
+
+    let args = serde_json::to_value(params).unwrap_or_default();
+    manager.call_tool(tool_name, args).await
 }

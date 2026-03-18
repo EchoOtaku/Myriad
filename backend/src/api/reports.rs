@@ -1094,7 +1094,16 @@ async fn generate_ai_report(
         ),
     };
 
-    let data_str = serde_json::to_string_pretty(metadata).map_err(|e| e.to_string())?;
+    let data_str = {
+        let full = serde_json::to_string_pretty(metadata).map_err(|e| e.to_string())?;
+        // 截断过长的数据以避免 token 溢出
+        let truncated: String = full.chars().take(12000).collect();
+        if truncated.len() < full.len() {
+            format!("{}\n... (数据已截断，仅显示前 12000 字符)", truncated)
+        } else {
+            truncated
+        }
+    };
     let full_prompt = format!(
         "System: {}\nTask: {}\nRequirement: Return ONLY a valid JSON object (no markdown, no code blocks) with the following structure:\n{{\n  \"summary\": \"一段简短的总结(50字以内)\",\n  \"insights\": [\"3-5条详细的洞察分析\"],\n  \"card_visuals\": {{ ...根据以下要求生成: {} }}\n}}\n\nData:\n{}",
         system_prompt, tone_desc, visual_req, data_str

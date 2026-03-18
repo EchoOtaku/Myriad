@@ -13,7 +13,7 @@ use std::collections::HashSet;
 ///
 /// 修改此版本号将触发下次启动时的 schema 比对和补全。
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
-const SCHEMA_VERSION: &str = "2026.01.12.1";
+const SCHEMA_VERSION: &str = "2026.03.13.1";
 
 /// 列定义
 #[derive(Debug, Clone)]
@@ -1744,6 +1744,57 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== agent_tasks 表 ====================
+        TableDef {
+            name: "agent_tasks".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "recipe_id".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "name".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "status".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'pending'".into()) },
+                ColumnDef { name: "current_step".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "total_steps".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "step_results".into(), data_type: "json".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "execution_context".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "pending_question".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "progress".into(), data_type: "smallint".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "error".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "original_request".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "session_id".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "lane_id".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "started_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "completed_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "updated_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: None },
+            ],
+        },
+        // ==================== agent_sessions 表 ====================
+        TableDef {
+            name: "agent_sessions".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "title".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "context".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "message_count".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "archived".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "last_active_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: None },
+            ],
+        },
+        // ==================== agent_messages 表 ====================
+        TableDef {
+            name: "agent_messages".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "session_id".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "task_id".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "role".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "content".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "metadata".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: None },
+            ],
+        },
         // ==================== agent_task_presets 表 ====================
         TableDef {
             name: "agent_task_presets".to_string(),
@@ -1816,6 +1867,271 @@ fn get_expected_schema() -> Vec<TableDef> {
                     is_nullable: false,
                     default_value: None,
                 },
+            ],
+        },
+        // ==================== federation_keys 表 ====================
+        TableDef {
+            name: "federation_keys".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "public_key_pem".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "private_key_encrypted".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "key_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "algorithm".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'RSA-SHA256'".into()) },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "rotated_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_remote_actors 表 ====================
+        TableDef {
+            name: "federation_remote_actors".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "actor_url".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "username".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "domain".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "display_name".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "avatar_url".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "summary".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "inbox_url".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "outbox_url".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "shared_inbox_url".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "public_key_pem".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "public_key_id".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "software".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "mfp_version".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "tapp_capabilities".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "last_fetched_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "updated_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_instances 表 ====================
+        TableDef {
+            name: "federation_instances".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "domain".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "software".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "software_version".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "mfp_version".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "nodeinfo_url".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "shared_inbox_url".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "trust_level".into(), data_type: "smallint".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "is_blocked".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "block_reason".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "total_users".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "active_users_monthly".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "open_registrations".into(), data_type: "boolean".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "tapp_capabilities".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "last_seen_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "last_success_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "failure_count".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "updated_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_follows 表 ====================
+        TableDef {
+            name: "federation_follows".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "remote_actor_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "direction".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "status".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'pending'".into()) },
+                ColumnDef { name: "activity_id".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "accepted_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_activities 表 ====================
+        TableDef {
+            name: "federation_activities".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "activity_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "remote_actor_id".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "activity_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "object_type".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "object_json".into(), data_type: "json".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "is_local".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("true".into()) },
+                ColumnDef { name: "published_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "received_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_delivery_queue 表 ====================
+        TableDef {
+            name: "federation_delivery_queue".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "activity_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "target_inbox".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "target_domain".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "status".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'pending'".into()) },
+                ColumnDef { name: "attempts".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "max_attempts".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("12".into()) },
+                ColumnDef { name: "last_attempt_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "next_retry_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: Some("now()".into()) },
+                ColumnDef { name: "error_message".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+            ],
+        },
+        // ==================== federation_channels 表 ====================
+        TableDef {
+            name: "federation_channels".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "channel_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "remote_actor_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "channel_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "tapp_id".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "status".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'pending'".into()) },
+                ColumnDef { name: "transport".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'http'".into()) },
+                ColumnDef { name: "properties".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "initiated_by".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "last_activity_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "closed_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_channel_messages 表 ====================
+        TableDef {
+            name: "federation_channel_messages".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "channel_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "message_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "sender_actor".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "message_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "payload".into(), data_type: "json".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "reply_to".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "is_encrypted".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+            ],
+        },
+        // ==================== federation_rooms 表 ====================
+        TableDef {
+            name: "federation_rooms".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "room_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "name".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "description".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "avatar_url".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "owner_actor".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "home_server".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "governance_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'owner'".into()) },
+                ColumnDef { name: "governance_config".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "enabled_tapps".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "shared_data_config".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "distribution_strategy".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'fan-out'".into()) },
+                ColumnDef { name: "max_members".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("50".into()) },
+                ColumnDef { name: "is_public".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "invite_policy".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'admin-only'".into()) },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "updated_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_room_members 表 ====================
+        TableDef {
+            name: "federation_room_members".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "room_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "actor_url".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "is_local".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "local_user_id".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "role".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'member'".into()) },
+                ColumnDef { name: "custom_permissions".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "joined_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "invited_by".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_room_messages 表 ====================
+        TableDef {
+            name: "federation_room_messages".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "room_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "message_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "sender_actor".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "message_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "payload".into(), data_type: "json".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "thread_id".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "reply_to".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "reactions".into(), data_type: "json".into(), is_nullable: false, default_value: Some("'{}'".into()) },
+                ColumnDef { name: "is_pinned".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "is_encrypted".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+            ],
+        },
+        // ==================== federation_ring_memberships 表 ====================
+        TableDef {
+            name: "federation_ring_memberships".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "ring_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "ring_name".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "ring_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "gossip_config".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "known_peers".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "last_sync_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "joined_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+            ],
+        },
+        // ==================== federation_published_content 表 ====================
+        TableDef {
+            name: "federation_published_content".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "content_type".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "content_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "activity_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "visibility".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'public'".into()) },
+                ColumnDef { name: "published_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "updated_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
+            ],
+        },
+        // ==================== federation_timeline 表 ====================
+        TableDef {
+            name: "federation_timeline".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "user_id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "activity_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "remote_actor_id".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "activity_type".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "object_type".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "content_preview".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "content_json".into(), data_type: "json".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "is_read".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "is_bookmarked".into(), data_type: "boolean".into(), is_nullable: false, default_value: Some("false".into()) },
+                ColumnDef { name: "received_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+            ],
+        },
+        // ==================== federation_file_transfers 表 ====================
+        TableDef {
+            name: "federation_file_transfers".to_string(),
+            columns: vec![
+                ColumnDef { name: "id".into(), data_type: "integer".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "channel_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "transfer_id".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "filename".into(), data_type: "text".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "file_size".into(), data_type: "bigint".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "mime_type".into(), data_type: "character varying".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "checksum_sha256".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "direction".into(), data_type: "character varying".into(), is_nullable: false, default_value: None },
+                ColumnDef { name: "status".into(), data_type: "character varying".into(), is_nullable: false, default_value: Some("'pending'".into()) },
+                ColumnDef { name: "chunks_total".into(), data_type: "integer".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "chunks_completed".into(), data_type: "integer".into(), is_nullable: false, default_value: Some("0".into()) },
+                ColumnDef { name: "local_path".into(), data_type: "text".into(), is_nullable: true, default_value: None },
+                ColumnDef { name: "created_at".into(), data_type: "timestamp with time zone".into(), is_nullable: false, default_value: Some("now()".into()) },
+                ColumnDef { name: "completed_at".into(), data_type: "timestamp with time zone".into(), is_nullable: true, default_value: None },
             ],
         },
     ]
@@ -2135,6 +2451,45 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "enabled".into(), "priority".into()],
             is_unique: false,
         },
+        // agent_tasks 索引
+        IndexDef {
+            name: "idx_agent_tasks_user_id".into(),
+            table: "agent_tasks".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_agent_tasks_status".into(),
+            table: "agent_tasks".into(),
+            columns: vec!["status".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_agent_tasks_session_id".into(),
+            table: "agent_tasks".into(),
+            columns: vec!["session_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_agent_tasks_updated_at".into(),
+            table: "agent_tasks".into(),
+            columns: vec!["updated_at".into()],
+            is_unique: false,
+        },
+        // agent_sessions 索引
+        IndexDef {
+            name: "idx_agent_sessions_user_id".into(),
+            table: "agent_sessions".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        // agent_messages 索引
+        IndexDef {
+            name: "idx_agent_messages_session_id".into(),
+            table: "agent_messages".into(),
+            columns: vec!["session_id".into()],
+            is_unique: false,
+        },
         // agent_task_presets 索引
         IndexDef {
             name: "idx_agent_task_presets_user_type".into(),
@@ -2152,6 +2507,115 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             name: "idx_agent_task_presets_last_used".into(),
             table: "agent_task_presets".into(),
             columns: vec!["last_used_at".into()],
+            is_unique: false,
+        },
+        // ==================== federation 索引 ====================
+        IndexDef {
+            name: "idx_remote_actors_domain".into(),
+            table: "federation_remote_actors".into(),
+            columns: vec!["domain".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_follows_user".into(),
+            table: "federation_follows".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_follows_direction_status".into(),
+            table: "federation_follows".into(),
+            columns: vec!["direction".into(), "status".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_follows_unique".into(),
+            table: "federation_follows".into(),
+            columns: vec!["user_id".into(), "remote_actor_id".into(), "direction".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_activities_user".into(),
+            table: "federation_activities".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_activities_type".into(),
+            table: "federation_activities".into(),
+            columns: vec!["activity_type".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_activities_published".into(),
+            table: "federation_activities".into(),
+            columns: vec!["published_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_delivery_pending".into(),
+            table: "federation_delivery_queue".into(),
+            columns: vec!["status".into(), "next_retry_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_channels_user".into(),
+            table: "federation_channels".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_channels_status".into(),
+            table: "federation_channels".into(),
+            columns: vec!["status".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_channel_msgs_channel".into(),
+            table: "federation_channel_messages".into(),
+            columns: vec!["channel_id".into(), "created_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_room_members_room".into(),
+            table: "federation_room_members".into(),
+            columns: vec!["room_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_room_members_unique".into(),
+            table: "federation_room_members".into(),
+            columns: vec!["room_id".into(), "actor_url".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_room_msgs_room".into(),
+            table: "federation_room_messages".into(),
+            columns: vec!["room_id".into(), "created_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_room_msgs_thread".into(),
+            table: "federation_room_messages".into(),
+            columns: vec!["thread_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_published_user_type".into(),
+            table: "federation_published_content".into(),
+            columns: vec!["user_id".into(), "content_type".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_published_content_unique".into(),
+            table: "federation_published_content".into(),
+            columns: vec!["content_type".into(), "content_id".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_timeline_user_received".into(),
+            table: "federation_timeline".into(),
+            columns: vec!["user_id".into(), "received_at".into()],
             is_unique: false,
         },
     ]
@@ -2355,6 +2819,61 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
             )
             "#,
         ),
+        // ==================== Agent 表 ====================
+        (
+            "agent_tasks",
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_tasks (
+                id VARCHAR(64) PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                recipe_id VARCHAR(64) NOT NULL,
+                name VARCHAR(255),
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                current_step INTEGER NOT NULL DEFAULT 0,
+                total_steps INTEGER NOT NULL DEFAULT 0,
+                step_results JSON NOT NULL,
+                execution_context JSON,
+                pending_question JSON,
+                progress SMALLINT NOT NULL DEFAULT 0,
+                error TEXT,
+                original_request TEXT,
+                session_id VARCHAR(64),
+                lane_id VARCHAR(128),
+                started_at TIMESTAMPTZ NOT NULL,
+                completed_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        ),
+        (
+            "agent_sessions",
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_sessions (
+                id VARCHAR(64) PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                title VARCHAR(255),
+                context JSON,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                archived BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL,
+                last_active_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        ),
+        (
+            "agent_messages",
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_messages (
+                id SERIAL PRIMARY KEY,
+                session_id VARCHAR(64) NOT NULL,
+                task_id VARCHAR(64),
+                role VARCHAR(16) NOT NULL,
+                content TEXT NOT NULL,
+                metadata JSON,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        ),
         // agent_task_presets 表（合并了 Session 系统）
         (
             "agent_task_presets",
@@ -2371,6 +2890,287 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
                 last_used_at TIMESTAMPTZ NOT NULL,
                 use_count INTEGER NOT NULL DEFAULT 1,
                 created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        ),
+        // ==================== 联邦表 ====================
+        (
+            "federation_keys",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_keys (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL UNIQUE,
+                public_key_pem TEXT NOT NULL,
+                private_key_encrypted TEXT NOT NULL,
+                key_id TEXT NOT NULL UNIQUE,
+                algorithm VARCHAR(20) NOT NULL DEFAULT 'RSA-SHA256',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                rotated_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_remote_actors",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_remote_actors (
+                id SERIAL PRIMARY KEY,
+                actor_url TEXT NOT NULL UNIQUE,
+                username TEXT,
+                domain TEXT NOT NULL,
+                display_name TEXT,
+                avatar_url TEXT,
+                summary TEXT,
+                inbox_url TEXT NOT NULL,
+                outbox_url TEXT,
+                shared_inbox_url TEXT,
+                public_key_pem TEXT,
+                public_key_id TEXT,
+                software VARCHAR(50),
+                mfp_version VARCHAR(20),
+                tapp_capabilities JSON,
+                last_fetched_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_instances",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_instances (
+                id SERIAL PRIMARY KEY,
+                domain TEXT NOT NULL UNIQUE,
+                software VARCHAR(50),
+                software_version VARCHAR(50),
+                mfp_version VARCHAR(20),
+                nodeinfo_url TEXT,
+                shared_inbox_url TEXT,
+                trust_level SMALLINT NOT NULL DEFAULT 0,
+                is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+                block_reason TEXT,
+                total_users INTEGER,
+                active_users_monthly INTEGER,
+                open_registrations BOOLEAN,
+                tapp_capabilities JSON,
+                last_seen_at TIMESTAMPTZ,
+                last_success_at TIMESTAMPTZ,
+                failure_count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_follows",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_follows (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                remote_actor_id INTEGER NOT NULL,
+                direction VARCHAR(10) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                activity_id TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                accepted_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_activities",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_activities (
+                id SERIAL PRIMARY KEY,
+                activity_id TEXT NOT NULL UNIQUE,
+                user_id INTEGER,
+                remote_actor_id INTEGER,
+                activity_type VARCHAR(50) NOT NULL,
+                object_type VARCHAR(50),
+                object_json JSON NOT NULL,
+                is_local BOOLEAN NOT NULL DEFAULT TRUE,
+                published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                received_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_delivery_queue",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_delivery_queue (
+                id SERIAL PRIMARY KEY,
+                activity_id INTEGER NOT NULL,
+                target_inbox TEXT NOT NULL,
+                target_domain TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 12,
+                last_attempt_at TIMESTAMPTZ,
+                next_retry_at TIMESTAMPTZ DEFAULT NOW(),
+                error_message TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        ),
+        (
+            "federation_channels",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_channels (
+                id SERIAL PRIMARY KEY,
+                channel_id TEXT NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                remote_actor_id INTEGER NOT NULL,
+                channel_type VARCHAR(30) NOT NULL,
+                tapp_id VARCHAR(255),
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                transport VARCHAR(10) NOT NULL DEFAULT 'http',
+                properties JSON,
+                initiated_by VARCHAR(10) NOT NULL,
+                last_activity_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                closed_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_channel_messages",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_channel_messages (
+                id SERIAL PRIMARY KEY,
+                channel_id TEXT NOT NULL,
+                message_id TEXT NOT NULL UNIQUE,
+                sender_actor TEXT NOT NULL,
+                message_type VARCHAR(30) NOT NULL,
+                payload JSON NOT NULL,
+                reply_to TEXT,
+                is_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        ),
+        (
+            "federation_rooms",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_rooms (
+                id SERIAL PRIMARY KEY,
+                room_id TEXT NOT NULL UNIQUE,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                avatar_url TEXT,
+                owner_actor TEXT NOT NULL,
+                home_server TEXT NOT NULL,
+                governance_type VARCHAR(20) NOT NULL DEFAULT 'owner',
+                governance_config JSON,
+                enabled_tapps JSON,
+                shared_data_config JSON,
+                distribution_strategy VARCHAR(20) NOT NULL DEFAULT 'fan-out',
+                max_members INTEGER NOT NULL DEFAULT 50,
+                is_public BOOLEAN NOT NULL DEFAULT FALSE,
+                invite_policy VARCHAR(20) NOT NULL DEFAULT 'admin-only',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_room_members",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_room_members (
+                id SERIAL PRIMARY KEY,
+                room_id TEXT NOT NULL,
+                actor_url TEXT NOT NULL,
+                is_local BOOLEAN NOT NULL DEFAULT FALSE,
+                local_user_id INTEGER,
+                role VARCHAR(20) NOT NULL DEFAULT 'member',
+                custom_permissions JSON,
+                joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                invited_by TEXT
+            )
+            "#,
+        ),
+        (
+            "federation_room_messages",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_room_messages (
+                id SERIAL PRIMARY KEY,
+                room_id TEXT NOT NULL,
+                message_id TEXT NOT NULL UNIQUE,
+                sender_actor TEXT NOT NULL,
+                message_type VARCHAR(30) NOT NULL,
+                payload JSON NOT NULL,
+                thread_id TEXT,
+                reply_to TEXT,
+                reactions JSON NOT NULL DEFAULT '{}',
+                is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+                is_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        ),
+        (
+            "federation_ring_memberships",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_ring_memberships (
+                id SERIAL PRIMARY KEY,
+                ring_id TEXT NOT NULL UNIQUE,
+                ring_name VARCHAR(255),
+                ring_type VARCHAR(30) NOT NULL,
+                gossip_config JSON,
+                known_peers JSON,
+                last_sync_at TIMESTAMPTZ,
+                joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        ),
+        (
+            "federation_published_content",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_published_content (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                content_type VARCHAR(30) NOT NULL,
+                content_id TEXT NOT NULL,
+                activity_id TEXT NOT NULL,
+                visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+                published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )
+            "#,
+        ),
+        (
+            "federation_timeline",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_timeline (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                activity_id TEXT NOT NULL,
+                remote_actor_id INTEGER,
+                activity_type VARCHAR(50),
+                object_type VARCHAR(50),
+                content_preview TEXT,
+                content_json JSON,
+                is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE,
+                received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        ),
+        (
+            "federation_file_transfers",
+            r#"
+            CREATE TABLE IF NOT EXISTS federation_file_transfers (
+                id SERIAL PRIMARY KEY,
+                channel_id TEXT NOT NULL,
+                transfer_id TEXT NOT NULL UNIQUE,
+                filename TEXT NOT NULL,
+                file_size BIGINT NOT NULL,
+                mime_type VARCHAR(255),
+                checksum_sha256 TEXT,
+                direction VARCHAR(10) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                chunks_total INTEGER,
+                chunks_completed INTEGER NOT NULL DEFAULT 0,
+                local_path TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
             )
             "#,
         ),
@@ -2393,7 +3193,27 @@ async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
         "brew_podcasts",
         "brew_comments",
         "rsshub_instances",
+        // Agent 表（按依赖顺序：sessions → messages, tasks 独立）
+        "agent_tasks",
+        "agent_sessions",
+        "agent_messages",
         "agent_task_presets",
+        // 联邦表（按依赖顺序）
+        "federation_keys",
+        "federation_remote_actors",
+        "federation_instances",
+        "federation_follows",
+        "federation_activities",
+        "federation_delivery_queue",
+        "federation_channels",
+        "federation_channel_messages",
+        "federation_rooms",
+        "federation_room_members",
+        "federation_room_messages",
+        "federation_ring_memberships",
+        "federation_published_content",
+        "federation_timeline",
+        "federation_file_transfers",
     ];
 
     for table_name in creation_order {

@@ -147,6 +147,16 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
             .into_response();
     }
 
+    // ✅ SSRF 防护：阻止请求内网地址
+    if crate::federation::types::is_internal_url(&url) {
+        tracing::warn!("🚨 Rejected proxy request: SSRF attempt to internal URL - {}", url);
+        return (
+            StatusCode::FORBIDDEN,
+            "Cannot proxy internal URLs",
+        )
+            .into_response();
+    }
+
     // ✅ 限流保护：等待获取令牌
     if wait_for_proxy_permit(&url).await.is_err() {
         tracing::warn!("🚨 Proxy rate limit exceeded (timeout) for URL: {}", url);

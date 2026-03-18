@@ -39,6 +39,16 @@ function spaFallbackPlugin() {
         else if (url.match(/^\/tapp\/detail\/[^_/][^/]*/)) {
           req.url = '/tapp/detail/_'
         }
+        // 联邦动态路由回退
+        else if (url.match(/^\/federation\/chat\/[^_/][^/]*/)) {
+          req.url = '/federation/chat/_'
+        }
+        else if (url.match(/^\/federation\/room\/[^_/][^/]*/)) {
+          req.url = '/federation/room/_'
+        }
+        else if (url.match(/^\/federation\/ring\/[^_/][^/]*/)) {
+          req.url = '/federation/ring/_'
+        }
 
         next()
       })

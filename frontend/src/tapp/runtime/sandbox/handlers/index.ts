@@ -31,5 +31,10 @@ export {
 } from './platformHandlers'
 
 export {
+  registerBrewListHandlers,
+  registerTappListHandlers,
+} from './contentHandlers'
+
+export {
   registerFederationHandlers,
 } from '../../FederationBridge'

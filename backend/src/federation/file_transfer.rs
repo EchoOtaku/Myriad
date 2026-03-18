@@ -276,7 +276,7 @@ pub async fn upload_chunk(
     }
 
     let chunks_total: i32 = row.try_get("", "chunks_total").unwrap_or(1);
-    let chunks_completed: i32 = row.try_get("", "chunks_completed").unwrap_or(0);
+    let _chunks_completed: i32 = row.try_get("", "chunks_completed").unwrap_or(0);
 
     if req.chunk_index >= chunks_total {
         return Err((
@@ -285,30 +285,29 @@ pub async fn upload_chunk(
         ));
     }
 
-    let new_chunks = chunks_completed + 1;
+    // 原子更新进度——使用 SQL 内部递增避免并发竞态
+    let updated = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_file_transfers
+               SET chunks_completed = chunks_completed + 1,
+                   status = CASE WHEN chunks_completed + 1 >= chunks_total THEN 'completed' ELSE 'in-progress' END,
+                   completed_at = CASE WHEN chunks_completed + 1 >= chunks_total THEN NOW() ELSE NULL END
+               WHERE transfer_id = $1 AND chunks_completed < chunks_total
+               RETURNING chunks_completed, status"#,
+            [transfer_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Transfer already completed or invalid"})),
+            )
+        })?;
 
-    // 判断是否完成
-    let new_status = if new_chunks >= chunks_total {
-        "completed"
-    } else {
-        "in-progress"
-    };
-
-    // 更新进度
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"UPDATE federation_file_transfers
-           SET chunks_completed = $2, status = $3,
-               completed_at = CASE WHEN $3 = 'completed' THEN NOW() ELSE NULL END
-           WHERE transfer_id = $1"#,
-        [
-            transfer_id.into(),
-            new_chunks.into(),
-            new_status.into(),
-        ],
-    ))
-    .await
-    .map_err(db_err)?;
+    let new_chunks: i32 = updated.try_get("", "chunks_completed").unwrap_or(0);
+    let new_status: String = updated.try_get("", "status").unwrap_or_default();
 
     let progress = (new_chunks as f64 / chunks_total as f64) * 100.0;
 

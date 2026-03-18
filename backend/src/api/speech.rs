@@ -70,6 +70,10 @@ where
         // 文章缓存管理
         .route("/cache/article", get(get_article_cache_info))
         .route("/cache/article/voice", delete(clear_article_voice_cache))
+        // 🔒 TTS/ASR 端点需要认证（调用付费 API）
+        .route_layer(axum::middleware::from_fn(
+            crate::middleware::auth::auth_middleware,
+        ))
 }
 
 /// TTS 请求体

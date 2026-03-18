@@ -79,9 +79,35 @@ function getPermissionCounts(permissions: string[]): {
   return { basic, elevated, admin }
 }
 
+/** category 值 → i18n 键映射 */
+const categoryKeyMap: Record<string, string> = {
+  'social': 'categorySocial',
+  'ai': 'categoryAI',
+  'data': 'categoryData',
+  'data-extension': 'categoryDataExtension',
+  'widget': 'categoryWidget',
+  'tool': 'categoryTool',
+  'game': 'categoryGame',
+  'demo': 'categoryDemo',
+  'test': 'categoryTest',
+  'platform': 'categoryPlatform',
+  'productivity': 'categoryProductivity',
+  'entertainment': 'categoryEntertainment',
+  'development': 'categoryDevelopment',
+  'media': 'categoryMedia',
+  'utilities': 'categoryUtilities',
+  'music': 'categoryMusic',
+  'visualization': 'categoryVisualization',
+  'page': 'categoryPageApp',
+}
+
 /** 获取应用类别键 */
 function getTappCategoryKey(manifest: TappManifest): string {
-  // 根据权限和功能推断类别
+  // 优先使用 manifest 显式声明的分类
+  if (manifest.category && categoryKeyMap[manifest.category])
+    return categoryKeyMap[manifest.category]
+
+  // 回退：根据权限和功能推断类别
   const hasWidget = manifest.widgets && manifest.widgets.length > 0
   const hasAI = manifest.permissions?.some(p => p.startsWith('ai:'))
   const hasPlatform = manifest.permissions?.some(p => p.startsWith('platform:'))

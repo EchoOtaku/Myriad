@@ -1,0 +1,3799 @@
+/**
+ * Aro — 社交中心 Tapp
+ *
+ * 统一管理消息 (Channel/Room)、时间线、环网、个人资料
+ * 展示 Tapp.federation.* SDK 的完整用法
+ */
+
+import type { TappManifest } from '../../types'
+import type { ExampleTapp, TappCodeStructure } from './types'
+
+// ==================== Page HTML ====================
+const PAGE_HTML = `\
+<!-- 背景层 -->
+<div id="tapp-background">
+  <div class="page-bg-base"></div>
+  <div class="page-bg-glow page-bg-glow-1"></div>
+  <div class="page-bg-glow page-bg-glow-2"></div>
+</div>
+
+<!-- 内容层 -->
+<div id="tapp-content">
+  <!-- 顶部导航栏 -->
+  <nav id="aro-nav" class="aro-nav">
+    <button class="aro-nav-item aro-nav-active" data-view="feed" id="nav-feed">
+      <div id="nav-feed-avatar" class="nav-feed-avatar">?</div>
+      <span id="nav-feed-label" class="nav-feed-name"></span>
+    </button>
+    <button class="aro-nav-item" data-view="messages" id="nav-messages">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      <span id="nav-messages-label">信使</span>
+    </button>
+    <button class="aro-nav-item" data-view="rings" id="nav-rings">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M0 15L24 9"/></svg>
+      <span id="nav-rings-label">环网</span>
+    </button>
+  </nav>
+
+  <!-- ====== 信使视图 ====== -->
+  <div id="view-messages" class="aro-view">
+    <div class="messenger-app">
+      <!-- 左侧：会话列表 -->
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <h2 class="sidebar-title">信使</h2>
+          <button id="create-btn" class="create-btn" title="新建">+</button>
+        </div>
+        <div id="conv-list" class="conv-list"></div>
+      </aside>
+
+      <!-- 中间：聊天区 -->
+      <main id="chat-main" class="chat-main">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg></div>
+          <p class="empty-text">选择一个会话开始聊天</p>
+        </div>
+        <div id="chat-container" class="chat-container" style="display:none">
+          <div id="chat-header" class="chat-header">
+            <button id="back-btn" class="back-btn">←</button>
+            <div id="chat-hdr-avatar" class="chat-hdr-avatar"></div>
+            <div class="chat-header-info">
+              <div id="chat-name" class="chat-name"></div>
+              <div id="chat-meta" class="chat-meta"></div>
+            </div>
+            <div id="chat-actions" class="chat-actions"></div>
+          </div>
+          <div id="pinned-bar" class="pinned-bar" style="display:none"></div>
+          <div id="messages" class="messages-area"></div>
+          <div class="input-float-wrap">
+            <div id="quote-preview" class="quote-preview" style="display:none"></div>
+            <div id="attach-preview" class="attach-preview" style="display:none"></div>
+            <div id="input-bar" class="input-bar">
+              <button id="attach-btn" class="attach-btn" title="附件">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <textarea id="msg-input" class="msg-input" rows="1" placeholder="输入消息..."></textarea>
+              <button id="send-btn" class="send-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20V4M5 11l7-7 7 7"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <input id="attach-file-input" type="file" style="display:none" />
+          <input id="attach-image-input" type="file" accept="image/*" style="display:none" />
+        </div>
+      </main>
+
+      <!-- 右侧：成员面板 -->
+      <aside id="member-panel" class="member-panel" style="display:none">
+        <div class="member-header">
+          <button id="member-back-btn" class="member-back-btn">←</button>
+          <h3 id="member-title" class="member-title">成员</h3>
+          <div id="invite-wrap" class="invite-wrap" style="display:none">
+            <button id="invite-toggle" class="invite-toggle" title="邀请成员">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="member-list" class="member-list"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ====== 动态视图 (Feed, X-style sidebar + content) ====== -->
+  <div id="view-feed" class="aro-view aro-view-active">
+    <div class="feed-layout">
+      <!-- Left sidebar -->
+      <aside class="feed-sidebar" id="feed-sidebar">
+        <nav class="feed-sidebar-nav">
+          <button class="feed-nav-item feed-nav-active" data-sub="timeline">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M9 22V12h6v10"/></svg>
+            <span id="feed-nav-timeline">动态</span>
+          </button>
+          <button class="feed-nav-item" data-sub="following">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+            <span id="feed-nav-following">关注</span>
+          </button>
+          <button class="feed-nav-item" data-sub="followers">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            <span id="feed-nav-followers">粉丝</span>
+          </button>
+          <button class="feed-nav-item" data-sub="published">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            <span id="feed-nav-published">已发布</span>
+          </button>
+        </nav>
+        <div class="feed-sidebar-footer">
+          <div class="feed-sidebar-footer-profile">
+            <div id="feed-avatar" class="feed-avatar">?</div>
+            <div class="feed-sidebar-footer-info">
+              <div id="feed-display-name" class="feed-display-name"></div>
+              <div id="feed-handle" class="feed-handle"></div>
+            </div>
+          </div>
+          <div class="feed-sidebar-stats">
+            <div class="feed-sidebar-stat">
+              <span class="feed-stat-num" id="feed-count-following">0</span>
+              <span class="feed-stat-lbl" id="feed-lbl-following">关注</span>
+            </div>
+            <div class="feed-sidebar-stat">
+              <span class="feed-stat-num" id="feed-count-followers">0</span>
+              <span class="feed-stat-lbl" id="feed-lbl-followers">粉丝</span>
+            </div>
+            <div class="feed-sidebar-stat">
+              <span class="feed-stat-num" id="feed-count-published">0</span>
+              <span class="feed-stat-lbl" id="feed-lbl-published">已发布</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <!-- Main content -->
+      <main class="feed-main">
+        <div class="feed-fab-group">
+          <button id="refresh-feed-btn" class="feed-fab" title="刷新">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
+        </div>
+        <!-- Mobile tabs (visible only on small screens) -->
+        <div class="feed-mobile-tabs" id="feed-mobile-tabs">
+          <button class="feed-mobile-tab feed-mobile-tab-active" data-sub="timeline" id="feed-tab-timeline">动态</button>
+          <button class="feed-mobile-tab" data-sub="following" id="feed-tab-following">关注</button>
+          <button class="feed-mobile-tab" data-sub="followers" id="feed-tab-followers">粉丝</button>
+          <button class="feed-mobile-tab" data-sub="published" id="feed-tab-published">已发布</button>
+        </div>
+        <div id="feed-follow-bar" class="feed-follow-bar" style="display:none">
+          <input id="feed-follow-input" class="feed-follow-input" type="text" placeholder="user@instance.social" />
+          <button id="feed-follow-btn" class="feed-follow-btn">关注</button>
+        </div>
+        <div id="feed-content" class="feed-content"></div>
+        <div id="feed-empty" class="feed-empty" style="display:none">
+          <div class="empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1l2.8-2.8M7 4l3.5 3.5M16.5 20l-3.5-3.5M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg></div>
+          <span id="feed-empty-text">暂无内容</span>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ====== 环网视图 ====== -->
+  <div id="view-rings" class="aro-view">
+    <div class="aro-panel-layout">
+      <!-- 左侧：环网列表 -->
+      <aside id="ring-sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <h2 id="ring-sidebar-title" class="sidebar-title">环网</h2>
+          <button id="ring-create-open-btn" class="create-btn" title="新建">+</button>
+        </div>
+        <div id="ring-list" class="conv-list"></div>
+        <div id="ring-empty" class="conv-empty" style="display:none">
+          <span id="ring-empty-text">暂无环网</span>
+        </div>
+      </aside>
+      <!-- 右侧：环网详情 -->
+      <main class="panel-main">
+        <div id="ring-empty-state" class="empty-state">
+          <div class="empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M0 15L24 9"/></svg></div>
+          <p class="empty-text" id="ring-select-hint">选择一个环网查看详情</p>
+        </div>
+        <div id="ring-detail" class="panel-detail" style="display:none">
+          <div class="panel-detail-header">
+            <button id="ring-back-btn" class="back-btn">←</button>
+            <div id="ring-detail-icon" class="ring-hdr-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M0 15L24 9"/></svg></div>
+            <div class="chat-header-info">
+              <div id="ring-detail-name" class="chat-name"></div>
+              <div id="ring-detail-meta" class="chat-meta"></div>
+            </div>
+            <div class="chat-actions">
+              <button id="ring-sync-btn" class="action-btn ring-action-sync" title="同步">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span id="ring-sync-label">同步</span>
+              </button>
+              <div class="manage-wrap">
+                <button id="ring-manage-btn" class="manage-btn">⋯</button>
+                <div id="ring-manage-dropdown" class="manage-dropdown">
+                  <button id="ring-leave-btn" class="manage-item manage-item-danger">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                    <span id="ring-leave-label">退出环网</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 同步状态 -->
+          <div id="ring-sync-status" class="ring-sync-bar" style="display:none"></div>
+          <!-- 添加节点 -->
+          <div class="invite-bar" id="ring-peer-bar">
+            <input id="ring-peer-input" class="invite-input" type="text" placeholder="https://instance.social" />
+            <button id="ring-add-peer-btn" class="invite-btn">添加</button>
+          </div>
+          <!-- 节点列表 -->
+          <div id="ring-peers-list" class="member-list"></div>
+          <div id="ring-peers-empty" class="conv-empty" style="display:none">
+            <span>暂无节点</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 创建环网对话框 -->
+  <div id="ring-create-dialog" class="create-overlay" style="display:none">
+    <div class="create-dialog">
+      <div class="create-dialog-header">
+        <h3 id="ring-create-title" class="create-dialog-title">创建环网</h3>
+        <button id="ring-create-close" class="create-dialog-close">✕</button>
+      </div>
+      <div class="create-form">
+        <input id="ring-name-input" class="create-input" type="text" placeholder="环网名称" />
+        <select id="ring-type-select" class="create-input" style="height:40px;cursor:pointer">
+          <option value="brew-recommend">Brew 推荐</option>
+          <option value="tapp-store">Tapp 商店</option>
+          <option value="library-exchange">Library 交换</option>
+          <option value="instance-directory">实例目录</option>
+        </select>
+        <button id="create-ring-btn" class="create-submit">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创建对话框 -->
+  <div id="create-dialog" class="create-overlay" style="display:none">
+    <div class="create-dialog">
+      <div class="create-dialog-header">
+        <h3 id="create-dialog-title" class="create-dialog-title">新建</h3>
+        <button id="create-dialog-close" class="create-dialog-close">✕</button>
+      </div>
+      <div class="create-dialog-tabs">
+        <button id="create-tab-channel" class="create-tab create-tab-active" data-tab="channel">私信</button>
+        <button id="create-tab-room" class="create-tab" data-tab="room">群聊</button>
+      </div>
+      <div id="create-form-channel" class="create-form">
+        <input id="create-channel-input" class="create-input" type="text" placeholder="user@instance.social" />
+        <button id="create-channel-btn" class="create-submit">创建通道</button>
+      </div>
+      <div id="create-form-room" class="create-form" style="display:none">
+        <input id="create-room-input" class="create-input" type="text" placeholder="房间名称" />
+        <button id="create-room-btn" class="create-submit">创建房间</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑房间对话框 -->
+  <div id="edit-room-dialog" class="create-overlay" style="display:none">
+    <div class="create-dialog">
+      <div class="create-dialog-header">
+        <h3 id="edit-room-title" class="create-dialog-title">编辑房间</h3>
+        <button id="edit-room-close" class="create-dialog-close">✕</button>
+      </div>
+      <div class="create-form">
+        <label class="edit-label" id="edit-name-label">房间名称</label>
+        <input id="edit-room-name" class="create-input" type="text" />
+        <label class="edit-label" id="edit-desc-label">房间描述</label>
+        <input id="edit-room-desc" class="create-input" type="text" />
+        <button id="edit-room-save" class="create-submit">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+`
+
+const STYLES = `\
+/* ===== Dark Mode Variable Bridge ===== */
+:root{--text-primary:#1a1a1a;--text-secondary:#999;--bg-primary:#fff}
+.dark{--text-primary:rgba(255,255,255,.92);--text-secondary:rgba(255,255,255,.5);--bg-primary:#0a0a0a;color-scheme:dark}
+body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
+
+/* ===== Tapp Content Override ===== */
+#tapp-content{display:flex!important;flex-direction:column!important;overflow:hidden!important}
+
+/* ===== Aro Nav ===== */
+.aro-nav{display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0;background:var(--bg-primary,#fff)}
+.aro-nav-item{display:flex;align-items:center;gap:6px;padding:6px 14px;border:none;background:none;border-radius:10px;font-size:12px;font-weight:500;color:var(--text-secondary,#999);cursor:pointer;transition:all .15s;white-space:nowrap}
+.aro-nav-item:hover{background:rgba(128,128,128,.06);color:var(--text-primary,#333)}
+.aro-nav-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.08)!important;color:var(--tapp-primary,#6366f1)!important;font-weight:600}
+.aro-nav-item svg{flex-shrink:0}
+/* Nav Feed Avatar */
+.nav-feed-avatar{width:22px;height:22px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;overflow:hidden}
+.nav-feed-avatar img{width:100%;height:100%;object-fit:cover}
+.nav-feed-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px}
+
+/* ===== Aro Views ===== */
+.aro-view{display:none;flex:1;min-height:0;overflow:hidden}
+.aro-view-active{display:flex;flex-direction:column}
+
+/* ===== Panel Layout (sidebar+content, for rings) ===== */
+.aro-panel-layout{display:flex;flex:1;min-height:0;overflow:hidden}
+.panel-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.panel-detail{flex:1;min-height:0;display:flex;flex-direction:column}
+.panel-detail-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0}
+.panel-detail-body{flex:1;overflow-y:auto;padding:16px}
+
+/* ===== Ring header icon ===== */
+.ring-hdr-icon{width:32px;height:32px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;background:rgba(var(--tapp-primary-rgb,128,128,128),.08)}
+.ring-action-sync{display:flex;align-items:center;gap:4px;background:rgba(var(--tapp-primary-rgb,100,100,255),.08);color:var(--tapp-primary,#6366f1);border:none;border-radius:10px;padding:4px 10px;font-size:11px;font-weight:500;cursor:pointer;transition:background .15s}
+.ring-action-sync:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.16)}
+.ring-sync-bar{font-size:11px;padding:8px 14px;border-bottom:1px solid rgba(128,128,128,.06);display:flex;align-items:center;gap:6px}
+.ring-sync-bar.ring-sync-ok{color:#22c55e;background:rgba(34,197,94,.04)}
+.ring-sync-bar.ring-sync-err{color:#ef4444;background:rgba(239,68,68,.04)}
+
+/* ===== Feed Layout (X-style sidebar + content) ===== */
+.feed-layout{display:flex;flex:1;min-height:0;overflow:hidden}
+/* Feed Sidebar */
+.feed-sidebar{width:220px;flex-shrink:0;border-right:1px solid rgba(128,128,128,.08);display:flex;flex-direction:column;padding:12px;overflow:hidden}
+.feed-avatar{width:36px;height:36px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden}
+.feed-avatar img{width:100%;height:100%;object-fit:cover}
+.feed-display-name{font-size:13px;font-weight:700;color:var(--text-primary,#0f1419);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.feed-handle{font-size:11px;color:var(--text-secondary,#536471);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* Sidebar Nav */
+.feed-sidebar-nav{display:flex;flex-direction:column;gap:2px;padding:4px 0;flex:1;overflow-y:auto;min-height:0}
+.feed-nav-item{display:flex;align-items:center;gap:14px;padding:10px 14px;border:none;background:none;border-radius:24px;font-size:15px;font-weight:400;color:var(--text-primary,#0f1419);cursor:pointer;transition:background .15s;white-space:nowrap;text-align:left;width:100%}
+.feed-nav-item:hover{background:rgba(128,128,128,.08)}
+.feed-nav-active{font-weight:700!important}
+.feed-nav-active svg{stroke-width:2.5}
+.feed-nav-item svg{flex-shrink:0}
+/* Sidebar Footer (profile + stats) */
+.feed-sidebar-footer{flex-shrink:0;border-top:1px solid rgba(128,128,128,.06);padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.feed-sidebar-footer-profile{display:flex;align-items:center;gap:10px}
+.feed-sidebar-footer-info{min-width:0;flex:1}
+.feed-sidebar-stats{display:flex;flex-wrap:wrap;gap:10px}
+.feed-sidebar-stat{display:flex;align-items:center;gap:3px;font-size:12px;color:var(--text-secondary,#536471)}
+.feed-stat-num{font-weight:700;color:var(--text-primary,#0f1419)}
+.feed-stat-lbl{font-weight:400}
+/* Feed Main */
+.feed-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;position:relative}
+/* Floating action buttons */
+.feed-fab-group{position:absolute;bottom:16px;right:16px;z-index:10;display:flex;gap:8px;pointer-events:none}
+.feed-fab{width:40px;height:40px;border:none;border-radius:50%;background:var(--tapp-primary,#6366f1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s;flex-shrink:0;pointer-events:auto;box-shadow:0 2px 8px rgba(var(--tapp-primary-rgb,100,100,255),.3)}
+.feed-fab:hover{opacity:.85;box-shadow:0 4px 14px rgba(var(--tapp-primary-rgb,100,100,255),.4);transform:scale(1.05)}
+.feed-fab:active{transform:scale(.95)}
+/* Feed Mobile Tabs (hidden on desktop) */
+.feed-mobile-tabs{display:none;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0}
+.feed-mobile-tab{flex:1;padding:12px 4px;border:none;background:none;font-size:13px;font-weight:500;color:var(--text-secondary,#536471);cursor:pointer;text-align:center;transition:all .15s;border-bottom:2px solid transparent}
+.feed-mobile-tab:hover{background:rgba(128,128,128,.04)}
+.feed-mobile-tab-active{color:var(--text-primary,#0f1419)!important;font-weight:700;border-bottom-color:var(--tapp-primary,#6366f1)!important}
+/* Follow bar */
+.feed-follow-bar{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0}
+.feed-follow-input{flex:1;height:36px;padding:0 14px;border-radius:20px;border:1px solid rgba(128,128,128,.15);background:rgba(128,128,128,.03);color:var(--text-primary,#0f1419);font-size:13px;outline:none;transition:border-color .2s}
+.feed-follow-input:focus{border-color:rgba(var(--tapp-primary-rgb,100,100,255),.5)}
+.feed-follow-input::placeholder{color:var(--text-secondary,#bbb)}
+.feed-follow-btn{padding:0 16px;height:36px;border-radius:20px;border:none;background:var(--tapp-primary,#6366f1);color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .15s}
+.feed-follow-btn:hover{opacity:.85}
+.feed-follow-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Feed content / empty */
+.feed-content{flex:1;min-height:0}
+.feed-empty{padding:48px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-secondary,#536471);font-size:13px}
+
+/* ===== Feed Items (tweet-like cards) ===== */
+.feed-item{display:flex;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(128,128,128,.06);transition:background .12s;cursor:default}
+.feed-item:hover{background:rgba(128,128,128,.03)}
+.feed-item-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
+.feed-item-avatar img{width:100%;height:100%;object-fit:cover}
+.feed-item-icon{width:40px;height:40px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06)}
+.feed-item-body{flex:1;min-width:0}
+.feed-item-header{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.feed-item-name{font-size:14px;font-weight:700;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-item-handle{font-size:13px;color:var(--text-secondary,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-item-sep{font-size:13px;color:var(--text-secondary,#bbb)}
+.feed-item-time{font-size:13px;color:var(--text-secondary,#999);white-space:nowrap;flex-shrink:0}
+.feed-item-text{font-size:14px;line-height:1.55;color:var(--text-primary,#1a1a1a);margin-top:4px;white-space:pre-wrap;overflow-wrap:break-word}
+.feed-item-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.feed-item-actions{display:flex;gap:24px;margin-top:8px}
+.feed-item-action{display:flex;align-items:center;gap:4px;background:none;border:none;color:var(--text-secondary,#999);font-size:12px;cursor:pointer;padding:4px 0;border-radius:4px;transition:color .15s}
+.feed-item-action:hover{color:var(--tapp-primary,#6366f1)}
+.feed-item-action-danger:hover{color:#ef4444}
+
+/* ===== Aro Badges ===== */
+.aro-badge{font-size:10px;padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap}
+.aro-badge-type{background:rgba(var(--tapp-primary-rgb,100,100,255),.08);color:var(--tapp-primary,#6366f1)}
+.aro-badge-status{background:rgba(34,197,94,.1);color:#22c55e}
+.aro-badge-pending{background:rgba(245,158,11,.1);color:#f59e0b}
+.aro-badge-vis{background:rgba(var(--tapp-primary-rgb,100,100,255),.06);color:var(--tapp-primary,#888)}
+.aro-unread-dot{width:7px;height:7px;border-radius:50%;background:var(--tapp-primary,#6366f1);flex-shrink:0;box-shadow:0 0 4px rgba(var(--tapp-primary-rgb,100,100,255),.4)}
+
+/* ===== Dark Mode Overrides for Aro ===== */
+.dark .aro-nav{background:var(--bg-primary,#1a1a1a)}
+.dark .feed-sidebar{border-color:rgba(255,255,255,.06)}
+.dark .feed-display-name{color:rgba(255,255,255,.92)}
+.dark .feed-nav-item{color:rgba(255,255,255,.85)}
+.dark .feed-nav-active{color:rgba(255,255,255,.95)!important}
+.dark .feed-sidebar-footer{border-color:rgba(255,255,255,.06)}
+.dark .feed-fab{background:var(--tapp-primary,#6366f1);color:#fff;box-shadow:0 2px 8px rgba(var(--tapp-primary-rgb,100,100,255),.35)}
+.dark .feed-mobile-tabs{background:rgba(21,32,43,.85)}
+.dark .feed-mobile-tab-active{color:rgba(255,255,255,.95)!important}
+.dark .feed-stat-num{color:rgba(255,255,255,.92)}
+.dark .feed-item-name{color:rgba(255,255,255,.92)}
+.dark .feed-item-text{color:rgba(255,255,255,.85)}
+.dark .feed-item:hover{background:rgba(255,255,255,.03)}
+.dark .feed-follow-input{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+
+/* ===== Responsive for Aro Nav ===== */
+@media(max-width:768px){
+  .aro-nav-item span{display:none}
+  .aro-nav-item{padding:8px 12px}
+  .aro-nav{justify-content:center;gap:4px}
+  .feed-sidebar{display:none}
+  .feed-mobile-tabs{display:flex}
+  .feed-main{max-width:none}
+}
+
+/* ===== Layout ===== */
+.messenger-app{display:flex;flex:1;min-height:0;overflow:hidden}
+.sidebar{display:flex;flex-direction:column;width:280px;border-right:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden}
+.sidebar-header{padding:14px 16px 10px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.sidebar-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a);letter-spacing:-.01em}
+.create-btn{width:28px;height:28px;border-radius:50%;border:none;background:var(--tapp-primary,#888);color:#fff;font-size:18px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s;flex-shrink:0;line-height:1}
+.create-btn:hover{opacity:.85}
+.conv-list{flex:1;overflow-y:auto;padding:4px 0}
+.chat-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.member-panel{display:flex;flex-direction:column;width:220px;border-left:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden;transition:width .2s}
+.member-panel.member-collapsed{width:0;border-left:none;overflow:hidden}
+.member-back-btn{display:none;background:none;border:none;font-size:16px;color:var(--text-primary,#1a1a1a);cursor:pointer;padding:2px 4px;margin-right:6px;border-radius:6px;flex-shrink:0}
+.member-back-btn:hover{background:rgba(128,128,128,.08)}
+.member-header{padding:12px 14px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.member-title{margin:0;font-size:12px;font-weight:600;color:var(--text-secondary,#888);text-transform:uppercase;letter-spacing:.04em}
+.member-list{flex:1;overflow-y:auto;padding:8px}
+/* Invite popover */
+.invite-wrap{position:relative}
+.invite-toggle{width:24px;height:24px;border:none;background:none;color:var(--tapp-primary,#6366f1);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:background .15s}
+.invite-toggle:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.1)}
+.invite-popover{position:fixed;width:240px;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.1);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:200;overflow:hidden}
+.invite-pop-section{padding:8px}
+.invite-pop-label{font-size:10px;font-weight:600;color:var(--text-secondary,#888);text-transform:uppercase;letter-spacing:.04em;padding:4px 6px 6px}
+.invite-pop-list{max-height:180px;overflow-y:auto}
+.invite-pop-empty{padding:12px 6px;text-align:center;font-size:11px;color:var(--text-secondary,#999)}
+.invite-pop-contact{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border:none;background:none;border-radius:8px;cursor:pointer;transition:background .12s;text-align:left}
+.invite-pop-contact:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.06)}
+.invite-pop-contact-avatar{width:28px;height:28px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;overflow:hidden}
+.invite-pop-contact-avatar img{width:100%;height:100%;object-fit:cover}
+.invite-pop-contact-info{min-width:0;flex:1}
+.invite-pop-contact-name{font-size:12px;font-weight:500;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.invite-pop-contact-url{font-size:10px;color:var(--text-secondary,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.invite-pop-contact-added{font-size:10px;color:var(--tapp-primary,#6366f1);flex-shrink:0}
+.invite-pop-divider{height:1px;background:rgba(128,128,128,.08);margin:0 8px}
+.invite-pop-manual{display:flex;gap:6px;padding:0 2px}
+.invite-pop-send{width:28px;height:28px;border:none;border-radius:8px;background:var(--tapp-primary,#6366f1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s}
+.invite-pop-send:hover{opacity:.85}
+.invite-pop-send:disabled{opacity:.4;cursor:not-allowed}
+.dark .invite-popover{background:var(--bg-primary,#1a1a1a);border-color:rgba(255,255,255,.08);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.dark .invite-pop-contact-name{color:rgba(255,255,255,.9)}
+.invite-bar{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0}
+.invite-input{flex:1;padding:5px 8px;border:1px solid rgba(128,128,128,.15);border-radius:6px;background:rgba(128,128,128,.04);color:var(--text-primary,#fff);font-size:12px;outline:none}
+.invite-input:focus{border-color:rgba(var(--tapp-primary-rgb,100,100,255),.5)}
+.invite-btn{padding:5px 10px;border:none;border-radius:6px;background:var(--tapp-primary,#6366f1);color:#fff;font-size:12px;cursor:pointer;white-space:nowrap}
+.invite-btn:hover{opacity:.85}
+.invite-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ===== Conversation Items ===== */
+.conv-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;background:none;cursor:pointer;text-align:left;transition:background .15s}
+.conv-item:hover{background:rgba(var(--tapp-primary-rgb,128,128,128),.06)}
+.conv-active{background:rgba(var(--tapp-primary-rgb,128,128,128),.1)!important}
+.conv-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden}
+.conv-avatar img{width:100%;height:100%;object-fit:cover}
+.avatar-channel{background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
+.avatar-room{background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
+.conv-info{min-width:0;flex:1}
+.conv-name{font-size:13px;font-weight:500;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-subtitle{font-size:11px;color:var(--text-secondary,#999);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--tapp-primary,#888);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.conv-closed{font-size:10px;color:var(--text-secondary,#999);background:rgba(128,128,128,.08);padding:2px 6px;border-radius:6px;flex-shrink:0}
+.conv-pending{font-size:10px;color:#f59e0b;background:rgba(245,158,11,.1);padding:2px 6px;border-radius:6px;flex-shrink:0}
+.conv-empty{padding:40px 16px;text-align:center;font-size:13px;color:var(--text-secondary,#999)}
+
+/* ===== Empty State ===== */
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary,#999)}
+.empty-icon{width:56px;height:56px;border-radius:14px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:12px}
+.empty-text{font-size:13px;font-weight:400;color:var(--text-secondary,#999)}
+
+/* ===== Chat Container ===== */
+.chat-container{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.chat-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0}
+.back-btn{display:none;background:none;border:none;font-size:16px;padding:4px 8px;border-radius:8px;cursor:pointer;color:var(--text-secondary,#888)}
+.chat-hdr-avatar{width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
+.chat-hdr-avatar img{width:100%;height:100%;object-fit:cover}
+.chat-header-info{min-width:0;flex:1}
+.chat-name{font-size:14px;font-weight:600;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-meta{display:flex;gap:6px;align-items:center;margin-top:2px;flex-wrap:wrap}
+.meta-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(var(--tapp-primary-rgb,128,128,128),.08);color:var(--tapp-primary,#888)}
+.badge-channel{}
+.badge-room{}
+.badge-role{}
+.badge-closed{background:rgba(128,128,128,.08);color:var(--text-secondary,#999)}
+.badge-pending{background:rgba(245,158,11,.1);color:#f59e0b}
+.chat-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.member-toggle-btn{width:28px;height:28px;border-radius:8px;border:none;background:rgba(128,128,128,.06);color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.member-toggle-btn:hover{background:rgba(128,128,128,.12)}
+.action-btn{font-size:11px;padding:4px 10px;border-radius:10px;border:none;cursor:pointer;transition:background .15s}
+.action-accept{color:#fff;background:#22c55e}
+.action-accept:hover{background:#16a34a}
+.manage-wrap{position:relative}
+.manage-btn{width:28px;height:28px;border-radius:8px;border:none;background:rgba(128,128,128,.06);color:var(--text-secondary,#999);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;line-height:1}
+.manage-btn:hover{background:rgba(128,128,128,.12)}
+.manage-dropdown{display:none;position:absolute;right:0;top:calc(100% + 4px);min-width:120px;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.1);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;padding:4px;overflow:hidden}
+.manage-dropdown.open{display:block}
+.manage-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:none;background:none;border-radius:7px;font-size:12px;color:var(--text-primary,#333);cursor:pointer;transition:background .12s;text-align:left}
+.manage-item:hover{background:rgba(128,128,128,.08)}
+.manage-item-danger{color:#ef4444}
+.manage-item-danger:hover{background:rgba(239,68,68,.06)}
+.dark .manage-dropdown{background:var(--bg-primary,#1a1a1a);border-color:rgba(255,255,255,.08);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+
+/* ===== Pinned Bar ===== */
+.pinned-bar{display:flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(var(--tapp-primary-rgb,99,102,241),.06);border-bottom:1px solid rgba(var(--tapp-primary-rgb,99,102,241),.1);cursor:pointer;flex-shrink:0;min-height:0;overflow:hidden;transition:background .15s}
+.pinned-bar:hover{background:rgba(var(--tapp-primary-rgb,99,102,241),.1)}
+.pinned-bar-icon{width:14px;height:14px;flex-shrink:0;color:var(--tapp-primary,#6366f1);display:flex;align-items:center;justify-content:center}
+.pinned-bar-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pinned-bar-label{font-size:10px;font-weight:600;color:var(--tapp-primary,#6366f1);text-transform:uppercase;letter-spacing:.3px}
+.pinned-bar-text{font-size:12px;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pinned-bar-close{width:20px;height:20px;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:4px;flex-shrink:0;font-size:14px;line-height:1}
+.pinned-bar-close:hover{background:rgba(128,128,128,.1)}
+
+/* ===== Messages ===== */
+.messages-area{flex:1;overflow-y:auto;padding:16px;padding-bottom:72px;display:flex;flex-direction:column;gap:4px}
+.messages-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary,#999)}
+.messages-empty-icon{width:48px;height:48px;border-radius:14px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px}
+.msg-row{display:flex;gap:8px;align-items:flex-end}
+.msg-local{justify-content:flex-end;padding-left:48px}
+.msg-remote{justify-content:flex-start;padding-right:48px}
+.msg-avatar{width:28px;height:28px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.12);color:var(--tapp-primary,#888);margin-bottom:2px}
+.msg-avatar img{width:100%;height:100%;object-fit:cover}
+.msg-avatar-spacer{width:28px;flex-shrink:0}
+.msg-bubble{max-width:85%;padding:8px 12px;border-radius:16px;font-size:13px;line-height:1.5}
+.bubble-local{background:var(--tapp-primary,#888);color:#fff;border-bottom-right-radius:6px}
+.bubble-remote{background:rgba(128,128,128,.07);color:var(--text-primary,#1a1a1a);border-bottom-left-radius:6px}
+.msg-sender{font-size:11px;font-weight:500;color:var(--tapp-primary,#888);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-text{white-space:pre-wrap;overflow-wrap:break-word}
+.msg-footer{display:flex;align-items:center;gap:4px;margin-top:4px}
+.msg-local .msg-footer{justify-content:flex-end}
+.msg-remote .msg-footer{justify-content:flex-start}
+.msg-pin{font-size:10px}
+.msg-time{font-size:10px;opacity:.45}
+
+/* ===== Input ===== */
+.input-float-wrap{position:absolute;bottom:0;left:0;right:0;z-index:20;padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,var(--bg-primary,#fff) 70%,transparent);pointer-events:none}
+.input-float-wrap>*{pointer-events:auto}
+.input-bar{display:flex;align-items:flex-end;gap:8px;padding:8px 10px;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.12);border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.attach-btn{width:32px;height:32px;border-radius:50%;border:none;background:rgba(128,128,128,.06);color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;margin-bottom:2px}
+.attach-btn:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)}
+.attach-btn.attach-btn-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.12);color:var(--tapp-primary,#6366f1);transform:rotate(45deg)}
+.msg-input{flex:1;min-height:20px;padding:6px 0;border:none;background:transparent;color:var(--text-primary,#1a1a1a);font-size:13px;line-height:1.45;outline:none;resize:none;overflow-y:hidden;font-family:inherit}
+.msg-input::placeholder{color:var(--text-secondary,#bbb)}
+.send-btn{width:32px;height:32px;border-radius:50%;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;margin-bottom:2px}
+.send-btn:hover{color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,100,100,255),.08)}
+.send-btn:active{transform:translateY(-1px);color:var(--tapp-primary,#6366f1)}
+.send-btn:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.dark .input-float-wrap{background:linear-gradient(to top,var(--bg-primary,#1a1a1a) 70%,transparent)}
+.dark .input-bar{background:var(--bg-primary,#1a1a1a);border-color:rgba(255,255,255,.1);box-shadow:0 2px 12px rgba(0,0,0,.2)}
+
+/* ===== Attachment Menu ===== */
+.attach-menu{position:absolute;bottom:calc(100% + 6px);left:0;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.1);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.1);z-index:60;padding:6px;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;min-width:240px}
+.attach-menu-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:none;background:none;border-radius:10px;cursor:pointer;transition:background .12s;color:var(--text-primary,#1a1a1a);font-size:10px;font-weight:500;white-space:nowrap}
+.attach-menu-item:hover{background:rgba(128,128,128,.06)}
+.attach-menu-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.attach-icon-image{background:rgba(59,130,246,.1);color:#3b82f6}
+.attach-icon-file{background:rgba(245,158,11,.1);color:#f59e0b}
+.attach-icon-tapp{background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)}
+.attach-icon-brew{background:rgba(34,197,94,.1);color:#22c55e}
+.attach-icon-library{background:rgba(168,85,247,.1);color:#a855f7}
+.attach-icon-report{background:rgba(239,68,68,.1);color:#ef4444}
+.dark .attach-menu{background:var(--bg-primary,#1a1a1a);border-color:rgba(255,255,255,.08);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.dark .attach-menu-item{color:rgba(255,255,255,.9)}
+
+/* ===== Attachment Preview ===== */
+.attach-preview{padding:8px 10px;display:flex;align-items:center;gap:10px;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.1);border-bottom:none;border-radius:14px 14px 0 0;margin-bottom:-1px}
+.attach-preview-thumb{width:48px;height:48px;border-radius:8px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(128,128,128,.06)}
+.attach-preview-thumb img{width:100%;height:100%;object-fit:cover}
+.attach-preview-icon{width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.attach-preview-info{flex:1;min-width:0}
+.attach-preview-name{font-size:12px;font-weight:500;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attach-preview-meta{font-size:10px;color:var(--text-secondary,#999);margin-top:2px}
+.attach-preview-remove{width:24px;height:24px;border-radius:50%;border:none;background:rgba(128,128,128,.08);color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .12s;font-size:14px;line-height:1}
+.attach-preview-remove:hover{background:rgba(239,68,68,.1);color:#ef4444}
+
+/* ===== Content Picker Overlay ===== */
+.picker-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.35);animation:pickerFadeIn .18s ease}
+@keyframes pickerFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pickerSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.picker-sheet{width:100%;max-width:480px;max-height:70vh;background:var(--bg-primary,#fff);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:pickerSlideUp .2s ease}
+.picker-header{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0}
+.picker-header-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.picker-header-title{flex:1;font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a)}
+.picker-close-btn{width:28px;height:28px;border-radius:50%;border:none;background:rgba(128,128,128,.08);color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:background .12s}
+.picker-close-btn:hover{background:rgba(128,128,128,.15)}
+.picker-search{padding:8px 16px;flex-shrink:0}
+.picker-search input{width:100%;padding:8px 12px;border:1px solid rgba(128,128,128,.12);border-radius:10px;background:rgba(128,128,128,.04);font-size:13px;color:var(--text-primary,#1a1a1a);outline:none;box-sizing:border-box}
+.picker-search input:focus{border-color:var(--tapp-primary,#6366f1);background:transparent}
+.picker-body{flex:1;overflow-y:auto;padding:4px 8px 8px}
+.picker-loading,.picker-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;color:var(--text-secondary,#999);font-size:13px;gap:8px}
+.picker-loading-spinner{width:24px;height:24px;border:2px solid rgba(128,128,128,.15);border-top-color:var(--tapp-primary,#6366f1);border-radius:50%;animation:pickerSpin .7s linear infinite}
+@keyframes pickerSpin{to{transform:rotate(360deg)}}
+.picker-item{display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:10px;cursor:pointer;transition:background .12s;border:none;background:none;width:100%;text-align:left;color:var(--text-primary,#1a1a1a);font-family:inherit}
+.picker-item:hover{background:rgba(128,128,128,.06)}
+.picker-item-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:rgba(128,128,128,.06)}
+.picker-item-body{flex:1;min-width:0}
+.picker-item-name{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-item-meta{font-size:11px;color:var(--text-secondary,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.picker-item-check{width:20px;height:20px;border-radius:50%;border:1.5px solid rgba(128,128,128,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s;font-size:12px;color:transparent}
+.picker-item.selected .picker-item-check{border-color:var(--tapp-primary,#6366f1);background:var(--tapp-primary,#6366f1);color:#fff}
+.picker-form{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.picker-form label{font-size:12px;font-weight:500;color:var(--text-secondary,#999);display:flex;flex-direction:column;gap:4px}
+.picker-form input,.picker-form textarea{width:100%;padding:8px 12px;border:1px solid rgba(128,128,128,.12);border-radius:10px;background:rgba(128,128,128,.04);font-size:13px;color:var(--text-primary,#1a1a1a);outline:none;font-family:inherit;box-sizing:border-box}
+.picker-form input:focus,.picker-form textarea:focus{border-color:var(--tapp-primary,#6366f1);background:transparent}
+.picker-form textarea{min-height:60px;resize:vertical}
+.picker-footer{display:flex;gap:8px;padding:10px 16px;border-top:1px solid rgba(128,128,128,.08);flex-shrink:0}
+.picker-footer-btn{flex:1;padding:10px;border:none;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;transition:all .12s;font-family:inherit}
+.picker-btn-cancel{background:rgba(128,128,128,.08);color:var(--text-primary,#1a1a1a)}
+.picker-btn-cancel:hover{background:rgba(128,128,128,.14)}
+.picker-btn-confirm{background:var(--tapp-primary,#6366f1);color:#fff}
+.picker-btn-confirm:hover{filter:brightness(1.1)}
+.picker-btn-confirm:disabled{opacity:.4;cursor:not-allowed;filter:none}
+.picker-tabs{display:flex;gap:4px;padding:4px 14px 6px;flex-shrink:0;overflow-x:auto}
+.picker-tab{padding:5px 12px;border:none;border-radius:8px;background:rgba(128,128,128,.06);color:var(--text-secondary,#999);font-size:12px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap;font-family:inherit}
+.picker-tab.active{background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)}
+.dark .picker-sheet{background:var(--bg-primary,#1a1a1a)}
+.dark .picker-header{border-color:rgba(255,255,255,.06)}
+.dark .picker-footer{border-color:rgba(255,255,255,.06)}
+.dark .picker-item{color:rgba(255,255,255,.9)}
+.dark .picker-form input,.dark .picker-form textarea{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.dark .picker-search input{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.dark .picker-btn-cancel{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
+
+/* ===== Rich Message Bubbles ===== */
+
+/* -- Message Context Menu -- */
+.msg-ctx-menu{position:fixed;z-index:200;min-width:140px;background:var(--bg-primary,#fff);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:4px;animation:ctxFadeIn .12s ease}
+@keyframes ctxFadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.msg-ctx-item{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:none;background:none;border-radius:8px;font-size:13px;font-weight:500;color:var(--text-primary,#1a1a1a);cursor:pointer;transition:background .12s;font-family:inherit}
+.msg-ctx-item:hover{background:rgba(128,128,128,.08)}
+.msg-ctx-item:active{background:rgba(128,128,128,.14)}
+.msg-ctx-item svg{flex-shrink:0;opacity:.6}
+.dark .msg-ctx-menu{background:var(--bg-primary,#1a1a1a);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.dark .msg-ctx-item{color:rgba(255,255,255,.9)}
+
+/* -- Quote Block inside message bubble -- */
+.msg-quote-block{display:flex;gap:0;margin-bottom:6px;border-radius:8px;overflow:hidden;background:rgba(128,128,128,.08);padding:6px 8px}
+.msg-quote-bar{width:3px;border-radius:2px;background:var(--tapp-primary,#6366f1);flex-shrink:0;margin-right:8px}
+.msg-quote-content{min-width:0;flex:1}
+.msg-quote-sender{font-size:11px;font-weight:600;opacity:.7;margin-bottom:1px}
+.msg-quote-text{font-size:12px;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.bubble-local .msg-quote-block{background:rgba(255,255,255,.15)}
+.bubble-local .msg-quote-bar{background:rgba(255,255,255,.6)}
+
+/* -- Quote Preview above input bar -- */
+.quote-preview{display:flex;align-items:center;gap:0;padding:8px 12px;background:rgba(128,128,128,.04);border-bottom:1px solid rgba(128,128,128,.08);border-radius:12px 12px 0 0}
+.quote-preview-bar{width:3px;height:100%;min-height:28px;border-radius:2px;background:var(--tapp-primary,#6366f1);flex-shrink:0;margin-right:10px}
+.quote-preview-body{flex:1;min-width:0}
+.quote-preview-sender{font-size:11px;font-weight:600;color:var(--tapp-primary,#6366f1)}
+.quote-preview-text{font-size:12px;color:var(--text-secondary,#888);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quote-preview-close{background:none;border:none;font-size:18px;color:var(--text-secondary,#999);cursor:pointer;padding:2px 6px;border-radius:6px;flex-shrink:0;line-height:1}
+.quote-preview-close:hover{background:rgba(128,128,128,.1)}
+
+/* -- Forward Overlay -- */
+.forward-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:200;animation:ctxFadeIn .15s ease}
+.forward-sheet{background:var(--bg-primary,#fff);border-radius:16px;width:min(340px,90vw);max-height:60vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.15)}
+.forward-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(128,128,128,.08)}
+.forward-title{font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a)}
+.forward-close{background:none;border:none;font-size:18px;color:var(--text-secondary,#999);cursor:pointer;padding:2px 6px;border-radius:6px}
+.forward-close:hover{background:rgba(128,128,128,.1)}
+.forward-list{overflow-y:auto;padding:6px}
+.forward-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:none;border-radius:10px;font-size:13px;font-weight:500;color:var(--text-primary,#1a1a1a);cursor:pointer;transition:background .12s;font-family:inherit}
+.forward-item:hover{background:rgba(128,128,128,.06)}
+.forward-item:active{background:rgba(128,128,128,.12)}
+.forward-item-avatar{width:32px;height:32px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.dark .forward-sheet{background:var(--bg-primary,#1a1a1a)}
+.dark .forward-header{border-color:rgba(255,255,255,.06)}
+.dark .forward-title{color:rgba(255,255,255,.9)}
+.dark .forward-item{color:rgba(255,255,255,.9)}
+
+.msg-image{max-width:260px;max-height:200px;border-radius:10px;cursor:pointer;display:block}
+.msg-file-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(128,128,128,.06);min-width:200px}
+.msg-file-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;background:rgba(128,128,128,.08)}
+.msg-file-info{flex:1;min-width:0}
+.msg-file-name{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-file-size{font-size:11px;opacity:.55;margin-top:1px}
+.msg-share-card{display:flex;gap:12px;padding:14px;border-radius:14px;background:rgba(128,128,128,.06);min-width:240px;max-width:320px;cursor:pointer;transition:background .15s}
+.msg-share-card:active{background:rgba(128,128,128,.12)}
+.msg-share-icon{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.msg-share-icon svg{width:24px;height:24px}
+.msg-share-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.msg-share-type{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;opacity:.5}
+.msg-share-title{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-share-desc{font-size:12px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.msg-share-meta{display:flex;align-items:center;gap:6px;margin-top:4px}
+.msg-share-ver{font-size:10px;padding:2px 6px;border-radius:5px;background:rgba(128,128,128,.1);font-weight:500;letter-spacing:.02em}
+.msg-share-status{font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px}
+.msg-share-status-pending{background:rgba(245,158,11,.15);color:#f59e0b}
+.msg-share-status-accepted{background:rgba(34,197,94,.15);color:#22c55e}
+.msg-share-status-rejected{background:rgba(239,68,68,.15);color:#ef4444}
+.msg-share-actions{display:flex;gap:8px;margin-top:8px}
+.msg-share-actions button{flex:1;padding:8px 0;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.msg-share-actions button:active{opacity:.7}
+.msg-share-btn-accept{background:var(--tapp-primary,#6366f1);color:#fff}
+.msg-share-btn-reject{background:rgba(128,128,128,.1);color:var(--text-secondary,#888)}
+.bubble-local .msg-file-card,.bubble-local .msg-share-card{background:rgba(255,255,255,.15)}
+.bubble-local .msg-file-icon,.bubble-local .msg-share-icon{background:rgba(255,255,255,.15)}
+.bubble-local .msg-share-ver{background:rgba(255,255,255,.2)}
+.bubble-remote .msg-share-icon{background:rgba(128,128,128,.08)}
+
+/* ===== Members ===== */
+.member-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;transition:background .15s}
+.member-item:hover{background:rgba(128,128,128,.05)}
+.member-avatar{width:24px;height:24px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.member-info{min-width:0;flex:1}
+.member-name{font-size:12px;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-role{font-size:10px;color:var(--text-secondary,#999)}
+.member-local{font-size:10px;color:var(--tapp-primary,#888);opacity:.7;flex-shrink:0}
+
+/* ===== Dark Mode ===== */
+.dark .aro-nav-item:hover{color:rgba(255,255,255,.9)}
+.dark .sidebar{border-color:rgba(255,255,255,.06)}
+.dark .sidebar-header{border-color:rgba(255,255,255,.06)}
+.dark .sidebar-title{color:rgba(255,255,255,.92)}
+.dark .conv-name{color:rgba(255,255,255,.9)}
+.dark .conv-subtitle{color:rgba(255,255,255,.45)}
+.dark .conv-empty{color:rgba(255,255,255,.45)}
+.dark .chat-header{border-color:rgba(255,255,255,.06)}
+.dark .chat-name{color:rgba(255,255,255,.92)}
+.dark .back-btn{color:rgba(255,255,255,.6)}
+.dark .member-panel{border-color:rgba(255,255,255,.06)}
+.dark .member-header{border-color:rgba(255,255,255,.06)}
+.dark .member-name{color:rgba(255,255,255,.9)}
+.dark .member-title{color:rgba(255,255,255,.45)}
+.dark .member-back-btn{color:rgba(255,255,255,.9)}
+.dark .member-toggle-btn{color:rgba(255,255,255,.6)}
+.dark .manage-btn{color:rgba(255,255,255,.6)}
+.dark .empty-icon{background:rgba(255,255,255,.06);color:rgba(255,255,255,.35)}
+.dark .empty-state{color:rgba(255,255,255,.5)}
+.dark .empty-text{color:rgba(255,255,255,.5)}
+.dark .bubble-remote{background:rgba(255,255,255,.07);color:rgba(255,255,255,.9)}
+.dark .msg-input{color:rgba(255,255,255,.9)}
+.dark .msg-time{opacity:.4}
+.dark .msg-sender{color:var(--tapp-primary,#818cf8)}
+.dark .messages-empty{color:rgba(255,255,255,.45)}
+.dark .messages-empty-icon{background:rgba(255,255,255,.06);color:rgba(255,255,255,.35)}
+.dark .pinned-bar{background:rgba(var(--tapp-primary-rgb,99,102,241),.1)}
+.dark .pinned-bar-text{color:rgba(255,255,255,.85)}
+.dark .manage-item{color:rgba(255,255,255,.9)}
+.dark .meta-badge{color:rgba(255,255,255,.6)}
+.dark .feed-handle{color:rgba(255,255,255,.45)}
+.dark .feed-sidebar-stat{color:rgba(255,255,255,.45)}
+.dark .feed-mobile-tab{color:rgba(255,255,255,.5)}
+.dark .feed-item{border-color:rgba(255,255,255,.04)}
+.dark .feed-item-handle{color:rgba(255,255,255,.45)}
+.dark .feed-item-time{color:rgba(255,255,255,.4)}
+.dark .feed-item-action{color:rgba(255,255,255,.45)}
+.dark .feed-empty{color:rgba(255,255,255,.45)}
+.dark .feed-follow-bar{border-color:rgba(255,255,255,.06)}
+.dark .attach-preview{background:var(--bg-primary,#1a1a1a);border-color:rgba(255,255,255,.1)}
+.dark .attach-preview-name{color:rgba(255,255,255,.9)}
+.dark .picker-header-title{color:rgba(255,255,255,.92)}
+.dark .picker-tab{background:rgba(255,255,255,.06);color:rgba(255,255,255,.5)}
+.dark .picker-form label{color:rgba(255,255,255,.5)}
+.dark .create-dialog-title{color:rgba(255,255,255,.92)}
+.dark .create-dialog-tabs{background:rgba(255,255,255,.04)}
+.dark .edit-label{color:rgba(255,255,255,.45)}
+.dark .quote-preview{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.06)}
+.dark .quote-preview-text{color:rgba(255,255,255,.5)}
+.dark .invite-bar{border-color:rgba(255,255,255,.06)}
+.dark .invite-input{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.dark .panel-detail-header{border-color:rgba(255,255,255,.06)}
+.dark .ring-hdr-icon{background:rgba(var(--tapp-primary-rgb,128,128,128),.15);color:var(--tapp-primary,#818cf8)}
+.dark .ring-action-sync{background:rgba(var(--tapp-primary-rgb,100,100,255),.15)}
+.dark .ring-sync-bar{border-color:rgba(255,255,255,.04)}
+.dark .ring-sync-bar.ring-sync-ok{background:rgba(34,197,94,.08)}
+.dark .ring-sync-bar.ring-sync-err{background:rgba(239,68,68,.08)}
+.dark .conv-avatar{color:var(--tapp-primary,#818cf8)}
+.dark .member-avatar{color:var(--tapp-primary,#818cf8)}
+.dark .msg-file-card{background:rgba(255,255,255,.08)}
+.dark .msg-file-icon{background:rgba(255,255,255,.1)}
+.dark .msg-share-card{background:rgba(255,255,255,.08)}
+
+/* ===== Responsive ===== */
+@media(max-width:768px){
+  .aro-nav{order:99;border-bottom:none;border-top:1px solid rgba(128,128,128,.08);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));justify-content:space-around}
+  .aro-nav-item{flex-direction:column;gap:3px;padding:8px 12px;font-size:11px}
+  .aro-nav-item svg{width:22px;height:22px}
+  .nav-feed-avatar{width:24px;height:24px;font-size:11px}
+  .sidebar{width:100%}
+  .sidebar-hidden-mobile{display:none!important}
+  .back-btn{display:block}
+  .member-panel{display:none;position:fixed;inset:0;width:100%!important;z-index:80;background:var(--bg-primary,#fff);border-left:none}
+  .dark .member-panel{background:var(--bg-primary,#1a1a1a)}
+  .member-panel.member-open-mobile{display:flex!important}
+  .member-back-btn{display:flex}
+  .aro-panel-layout .sidebar{width:100%}
+  .aro-panel-layout .sidebar-hidden-mobile{display:none!important}
+  .aro-panel-layout .panel-main{display:none}
+  .aro-panel-layout .panel-main-show-mobile{display:flex!important}
+}
+@media(min-width:769px) and (max-width:1024px){
+  .member-panel{width:0;border-left:none;overflow:hidden}
+  .member-panel.member-expanded-tablet{width:180px;border-left:1px solid rgba(128,128,128,.08);overflow:hidden}
+  .feed-sidebar{width:68px}
+  .feed-nav-item span{display:none}
+  .feed-nav-item{justify-content:center;padding:10px}
+  .feed-sidebar-footer-info{display:none}
+  .feed-sidebar-stats{display:none}
+}
+
+/* ===== Create Dialog ===== */
+.create-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100}
+.create-dialog{background:var(--bg-primary,#fff);border-radius:16px;width:min(360px,90vw);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.15)}
+.create-dialog-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.create-dialog-title{margin:0;font-size:16px;font-weight:600;color:var(--text-primary,#1a1a1a)}
+.create-dialog-close{background:none;border:none;font-size:16px;color:var(--text-secondary,#999);cursor:pointer;padding:4px;border-radius:6px}
+.create-dialog-close:hover{background:rgba(128,128,128,.08)}
+.create-dialog-tabs{display:flex;gap:4px;margin-bottom:16px;background:rgba(128,128,128,.06);border-radius:10px;padding:3px}
+.create-tab{flex:1;padding:6px 12px;border:none;background:none;border-radius:8px;font-size:12px;font-weight:500;color:var(--text-secondary,#999);cursor:pointer;transition:all .15s}
+.create-tab-active{background:var(--bg-primary,#fff);color:var(--text-primary,#1a1a1a);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.create-form{display:flex;flex-direction:column;gap:10px}
+.create-input{height:40px;padding:0 14px;border-radius:12px;border:1px solid rgba(128,128,128,.15);background:rgba(128,128,128,.03);color:var(--text-primary,#1a1a1a);font-size:13px;outline:none;transition:border-color .2s}
+.create-input:focus{border-color:rgba(var(--tapp-primary-rgb,128,128,128),.4)}
+.create-input::placeholder{color:var(--text-secondary,#bbb)}
+.create-submit{height:40px;border-radius:12px;border:none;background:var(--tapp-primary,#888);color:#fff;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s}
+.create-submit:hover{opacity:.85}
+.create-submit:disabled{opacity:.4;cursor:not-allowed}
+.dark .create-dialog{background:var(--bg-primary,#1a1a1a)}
+.dark .create-tab-active{background:rgba(255,255,255,.08);color:rgba(255,255,255,.92)}
+.dark .create-input{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.edit-label{font-size:11px;font-weight:600;color:var(--text-secondary,#888);text-transform:uppercase;letter-spacing:.04em}
+.member-kick{margin-left:auto;width:20px;height:20px;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s}
+.member-item:hover .member-kick{opacity:1}
+.member-kick:hover{background:rgba(239,68,68,.1);color:#ef4444}
+
+`
+
+// ==================== i18n Data ====================
+const ARO_I18N: Record<string, Record<string, string>> = {
+  zh: {
+    title: "信使", noConv: "暂无会话", selectHint: "选择一个会话开始聊天", send: "发送", typing: "输入消息...", members: "成员", 
+    invite: "邀请...", close: "关闭", leave: "离开", dm: "私信", emptyChatHint: "发送第一条消息开始聊天", emptyRoomHint: "发送第一条消息开始群聊", 
+    local: "本地", closed: "已关闭", connected: "已连接", disconnected: "未连接", sendFail: "发送失败", create: "新建", 
+    newChannel: "新建私信", newRoom: "新建群聊", channelPlaceholder: "user@instance.social", roomPlaceholder: "房间名称", 
+    createChannel: "创建通道", createRoom: "创建房间", creating: "创建中...", createFail: "创建失败", pending: "待接受", accept: "接受", 
+    acceptFail: "接受失败", inviteBtn: "邀请", invitePlaceholder: "user@instance.social", inviting: "邀请中...", 
+    inviteFail: "邀请失败", inviteSuccess: "已邀请", inviteFromContacts: "从联系人中选择", inviteManual: "手动邀请", 
+    noContacts: "暂无可邀请的联系人", invited: "已邀请", manage: "管理", editRoom: "编辑房间", roomName: "房间名称", roomDesc: "房间描述", 
+    save: "保存", saving: "保存中...", saveFail: "保存失败", kick: "移除", kickFail: "移除失败", dissolve: "解散群组", 
+    dissolveConfirm: "确定要解散此群组吗？此操作不可撤销。", dissolveFail: "解散失败", navMessages: "信使", navFeed: "动态", navRings: "环网", 
+    feedTimeline: "动态", feedFollowing: "关注", feedFollowers: "粉丝", feedPublished: "已发布", emptyTimeline: "暂无动态", 
+    emptyFollowing: "暂无关注", emptyFollowers: "暂无粉丝", emptyPublished: "暂无发布内容", activityType: "活动类型", 
+    unfollowBtn: "取消关注", removeBtn: "取消发布", followPlaceholder: "user@instance.social", followBtn: "关注", 
+    followFail: "关注失败", unfollowFail: "取消关注失败", unpublishFail: "取消发布失败", emptyRings: "暂无环网", selectRing: "选择一个环网查看详情", 
+    createRingTitle: "创建环网", ringNamePlaceholder: "环网名称", createRingBtn: "创建", createRingFail: "创建失败", 
+    leaveRingFail: "退出失败", peers: "节点", addPeerPlaceholder: "https://instance.social", addPeerBtn: "添加", 
+    addPeerFail: "添加失败", removePeerFail: "移除失败", syncBtn: "同步", syncing: "同步中...", syncSuccess: "同步完成", 
+    syncFail: "同步失败", leaveRingConfirm: "确定退出此环网？", ringType: "类型", ringPeersTitle: "节点", emptyPeers: "暂无节点", 
+    leaveBtn: "退出环网", refresh: "刷新", attachImage: "图片", attachFile: "文件", attachTapp: "Tapp", attachBrew: "Brew", 
+    attachLibrary: "资料库", attachReport: "报告", attachTappPrompt: "输入 Tapp ID 或名称", attachBrewPrompt: "输入 Brew 文章标题", 
+    attachLibraryPrompt: "输入资料库名称", attachReportPrompt: "输入报告标题", fileTooLarge: "文件过大（最大 10MB）", 
+    attachSending: "发送中...", pickerTitle: "标题", pickerDesc: "描述（可选）", pickerConfirm: "确认", pickerCancel: "取消", 
+    pickerLoading: "加载中...", pickerEmpty: "暂无数据", pickerSearchPlaceholder: "搜索...", pickerSelectPlatform: "选择平台", 
+    selectTapp: "选择 Tapp", selectBrew: "选择 Brew 文章", selectLibrary: "选择资料", selectReport: "选择报告", installedAt: "安装时间", 
+    openOriginal: "查看原文", tappInstalled: "已安装", tappNotInstalled: "未安装", tappUpdateAvail: "有更新可用", installBtn: "安装", 
+    updatingBtn: "更新", installingBtn: "安装中...", installSuccess: "✓ 安装成功", installFailed: "安装失败，点击重试", localVer: "本地版本", 
+    remoteVer: "分享版本", openTappBtn: "打开 Tapp", alreadyLatest: "已是最新版本", tappSharePending: "等待对方接受", 
+    tappShareAccepted: "已接受", tappShareRejected: "已拒绝", acceptTapp: "接受", rejectTapp: "拒绝", tappReceived: "收到 Tapp 分享", 
+    acceptConfirmTitle: "安装此 Tapp？", acceptConfirmDesc: "对方向你分享了一个 Tapp 应用", pinnedMsg: "置顶消息", msgPin: "置顶", 
+    msgUnpin: "取消置顶", msgQuote: "引用", msgForward: "转发", forwardTo: "转发到...", forwardSuccess: "已转发", quoteLabel: "引用", 
+    pinFail: "置顶失败",
+  },
+  en: {
+    title: "Messenger", noConv: "No conversations", selectHint: "Select a conversation to start chatting", 
+    send: "Send", typing: "Type a message...", members: "Members", invite: "Invite...", close: "Close", leave: "Leave", 
+    dm: "DM", emptyChatHint: "Send the first message", emptyRoomHint: "Send the first message to start group chat", 
+    local: "Local", closed: "Closed", connected: "Connected", disconnected: "Disconnected", sendFail: "Send failed", 
+    create: "New", newChannel: "New DM", newRoom: "New Room", channelPlaceholder: "user@instance.social", 
+    roomPlaceholder: "Room name", createChannel: "Create Channel", createRoom: "Create Room", creating: "Creating...", 
+    createFail: "Create failed", pending: "Pending", accept: "Accept", acceptFail: "Accept failed", 
+    inviteBtn: "Invite", invitePlaceholder: "user@instance.social", inviting: "Inviting...", 
+    inviteFail: "Invite failed", inviteSuccess: "Invited", inviteFromContacts: "From contacts", 
+    inviteManual: "Manual invite", noContacts: "No contacts to invite", invited: "Invited", manage: "Manage", 
+    editRoom: "Edit Room", roomName: "Room name", roomDesc: "Description", save: "Save", saving: "Saving...", 
+    saveFail: "Save failed", kick: "Remove", kickFail: "Remove failed", dissolve: "Dissolve Group", 
+    dissolveConfirm: "Are you sure you want to dissolve this group? This cannot be undone.", 
+    dissolveFail: "Dissolve failed", navMessages: "Messages", navFeed: "Feed", navRings: "Rings", feedTimeline: "Feed", 
+    feedFollowing: "Following", feedFollowers: "Followers", feedPublished: "Published", emptyTimeline: "No activity", 
+    emptyFollowing: "Not following anyone", emptyFollowers: "No followers", emptyPublished: "No published content", 
+    activityType: "Activity", unfollowBtn: "Unfollow", removeBtn: "Unpublish", 
+    followPlaceholder: "user@instance.social", followBtn: "Follow", followFail: "Follow failed", 
+    unfollowFail: "Unfollow failed", unpublishFail: "Unpublish failed", emptyRings: "No rings", 
+    selectRing: "Select a ring to view details", createRingTitle: "Create Ring", ringNamePlaceholder: "Ring name", 
+    createRingBtn: "Create", createRingFail: "Create failed", leaveRingFail: "Leave failed", peers: "peers", 
+    addPeerPlaceholder: "https://instance.social", addPeerBtn: "Add", addPeerFail: "Add failed", 
+    removePeerFail: "Remove failed", syncBtn: "Sync", syncing: "Syncing...", syncSuccess: "Sync complete", 
+    syncFail: "Sync failed", leaveRingConfirm: "Leave this ring?", ringType: "Type", ringPeersTitle: "Peers", 
+    emptyPeers: "No peers", leaveBtn: "Leave Ring", refresh: "Refresh", attachImage: "Image", attachFile: "File", 
+    attachTapp: "Tapp", attachBrew: "Brew", attachLibrary: "Library", attachReport: "Report", 
+    attachTappPrompt: "Enter Tapp ID or name", attachBrewPrompt: "Enter Brew article title", 
+    attachLibraryPrompt: "Enter library name", attachReportPrompt: "Enter report title", 
+    fileTooLarge: "File too large (max 10MB)", attachSending: "Sending...", pickerTitle: "Title", 
+    pickerDesc: "Description (optional)", pickerConfirm: "Confirm", pickerCancel: "Cancel", 
+    pickerLoading: "Loading...", pickerEmpty: "No data", pickerSearchPlaceholder: "Search...", 
+    pickerSelectPlatform: "Select platform", selectTapp: "Select Tapp", selectBrew: "Select Brew article", 
+    selectLibrary: "Select from library", selectReport: "Select report", installedAt: "Installed", 
+    openOriginal: "Open original", tappInstalled: "Installed", tappNotInstalled: "Not installed", 
+    tappUpdateAvail: "Update available", installBtn: "Install", updatingBtn: "Update", installingBtn: "Installing...", 
+    installSuccess: "✓ Installed", installFailed: "Install failed, tap to retry", localVer: "Local", 
+    remoteVer: "Shared", openTappBtn: "Open Tapp", alreadyLatest: "Already up to date", 
+    tappSharePending: "Waiting for acceptance", tappShareAccepted: "Accepted", tappShareRejected: "Declined", 
+    acceptTapp: "Accept", rejectTapp: "Decline", tappReceived: "Tapp shared", acceptConfirmTitle: "Install this Tapp?", 
+    acceptConfirmDesc: "Someone shared a Tapp app with you", pinnedMsg: "Pinned", msgPin: "Pin", msgUnpin: "Unpin", 
+    msgQuote: "Quote", msgForward: "Forward", forwardTo: "Forward to...", forwardSuccess: "Forwarded", 
+    quoteLabel: "Quote", pinFail: "Pin failed",
+  },
+  ja: {
+    title: "メッセンジャー", noConv: "会話なし", selectHint: "会話を選んでチャットを始めましょう", send: "送信", typing: "メッセージを入力...", 
+    members: "メンバー", invite: "招待...", close: "閉じる", leave: "退出", dm: "DM", emptyChatHint: "最初のメッセージを送信してください", 
+    emptyRoomHint: "最初のメッセージを送信してグループチャットを始めましょう", local: "ローカル", closed: "クローズ", connected: "接続済み", 
+    disconnected: "切断", sendFail: "送信失敗", create: "新規", newChannel: "新規DM", newRoom: "新規ルーム", 
+    channelPlaceholder: "user@instance.social", roomPlaceholder: "ルーム名", createChannel: "チャンネル作成", createRoom: "ルーム作成", 
+    creating: "作成中...", createFail: "作成失敗", pending: "保留中", accept: "承認", acceptFail: "承認失敗", inviteBtn: "招待", 
+    invitePlaceholder: "user@instance.social", inviting: "招待中...", inviteFail: "招待失敗", inviteSuccess: "招待済み", 
+    inviteFromContacts: "連絡先から選択", inviteManual: "手動招待", noContacts: "招待可能な連絡先なし", invited: "招待済み", manage: "管理", 
+    editRoom: "ルーム編集", roomName: "ルーム名", roomDesc: "説明", save: "保存", saving: "保存中...", saveFail: "保存失敗", kick: "除外", 
+    kickFail: "除外失敗", dissolve: "グループ解散", dissolveConfirm: "このグループを解散しますか？この操作は元に戻せません。", dissolveFail: "解散失敗", 
+    navMessages: "メッセージ", navFeed: "フィード", navRings: "リング", feedTimeline: "フィード", feedFollowing: "フォロー中", 
+    feedFollowers: "フォロワー", feedPublished: "公開済み", emptyTimeline: "アクティビティなし", emptyFollowing: "フォローなし", 
+    emptyFollowers: "フォロワーなし", emptyPublished: "公開コンテンツなし", activityType: "アクティビティ", unfollowBtn: "フォロー解除", 
+    removeBtn: "公開取消", followPlaceholder: "user@instance.social", followBtn: "フォロー", followFail: "フォロー失敗", 
+    unfollowFail: "フォロー解除失敗", unpublishFail: "公開取消失敗", emptyRings: "リングなし", selectRing: "リングを選択して詳細を表示", 
+    createRingTitle: "リング作成", ringNamePlaceholder: "リング名", createRingBtn: "作成", createRingFail: "作成失敗", 
+    leaveRingFail: "退出失敗", peers: "ピア", addPeerPlaceholder: "https://instance.social", addPeerBtn: "追加", 
+    addPeerFail: "追加失敗", removePeerFail: "削除失敗", syncBtn: "同期", syncing: "同期中...", syncSuccess: "同期完了", 
+    syncFail: "同期失敗", leaveRingConfirm: "このリングから退出しますか？", ringType: "タイプ", ringPeersTitle: "ピア", emptyPeers: "ピアなし", 
+    leaveBtn: "リング退出", refresh: "リフレッシュ", attachImage: "画像", attachFile: "ファイル", attachTapp: "Tapp", 
+    attachBrew: "Brew", attachLibrary: "ライブラリ", attachReport: "レポート", attachTappPrompt: "Tapp IDまたは名前を入力", 
+    attachBrewPrompt: "Brew記事タイトルを入力", attachLibraryPrompt: "ライブラリ名を入力", attachReportPrompt: "レポートタイトルを入力", 
+    fileTooLarge: "ファイルが大きすぎます（最大10MB）", attachSending: "送信中...", pickerTitle: "タイトル", pickerDesc: "説明（任意）", 
+    pickerConfirm: "確認", pickerCancel: "キャンセル", pickerLoading: "読み込み中...", pickerEmpty: "データなし", 
+    pickerSearchPlaceholder: "検索...", pickerSelectPlatform: "プラットフォーム選択", selectTapp: "Tappを選択", 
+    selectBrew: "Brew記事を選択", selectLibrary: "ライブラリから選択", selectReport: "レポートを選択", installedAt: "インストール日", 
+    openOriginal: "元記事を開く", tappInstalled: "インストール済み", tappNotInstalled: "未インストール", tappUpdateAvail: "更新あり", 
+    installBtn: "インストール", updatingBtn: "更新", installingBtn: "インストール中...", installSuccess: "✓ インストール完了", 
+    installFailed: "インストール失敗、タップで再試行", localVer: "ローカル", remoteVer: "共有", openTappBtn: "Tappを開く", 
+    alreadyLatest: "最新版です", tappSharePending: "承認待ち", tappShareAccepted: "承認済み", tappShareRejected: "拒否済み", 
+    acceptTapp: "承認", rejectTapp: "拒否", tappReceived: "Tappが共有されました", acceptConfirmTitle: "このTappをインストール？", 
+    acceptConfirmDesc: "Tappアプリが共有されました", pinnedMsg: "ピン留め", msgPin: "ピン留め", msgUnpin: "ピン解除", msgQuote: "引用", 
+    msgForward: "転送", forwardTo: "転送先...", forwardSuccess: "転送済み", quoteLabel: "引用", pinFail: "ピン留めに失敗",
+  },
+}
+
+// ==================== Page Modules ====================
+const PAGE_MOD_I18N = `\
+// i18n — loads from sandbox-injected window._TAPP_I18N
+var LANG = window._TAPP_I18N || {};
+var lang = LANG.zh || {};
+var currentLocale = 'zh';
+
+function setLocale(locale) {
+  currentLocale = locale || 'zh';
+  var key = currentLocale.startsWith('zh') ? 'zh' : currentLocale.startsWith('ja') ? 'ja' : 'en';
+  lang = LANG[key] || LANG.en || {};
+}
+`
+
+const PAGE_MOD_STATE = `\
+// ==================== State ====================
+var state = {
+  channels: [],
+  rooms: [],
+  activeKind: null,
+  activeId: null,
+  messages: [],
+  members: [],
+  channelDetail: null,
+  roomDetail: null,
+  sending: false,
+  pollTimer: null,
+  pollInterval: 15000,
+  localActorUrl: null,
+  // Attachment
+  pendingAttach: null, // { type: 'image'|'file'|'tapp'|'brew'|'library'|'report', data, name, size, mime }
+  // Aro views
+  currentView: 'feed',
+  // Feed (merged timeline + profile)
+  feedSubTab: 'timeline',
+  timeline: [],
+  following: [],
+  followers: [],
+  published: [],
+  // Rings
+  rings: [],
+  // Ring detail
+  activeRingId: null,
+  ringDetail: null,
+  ringPeers: [],
+  // Tapp accept/reject state map
+  tappAcceptMap: {},
+  // Quote reply
+  quoteMsg: null,
+};
+
+var $ = function (id) { return document.getElementById(id); };
+
+// SVG icon constants (replacing emoji for consistency)
+var SVG_ICONS = {
+  tapp: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>',
+  brew: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 010 8h-1"/><path d="M3 8h14v9a4 4 0 01-4 4H7a4 4 0 01-4-4V8z"/><path d="M6 2v3M10 2v3M14 2v3"/></svg>',
+  library: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>',
+  report: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>',
+  file: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
+  channel: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+  room: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>',
+  memo: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+  page: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>',
+  coffee: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><path d="M6 1v3M10 1v3M14 1v3"/></svg>',
+  puzzle: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 01-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 10-3.214 3.214c.446.166.855.497.925.968a.979.979 0 01-.276.837l-1.61 1.61a2.404 2.404 0 01-1.705.707 2.402 2.402 0 01-1.704-.706l-1.568-1.568a1.026 1.026 0 00-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 11-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 00-.289-.877l-1.568-1.568A2.41 2.41 0 011.998 12c0-.617.236-1.234.706-1.704L4.315 8.685a.98.98 0 01.837-.276c.47.07.802.48.968.925a2.501 2.501 0 103.214-3.214c-.446-.166-.855-.497-.925-.968a.979.979 0 01.276-.837l1.61-1.61a2.404 2.404 0 011.705-.707c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 113.237 3.237c-.464.18-.894.527-.967 1.02z"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
+  ring: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M0 15L24 9"/></svg>',
+  star: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" stroke="currentColor" stroke-width="1"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>',
+  antenna: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1l2.8-2.8M7 4l3.5 3.5M16.5 20l-3.5-3.5M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg>',
+};
+`
+
+const PAGE_MOD_HELPERS = `\
+// ==================== Helpers ====================
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function timeStr(iso) { try { return new Date(iso).toLocaleTimeString(currentLocale, { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function autoResizeInput(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+function getPayloadText(payload) {
+  if (typeof payload === 'object' && payload && payload.text) return String(payload.text);
+  return JSON.stringify(payload);
+}
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function isLocalActor(actor) {
+  if (!actor) return false;
+  if (state.localActorUrl) return actor === state.localActorUrl;
+  if (state.activeKind === 'channel' && state.channelDetail && state.channelDetail.remote_actor_url) {
+    return actor !== state.channelDetail.remote_actor_url;
+  }
+  if (state.activeKind === 'room' && state.members.length > 0) {
+    for (var i = 0; i < state.members.length; i++) {
+      if (state.members[i].actor_url === actor) return !!state.members[i].is_local;
+    }
+  }
+  return actor.indexOf('myriad.local') !== -1;
+}
+
+function applyLabels() {
+  var el;
+  el = $('nav-messages-label'); if (el) el.textContent = lang.navMessages;
+  el = $('nav-rings-label'); if (el) el.textContent = lang.navRings;
+  el = document.querySelector('.sidebar-title'); if (el) el.textContent = lang.title;
+  el = document.querySelector('.empty-text'); if (el) el.textContent = lang.selectHint;
+  el = $('msg-input'); if (el) el.placeholder = lang.typing;
+  el = $('feed-nav-timeline'); if (el) el.textContent = lang.feedTimeline;
+  el = $('feed-nav-following'); if (el) el.textContent = lang.feedFollowing;
+  el = $('feed-nav-followers'); if (el) el.textContent = lang.feedFollowers;
+  el = $('feed-nav-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-tab-timeline'); if (el) el.textContent = lang.feedTimeline;
+  el = $('feed-tab-following'); if (el) el.textContent = lang.feedFollowing;
+  el = $('feed-tab-followers'); if (el) el.textContent = lang.feedFollowers;
+  el = $('feed-tab-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-lbl-following'); if (el) el.textContent = lang.feedFollowing;
+  el = $('feed-lbl-followers'); if (el) el.textContent = lang.feedFollowers;
+  el = $('feed-lbl-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-follow-input'); if (el) el.placeholder = lang.followPlaceholder;
+  el = $('feed-follow-btn'); if (el) el.textContent = lang.followBtn;
+  el = $('ring-sidebar-title'); if (el) el.textContent = lang.navRings;
+  el = $('ring-select-hint'); if (el) el.textContent = lang.selectRing;
+  el = $('ring-create-title'); if (el) el.textContent = lang.createRingTitle;
+  el = $('ring-name-input'); if (el) el.placeholder = lang.ringNamePlaceholder;
+  el = $('create-ring-btn'); if (el) el.textContent = lang.createRingBtn;
+}
+
+function applyDialogLabels() {
+  var el;
+  el = $('create-channel-input'); if (el) el.placeholder = lang.channelPlaceholder;
+  el = $('create-room-input'); if (el) el.placeholder = lang.roomPlaceholder;
+  el = $('create-channel-btn'); if (el) el.textContent = lang.createChannel;
+  el = $('create-room-btn'); if (el) el.textContent = lang.createRoom;
+  el = $('create-tab-channel'); if (el) el.textContent = lang.newChannel;
+  el = $('create-tab-room'); if (el) el.textContent = lang.newRoom;
+  el = $('invite-input'); if (el) el.placeholder = lang.invitePlaceholder;
+  el = $('invite-pop-contacts-label'); if (el) el.textContent = lang.inviteFromContacts;
+  el = $('invite-pop-manual-label'); if (el) el.textContent = lang.inviteManual;
+  el = $('edit-room-title'); if (el) el.textContent = lang.editRoom;
+  el = $('edit-name-label'); if (el) el.textContent = lang.roomName;
+  el = $('edit-desc-label'); if (el) el.textContent = lang.roomDesc;
+  el = $('edit-room-save'); if (el) el.textContent = lang.save;
+}
+`
+
+const PAGE_MOD_ATTACHMENTS = `\
+// ==================== Attachment Menu ====================
+var _attachMenu = null;
+var MAX_ATTACH_SIZE = 10 * 1024 * 1024; // 10MB
+
+function toggleAttachMenu() {
+  if (_attachMenu) { closeAttachMenu(); return; }
+  var wrap = $('input-bar');
+  if (!wrap) return;
+  wrap.style.position = 'relative';
+  var btn = $('attach-btn');
+  if (btn) btn.classList.add('attach-btn-active');
+
+  var menu = document.createElement('div');
+  menu.className = 'attach-menu';
+  menu.innerHTML =
+    '<button class="attach-menu-item" data-attach="image"><div class="attach-menu-icon attach-icon-image"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>' + esc(lang.attachImage) + '</button>'
+    + '<button class="attach-menu-item" data-attach="file"><div class="attach-menu-icon attach-icon-file"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>' + esc(lang.attachFile) + '</button>'
+    + '<button class="attach-menu-item" data-attach="tapp"><div class="attach-menu-icon attach-icon-tapp"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>' + esc(lang.attachTapp) + '</button>'
+    + '<button class="attach-menu-item" data-attach="brew"><div class="attach-menu-icon attach-icon-brew"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><path d="M6 1v3M10 1v3M14 1v3"/></svg></div>' + esc(lang.attachBrew) + '</button>'
+    + '<button class="attach-menu-item" data-attach="library"><div class="attach-menu-icon attach-icon-library"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></div>' + esc(lang.attachLibrary) + '</button>'
+    + '<button class="attach-menu-item" data-attach="report"><div class="attach-menu-icon attach-icon-report"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></div>' + esc(lang.attachReport) + '</button>';
+
+  menu.addEventListener('click', function (e) {
+    var item = e.target.closest('[data-attach]');
+    if (!item) return;
+    var type = item.dataset.attach;
+    closeAttachMenu();
+    if (type === 'image') { var inp = $('attach-image-input'); if (inp) inp.click(); }
+    else if (type === 'file') { var inp2 = $('attach-file-input'); if (inp2) inp2.click(); }
+    else pickFedContent(type);
+  });
+
+  wrap.appendChild(menu);
+  _attachMenu = menu;
+
+  // Close on outside click
+  setTimeout(function () {
+    document.addEventListener('click', _attachOutsideClick);
+  }, 0);
+}
+
+function _attachOutsideClick(e) {
+  if (_attachMenu && !_attachMenu.contains(e.target) && e.target.id !== 'attach-btn' && !e.target.closest('#attach-btn')) {
+    closeAttachMenu();
+  }
+}
+
+function closeAttachMenu() {
+  if (_attachMenu) { _attachMenu.remove(); _attachMenu = null; }
+  var btn = $('attach-btn');
+  if (btn) btn.classList.remove('attach-btn-active');
+  document.removeEventListener('click', _attachOutsideClick);
+}
+
+function handleFileSelect(file, forceType) {
+  if (!file) return;
+  if (file.size > MAX_ATTACH_SIZE) {
+    try { Tapp.ui.showNotification({ title: lang.fileTooLarge, type: 'error' }); } catch (e) { /* ignore */ }
+    return;
+  }
+  var type = forceType || (file.type.startsWith('image/') ? 'image' : 'file');
+  var reader = new FileReader();
+  reader.onload = function () {
+    setPendingAttach({ type: type, data: reader.result, name: file.name, size: file.size, mime: file.type });
+  };
+  reader.readAsDataURL(file);
+}
+
+function pickFedContent(type) {
+  var icons = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
+  var titles = { tapp: lang.selectTapp, brew: lang.selectBrew, library: lang.selectLibrary, report: lang.selectReport };
+  var iconColors = { tapp: 'attach-icon-tapp', brew: 'attach-icon-brew', library: 'attach-icon-library', report: 'attach-icon-report' };
+
+  if (type === 'tapp') { openTappPicker(icons, titles, iconColors); return; }
+  if (type === 'brew') { openBrewPicker(icons, titles, iconColors); return; }
+  if (type === 'library') { openLibraryPicker(icons, titles, iconColors); return; }
+  if (type === 'report') { openReportPicker(icons, titles, iconColors); return; }
+}
+
+/* ----- Shared overlay helpers ----- */
+function createPickerOverlay(type, icons, titles, iconColors) {
+  var overlay = document.createElement('div');
+  overlay.className = 'picker-overlay';
+  overlay.innerHTML =
+    '<div class="picker-sheet">'
+    + '<div class="picker-header">'
+    + '<div class="picker-header-icon ' + esc(iconColors[type]) + '">' + icons[type] + '</div>'
+    + '<div class="picker-header-title">' + esc(titles[type]) + '</div>'
+    + '<button class="picker-close-btn">&times;</button>'
+    + '</div>'
+    + '<div class="picker-search"><input placeholder="' + esc(lang.pickerSearchPlaceholder) + '" /></div>'
+    + '<div class="picker-body"></div>'
+    + '<div class="picker-footer">'
+    + '<button class="picker-footer-btn picker-btn-cancel">' + esc(lang.pickerCancel) + '</button>'
+    + '<button class="picker-footer-btn picker-btn-confirm" disabled>' + esc(lang.pickerConfirm) + '</button>'
+    + '</div>'
+    + '</div>';
+  overlay.querySelector('.picker-close-btn').addEventListener('click', function () { overlay.remove(); });
+  overlay.querySelector('.picker-btn-cancel').addEventListener('click', function () { overlay.remove(); });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function showPickerLoading(body) {
+  body.innerHTML = '<div class="picker-loading"><div class="picker-loading-spinner"></div>' + esc(lang.pickerLoading) + '</div>';
+}
+function showPickerEmpty(body) {
+  body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>';
+}
+
+function bindPickerSearch(overlay, allItems, renderFn, filterFn) {
+  var searchInput = overlay.querySelector('.picker-search input');
+  if (!searchInput) return;
+  searchInput.addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    if (!q) { renderFn(allItems); return; }
+    renderFn(allItems.filter(function (item) { return filterFn(item, q); }));
+  });
+}
+
+function bindPickerItems(body, items, confirmBtn, onSelect) {
+  body.querySelectorAll('.picker-item').forEach(function (el) {
+    el.addEventListener('click', function () {
+      body.querySelectorAll('.picker-item').forEach(function (e) { e.classList.remove('selected'); });
+      el.classList.add('selected');
+      onSelect(items[parseInt(el.dataset.idx)]);
+      confirmBtn.disabled = false;
+    });
+  });
+}
+
+/* ----- Tapp picker (real list from SDK) ----- */
+function openTappPicker(icons, titles, iconColors) {
+  var type = 'tapp';
+  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var body = overlay.querySelector('.picker-body');
+  var confirmBtn = overlay.querySelector('.picker-btn-confirm');
+  var selectedTapp = null;
+  var allTapps = [];
+
+  showPickerLoading(body);
+
+  Tapp.tappList.list().then(function (tapps) {
+    allTapps = tapps || [];
+    renderTappItems(allTapps);
+  }).catch(function () { showPickerEmpty(body); });
+
+  function renderTappItems(items) {
+    if (!items.length) { showPickerEmpty(body); return; }
+    body.innerHTML = items.map(function (t, i) {
+      var meta = t.version || '';
+      if (t.status) meta += (meta ? ' · ' : '') + t.status;
+      return '<button class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon" style="background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)">'
+        + (t.iconSvg ? t.iconSvg : (t.icon ? '<img src="' + esc(t.icon) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : SVG_ICONS.tapp))
+        + '</div>'
+        + '<div class="picker-item-body"><div class="picker-item-name">' + esc(t.name) + '</div>'
+        + '<div class="picker-item-meta">' + esc(t.id + (meta ? ' · ' + meta : '')) + '</div>'
+        + (t.description ? '<div class="picker-item-meta">' + esc(t.description) + '</div>' : '')
+        + '</div><div class="picker-item-check">✓</div></button>';
+    }).join('');
+    bindPickerItems(body, items, confirmBtn, function (t) { selectedTapp = t; });
+  }
+
+  bindPickerSearch(overlay, allTapps, renderTappItems, function (t, q) {
+    return (t.name || '').toLowerCase().indexOf(q) !== -1
+      || (t.id || '').toLowerCase().indexOf(q) !== -1
+      || (t.description || '').toLowerCase().indexOf(q) !== -1;
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    if (!selectedTapp) return;
+    setPendingAttach({ type: type, name: selectedTapp.name, desc: selectedTapp.description || selectedTapp.id, icon: icons[type], label: 'Tapp', tappId: selectedTapp.id, tappVersion: selectedTapp.version || '', tappIcon: selectedTapp.iconSvg || selectedTapp.icon || '' });
+    overlay.remove();
+  });
+}
+
+/* ----- Brew picker (real list from SDK) ----- */
+function openBrewPicker(icons, titles, iconColors) {
+  var type = 'brew';
+  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var body = overlay.querySelector('.picker-body');
+  var confirmBtn = overlay.querySelector('.picker-btn-confirm');
+  var selectedBrew = null;
+  var allBrews = [];
+
+  showPickerLoading(body);
+
+  Tapp.brewList.list({ limit: 50 }).then(function (res) {
+    allBrews = (res && res.items) || [];
+    renderBrewItems(allBrews);
+  }).catch(function () { showPickerEmpty(body); });
+
+  function renderBrewItems(items) {
+    if (!items.length) { showPickerEmpty(body); return; }
+    body.innerHTML = items.map(function (b, i) {
+      var meta = b.source_name || '';
+      if (b.author) meta += (meta ? ' · ' : '') + b.author;
+      if (b.published_at) meta += (meta ? ' · ' : '') + new Date(b.published_at).toLocaleDateString();
+      return '<button class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon" style="background:rgba(34,197,94,.1);color:#22c55e">'
+        + (b.image ? '<img src="' + esc(b.image) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : (b.source_icon ? '<img src="' + esc(b.source_icon) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : SVG_ICONS.brew))
+        + '</div>'
+        + '<div class="picker-item-body"><div class="picker-item-name">' + esc(b.title) + '</div>'
+        + (meta ? '<div class="picker-item-meta">' + esc(meta) + '</div>' : '')
+        + (b.summary ? '<div class="picker-item-meta" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal">' + esc(b.summary) + '</div>' : '')
+        + '</div><div class="picker-item-check">✓</div></button>';
+    }).join('');
+    bindPickerItems(body, items, confirmBtn, function (b) { selectedBrew = b; });
+  }
+
+  bindPickerSearch(overlay, allBrews, renderBrewItems, function (b, q) {
+    return (b.title || '').toLowerCase().indexOf(q) !== -1
+      || (b.author || '').toLowerCase().indexOf(q) !== -1
+      || (b.source_name || '').toLowerCase().indexOf(q) !== -1
+      || (b.summary || '').toLowerCase().indexOf(q) !== -1;
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    if (!selectedBrew) return;
+    var desc = selectedBrew.source_name || '';
+    if (selectedBrew.author) desc += (desc ? ' · ' : '') + selectedBrew.author;
+    setPendingAttach({ type: type, name: selectedBrew.title, desc: desc, icon: icons[type], label: 'Brew', brewId: selectedBrew.id, brewLink: selectedBrew.link });
+    overlay.remove();
+  });
+}
+
+/* ----- Library picker (platform data) ----- */
+function openLibraryPicker(icons, titles, iconColors) {
+  var type = 'library';
+  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var sheet = overlay.querySelector('.picker-sheet');
+  var body = overlay.querySelector('.picker-body');
+  var confirmBtn = overlay.querySelector('.picker-btn-confirm');
+  var selectedItem = null;
+
+  showPickerLoading(body);
+
+  // Insert platform tabs before search
+  var searchDiv = overlay.querySelector('.picker-search');
+  var tabsDiv = document.createElement('div');
+  tabsDiv.className = 'picker-tabs';
+  sheet.insertBefore(tabsDiv, searchDiv);
+
+  var allItems = [];
+  var activePlatform = null;
+
+  Tapp.platform.listEnabled().then(function (platforms) {
+    if (!platforms || !platforms.length) { showPickerEmpty(body); return; }
+    tabsDiv.innerHTML = platforms.map(function (p) {
+      return '<button class="picker-tab" data-pid="' + esc(p.id) + '">' + (p.icon ? '<span style="margin-right:3px">' + esc(p.icon) + '</span>' : '') + esc(p.name) + '</button>';
+    }).join('');
+    selectPlatform(platforms[0].id);
+    tabsDiv.addEventListener('click', function (e) {
+      var tab = e.target.closest('.picker-tab');
+      if (!tab) return;
+      selectPlatform(tab.dataset.pid);
+    });
+  }).catch(function () { showPickerEmpty(body); });
+
+  function selectPlatform(pid) {
+    activePlatform = pid;
+    allItems = [];
+    selectedItem = null;
+    confirmBtn.disabled = true;
+    tabsDiv.querySelectorAll('.picker-tab').forEach(function (t) {
+      t.classList.toggle('active', t.dataset.pid === pid);
+    });
+    showPickerLoading(body);
+    Tapp.platform.getData(pid, { limit: 50 }).then(function (res) {
+      allItems = (res && res.items) || [];
+      renderLibraryItems(allItems);
+    }).catch(function () { showPickerEmpty(body); });
+  }
+
+  function renderLibraryItems(items) {
+    if (!items.length) { showPickerEmpty(body); return; }
+    body.innerHTML = items.map(function (item, i) {
+      var name = item.title || item.name || item.id || ('Item ' + (i + 1));
+      var meta = item.platform || item.type || '';
+      if (item.score !== undefined && item.score !== null) meta += (meta ? ' · ' : '') + '★ ' + item.score;
+      if (item.year) meta += (meta ? ' · ' : '') + item.year;
+      return '<button class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon" style="background:rgba(168,85,247,.1);color:#a855f7">' + (item.image ? '<img src="' + esc(item.image) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : SVG_ICONS.library) + '</div>'
+        + '<div class="picker-item-body"><div class="picker-item-name">' + esc(name) + '</div>'
+        + (meta ? '<div class="picker-item-meta">' + esc(meta) + '</div>' : '')
+        + '</div><div class="picker-item-check">✓</div></button>';
+    }).join('');
+    bindPickerItems(body, items, confirmBtn, function (item) { selectedItem = item; });
+  }
+
+  bindPickerSearch(overlay, allItems, renderLibraryItems, function (item, q) {
+    return ((item.title || item.name || item.id || '').toLowerCase()).indexOf(q) !== -1;
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    if (!selectedItem) return;
+    var name = selectedItem.title || selectedItem.name || selectedItem.id || 'Unknown';
+    var desc = activePlatform || '';
+    if (selectedItem.score !== undefined) desc += (desc ? ' · ' : '') + '★ ' + selectedItem.score;
+    setPendingAttach({ type: type, name: name, desc: desc, icon: icons[type], label: lang.attachLibrary, platformId: activePlatform, itemId: selectedItem.id });
+    overlay.remove();
+  });
+}
+
+/* ----- Report picker ----- */
+function openReportPicker(icons, titles, iconColors) {
+  var type = 'report';
+  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var body = overlay.querySelector('.picker-body');
+  var confirmBtn = overlay.querySelector('.picker-btn-confirm');
+  var selectedReport = null;
+  var allReports = [];
+
+  showPickerLoading(body);
+
+  Tapp.report.listReports().then(function (res) {
+    allReports = (res && res.reports) || [];
+    renderReportItems(allReports);
+  }).catch(function () { showPickerEmpty(body); });
+
+  function renderReportItems(reports) {
+    if (!reports.length) { showPickerEmpty(body); return; }
+    body.innerHTML = reports.map(function (r, i) {
+      var name = r.summary || r.type || ('Report ' + (i + 1));
+      var meta = '';
+      if (r.platform) meta += r.platform;
+      if (r.type) meta += (meta ? ' · ' : '') + r.type;
+      if (r.createdAt) meta += (meta ? ' · ' : '') + new Date(r.createdAt).toLocaleDateString();
+      return '<button class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon" style="background:rgba(239,68,68,.1);color:#ef4444">' + SVG_ICONS.report + '</div>'
+        + '<div class="picker-item-body"><div class="picker-item-name">' + esc(name) + '</div>'
+        + (meta ? '<div class="picker-item-meta">' + esc(meta) + '</div>' : '')
+        + '</div><div class="picker-item-check">✓</div></button>';
+    }).join('');
+    bindPickerItems(body, reports, confirmBtn, function (r) { selectedReport = r; });
+  }
+
+  bindPickerSearch(overlay, allReports, renderReportItems, function (r, q) {
+    return ((r.summary || '') + ' ' + (r.type || '') + ' ' + (r.platform || '')).toLowerCase().indexOf(q) !== -1;
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    if (!selectedReport) return;
+    var name = selectedReport.summary || selectedReport.type || 'Report';
+    var desc = '';
+    if (selectedReport.platform) desc = selectedReport.platform;
+    if (selectedReport.createdAt) desc += (desc ? ' · ' : '') + new Date(selectedReport.createdAt).toLocaleDateString();
+    setPendingAttach({ type: type, name: name, desc: desc, icon: icons[type], label: lang.attachReport, reportId: selectedReport.id });
+    overlay.remove();
+  });
+}
+
+function setPendingAttach(attach) {
+  state.pendingAttach = attach;
+  renderAttachPreview();
+}
+
+function clearPendingAttach() {
+  state.pendingAttach = null;
+  var preview = $('attach-preview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  // Reset file inputs
+  var fi = $('attach-file-input'); if (fi) fi.value = '';
+  var ii = $('attach-image-input'); if (ii) ii.value = '';
+}
+
+function renderAttachPreview() {
+  var preview = $('attach-preview');
+  if (!preview || !state.pendingAttach) return;
+  var a = state.pendingAttach;
+  var html = '';
+  if (a.type === 'image' && a.data) {
+    html += '<div class="attach-preview-thumb"><img src="' + esc(a.data) + '" alt="" /></div>';
+  } else if (a.type === 'file') {
+    html += '<div class="attach-preview-icon attach-icon-file" style="background:rgba(245,158,11,.1)">' + SVG_ICONS.file + '</div>';
+  } else {
+    var iconBg = { tapp: 'rgba(var(--tapp-primary-rgb,100,100,255),.1)', brew: 'rgba(34,197,94,.1)', library: 'rgba(168,85,247,.1)', report: 'rgba(239,68,68,.1)' };
+    html += '<div class="attach-preview-icon" style="background:' + (iconBg[a.type] || 'rgba(128,128,128,.06)') + '">' + (a.icon || SVG_ICONS.file) + '</div>';
+  }
+  html += '<div class="attach-preview-info">'
+    + '<div class="attach-preview-name">' + esc(a.name || '') + '</div>'
+    + '<div class="attach-preview-meta">' + (a.size ? formatFileSize(a.size) : (a.label || a.type)) + '</div>'
+    + '</div>'
+    + '<button class="attach-preview-remove" id="attach-remove">&times;</button>';
+  preview.innerHTML = html;
+  preview.style.display = 'flex';
+  var removeBtn = $('attach-remove');
+  if (removeBtn) removeBtn.addEventListener('click', clearPendingAttach);
+}
+`
+
+const PAGE_MOD_CHAT = `\
+// ==================== Render: Conversation List ====================
+function renderConvList() {
+  var list = $('conv-list');
+  if (!list) return;
+
+  var items = [];
+  state.channels.forEach(function (ch) {
+    items.push({
+      kind: 'channel', id: ch.channel_id,
+      name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?',
+      avatar: ch.remote_actor_avatar || '',
+      subtitle: ch.channel_type || lang.dm,
+      unread: ch.unread_count || 0,
+      status: ch.status,
+      initiatedBy: ch.initiated_by,
+      sortTime: ch.last_activity_at || ch.created_at || '',
+    });
+  });
+  state.rooms.forEach(function (rm) {
+    items.push({
+      kind: 'room', id: rm.room_id,
+      name: rm.name || '?',
+      avatar: rm.avatar_url || '',
+      subtitle: (rm.member_count || 0) + ' ' + lang.members,
+      unread: rm.unread_count || 0,
+      sortTime: rm.last_message_at || rm.created_at || '',
+    });
+  });
+  items.sort(function (a, b) { return (b.sortTime || '').localeCompare(a.sortTime || ''); });
+
+  if (items.length === 0) {
+    list.innerHTML = '<div class="conv-empty">' + esc(lang.noConv) + '</div>';
+    return;
+  }
+
+  var html = '';
+  items.forEach(function (item) {
+    var isActive = item.id === state.activeId;
+    var avatarClass = item.kind === 'channel' ? 'avatar-channel' : 'avatar-room';
+    var initial = (item.name[0] || '?').toUpperCase();
+    var avatarContent = item.avatar
+      ? '<img src="' + esc(item.avatar) + '" alt="" />'
+      : esc(initial);
+    html += '<button class="conv-item' + (isActive ? ' conv-active' : '') + '" data-kind="' + item.kind + '" data-id="' + esc(item.id) + '">'
+      + '<div class="conv-avatar ' + avatarClass + '">' + avatarContent + '</div>'
+      + '<div class="conv-info">'
+      + '<div class="conv-name">' + esc(item.name) + '</div>'
+      + '<div class="conv-subtitle">' + esc(item.subtitle) + '</div>'
+      + '</div>';
+    if (item.unread > 0) {
+      html += '<span class="conv-badge">' + (item.unread > 9 ? '9+' : item.unread) + '</span>';
+    }
+    if (item.status === 'closed') {
+      html += '<span class="conv-closed">' + esc(lang.closed) + '</span>';
+    }
+    if (item.status === 'pending' && item.initiatedBy === 'remote') {
+      html += '<span class="conv-pending">' + esc(lang.pending) + '</span>';
+    }
+    html += '</button>';
+  });
+  list.innerHTML = html;
+
+  list.querySelectorAll('.conv-item').forEach(function (el) {
+    el.addEventListener('click', function () {
+      openConversation(el.dataset.kind, el.dataset.id);
+    });
+  });
+}
+
+// ==================== Render: Pinned Bar ====================
+state.pinnedBarDismissed = false;
+
+function renderPinnedBar() {
+  var bar = $('pinned-bar');
+  if (!bar) return;
+  if (state.pinnedBarDismissed) { bar.style.display = 'none'; return; }
+  var pinned = [];
+  for (var i = 0; i < state.messages.length; i++) {
+    if (state.messages[i].is_pinned) pinned.push(state.messages[i]);
+  }
+  if (pinned.length === 0) { bar.style.display = 'none'; return; }
+  var last = pinned[pinned.length - 1];
+  var text = getPayloadText(last.payload) || '';
+  if (!text && last.payload) {
+    text = last.payload.title || last.payload.filename || '';
+  }
+  bar.style.display = '';
+  bar.innerHTML = '<span class="pinned-bar-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></svg></span>'
+    + '<div class="pinned-bar-body">'
+    + '<span class="pinned-bar-label">' + esc(lang.pinnedMsg) + (pinned.length > 1 ? ' (' + pinned.length + ')' : '') + '</span>'
+    + '<span class="pinned-bar-text">' + esc(text) + '</span>'
+    + '</div>'
+    + '<button class="pinned-bar-close" id="pinned-bar-close">&times;</button>';
+  var closeBtn = $('pinned-bar-close');
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    state.pinnedBarDismissed = true;
+    bar.style.display = 'none';
+  });
+  bar.onclick = function () {
+    var msgEl = document.querySelector('[data-msg-id="' + last.message_id + '"]');
+    if (msgEl) msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+}
+
+// ==================== Message Context Menu ====================
+var _msgMenu = null;
+var _longPressTimer = null;
+
+function closeMsgMenu() {
+  if (_msgMenu) { _msgMenu.remove(); _msgMenu = null; }
+}
+
+function showMsgMenu(msgEl, x, y) {
+  closeMsgMenu();
+  var msgId = msgEl.dataset.msgId;
+  if (!msgId) return;
+  var msg = null;
+  for (var i = 0; i < state.messages.length; i++) {
+    if (state.messages[i].message_id === msgId) { msg = state.messages[i]; break; }
+  }
+  if (!msg) return;
+
+  var isPinned = !!msg.is_pinned;
+  var pinSvg = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></svg>';
+  var quoteSvg = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/></svg>';
+  var forwardSvg = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/><path d="M14 9l3 3-3 3"/><path d="M17 12H9"/></svg>';
+
+  var menu = document.createElement('div');
+  menu.className = 'msg-ctx-menu';
+  menu.innerHTML =
+    '<button class="msg-ctx-item" data-action="pin">' + pinSvg + '<span>' + (isPinned ? esc(lang.msgUnpin) : esc(lang.msgPin)) + '</span></button>'
+    + '<button class="msg-ctx-item" data-action="quote">' + quoteSvg + '<span>' + esc(lang.msgQuote) + '</span></button>'
+    + '<button class="msg-ctx-item" data-action="forward">' + forwardSvg + '<span>' + esc(lang.msgForward) + '</span></button>';
+
+  document.body.appendChild(menu);
+  var mw = menu.offsetWidth, mh = menu.offsetHeight;
+  var ww = window.innerWidth, wh = window.innerHeight;
+  var left = x + mw > ww ? ww - mw - 8 : x;
+  var top = y + mh > wh ? wh - mh - 8 : y;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  _msgMenu = menu;
+
+  menu.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.dataset.action;
+    closeMsgMenu();
+    if (action === 'pin') doTogglePin(msg);
+    else if (action === 'quote') doQuote(msg);
+    else if (action === 'forward') doForward(msg);
+  });
+}
+
+document.addEventListener('click', function () { closeMsgMenu(); });
+
+function bindMsgContextMenu(container) {
+  container.addEventListener('contextmenu', function (e) {
+    var row = e.target.closest('.msg-row');
+    if (!row) return;
+    e.preventDefault();
+    showMsgMenu(row, e.clientX, e.clientY);
+  });
+  container.addEventListener('touchstart', function (e) {
+    var row = e.target.closest('.msg-row');
+    if (!row) return;
+    if (e.target.closest('a, button, img')) return;
+    _longPressTimer = setTimeout(function () {
+      _longPressTimer = null;
+      var touch = e.touches[0];
+      if (touch) showMsgMenu(row, touch.clientX, touch.clientY);
+    }, 500);
+  }, { passive: true });
+  container.addEventListener('touchend', function () {
+    if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+  });
+  container.addEventListener('touchmove', function () {
+    if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+  });
+}
+
+async function doTogglePin(msg) {
+  var newPinned = !msg.is_pinned;
+  try {
+    if (state.activeKind === 'room') {
+      await Tapp.federation.pinRoomMessage(state.activeId, msg.message_id, newPinned);
+    }
+    msg.is_pinned = newPinned;
+    state.pinnedBarDismissed = false;
+    renderMessages();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.pinFail || 'Pin failed', type: 'error' }); } catch (e2) { /* ignore */ }
+  }
+}
+
+function doQuote(msg) {
+  var sender = (msg.sender_actor || '').split('/').pop() || '?';
+  var text = getPayloadText(msg.payload) || '';
+  if (!text && msg.payload) text = msg.payload.title || msg.payload.filename || '';
+  state.quoteMsg = { message_id: msg.message_id, sender: sender, text: text };
+  renderQuotePreview();
+  var input = $('msg-input');
+  if (input) input.focus();
+}
+
+function clearQuote() {
+  state.quoteMsg = null;
+  renderQuotePreview();
+}
+
+function renderQuotePreview() {
+  var wrap = $('quote-preview');
+  if (!wrap) return;
+  if (!state.quoteMsg) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'flex';
+  wrap.innerHTML =
+    '<div class="quote-preview-bar"></div>'
+    + '<div class="quote-preview-body">'
+    + '<div class="quote-preview-sender">' + esc(state.quoteMsg.sender) + '</div>'
+    + '<div class="quote-preview-text">' + esc(state.quoteMsg.text) + '</div>'
+    + '</div>'
+    + '<button class="quote-preview-close" id="quote-close">&times;</button>';
+  var closeBtn = $('quote-close');
+  if (closeBtn) closeBtn.addEventListener('click', clearQuote);
+}
+
+function doForward(msg) {
+  var items = [];
+  state.channels.forEach(function (ch) {
+    items.push({ kind: 'channel', id: ch.channel_id, name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?' });
+  });
+  state.rooms.forEach(function (rm) {
+    items.push({ kind: 'room', id: rm.room_id, name: rm.name || '?' });
+  });
+  items = items.filter(function (it) { return it.id !== state.activeId; });
+  if (items.length === 0) return;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'forward-overlay';
+  overlay.innerHTML =
+    '<div class="forward-sheet">'
+    + '<div class="forward-header">'
+    + '<div class="forward-title">' + esc(lang.forwardTo) + '</div>'
+    + '<button class="forward-close">&times;</button>'
+    + '</div>'
+    + '<div class="forward-list"></div>'
+    + '</div>';
+  var listEl = overlay.querySelector('.forward-list');
+  items.forEach(function (it) {
+    var initial = (it.name[0] || '?').toUpperCase();
+    var btn = document.createElement('button');
+    btn.className = 'forward-item';
+    btn.innerHTML = '<div class="forward-item-avatar">' + esc(initial) + '</div><span>' + esc(it.name) + '</span>';
+    btn.addEventListener('click', async function () {
+      overlay.remove();
+      var payload = msg.payload;
+      var msgType = msg.message_type || 'text';
+      try {
+        if (it.kind === 'channel') {
+          await Tapp.federation.sendMessage(it.id, { payload: payload, message_type: msgType });
+        } else {
+          await Tapp.federation.sendRoomMessage(it.id, { payload: payload, message_type: msgType });
+        }
+        try { Tapp.ui.showNotification({ title: lang.forwardSuccess, type: 'success' }); } catch (e2) {}
+      } catch (e) {
+        try { Tapp.ui.showNotification({ title: lang.sendFail, type: 'error' }); } catch (e2) {}
+      }
+    });
+    listEl.appendChild(btn);
+  });
+  overlay.querySelector('.forward-close').addEventListener('click', function () { overlay.remove(); });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ==================== Render: Messages ====================
+function renderMessages() {
+  var container = $('messages');
+  if (!container) return;
+  state.pinnedBarDismissed = false;
+
+  if (state.messages.length === 0) {
+    var hint = state.activeKind === 'channel' ? lang.emptyChatHint : lang.emptyRoomHint;
+    container.innerHTML = '<div class="messages-empty"><div class="messages-empty-icon">'
+      + (state.activeKind === 'channel' ? SVG_ICONS.channel : SVG_ICONS.room)
+      + '</div><p>' + esc(hint) + '</p></div>';
+    var pb = $('pinned-bar'); if (pb) pb.style.display = 'none';
+    return;
+  }
+
+  var html = '';
+  console.log('[Aro] renderMessages: count=' + state.messages.length + ', localActorUrl=' + state.localActorUrl + ', kind=' + state.activeKind + ', remoteActor=' + (state.channelDetail ? state.channelDetail.remote_actor_url : 'N/A'));
+  state.messages.forEach(function (msg, idx) {
+    var local = isLocalActor(msg.sender_actor);
+    if (idx === 0) console.log('[Aro] msg[0] sender=' + msg.sender_actor + ' local=' + local);
+    var sender = (msg.sender_actor || '').split('/').pop() || '?';
+    var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+    var msgType = msg.message_type || 'text';
+    // Auto-detect content type from payload when message_type is generic
+    if (msgType === 'text' || !msgType) {
+      if (payload.content_type && typeof payload.content_type === 'string') {
+        msgType = payload.content_type;
+      } else if (payload.tapp_id) {
+        msgType = 'tapp';
+      } else if (payload.brew_id || payload.brew_link) {
+        msgType = 'brew';
+      } else if (payload.report_id) {
+        msgType = 'report';
+      } else if (payload.data && payload.mime_type && payload.mime_type.indexOf('image/') === 0) {
+        msgType = 'image';
+      } else if (payload.data && payload.filename) {
+        msgType = 'file';
+      }
+    }
+    var text = getPayloadText(msg.payload);
+    var pinned = msg.is_pinned ? '<span class="msg-pin"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></svg></span>' : '';
+
+    // Resolve avatar and display name for remote messages
+    var avatarUrl = '';
+    var displayName = sender;
+    if (!local) {
+      if (state.activeKind === 'channel' && state.channelDetail) {
+        avatarUrl = state.channelDetail.remote_actor_avatar || '';
+        displayName = state.channelDetail.remote_actor_name || sender;
+      } else if (state.activeKind === 'room') {
+        var member = null;
+        for (var mi = 0; mi < state.members.length; mi++) {
+          if (state.members[mi].actor_url === msg.sender_actor) { member = state.members[mi]; break; }
+        }
+        if (member) displayName = member.display_name || sender;
+      }
+    }
+
+    // Check if previous message is from same sender (skip avatar to reduce clutter)
+    var prevMsg = idx > 0 ? state.messages[idx - 1] : null;
+    var sameSender = prevMsg && prevMsg.sender_actor === msg.sender_actor;
+
+    html += '<div class="msg-row ' + (local ? 'msg-local' : 'msg-remote') + '" data-msg-id="' + esc(msg.message_id || '') + '">';
+    if (!local) {
+      if (sameSender) {
+        html += '<div class="msg-avatar-spacer"></div>';
+      } else {
+        html += '<div class="msg-avatar">';
+        if (avatarUrl) {
+          html += '<img src="' + esc(avatarUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover" />';
+        } else {
+          html += esc((displayName[0] || '?').toUpperCase());
+        }
+        html += '</div>';
+      }
+    }
+    html += '<div class="msg-bubble ' + (local ? 'bubble-local' : 'bubble-remote') + '">';
+    if (!local && !sameSender) {
+      html += '<div class="msg-sender">' + esc(displayName) + '</div>';
+    }
+
+    // Render quoted message if present
+    if (payload.quote_sender || payload.quote_text) {
+      html += '<div class="msg-quote-block">'
+        + '<div class="msg-quote-bar"></div>'
+        + '<div class="msg-quote-content">'
+        + '<div class="msg-quote-sender">' + esc(payload.quote_sender || '') + '</div>'
+        + '<div class="msg-quote-text">' + esc(payload.quote_text || '') + '</div>'
+        + '</div></div>';
+    }
+
+    // Render content based on message type
+    if (msgType === 'image' && payload.data) {
+      html += '<img class="msg-image" src="' + esc(payload.data) + '" alt="' + esc(payload.filename || '') + '" />';
+      if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
+    } else if (msgType === 'file') {
+      var ext = (payload.filename || '').split('.').pop().toUpperCase();
+      html += '<div class="msg-file-card">'
+        + '<div class="msg-file-icon">' + SVG_ICONS.file + '</div>'
+        + '<div class="msg-file-info">'
+        + '<div class="msg-file-name">' + esc(payload.filename || 'file') + '</div>'
+        + '<div class="msg-file-size">' + (payload.size ? formatFileSize(payload.size) : ext) + '</div>'
+        + '</div></div>';
+      if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
+    } else if (msgType === 'tapp' || msgType === 'brew' || msgType === 'library' || msgType === 'report') {
+      var shareIcons = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
+      var shareBgs = { tapp: 'rgba(var(--tapp-primary-rgb,100,100,255),.15)', brew: 'rgba(34,197,94,.1)', library: 'rgba(168,85,247,.1)', report: 'rgba(239,68,68,.1)' };
+      var shareCardId = 'share-card-' + idx;
+      // Determine icon content: use tapp_icon SVG if available, else emoji
+      var iconContent = '';
+      if (msgType === 'tapp' && payload.tapp_icon) {
+        iconContent = payload.tapp_icon; // raw SVG string
+      } else {
+        iconContent = payload.icon || shareIcons[msgType] || SVG_ICONS.file;
+      }
+      // Determine tapp share acceptance status from storage
+      var tappAcceptStatus = '';
+      if (msgType === 'tapp' && payload.tapp_id) {
+        var stKey = 'tapp_accept_' + payload.tapp_id + '_' + idx;
+        tappAcceptStatus = (state.tappAcceptMap && state.tappAcceptMap[stKey]) || '';
+      }
+      html += '<div class="msg-share-card" id="' + shareCardId + '"'
+        + ' style="cursor:pointer" data-type="' + esc(msgType) + '"'
+        + (payload.tapp_id ? ' data-tapp-id="' + esc(payload.tapp_id) + '"' : '')
+        + (payload.tapp_version ? ' data-tapp-version="' + esc(payload.tapp_version) + '"' : '')
+        + (payload.tapp_name ? ' data-tapp-name="' + esc(payload.tapp_name) + '"' : '')
+        + (payload.brew_id ? ' data-brew-id="' + esc(String(payload.brew_id)) + '"' : '')
+        + (payload.brew_link ? ' data-brew-link="' + esc(payload.brew_link) + '"' : '')
+        + (payload.report_id ? ' data-report-id="' + esc(payload.report_id) + '"' : '')
+        + ' data-msg-idx="' + idx + '"'
+        + '>'
+        + '<div class="msg-share-icon" style="background:' + (shareBgs[msgType] || '') + '">' + iconContent + '</div>'
+        + '<div class="msg-share-body">'
+        + '<div class="msg-share-type">' + esc(msgType) + '</div>'
+        + '<div class="msg-share-title">' + esc(payload.title || '') + '</div>'
+        + (payload.description ? '<div class="msg-share-desc">' + esc(payload.description) + '</div>' : '');
+      // Version badge + status pill for tapp
+      if (msgType === 'tapp') {
+        html += '<div class="msg-share-meta">';
+        if (payload.tapp_version) html += '<span class="msg-share-ver">v' + esc(payload.tapp_version) + '</span>';
+        if (local) {
+          // Sender: show pending status
+          html += '<span class="msg-share-status msg-share-status-pending">' + esc(lang.tappSharePending) + '</span>';
+        } else if (tappAcceptStatus === 'accepted') {
+          html += '<span class="msg-share-status msg-share-status-accepted">' + esc(lang.tappShareAccepted) + '</span>';
+        } else if (tappAcceptStatus === 'rejected') {
+          html += '<span class="msg-share-status msg-share-status-rejected">' + esc(lang.tappShareRejected) + '</span>';
+        }
+        html += '</div>';
+        // Receiver: show accept/reject buttons if not yet decided
+        if (!local && !tappAcceptStatus) {
+          html += '<div class="msg-share-actions">'
+            + '<button class="msg-share-btn-accept" data-accept-idx="' + idx + '">' + esc(lang.acceptTapp) + '</button>'
+            + '<button class="msg-share-btn-reject" data-reject-idx="' + idx + '">' + esc(lang.rejectTapp) + '</button>'
+            + '</div>';
+        }
+      }
+      html += '</div></div>';
+      if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
+    } else {
+      html += '<div class="msg-text">' + esc(text) + '</div>';
+    }
+
+    html += '<div class="msg-footer">' + pinned + '<span class="msg-time">' + timeStr(msg.created_at) + '</span></div>'
+      + '</div></div>';
+  });
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+
+  // Bind tapp accept/reject buttons
+  container.querySelectorAll('.msg-share-btn-accept').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var msgIdx = btn.dataset.acceptIdx;
+      var card = btn.closest('.msg-share-card');
+      var tappId = card ? card.dataset.tappId : '';
+      if (!tappId) return;
+      var stKey = 'tapp_accept_' + tappId + '_' + msgIdx;
+      if (!state.tappAcceptMap) state.tappAcceptMap = {};
+      state.tappAcceptMap[stKey] = 'accepted';
+      Tapp.storage.set(stKey, 'accepted').catch(function () {});
+      // Open install detail immediately
+      openTappDetail(tappId, card);
+      renderMessages();
+    });
+  });
+  container.querySelectorAll('.msg-share-btn-reject').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var msgIdx = btn.dataset.rejectIdx;
+      var card = btn.closest('.msg-share-card');
+      var tappId = card ? card.dataset.tappId : '';
+      if (!tappId) return;
+      var stKey = 'tapp_accept_' + tappId + '_' + msgIdx;
+      if (!state.tappAcceptMap) state.tappAcceptMap = {};
+      state.tappAcceptMap[stKey] = 'rejected';
+      Tapp.storage.set(stKey, 'rejected').catch(function () {});
+      renderMessages();
+    });
+  });
+  // Bind share card click handlers — open detail views
+  container.querySelectorAll('.msg-share-card[data-type]').forEach(function (card) {
+    card.addEventListener('click', function (e) {
+      // Don't open detail if clicking on action buttons
+      if (e.target.closest('.msg-share-actions')) return;
+      var type = card.dataset.type;
+      if (type === 'tapp' && card.dataset.tappId) {
+        // Only open detail if accepted or if sender
+        var msgIdx = card.dataset.msgIdx;
+        var stKey = 'tapp_accept_' + card.dataset.tappId + '_' + msgIdx;
+        var status = state.tappAcceptMap && state.tappAcceptMap[stKey];
+        var isLocal = card.closest('.msg-local');
+        if (isLocal || status === 'accepted') {
+          openTappDetail(card.dataset.tappId, card);
+        }
+      } else if (type === 'brew' && card.dataset.brewId) {
+        openBrewDetail(parseInt(card.dataset.brewId), card.dataset.brewLink, card);
+      } else if (type === 'report' && card.dataset.reportId) {
+        openReportDetail(card.dataset.reportId, card);
+      }
+    });
+  });
+  renderPinnedBar();
+  bindMsgContextMenu(container);
+}
+
+/* ----- Shared detail overlay for received content ----- */
+function createDetailOverlay(title, iconHtml, bgColor) {
+  var overlay = document.createElement('div');
+  overlay.className = 'picker-overlay';
+  overlay.innerHTML =
+    '<div class="picker-sheet">'
+    + '<div class="picker-header">'
+    + '<div class="picker-header-icon" style="background:' + esc(bgColor) + '">' + iconHtml + '</div>'
+    + '<div class="picker-header-title">' + esc(title) + '</div>'
+    + '<button class="picker-close-btn">&times;</button>'
+    + '</div>'
+    + '<div class="picker-body"></div>'
+    + '</div>';
+  overlay.querySelector('.picker-close-btn').addEventListener('click', function () { overlay.remove(); });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function openTappDetail(tappId, card) {
+  // Extract sender-provided info from the share card / data attributes
+  var remoteName = (card.querySelector('.msg-share-title') || {}).textContent || card.dataset.tappName || tappId;
+  var remoteDesc = (card.querySelector('.msg-share-desc') || {}).textContent || '';
+  var remoteVersion = card.dataset.tappVersion || '';
+
+  var overlay = createDetailOverlay(remoteName, SVG_ICONS.tapp, 'rgba(var(--tapp-primary-rgb,100,100,255),.1)');
+  var body = overlay.querySelector('.picker-body');
+  showPickerLoading(body);
+
+  // Check local installation
+  Tapp.tappList.get(tappId).then(function (local) {
+    var installed = local && local.status && local.status !== 'uninstalled';
+    var localVer = installed ? (local.version || '') : '';
+    var needsUpdate = installed && remoteVersion && localVer && localVer !== remoteVersion;
+    renderTappDetailView(body, tappId, remoteName, remoteDesc, remoteVersion, installed, localVer, needsUpdate);
+  }).catch(function () {
+    // Can't determine local status — assume not installed
+    renderTappDetailView(body, tappId, remoteName, remoteDesc, remoteVersion, false, '', false);
+  });
+}
+
+function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, localVer, needsUpdate) {
+  var statusColor = installed ? (needsUpdate ? '#f59e0b' : '#22c55e') : '#ef4444';
+  var statusText = installed ? (needsUpdate ? lang.tappUpdateAvail : lang.tappInstalled) : lang.tappNotInstalled;
+  var statusIcon = installed ? (needsUpdate ? '⚠️' : '✅') : '❌';
+
+  var html = '<div style="padding:16px;display:flex;flex-direction:column;gap:14px">'
+    + '<div style="font-size:18px;font-weight:700">' + esc(name) + '</div>'
+    + '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(tappId) + '</div>'
+    + (desc ? '<div style="font-size:13px;line-height:1.6">' + esc(desc) + '</div>' : '')
+    // Version comparison
+    + '<div style="display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:10px;background:rgba(128,128,128,.06)">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
+    + '<span style="font-size:14px">' + statusIcon + '</span>'
+    + '<span style="font-size:13px;font-weight:600;color:' + statusColor + '">' + esc(statusText) + '</span>'
+    + '</div>';
+
+  if (remoteVer) {
+    html += '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(lang.remoteVer) + ': v' + esc(remoteVer) + '</div>';
+  }
+  if (localVer) {
+    html += '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(lang.localVer) + ': v' + esc(localVer) + '</div>';
+  }
+  html += '</div>';
+
+  // Action button
+  if (!installed) {
+    html += '<button class="tapp-action-btn" data-action="install" style="width:100%;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;background:var(--tapp-primary,#6366f1);color:#fff">' + esc(lang.installBtn) + '</button>';
+  } else if (needsUpdate) {
+    html += '<button class="tapp-action-btn" data-action="update" style="width:100%;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;background:#f59e0b;color:#fff">' + esc(lang.updatingBtn) + '</button>';
+  } else {
+    html += '<div style="text-align:center;font-size:12px;color:var(--text-secondary,#888)">' + esc(lang.alreadyLatest) + '</div>';
+  }
+
+  html += '</div>';
+  body.innerHTML = html;
+
+  // Bind install/update button
+  var actionBtn = body.querySelector('.tapp-action-btn');
+  if (actionBtn) {
+    actionBtn.addEventListener('click', function handleInstallClick() {
+      if (actionBtn.disabled) return;
+      actionBtn.disabled = true;
+      actionBtn.textContent = lang.installingBtn;
+      actionBtn.style.opacity = '0.7';
+
+      Tapp.tappList.install({ source: 'store', tappId: tappId }).then(function (result) {
+        actionBtn.textContent = lang.installSuccess;
+        actionBtn.style.background = '#22c55e';
+        actionBtn.style.opacity = '1';
+        actionBtn.removeEventListener('click', handleInstallClick);
+      }).catch(function () {
+        actionBtn.textContent = lang.installFailed;
+        actionBtn.style.background = '#ef4444';
+        actionBtn.style.opacity = '1';
+        actionBtn.disabled = false;
+      });
+    });
+  }
+}
+
+function openBrewDetail(brewId, brewLink, card) {
+  var overlay = createDetailOverlay(card.querySelector('.msg-share-title').textContent || 'Brew', SVG_ICONS.brew, 'rgba(34,197,94,.1)');
+  var body = overlay.querySelector('.picker-body');
+  showPickerLoading(body);
+  Tapp.brewList.get(brewId).then(function (detail) {
+    if (!detail) { body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>'; return; }
+    body.innerHTML =
+      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">'
+      + (detail.image ? '<img src="' + esc(detail.image) + '" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px" />' : '')
+      + '<div style="font-size:18px;font-weight:600">' + esc(detail.title) + '</div>'
+      + '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc((detail.source_name || '') + (detail.author ? ' · ' + detail.author : '') + (detail.published_at ? ' · ' + new Date(detail.published_at).toLocaleDateString() : '')) + '</div>'
+      + (detail.summary ? '<div style="font-size:13px;line-height:1.6">' + esc(detail.summary) + '</div>' : '')
+      + (brewLink ? '<a href="' + esc(brewLink) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--tapp-primary,#6366f1);text-decoration:none">' + esc(lang.openOriginal || 'Open original') + ' →</a>' : '')
+      + '</div>';
+  }).catch(function () {
+    body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>';
+  });
+}
+
+function openReportDetail(reportId, card) {
+  var overlay = createDetailOverlay(card.querySelector('.msg-share-title').textContent || 'Report', SVG_ICONS.report, 'rgba(239,68,68,.1)');
+  var body = overlay.querySelector('.picker-body');
+  showPickerLoading(body);
+  Tapp.report.getReport(reportId).then(function (detail) {
+    if (!detail) { body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>'; return; }
+    body.innerHTML =
+      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">'
+      + '<div style="font-size:18px;font-weight:600">' + esc(detail.summary || detail.type || 'Report') + '</div>'
+      + '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc((detail.platform || '') + (detail.type ? ' · ' + detail.type : '') + (detail.createdAt ? ' · ' + new Date(detail.createdAt).toLocaleDateString() : '')) + '</div>'
+      + (detail.content ? '<div style="font-size:13px;line-height:1.6;max-height:300px;overflow-y:auto">' + esc(detail.content) + '</div>' : '')
+      + '</div>';
+  }).catch(function () {
+    body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>';
+  });
+}
+
+// ==================== Render: Members ====================
+function renderMembers() {
+  var panel = $('member-panel');
+  if (!panel) return;
+
+  if (state.activeKind !== 'room' || !state.roomDetail) {
+    panel.style.display = 'none';
+    return;
+  }
+`
+
+const PAGE_MOD_MEMBERS = `\
+  panel.style.display = '';
+  $('member-title').textContent = lang.members + ' (' + state.members.length + ')';
+
+  var myRole = state.roomDetail.my_role || '';
+  var canKick = (myRole === 'owner' || myRole === 'admin');
+
+  var html = '';
+  state.members.forEach(function (m) {
+    var name = m.display_name || (m.actor_url || '').split('/').pop() || '?';
+    var initial = name[0].toUpperCase();
+    html += '<div class="member-item">'
+      + '<div class="member-avatar">' + esc(initial) + '</div>'
+      + '<div class="member-info">'
+      + '<div class="member-name">' + esc(name) + '</div>'
+      + '<div class="member-role">' + esc(m.role || '') + '</div>'
+      + '</div>';
+    if (m.is_local) {
+      html += '<span class="member-local">' + esc(lang.local) + '</span>';
+    } else if (canKick && m.role !== 'owner') {
+      html += '<button class="member-kick" data-actor="' + esc(m.actor_url || '') + '" title="' + esc(lang.kick) + '">'
+        + '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+        + '</button>';
+    }
+    html += '</div>';
+  });
+  $('member-list').innerHTML = html;
+
+  // Wire kick buttons
+  if (canKick) {
+    var kicks = document.querySelectorAll('.member-kick');
+    kicks.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var actor = btn.getAttribute('data-actor');
+        if (actor) doKickMember(actor);
+      });
+    });
+  }
+
+  // Show invite icon for any room member
+  var inviteWrap = $('invite-wrap');
+  if (inviteWrap) {
+    inviteWrap.style.display = (state.roomDetail && myRole) ? '' : 'none';
+  }
+}
+
+// ==================== Manage Dropdown ====================
+function toggleManageDropdown(e) {
+  e && e.stopPropagation();
+  var dd = $('manage-dropdown');
+  if (!dd) return;
+  dd.classList.toggle('open');
+}
+function closeManageDropdown() {
+  var dd = $('manage-dropdown');
+  if (dd) dd.classList.remove('open');
+}
+document.addEventListener('click', function (e) {
+  var dd = $('manage-dropdown');
+  if (!dd || !dd.classList.contains('open')) return;
+  var wrap = dd.parentElement;
+  if (wrap && !wrap.contains(e.target)) closeManageDropdown();
+});
+
+// ==================== Render: Chat Header ====================
+function renderChatHeader() {
+  var nameEl = $('chat-name');
+  var metaEl = $('chat-meta');
+  var actionsEl = $('chat-actions');
+  var avatarEl = $('chat-hdr-avatar');
+  if (!nameEl) return;
+
+  if (state.activeKind === 'channel' && state.channelDetail) {
+    var ch = state.channelDetail;
+    var chName = ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?';
+    nameEl.textContent = chName;
+    if (avatarEl) {
+      avatarEl.innerHTML = ch.remote_actor_avatar
+        ? '<img src="' + esc(ch.remote_actor_avatar) + '" alt="" />'
+        : esc((chName[0] || '?').toUpperCase());
+    }
+    metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(ch.channel_type || lang.dm) + '</span>'
+      + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '');
+    var actionsHtml = '';
+    if (ch.status === 'pending' && ch.initiated_by === 'remote') {
+      actionsHtml += '<button class="action-btn action-accept" id="action-accept">' + esc(lang.accept) + '</button>';
+    }
+    if (ch.status !== 'closed') {
+      actionsHtml += '<div class="manage-wrap"><button class="manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '">⋯</button>'
+        + '<div class="manage-dropdown" id="manage-dropdown">'
+        + '<button class="manage-item manage-item-danger" id="action-close">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+        + esc(lang.close) + '</button></div></div>';
+    } else {
+      actionsHtml += '<span class="meta-badge badge-closed">' + esc(lang.closed) + '</span>';
+    }
+    actionsEl.innerHTML = actionsHtml;
+  } else if (state.activeKind === 'room' && state.roomDetail) {
+    var rm = state.roomDetail;
+    nameEl.textContent = rm.name || '?';
+    if (avatarEl) {
+      avatarEl.innerHTML = rm.avatar_url
+        ? '<img src="' + esc(rm.avatar_url) + '" alt="" />'
+        : esc(((rm.name || '?')[0] || '?').toUpperCase());
+    }
+    metaEl.innerHTML = '<span class="meta-badge badge-room">' + (rm.member_count || 0) + ' ' + esc(lang.members) + '</span>'
+      + (rm.my_role ? '<span class="meta-badge badge-role">' + esc(rm.my_role) + '</span>' : '');
+    var menuItems = '';
+    if (rm.my_role === 'owner' || rm.my_role === 'admin') {
+      menuItems += '<button class="manage-item" id="action-edit-room">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+        + esc(lang.editRoom) + '</button>';
+    }
+    if (rm.my_role !== 'owner') {
+      menuItems += '<button class="manage-item manage-item-danger" id="action-leave">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>'
+        + esc(lang.leave) + '</button>';
+    }
+    if (rm.my_role === 'owner') {
+      menuItems += '<button class="manage-item manage-item-danger" id="action-dissolve">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M10 11v6M14 11v6"/></svg>'
+        + esc(lang.dissolve) + '</button>';
+    }
+    // Member toggle button + manage menu
+    var memberToggleHtml = '<button class="member-toggle-btn" id="member-toggle-btn" title="' + esc(lang.members) + '">'
+      + '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>'
+      + '</button>';
+    if (menuItems) {
+      actionsEl.innerHTML = memberToggleHtml + '<div class="manage-wrap"><button class="manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '">⋯</button>'
+        + '<div class="manage-dropdown" id="manage-dropdown">' + menuItems + '</div></div>';
+    } else {
+      actionsEl.innerHTML = memberToggleHtml;
+    }
+  }
+
+  var acceptBtn = $('action-accept');
+  if (acceptBtn) acceptBtn.addEventListener('click', doAcceptChannel);
+  var closeBtn = $('action-close');
+  if (closeBtn) closeBtn.addEventListener('click', function () { closeManageDropdown(); doCloseChannel(); });
+  var leaveBtn = $('action-leave');
+  if (leaveBtn) leaveBtn.addEventListener('click', function () { closeManageDropdown(); doLeaveRoom(); });
+  var editRoomBtn = $('action-edit-room');
+  if (editRoomBtn) editRoomBtn.addEventListener('click', function () { closeManageDropdown(); showEditRoomDialog(); });
+  var dissolveBtn = $('action-dissolve');
+  if (dissolveBtn) dissolveBtn.addEventListener('click', function () { closeManageDropdown(); doDissolveRoom(); });
+  var toggleBtn = $('manage-toggle');
+  if (toggleBtn) toggleBtn.addEventListener('click', toggleManageDropdown);
+  var memberToggle = $('member-toggle-btn');
+  if (memberToggle) memberToggle.addEventListener('click', toggleMemberPanel);
+}
+
+// ==================== Member Panel Toggle ====================
+state.memberPanelOpen = true; // default open on desktop
+
+function isTablet() { var w = window.innerWidth; return w >= 769 && w <= 1024; }
+
+function toggleMemberPanel() {
+  var panel = $('member-panel');
+  if (!panel) return;
+  var isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    panel.classList.toggle('member-open-mobile');
+  } else if (isTablet()) {
+    panel.classList.toggle('member-expanded-tablet');
+    state.memberPanelOpen = panel.classList.contains('member-expanded-tablet');
+  } else {
+    panel.classList.toggle('member-collapsed');
+    state.memberPanelOpen = !panel.classList.contains('member-collapsed');
+  }
+}
+
+function closeMemberPanel() {
+  var panel = $('member-panel');
+  if (!panel) return;
+  panel.classList.remove('member-open-mobile');
+  panel.classList.remove('member-expanded-tablet');
+  if (window.innerWidth > 768 && !isTablet()) {
+    panel.classList.add('member-collapsed');
+  }
+  state.memberPanelOpen = false;
+}
+
+// ==================== API ====================
+async function loadConversations() {
+  try {
+    var results = await Promise.allSettled([
+      Tapp.federation.getChannels(),
+      Tapp.federation.getRooms(),
+    ]);
+    var errors = [];
+    if (results[0].status === 'fulfilled' && results[0].value) {
+      state.channels = results[0].value.channels || [];
+`
+
+const PAGE_MOD_API = `\
+    } else if (results[0].status === 'rejected') {
+      console.error('[Aro] getChannels failed:', results[0].reason);
+      errors.push(String(results[0].reason));
+    }
+    if (results[1].status === 'fulfilled' && results[1].value) {
+      state.rooms = results[1].value.rooms || [];
+    } else if (results[1].status === 'rejected') {
+      console.error('[Aro] getRooms failed:', results[1].reason);
+      errors.push(String(results[1].reason));
+    }
+    renderConvList();
+    if (errors.length > 0 && state.channels.length === 0 && state.rooms.length === 0) {
+      var list = $('conv-list');
+      if (list) list.innerHTML = '<div class="conv-empty" style="color:#ef4444;font-size:12px;white-space:pre-wrap">' + esc(errors.join('\\n')) + '</div>';
+    }
+  } catch (e) {
+    console.error('[Aro] loadConversations error:', e);
+  }
+}
+
+async function openConversation(kind, id) {
+  state.activeKind = kind;
+  state.activeId = id;
+  state.messages = [];
+  state.members = [];
+  state.channelDetail = null;
+  state.roomDetail = null;
+
+  $('empty-state').style.display = 'none';
+  $('chat-container').style.display = '';
+  $('sidebar').classList.add('sidebar-hidden-mobile');
+
+  renderMessages();
+  renderChatHeader();
+
+  try {
+    if (kind === 'channel') {
+      var results = await Promise.all([
+        Tapp.federation.getChannel(id),
+        Tapp.federation.getMessages(id, undefined, 100),
+      ]);
+      if (results[0]) {
+        state.channelDetail = results[0];
+        // Derive local actor URL: find a message sender that is NOT the remote actor
+        if (!state.localActorUrl && results[0].remote_actor_url) {
+          var msgs = (results[1] && results[1].messages) || [];
+          for (var mi = 0; mi < msgs.length; mi++) {
+            if (msgs[mi].sender_actor && msgs[mi].sender_actor !== results[0].remote_actor_url) {
+              state.localActorUrl = msgs[mi].sender_actor; break;
+            }
+          }
+        }
+      }
+      if (results[1]) state.messages = results[1].messages || [];
+    } else {
+      var results = await Promise.all([
+        Tapp.federation.getRoom(id),
+        Tapp.federation.getRoomMembers(id),
+        Tapp.federation.getRoomMessages(id, undefined, 100),
+      ]);
+      if (results[0]) state.roomDetail = results[0];
+      if (results[1]) {
+        state.members = results[1].members || [];
+        // Extract local actor URL from members list
+        if (!state.localActorUrl) {
+          for (var i = 0; i < state.members.length; i++) {
+            if (state.members[i].is_local) { state.localActorUrl = state.members[i].actor_url; break; }
+          }
+        }
+      }
+      if (results[2]) state.messages = results[2].messages || [];
+    }
+  } catch (e) { /* ignore */ }
+
+  renderChatHeader();
+  renderMessages();
+  renderMembers();
+  renderConvList();
+  startPolling();
+}
+
+async function doSend() {
+  var input = $('msg-input');
+  if (!input) return;
+
+  var text = input.value.trim();
+  var attach = state.pendingAttach;
+
+  // Need either text or attachment
+  if ((!text && !attach) || !state.activeId || state.sending) return;
+
+  input.value = '';
+  autoResizeInput(input);
+  state.sending = true;
+  closeAttachMenu();
+
+  try {
+    var msgPayload;
+    var msgType;
+
+    if (attach) {
+      if (attach.type === 'image') {
+        msgType = 'image';
+        msgPayload = { data: attach.data, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
+      } else if (attach.type === 'file') {
+        msgType = 'file';
+        msgPayload = { data: attach.data, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
+      } else {
+        // Federation content: tapp, brew, library, report
+        msgType = attach.type;
+        msgPayload = { title: attach.name, description: attach.desc || '', content_type: attach.type, icon: attach.icon || '', text: text || '' };
+        // Include resource IDs so the receiver can fetch detail
+        if (attach.tappId) msgPayload.tapp_id = attach.tappId;
+        if (attach.tappVersion) msgPayload.tapp_version = attach.tappVersion;
+        if (attach.tappIcon) msgPayload.tapp_icon = attach.tappIcon;
+        if (attach.brewId) msgPayload.brew_id = attach.brewId;
+        if (attach.brewLink) msgPayload.brew_link = attach.brewLink;
+        if (attach.platformId) msgPayload.platform_id = attach.platformId;
+        if (attach.itemId) msgPayload.item_id = attach.itemId;
+        if (attach.reportId) msgPayload.report_id = attach.reportId;
+      }
+      clearPendingAttach();
+    } else {
+      msgType = 'text';
+      msgPayload = { text: text };
+    }
+
+    // Attach quote info if replying to a message
+    var replyTo = null;
+    if (state.quoteMsg) {
+      msgPayload.quote_sender = state.quoteMsg.sender;
+      msgPayload.quote_text = state.quoteMsg.text;
+      msgPayload.quote_id = state.quoteMsg.message_id;
+      replyTo = state.quoteMsg.message_id;
+      clearQuote();
+    }
+
+    if (state.activeKind === 'channel') {
+      await Tapp.federation.sendMessage(state.activeId, { payload: msgPayload, message_type: msgType });
+    } else {
+      var req = { payload: msgPayload, message_type: msgType };
+      if (replyTo) req.reply_to = replyTo;
+      await Tapp.federation.sendRoomMessage(state.activeId, req);
+    }
+    await pollMessages();
+  } catch (e) {
+    if (text) input.value = text;
+    try { Tapp.ui.showNotification({ title: lang.sendFail, type: 'error' }); } catch (e2) { /* ignore */ }
+  } finally {
+    state.sending = false;
+    input.focus();
+  }
+}
+
+async function pollMessages() {
+  if (!state.activeId || !state.activeKind) return;
+  try {
+    var res;
+    if (state.activeKind === 'channel') {
+      res = await Tapp.federation.getMessages(state.activeId, undefined, 100);
+    } else {
+      res = await Tapp.federation.getRoomMessages(state.activeId, undefined, 100);
+    }
+    if (res) {
+      var msgs = res.messages || [];
+      if (msgs.length !== state.messages.length) {
+        state.messages = msgs;
+        renderMessages();
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function startPolling() {
+  stopPolling();
+  state.pollTimer = setInterval(pollMessages, state.pollInterval);
+}
+
+function stopPolling() {
+  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+}
+
+async function doCloseChannel() {
+  if (!state.activeId || state.activeKind !== 'channel') return;
+  try {
+    await Tapp.federation.closeChannel(state.activeId);
+    state.channelDetail.status = 'closed';
+    renderChatHeader();
+    loadConversations();
+  } catch (e) { /* ignore */ }
+}
+
+async function doInviteMember(actorUrl) {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  var actor = actorUrl;
+  if (!actor) {
+    var input = $('invite-input');
+    actor = (input ? input.value : '').trim();
+  }
+  if (!actor) return;
+  try {
+    await Tapp.federation.inviteMember(state.activeId, { actor: actor });
+    if (!actorUrl) { var input2 = $('invite-input'); if (input2) input2.value = ''; }
+    try { Tapp.ui.showNotification({ title: lang.inviteSuccess, type: 'success' }); } catch (e2) {}
+    // Refresh members & re-render popover
+    try {
+      var detail = await Tapp.federation.getRoom(state.activeId);
+      if (detail) state.roomDetail = detail;
+      var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
+      state.members = membersRes || [];
+      renderMembers();
+      renderInvitePopoverContacts();
+    } catch (e2) {}
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.inviteFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+// ==================== Invite Popover ====================
+// Create popover dynamically on document.body to escape all overflow clipping
+var _invitePopover = null;
+function ensureInvitePopover() {
+  if (_invitePopover) return _invitePopover;
+  var div = document.createElement('div');
+  div.id = 'invite-popover';
+  div.className = 'invite-popover';
+  div.style.display = 'none';
+  div.innerHTML = '<div class="invite-pop-section">'
+    + '<div class="invite-pop-label" id="invite-pop-contacts-label">' + esc(lang.inviteFromContacts) + '</div>'
+    + '<div id="invite-pop-list" class="invite-pop-list"></div>'
+    + '<div id="invite-pop-empty" class="invite-pop-empty" style="display:none">' + esc(lang.noContacts) + '</div>'
+    + '</div>'
+    + '<div class="invite-pop-divider"></div>'
+    + '<div class="invite-pop-section">'
+    + '<div class="invite-pop-label" id="invite-pop-manual-label">' + esc(lang.inviteManual) + '</div>'
+    + '<div class="invite-pop-manual">'
+    + '<input id="invite-input" class="invite-input" type="text" placeholder="user@instance.social" />'
+    + '<button id="invite-btn" class="invite-pop-send">'
+    + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>'
+    + '</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(div);
+  // Wire events on the popover elements
+  var inviteBtn = div.querySelector('#invite-btn');
+  if (inviteBtn) inviteBtn.addEventListener('click', function () { doInviteMember(); });
+  var inviteInput = div.querySelector('#invite-input');
+  if (inviteInput) inviteInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doInviteMember(); }
+  });
+  _invitePopover = div;
+  return div;
+}
+
+function toggleInvitePopover(e) {
+  e && e.stopPropagation();
+  var pop = ensureInvitePopover();
+  var toggle = $('invite-toggle');
+  if (!toggle) return;
+  var isOpen = pop.style.display !== 'none';
+  if (isOpen) {
+    pop.style.display = 'none';
+  } else {
+    var rect = toggle.getBoundingClientRect();
+    pop.style.top = (rect.bottom + 6) + 'px';
+    pop.style.left = Math.max(4, rect.right - 240) + 'px';
+    pop.style.display = '';
+    renderInvitePopoverContacts();
+  }
+}
+function closeInvitePopover() {
+  if (_invitePopover) _invitePopover.style.display = 'none';
+}
+document.addEventListener('click', function (e) {
+  if (!_invitePopover || _invitePopover.style.display === 'none') return;
+  var wrap = $('invite-wrap');
+  if ((wrap && wrap.contains(e.target)) || _invitePopover.contains(e.target)) return;
+  closeInvitePopover();
+});
+
+function renderInvitePopoverContacts() {
+  var listEl = $('invite-pop-list');
+  var emptyEl = $('invite-pop-empty');
+  if (!listEl || !emptyEl) return;
+
+  // Get actor URLs of current room members for filtering
+  var memberActors = {};
+  state.members.forEach(function (m) { if (m.actor_url) memberActors[m.actor_url] = true; });
+
+  // Build contacts from existing channels (chat partners)
+  var contacts = [];
+  state.channels.forEach(function (ch) {
+    if (!ch.remote_actor_url || ch.status === 'closed') return;
+    var alreadyMember = !!memberActors[ch.remote_actor_url];
+    contacts.push({
+      name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?',
+      avatar: ch.remote_actor_avatar || '',
+      actorUrl: ch.remote_actor_url,
+      alreadyMember: alreadyMember,
+    });
+  });
+
+  if (contacts.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = '';
+    emptyEl.textContent = lang.noContacts;
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  var html = '';
+  contacts.forEach(function (c) {
+    var initial = (c.name[0] || '?').toUpperCase();
+    var shortUrl = (c.actorUrl || '').replace(/^https?:\\/\\//, '').split('/').slice(0, 2).join('/');
+    html += '<button class="invite-pop-contact' + (c.alreadyMember ? ' invite-pop-contact-disabled' : '') + '"'
+      + ' data-actor="' + esc(c.actorUrl) + '"' + (c.alreadyMember ? ' disabled' : '') + '>'
+      + '<div class="invite-pop-contact-avatar">'
+      + (c.avatar ? '<img src="' + esc(c.avatar) + '" alt="" />' : esc(initial))
+      + '</div>'
+      + '<div class="invite-pop-contact-info">'
+      + '<div class="invite-pop-contact-name">' + esc(c.name) + '</div>'
+      + '<div class="invite-pop-contact-url">' + esc(shortUrl) + '</div>'
+      + '</div>'
+      + (c.alreadyMember ? '<span class="invite-pop-contact-added">' + esc(lang.members) + '</span>' : '')
+      + '</button>';
+  });
+  listEl.innerHTML = html;
+
+  // Wire contact click handlers
+  listEl.querySelectorAll('.invite-pop-contact:not([disabled])').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var actor = btn.getAttribute('data-actor');
+      if (actor) doInviteMember(actor);
+    });
+  });
+}
+
+// ==================== Edit Room ====================
+function showEditRoomDialog() {
+  if (!state.roomDetail) return;
+  var overlay = $('edit-room-dialog');
+  if (!overlay) return;
+  $('edit-room-name').value = state.roomDetail.name || '';
+  $('edit-room-desc').value = state.roomDetail.description || '';
+  overlay.style.display = 'flex';
+}
+
+function hideEditRoomDialog() {
+  var overlay = $('edit-room-dialog');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function doSaveRoom() {
+  if (!state.activeId || !state.roomDetail) return;
+  var nameVal = ($('edit-room-name').value || '').trim();
+  var descVal = ($('edit-room-desc').value || '').trim();
+  if (!nameVal) return;
+  var btn = $('edit-room-save');
+  btn && (btn.disabled = true, btn.textContent = lang.saving);
+  try {
+    var updated = await Tapp.federation.updateRoom(state.activeId, { name: nameVal, description: descVal });
+    if (updated) state.roomDetail = updated;
+    // Sync to room list
+    for (var i = 0; i < state.rooms.length; i++) {
+      if (state.rooms[i].room_id === state.activeId) {
+        state.rooms[i].name = nameVal;
+        state.rooms[i].description = descVal;
+        break;
+      }
+    }
+    hideEditRoomDialog();
+    renderChatHeader();
+    renderConvList();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.saveFail, type: 'error' }); } catch (e2) {}
+  } finally {
+    btn && (btn.disabled = false, btn.textContent = lang.save);
+  }
+}
+
+// ==================== Kick Member ====================
+async function doKickMember(actorUrl) {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  try {
+    await Tapp.federation.removeMember(state.activeId, actorUrl);
+    // Refresh members
+    var detail = await Tapp.federation.getRoom(state.activeId);
+    if (detail) state.roomDetail = detail;
+    var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
+    state.members = membersRes || [];
+    renderMembers();
+    renderChatHeader();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.kickFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+// ==================== Dissolve Room ====================
+async function doDissolveRoom() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  if (!confirm(lang.dissolveConfirm)) return;
+  try {
+    await Tapp.federation.deleteRoom(state.activeId);
+    state.activeKind = null;
+    state.activeId = null;
+    stopPolling();
+    $('chat-container').style.display = 'none';
+    $('member-panel').style.display = 'none';
+    $('member-panel').classList.remove('member-open-mobile');
+    $('empty-state').style.display = '';
+    $('sidebar').classList.remove('sidebar-hidden-mobile');
+    loadConversations();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.dissolveFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+async function doAcceptChannel() {
+  if (!state.activeId || state.activeKind !== 'channel') return;
+  try {
+    await Tapp.federation.acceptChannel(state.activeId);
+    state.channelDetail.status = 'active';
+    // Update the channel in the list too
+    for (var i = 0; i < state.channels.length; i++) {
+      if (state.channels[i].channel_id === state.activeId) {
+        state.channels[i].status = 'active'; break;
+      }
+    }
+    renderChatHeader();
+    renderConvList();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.acceptFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+async function doLeaveRoom() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  try {
+    await Tapp.federation.leaveRoom(state.activeId);
+    state.activeKind = null;
+    state.activeId = null;
+    stopPolling();
+    $('chat-container').style.display = 'none';
+    $('member-panel').style.display = 'none';
+    $('member-panel').classList.remove('member-open-mobile');
+    $('empty-state').style.display = '';
+    $('sidebar').classList.remove('sidebar-hidden-mobile');
+    loadConversations();
+  } catch (e) { /* ignore */ }
+}
+
+// ==================== Create Dialog ====================
+function showCreateDialog() {
+  var overlay = $('create-dialog');
+  if (overlay) overlay.style.display = 'flex';
+  switchCreateTab('channel');
+}
+
+function hideCreateDialog() {
+  var overlay = $('create-dialog');
+  if (overlay) overlay.style.display = 'none';
+  var channelInput = $('create-channel-input');
+  var roomInput = $('create-room-input');
+  if (channelInput) channelInput.value = '';
+  if (roomInput) roomInput.value = '';
+}
+
+function switchCreateTab(tab) {
+  var channelTab = $('create-tab-channel');
+  var roomTab = $('create-tab-room');
+  var channelForm = $('create-form-channel');
+  var roomForm = $('create-form-room');
+  if (!channelTab) return;
+  if (tab === 'channel') {
+    channelTab.classList.add('create-tab-active');
+    roomTab.classList.remove('create-tab-active');
+    channelForm.style.display = '';
+    roomForm.style.display = 'none';
+  } else {
+    roomTab.classList.add('create-tab-active');
+    channelTab.classList.remove('create-tab-active');
+    roomForm.style.display = '';
+    channelForm.style.display = 'none';
+  }
+}
+
+async function doCreateChannel() {
+  var input = $('create-channel-input');
+  if (!input) return;
+  var remoteActor = input.value.trim();
+  if (!remoteActor) return;
+  var btn = $('create-channel-btn');
+  if (btn) { btn.disabled = true; btn.textContent = lang.creating; }
+  try {
+    var result = await Tapp.federation.createChannel({ remote_actor: remoteActor });
+    hideCreateDialog();
+    await loadConversations();
+    if (result && result.channel_id) {
+      openConversation('channel', result.channel_id);
+    }
+  } catch (e) {
+    console.error('[Aro] createChannel error:', e);
+    try { Tapp.ui.showNotification({ title: lang.createFail, type: 'error' }); } catch (e2) {}
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = lang.createChannel; }
+  }
+}
+
+async function doCreateRoom() {
+  var input = $('create-room-input');
+  if (!input) return;
+  var name = input.value.trim();
+  if (!name) return;
+  var btn = $('create-room-btn');
+  if (btn) { btn.disabled = true; btn.textContent = lang.creating; }
+  try {
+    var result = await Tapp.federation.createRoom({ name: name });
+    hideCreateDialog();
+    await loadConversations();
+    if (result && result.room_id) {
+      openConversation('room', result.room_id);
+    }
+  } catch (e) {
+    console.error('[Aro] createRoom error:', e);
+    try { Tapp.ui.showNotification({ title: lang.createFail, type: 'error' }); } catch (e2) {}
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = lang.createRoom; }
+  }
+}
+
+// ==================== View Switching ====================
+function switchView(view) {
+  state.currentView = view;
+  var views = ['messages', 'feed', 'rings'];
+  views.forEach(function (v) {
+    var el = $('view-' + v);
+    if (el) {
+      el.classList.toggle('aro-view-active', v === view);
+      if (v !== view) el.style.display = 'none';
+      else { el.style.display = ''; el.classList.add('aro-view-active'); }
+`
+
+const PAGE_MOD_VIEWS = `\
+    }
+  });
+  // Update nav buttons
+  document.querySelectorAll('.aro-nav-item').forEach(function (btn) {
+    btn.classList.toggle('aro-nav-active', btn.dataset.view === view);
+  });
+  // Load data for the view
+  if (view === 'feed') loadFeed();
+  else if (view === 'rings') loadRings();
+}
+
+// ==================== Feed View (merged Timeline + Profile) ====================
+async function loadFeed() {
+  updateFeedProfileHeader();
+  loadFeedSubTab();
+}
+
+function updateFeedProfileHeader() {
+  // Show user info in profile header
+  if (!state.localActorUrl) return;
+  // Load counts in background
+  Promise.all([
+    Tapp.federation.getFollowing().catch(function () { return { items: [] }; }),
+    Tapp.federation.getFollowers().catch(function () { return { items: [] }; }),
+    Tapp.federation.getPublished().catch(function () { return { items: [] }; })
+  ]).then(function (results) {
+    state.following = (results[0] && results[0].items) || [];
+    state.followers = (results[1] && results[1].items) || [];
+    state.published = (results[2] && results[2].items) || [];
+    var el;
+    el = $('feed-count-following'); if (el) el.textContent = state.following.length;
+    el = $('feed-count-followers'); if (el) el.textContent = state.followers.length;
+    el = $('feed-count-published'); if (el) el.textContent = state.published.length;
+  });
+}
+
+async function loadFeedSubTab() {
+  var sub = state.feedSubTab;
+  // Show/hide follow bar
+  var followBar = $('feed-follow-bar');
+  if (followBar) followBar.style.display = (sub === 'following') ? '' : 'none';
+
+  try {
+    if (sub === 'timeline') {
+      var res = await Tapp.federation.getTimeline();
+      state.timeline = (res && res.items) || [];
+    } else if (sub === 'following') {
+      var res = await Tapp.federation.getFollowing();
+      state.following = (res && res.items) || [];
+    } else if (sub === 'followers') {
+      var res = await Tapp.federation.getFollowers();
+      state.followers = (res && res.items) || [];
+    } else if (sub === 'published') {
+      var res = await Tapp.federation.getPublished();
+      state.published = (res && res.items) || [];
+    }
+    renderFeedContent();
+  } catch (e) { console.error('[Aro] loadFeedSubTab error:', e); }
+}
+
+function renderFeedContent() {
+  var content = $('feed-content');
+  var empty = $('feed-empty');
+  if (!content) return;
+
+  var sub = state.feedSubTab;
+  var html = '';
+
+  if (sub === 'timeline') {
+    if (state.timeline.length === 0) {
+      content.innerHTML = '';
+      if (empty) { empty.style.display = ''; $('feed-empty-text').textContent = lang.emptyTimeline; }
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    state.timeline.forEach(function (item) {
+      html += renderTimelineItem(item);
+    });
+  } else if (sub === 'following') {
+    if (state.following.length === 0) {
+      content.innerHTML = '';
+      if (empty) { empty.style.display = ''; $('feed-empty-text').textContent = lang.emptyFollowing; }
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    state.following.forEach(function (actor) {
+      html += renderActorItem(actor, 'following');
+    });
+  } else if (sub === 'followers') {
+    if (state.followers.length === 0) {
+      content.innerHTML = '';
+      if (empty) { empty.style.display = ''; $('feed-empty-text').textContent = lang.emptyFollowers; }
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    state.followers.forEach(function (actor) {
+      html += renderActorItem(actor, 'followers');
+    });
+  } else if (sub === 'published') {
+    if (state.published.length === 0) {
+      content.innerHTML = '';
+      if (empty) { empty.style.display = ''; $('feed-empty-text').textContent = lang.emptyPublished; }
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    state.published.forEach(function (item) {
+      html += renderPublishedItem(item);
+    });
+  }
+
+  content.innerHTML = html;
+  // Bind action buttons
+  content.querySelectorAll('[data-action-unfollow]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) { e.stopPropagation(); doUnfollow(btn.dataset.actionUnfollow); });
+  });
+  content.querySelectorAll('[data-action-unpublish]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      doUnpublish(btn.dataset.contentType, btn.dataset.contentId);
+    });
+  });
+}
+
+function renderTimelineItem(item) {
+  var actor = item.actor || {};
+  var name = actor.display_name || actor.username || '?';
+  var handle = actor.username ? '@' + actor.username + (actor.domain ? '@' + actor.domain : '') : '';
+  var initial = (name[0] || '?').toUpperCase();
+  var avatarHtml = actor.avatar_url
+    ? '<img src="' + esc(actor.avatar_url) + '" alt="" />'
+    : esc(initial);
+  var ts = '';
+  try { ts = timeAgo(item.created_at || item.timestamp); } catch (e) {}
+  var h = '<div class="feed-item">';
+  h += '<div class="feed-item-avatar">' + avatarHtml + '</div>';
+  h += '<div class="feed-item-body">';
+  h += '<div class="feed-item-header">';
+  h += '<span class="feed-item-name">' + esc(name) + '</span>';
+  if (handle) h += '<span class="feed-item-handle">' + esc(handle) + '</span>';
+  if (ts) h += '<span class="feed-item-sep">&middot;</span><span class="feed-item-time">' + esc(ts) + '</span>';
+  h += '</div>';
+  if (item.content_preview) {
+    h += '<div class="feed-item-text">' + esc(item.content_preview) + '</div>';
+  }
+  h += '<div class="feed-item-badges">';
+  h += '<span class="aro-badge aro-badge-type">' + esc(item.activity_type || lang.activityType) + '</span>';
+  if (item.visibility) h += '<span class="aro-badge aro-badge-vis">' + esc(item.visibility) + '</span>';
+  h += '</div>';
+  h += '</div></div>';
+  return h;
+}
+
+function renderActorItem(actor, context) {
+  var name = actor.display_name || actor.username || '?';
+  var handle = actor.username ? '@' + actor.username + (actor.domain ? '@' + actor.domain : '') : actor.domain || '';
+  var initial = (name[0] || '?').toUpperCase();
+  var avatarHtml = actor.avatar_url
+    ? '<img src="' + esc(actor.avatar_url) + '" alt="" />'
+    : esc(initial);
+  var h = '<div class="feed-item">';
+  h += '<div class="feed-item-avatar">' + avatarHtml + '</div>';
+  h += '<div class="feed-item-body">';
+  h += '<div class="feed-item-header">';
+  h += '<span class="feed-item-name">' + esc(name) + '</span>';
+  if (handle) h += '<span class="feed-item-handle">' + esc(handle) + '</span>';
+  h += '</div>';
+  if (actor.bio) h += '<div class="feed-item-text">' + esc(actor.bio) + '</div>';
+  // Status + action
+  h += '<div class="feed-item-actions">';
+  if (actor.status && actor.status !== 'accepted') {
+    h += '<span class="aro-badge aro-badge-pending">' + esc(actor.status) + '</span>';
+  }
+  if (context === 'following') {
+    h += '<button class="feed-item-action feed-item-action-danger" data-action-unfollow="' + esc(actor.actor_url || '') + '">'
+      + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+      + esc(lang.unfollowBtn) + '</button>';
+  }
+  h += '</div></div></div>';
+  return h;
+}
+
+function renderPublishedItem(item) {
+  var typeIcons = { 'report': SVG_ICONS.report, 'brew-article': SVG_ICONS.memo, 'library': SVG_ICONS.library };
+  var icon = typeIcons[item.content_type] || SVG_ICONS.page;
+  var dateStr = '';
+  try { dateStr = timeAgo(item.published_at); } catch (e) {}
+  var h = '<div class="feed-item">';
+  h += '<div class="feed-item-icon">' + icon + '</div>';
+  h += '<div class="feed-item-body">';
+  h += '<div class="feed-item-header">';
+  h += '<span class="feed-item-name">' + esc(item.content_type) + ' #' + esc(item.content_id) + '</span>';
+  if (dateStr) h += '<span class="feed-item-sep">&middot;</span><span class="feed-item-time">' + esc(dateStr) + '</span>';
+  h += '</div>';
+  h += '<div class="feed-item-badges">';
+  h += '<span class="aro-badge aro-badge-type">' + esc(item.content_type) + '</span>';
+  if (item.visibility) h += '<span class="aro-badge aro-badge-vis">' + esc(item.visibility) + '</span>';
+  h += '</div>';
+  h += '<div class="feed-item-actions">';
+  h += '<button class="feed-item-action feed-item-action-danger" data-action-unpublish data-content-type="' + esc(item.content_type) + '" data-content-id="' + esc(item.content_id) + '">'
+    + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+    + esc(lang.removeBtn) + '</button>';
+  h += '</div></div></div>';
+  return h;
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var now = new Date();
+  var sec = Math.floor((now - d) / 1000);
+  if (sec < 60) return sec + 's';
+  var min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm';
+  var hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'h';
+  var day = Math.floor(hr / 24);
+  if (day < 30) return day + 'd';
+  try { return d.toLocaleDateString(currentLocale, { month: 'short', day: 'numeric' }); } catch (e) { return day + 'd'; }
+}
+
+function switchFeedSubTab(sub) {
+  state.feedSubTab = sub;
+  // Update sidebar nav
+  document.querySelectorAll('.feed-nav-item').forEach(function (btn) {
+    btn.classList.toggle('feed-nav-active', btn.dataset.sub === sub);
+  });
+  // Update mobile tabs
+  document.querySelectorAll('.feed-mobile-tab').forEach(function (btn) {
+    btn.classList.toggle('feed-mobile-tab-active', btn.dataset.sub === sub);
+  });
+  loadFeedSubTab();
+}
+
+async function doFollow() {
+  var input = $('feed-follow-input');
+  var btn = $('feed-follow-btn');
+  if (!input) return;
+  var target = input.value.trim();
+  if (!target) return;
+  if (btn) { btn.disabled = true; }
+  try {
+    await Tapp.federation.follow(target);
+    input.value = '';
+    loadFeedSubTab();
+    updateFeedProfileHeader();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.followFail, type: 'error' }); } catch (e2) {}
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function doUnfollow(actorUrl) {
+  try {
+    await Tapp.federation.unfollow(actorUrl);
+    loadFeedSubTab();
+    updateFeedProfileHeader();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.unfollowFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+async function doUnpublish(contentType, contentId) {
+  try {
+    await Tapp.federation.unpublish({ content_type: contentType, content_id: contentId });
+    loadFeedSubTab();
+    updateFeedProfileHeader();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.unpublishFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+// ==================== Rings View ====================
+async function loadRings() {
+  try {
+    var res = await Tapp.federation.getRings();
+    state.rings = (res && res.rings) || [];
+    state.activeRingId = null;
+    renderRingsSidebar();
+    hideRingDetail();
+  } catch (e) { console.error('[Aro] loadRings error:', e); }
+}
+
+function renderRingsSidebar() {
+  var list = $('ring-list');
+  var empty = $('ring-empty');
+  if (!list) return;
+  if (state.rings.length === 0) {
+    list.innerHTML = '';
+    if (empty) { empty.style.display = ''; $('ring-empty-text').textContent = lang.emptyRings; }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  var typeIcons = { 'brew-recommend': SVG_ICONS.coffee, 'tapp-store': SVG_ICONS.puzzle, 'library-exchange': SVG_ICONS.library, 'instance-directory': SVG_ICONS.globe };
+  var html = '';
+  state.rings.forEach(function (ring) {
+    var icon = typeIcons[ring.ring_type] || SVG_ICONS.ring;
+    var name = ring.ring_name || ring.ring_id;
+    var peerText = (ring.peer_count || 0) + ' ' + lang.peers;
+    var activeClass = state.activeRingId === ring.ring_id ? ' conv-active' : '';
+    html += '<button class="conv-item' + activeClass + '" data-ring-id="' + esc(ring.ring_id) + '">'
+      + '<div class="conv-avatar avatar-room" style="border-radius:8px;font-size:16px">' + icon + '</div>'
+      + '<div class="conv-info">'
+      + '<div class="conv-name">' + esc(name) + '</div>'
+      + '<div class="conv-subtitle">' + esc(ring.ring_type) + ' · ' + esc(peerText) + '</div>'
+      + '</div>'
+      + '</button>';
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('.conv-item').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openRingDetail(btn.dataset.ringId);
+    });
+  });
+}
+
+async function doCreateRing() {
+  var input = $('ring-name-input');
+  var btn = $('create-ring-btn');
+  if (!input) return;
+  var name = input.value.trim();
+  if (!name) return;
+  var type = ($('ring-type-select') || {}).value || 'brew-recommend';
+  if (btn) { btn.disabled = true; btn.textContent = lang.creating; }
+  try {
+    await Tapp.federation.createRing({ name: name, ring_type: type });
+    input.value = '';
+    var d = $('ring-create-dialog'); if (d) d.style.display = 'none';
+    loadRings();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.createRingFail, type: 'error' }); } catch (e2) {}
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = lang.createRingBtn; }
+  }
+}
+
+async function doLeaveRing(ringId) {
+  try {
+    await Tapp.federation.leaveRing(ringId);
+    hideRingDetail();
+    loadRings();
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.leaveRingFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+// ==================== Ring Detail (inline panel) ====================
+function openRingDetail(ringId) {
+  state.activeRingId = ringId;
+  state.ringDetail = null;
+  state.ringPeers = [];
+  // Update sidebar active
+  var list = $('ring-list');
+  if (list) list.querySelectorAll('.conv-item').forEach(function (btn) {
+    btn.classList.toggle('conv-active', btn.dataset.ringId === ringId);
+  });
+  // Show detail panel
+  $('ring-empty-state').style.display = 'none';
+  $('ring-detail').style.display = '';
+  // Mobile
+  $('ring-sidebar').classList.add('sidebar-hidden-mobile');
+  var main = $('ring-detail').closest('.panel-main');
+  if (main) main.classList.add('panel-main-show-mobile');
+  loadRingDetail(ringId);
+}
+
+function hideRingDetail() {
+  state.activeRingId = null;
+  state.ringDetail = null;
+  state.ringPeers = [];
+  var detail = $('ring-detail');
+  if (detail) detail.style.display = 'none';
+  var empty = $('ring-empty-state');
+  if (empty) empty.style.display = '';
+  var sidebar = $('ring-sidebar');
+  if (sidebar) sidebar.classList.remove('sidebar-hidden-mobile');
+  var main = detail ? detail.closest('.panel-main') : null;
+  if (main) main.classList.remove('panel-main-show-mobile');
+}
+
+async function loadRingDetail(ringId) {
+  try {
+    var results = await Promise.all([
+      Tapp.federation.getRing(ringId),
+      Tapp.federation.getRingPeers(ringId)
+    ]);
+    if (state.activeRingId !== ringId) return; // user closed
+    state.ringDetail = results[0];
+    state.ringPeers = (results[1] && results[1].peers) || [];
+    renderRingDetail();
+  } catch (e) {
+    console.error('[Aro] loadRingDetail error:', e);
+  }
+}
+
+function renderRingDetail() {
+  var ring = state.ringDetail;
+  if (!ring) return;
+  var typeIcons = { 'brew-recommend': SVG_ICONS.coffee, 'tapp-store': SVG_ICONS.puzzle, 'library-exchange': SVG_ICONS.library, 'instance-directory': SVG_ICONS.globe };
+  var iconEl = $('ring-detail-icon');
+  if (iconEl) iconEl.innerHTML = typeIcons[ring.ring_type] || SVG_ICONS.ring;
+  var nameEl = $('ring-detail-name');
+  if (nameEl) nameEl.textContent = ring.ring_name || ring.ring_id;
+  var metaEl = $('ring-detail-meta');
+  if (metaEl) {
+    var parts = [];
+    parts.push('<span class="meta-badge">' + esc(ring.ring_type || '') + '</span>');
+    parts.push('<span class="meta-badge">' + esc(state.ringPeers.length + ' ' + lang.peers) + '</span>');
+    if (ring.last_sync_at) {
+      try { parts.push('<span class="meta-badge">' + esc(new Date(ring.last_sync_at).toLocaleString(currentLocale)) + '</span>'); } catch (e) {}
+    }
+    metaEl.innerHTML = parts.join('');
+  }
+
+  // Sync / leave labels
+  var syncLabel = $('ring-sync-label');
+  if (syncLabel) syncLabel.textContent = lang.syncBtn;
+  var leaveLabel = $('ring-leave-label');
+  if (leaveLabel) leaveLabel.textContent = lang.leaveBtn;
+
+  // Peer input
+  var peerInput = $('ring-peer-input');
+  if (peerInput) peerInput.placeholder = lang.addPeerPlaceholder;
+  var addPeerBtn = $('ring-add-peer-btn');
+  if (addPeerBtn) addPeerBtn.textContent = lang.addPeerBtn;
+
+  // Render peers as member-item style
+  var peersList = $('ring-peers-list');
+  var peersEmpty = $('ring-peers-empty');
+  if (!peersList) return;
+
+  if (state.ringPeers.length === 0) {
+    peersList.innerHTML = '';
+    if (peersEmpty) { peersEmpty.style.display = ''; peersEmpty.querySelector('span').textContent = lang.emptyPeers; }
+    return;
+  }
+  if (peersEmpty) peersEmpty.style.display = 'none';
+
+  var html = '';
+  state.ringPeers.forEach(function (peer) {
+    var url = peer.actor_url || peer.peer_url || peer.url || peer;
+    var urlStr = typeof url === 'string' ? url : JSON.stringify(url);
+    var initial = SVG_ICONS.globe;
+    html += '<div class="member-item">'
+      + '<div class="member-avatar" style="border-radius:6px;font-size:12px">' + initial + '</div>'
+      + '<div class="member-info">'
+      + '<div class="member-name">' + esc(urlStr) + '</div>'
+      + '</div>'
+      + '<button class="member-kick ring-peer-remove-btn" data-peer-url="' + esc(typeof url === 'string' ? url : '') + '" title="Remove">'
+      + '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+      + '</button>'
+      + '</div>';
+  });
+  peersList.innerHTML = html;
+
+  peersList.querySelectorAll('.ring-peer-remove-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      doRemovePeer(btn.dataset.peerUrl);
+    });
+  });
+}
+
+async function doAddPeer() {
+  var input = $('ring-peer-input');
+  var btn = $('ring-add-peer-btn');
+  if (!input || !state.activeRingId) return;
+  var peerUrl = input.value.trim();
+  if (!peerUrl) return;
+  if (btn) btn.disabled = true;
+  try {
+    await Tapp.federation.addPeer(state.activeRingId, { peer: peerUrl });
+    input.value = '';
+    loadRingDetail(state.activeRingId);
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.addPeerFail, type: 'error' }); } catch (e2) {}
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function doRemovePeer(peerUrl) {
+  if (!state.activeRingId || !peerUrl) return;
+  try {
+    await Tapp.federation.removePeer(state.activeRingId, peerUrl);
+    loadRingDetail(state.activeRingId);
+  } catch (e) {
+    try { Tapp.ui.showNotification({ title: lang.removePeerFail, type: 'error' }); } catch (e2) {}
+  }
+}
+
+async function doTriggerSync() {
+  if (!state.activeRingId) return;
+  var btn = $('ring-sync-btn');
+  var statusEl = $('ring-sync-status');
+  if (btn) btn.disabled = true;
+  if (statusEl) { statusEl.style.display = ''; statusEl.className = 'ring-sync-bar'; statusEl.textContent = lang.syncing; }
+  try {
+    await Tapp.federation.triggerSync(state.activeRingId);
+    if (statusEl) { statusEl.className = 'ring-sync-bar ring-sync-ok'; statusEl.textContent = lang.syncSuccess; }
+    // Refresh detail after sync
+    loadRingDetail(state.activeRingId);
+  } catch (e) {
+    if (statusEl) { statusEl.className = 'ring-sync-bar ring-sync-err'; statusEl.textContent = lang.syncFail; }
+  } finally {
+    if (btn) btn.disabled = false;
+    // Auto-hide status after 3s
+    setTimeout(function () {
+      if (statusEl) statusEl.style.display = 'none';
+    }, 3000);
+  }
+}
+
+// ==================== Event Binding ====================
+function bindEvents() {
+  // Aro nav
+  document.querySelectorAll('.aro-nav-item').forEach(function (btn) {
+    btn.addEventListener('click', function () { switchView(btn.dataset.view); });
+  });
+
+  // Ring create dialog
+  var ringCreateOpenBtn = $('ring-create-open-btn');
+  if (ringCreateOpenBtn) ringCreateOpenBtn.addEventListener('click', function () {
+`
+
+const PAGE_MOD_EVENTS = `\
+    var d = $('ring-create-dialog'); if (d) d.style.display = '';
+  });
+  var ringCreateClose = $('ring-create-close');
+  if (ringCreateClose) ringCreateClose.addEventListener('click', function () {
+    var d = $('ring-create-dialog'); if (d) d.style.display = 'none';
+  });
+  var ringCreateOverlay = $('ring-create-dialog');
+  if (ringCreateOverlay) ringCreateOverlay.addEventListener('click', function (e) {
+    if (e.target === ringCreateOverlay) ringCreateOverlay.style.display = 'none';
+  });
+
+  // Ring create submit
+  var createRingBtn = $('create-ring-btn');
+  if (createRingBtn) createRingBtn.addEventListener('click', doCreateRing);
+  var ringNameInput = $('ring-name-input');
+  if (ringNameInput) ringNameInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doCreateRing(); }
+  });
+
+  // Ring detail inline panel events
+  var ringBackBtn = $('ring-back-btn');
+  if (ringBackBtn) ringBackBtn.addEventListener('click', hideRingDetail);
+  var ringSyncBtn = $('ring-sync-btn');
+  if (ringSyncBtn) ringSyncBtn.addEventListener('click', doTriggerSync);
+  var ringManageBtn = $('ring-manage-btn');
+  if (ringManageBtn) ringManageBtn.addEventListener('click', function () {
+    var dd = $('ring-manage-dropdown');
+    if (dd) dd.classList.toggle('open');
+  });
+  var ringLeaveBtn2 = $('ring-leave-btn');
+  if (ringLeaveBtn2) ringLeaveBtn2.addEventListener('click', function () {
+    var dd = $('ring-manage-dropdown'); if (dd) dd.classList.remove('open');
+    if (state.activeRingId && confirm(lang.leaveRingConfirm)) {
+      doLeaveRing(state.activeRingId);
+    }
+  });
+  var ringAddPeerBtn = $('ring-add-peer-btn');
+  if (ringAddPeerBtn) ringAddPeerBtn.addEventListener('click', doAddPeer);
+  var ringPeerInput = $('ring-peer-input');
+  if (ringPeerInput) ringPeerInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doAddPeer(); }
+  });
+
+  // Feed: refresh, tabs, follow, stat clicks
+  var refreshFeedBtn = $('refresh-feed-btn');
+  if (refreshFeedBtn) refreshFeedBtn.addEventListener('click', function () { loadFeed(); });
+  document.querySelectorAll('.feed-nav-item').forEach(function (btn) {
+    btn.addEventListener('click', function () { switchFeedSubTab(btn.dataset.sub); });
+  });
+  document.querySelectorAll('.feed-mobile-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () { switchFeedSubTab(btn.dataset.sub); });
+  });
+  var feedFollowBtn = $('feed-follow-btn');
+  if (feedFollowBtn) feedFollowBtn.addEventListener('click', doFollow);
+  var feedFollowInput = $('feed-follow-input');
+  if (feedFollowInput) feedFollowInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doFollow(); }
+  });
+
+  // Messenger events
+  var sendBtn = $('send-btn');
+  if (sendBtn) sendBtn.addEventListener('click', doSend);
+
+  var attachBtn = $('attach-btn');
+  if (attachBtn) attachBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleAttachMenu(); });
+
+  var attachImageInput = $('attach-image-input');
+  if (attachImageInput) attachImageInput.addEventListener('change', function () { if (this.files[0]) handleFileSelect(this.files[0], 'image'); });
+
+  var attachFileInput = $('attach-file-input');
+  if (attachFileInput) attachFileInput.addEventListener('change', function () { if (this.files[0]) handleFileSelect(this.files[0]); });
+
+  var input = $('msg-input');
+  if (input) {
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+    });
+    input.addEventListener('input', function () { autoResizeInput(this); });
+  }
+
+  var backBtn = $('back-btn');
+  if (backBtn) {
+    backBtn.addEventListener('click', function () {
+      $('sidebar').classList.remove('sidebar-hidden-mobile');
+      $('chat-container').style.display = 'none';
+      $('member-panel').style.display = 'none';
+      $('member-panel').classList.remove('member-open-mobile');
+      $('empty-state').style.display = '';
+      clearPendingAttach();
+      closeAttachMenu();
+      stopPolling();
+    });
+  }
+
+  var memberBackBtn = $('member-back-btn');
+  if (memberBackBtn) {
+    memberBackBtn.addEventListener('click', function () {
+      closeMemberPanel();
+    });
+  }
+
+  // Create dialog events
+  var createBtn = $('create-btn');
+  if (createBtn) createBtn.addEventListener('click', showCreateDialog);
+
+  var overlay = $('create-dialog');
+  if (overlay) overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) hideCreateDialog();
+  });
+
+  var closeDialogBtn = $('create-dialog-close');
+  if (closeDialogBtn) closeDialogBtn.addEventListener('click', hideCreateDialog);
+
+  var tabChannel = $('create-tab-channel');
+  if (tabChannel) tabChannel.addEventListener('click', function () { switchCreateTab('channel'); });
+
+  var tabRoom = $('create-tab-room');
+  if (tabRoom) tabRoom.addEventListener('click', function () { switchCreateTab('room'); });
+
+  var createChannelBtn = $('create-channel-btn');
+  if (createChannelBtn) createChannelBtn.addEventListener('click', doCreateChannel);
+
+  var createRoomBtn = $('create-room-btn');
+  if (createRoomBtn) createRoomBtn.addEventListener('click', doCreateRoom);
+
+  // Enter key in create inputs
+  var channelInput = $('create-channel-input');
+  if (channelInput) channelInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doCreateChannel(); }
+  });
+  var roomInput = $('create-room-input');
+  if (roomInput) roomInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doCreateRoom(); }
+  });
+
+  // Invite popover events
+  var inviteToggle = $('invite-toggle');
+  if (inviteToggle) inviteToggle.addEventListener('click', toggleInvitePopover);
+
+  // Edit room dialog events
+  var editRoomOverlay = $('edit-room-dialog');
+  if (editRoomOverlay) editRoomOverlay.addEventListener('click', function (e) {
+    if (e.target === editRoomOverlay) hideEditRoomDialog();
+  });
+  var editRoomCloseBtn = $('edit-room-close');
+  if (editRoomCloseBtn) editRoomCloseBtn.addEventListener('click', hideEditRoomDialog);
+  var editRoomSaveBtn = $('edit-room-save');
+  if (editRoomSaveBtn) editRoomSaveBtn.addEventListener('click', doSaveRoom);
+}
+
+// ==================== Init ====================
+async function init() {
+  console.log('[Aro] init, Tapp.federation:', typeof Tapp.federation, Tapp.federation ? Object.keys(Tapp.federation) : 'N/A');
+
+  try {
+    var user = await Tapp.context.getUser();
+    if (user && user.actor_url) state.localActorUrl = user.actor_url;
+  } catch (e) { /* ignore */ }
+
+  try {
+`
+
+const PAGE_MOD_INDEX = `\
+    var localeRes = await Tapp.ui.getLocale();
+    if (localeRes) setLocale(localeRes);
+  } catch (e) { /* ignore */ }
+
+  try {
+    var settings = await Tapp.settings.getAll();
+    if (settings && settings.pollInterval) {
+      state.pollInterval = Math.max(5, Math.min(120, settings.pollInterval)) * 1000;
+    }
+  } catch (e) { /* ignore */ }
+
+  // Load tapp acceptance states from storage
+  try {
+    var allStorage = await Tapp.storage.getAll();
+    if (allStorage) {
+      Object.keys(allStorage).forEach(function (k) {
+        if (k.indexOf('tapp_accept_') === 0) {
+          state.tappAcceptMap[k] = allStorage[k];
+        }
+      });
+    }
+  } catch (e) { /* ignore */ }
+
+  applyLabels();
+
+  // -- Populate feed profile header from user context --
+  try {
+    var user = await Tapp.context.getUser();
+    if (user) {
+      var avatarEl = $('feed-avatar');
+      if (avatarEl) {
+        if (user.avatar_url) avatarEl.innerHTML = '<img src="' + esc(user.avatar_url) + '" alt="" />';
+        else avatarEl.textContent = ((user.display_name || user.username || '?')[0] || '?').toUpperCase();
+      }
+      var nameEl = $('feed-display-name');
+      if (nameEl) nameEl.textContent = user.display_name || user.username || '';
+      var handleEl = $('feed-handle');
+      if (handleEl) handleEl.textContent = user.username ? '@' + user.username : '';
+      // Update nav feed tab avatar + username
+      var navAvatar = $('nav-feed-avatar');
+      if (navAvatar) {
+        if (user.avatar_url) navAvatar.innerHTML = '<img src="' + esc(user.avatar_url) + '" alt="" />';
+        else navAvatar.textContent = ((user.display_name || user.username || '?')[0] || '?').toUpperCase();
+      }
+      var navName = $('nav-feed-label');
+      if (navName) navName.textContent = user.display_name || user.username || '';
+    }
+  } catch (e) { /* ignore */ }
+
+  bindEvents();
+  await loadConversations();
+  await loadFeed();
+
+  // Handle launch params
+  var launchParams = window._TAPP_LAUNCH_PARAMS || {};
+  if (launchParams.view && ['messages', 'feed', 'rings'].indexOf(launchParams.view) !== -1) {
+    switchView(launchParams.view);
+  } else if (launchParams.view === 'timeline' || launchParams.view === 'profile') {
+    switchView('feed');
+  }
+  if (launchParams.channel) {
+    switchView('messages');
+    openConversation('channel', launchParams.channel);
+  } else if (launchParams.room) {
+    switchView('messages');
+    openConversation('room', launchParams.room);
+  }
+
+  applyDialogLabels();
+
+  Tapp.ui.onLocaleChange(function (newLocale) {
+    setLocale(newLocale);
+    applyLabels();
+    applyDialogLabels();
+    renderConvList();
+    renderChatHeader();
+    renderMembers();
+    if (state.currentView === 'feed') { renderFeedContent(); }
+    else if (state.currentView === 'rings') { renderRingsSidebar(); if (state.activeRingId) renderRingDetail(); }
+  });
+}
+
+// ==================== Entry ====================
+if (window._TAPP_MODE === 'page' || window._TAPP_HAS_HTML) {
+  Tapp.lifecycle.onReady(function () {
+    init();
+  });
+
+  Tapp.lifecycle.onDestroy(function () {
+    stopPolling();
+  });
+}
+`
+
+const PAGE_MODULES: Record<string, string> = {
+  'i18n.js': PAGE_MOD_I18N,
+  'state.js': PAGE_MOD_STATE,
+  'helpers.js': PAGE_MOD_HELPERS,
+  'attachments.js': PAGE_MOD_ATTACHMENTS,
+  'chat.js': PAGE_MOD_CHAT,
+  'members.js': PAGE_MOD_MEMBERS,
+  'api.js': PAGE_MOD_API,
+  'views.js': PAGE_MOD_VIEWS,
+  'events.js': PAGE_MOD_EVENTS,
+  'index.js': PAGE_MOD_INDEX,
+}
+
+// ==================== Generated Monolith (from modules + inline LANG) ====================
+function buildCoreCode(): string {
+  // 内联 LANG 版本的 i18n 模块（用于单体回退）
+  const inlineLang = `\
+  // ==================== i18n ====================
+  var LANG = ${JSON.stringify(ARO_I18N, null, 2).split('\n').map((l, i) => i === 0 ? l : '  ' + l).join('\n')};
+
+  var lang = LANG.zh;
+  var currentLocale = 'zh';
+
+  function setLocale(locale) {
+    currentLocale = locale || 'zh';
+    var key = currentLocale.startsWith('zh') ? 'zh' : currentLocale.startsWith('ja') ? 'ja' : 'en';
+    lang = LANG[key] || LANG.en;
+  }`
+
+  // 其余模块（跳过 i18n.js，因为单体用内联 LANG）
+  const otherModules = [
+    PAGE_MOD_STATE, PAGE_MOD_HELPERS, PAGE_MOD_ATTACHMENTS, PAGE_MOD_CHAT,
+    PAGE_MOD_MEMBERS, PAGE_MOD_API, PAGE_MOD_VIEWS, PAGE_MOD_EVENTS, PAGE_MOD_INDEX,
+  ].map(m => m.split('\n').map(l => l ? '  ' + l : l).join('\n')).join('\n\n')
+
+  return `(function () {
+  'use strict';
+
+${inlineLang}
+
+${otherModules}
+})();`
+}
+
+const CORE_CODE = buildCoreCode()
+
+
+// ==================== Manifest ====================
+const manifest: TappManifest = {
+  id: 'com.myriad.aro',
+  name: 'Aro',
+  version: '1.0.0',
+  description: 'Aro — 社交中心，统一管理消息、时间线、环网和个人资料。',
+  category: 'social',
+  main: 'index.js',
+  author: {
+    name: 'Myriad Team',
+    url: 'https://github.com/Myriad-Dreamin',
+  },
+  permissions: [
+    'storage',
+    'ui:notification',
+    'ui:theme',
+    'federation:read',
+    'federation:write',
+    'federation:message',
+    'platform:read',
+    'report:read',
+    'tappList:read',
+    'tappList:manage',
+    'brew:read',
+  ],
+  iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
+  themeColor: '#6366f1',
+  hasPage: true,
+  settings: [
+    { key: 'pollInterval', type: 'number', defaultValue: 15, label: '轮询间隔 (秒)', min: 5, max: 120, step: 5 },
+    { key: 'notifyOnMessage', type: 'toggle', defaultValue: true, label: '新消息通知' },
+  ],
+  pageModules: [
+    'i18n.js', 'state.js', 'helpers.js', 'attachments.js', 'chat.js',
+    'members.js', 'api.js', 'views.js', 'events.js', 'index.js',
+  ],
+}
+
+// ==================== Code Structure ====================
+const codeStructure: TappCodeStructure = {
+  core: CORE_CODE,
+  styles: STYLES,
+  pageHtml: PAGE_HTML,
+  i18n: ARO_I18N,
+  pageModules: PAGE_MODULES,
+}
+
+// ==================== Export ====================
+export const aroTapp: ExampleTapp = {
+  manifest,
+  code: codeStructure,
+  category: 'social',
+  tags: ['official', 'federation', 'social', 'messenger', 'timeline', 'rings', 'profile'],
+}

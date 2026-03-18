@@ -6,9 +6,9 @@ import {
   LuKeyboard as Keyboard,
   LuX as X,
 } from '@lib/icons'
-
-import { SPRING_SMOOTH } from './constants'
 import { motionShim as motion } from '@lib/motionShim'
+
+import { ISLAND_BTN, ISLAND_GLASS, SPRING_SMOOTH } from './constants'
 
 interface KeyboardShortcut {
   key: string
@@ -55,7 +55,7 @@ export function KeyboardMode({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 12, scale: 0.95 }}
       transition={SPRING_SMOOTH}
-      className="flex flex-col rounded-2xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 w-[28rem] max-w-[90vw] overflow-hidden"
+      className={`flex flex-col ${ISLAND_GLASS} w-md max-w-[90vw] overflow-hidden`}
     >
       {/* 快捷键内容 - 两列布局 */}
       <div className="p-4 max-h-[50vh] overflow-y-auto">
@@ -107,7 +107,7 @@ export function KeyboardMode({
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+          className={`${ISLAND_BTN} h-7! px-2!`}
           title={t.close}
           aria-label={t.close}
         >

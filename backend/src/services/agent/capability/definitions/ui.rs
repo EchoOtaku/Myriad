@@ -53,7 +53,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "music.status".to_string(),
         name: "音乐播放状态".to_string(),
         description: "获取当前音乐播放器状态".to_string(),
-        category: CapabilityCategory::DataRead,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
             "type": "object",
@@ -119,7 +119,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "router.state".to_string(),
         name: "路由状态".to_string(),
         description: "获取当前页面路由状态，了解用户正在查看的内容".to_string(),
-        category: CapabilityCategory::DataRead,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
             "type": "object",
@@ -300,7 +300,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "page.understand".to_string(),
         name: "页面 UI 智能理解".to_string(),
         description: "使用 AI 分析当前页面的 UI 结构，理解各元素的用途，并根据用户意图生成操作指令".to_string(),
-        category: CapabilityCategory::AiProcess,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Analyze, IntentAction::Execute],
         input_schema: json!({
             "type": "object",
@@ -365,7 +365,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         id: "page.content".to_string(),
         name: "页面内容".to_string(),
         description: "读取当前页面显示的实际内容，支持 Brew/平台/Tapp 等多种页面类型的层级结构".to_string(),
-        category: CapabilityCategory::DataRead,
+        category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
             "type": "object",

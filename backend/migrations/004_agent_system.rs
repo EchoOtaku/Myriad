@@ -72,6 +72,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(AgentTasks::OriginalRequest).text())
                     // 会话 ID（用于多轮对话）
                     .col(ColumnDef::new(AgentTasks::SessionId).string_len(64))
+                    // Lane ID（队列标识）
+                    .col(ColumnDef::new(AgentTasks::LaneId).string_len(128))
                     // 开始时间
                     .col(
                         ColumnDef::new(AgentTasks::StartedAt)
@@ -393,6 +395,7 @@ pub enum AgentTasks {
     Error,
     OriginalRequest,
     SessionId,
+    LaneId,
     StartedAt,
     CompletedAt,
     UpdatedAt,

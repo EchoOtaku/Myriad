@@ -179,15 +179,31 @@ pub async fn ai_analyze(
 
     let analysis_prompt = match req.analyze_type.as_str() {
         "summarize" => format!(
-            "Please summarize the following data concisely:\n{}",
+            "You are a data analysis assistant. Please provide a clear, structured summary of the following data.\n\n\
+            Requirements:\n\
+            - Identify the most important information and key takeaways\n\
+            - Organize the summary with clear structure\n\
+            - Keep it concise but comprehensive\n\n\
+            Data:\n{}",
             data_str
         ),
         "categorize" => format!(
-            "Please categorize the following data into logical groups:\n{}",
+            "You are a data classification specialist. Please categorize the following data into logical, meaningful groups.\n\n\
+            Requirements:\n\
+            - Create clear, distinct categories\n\
+            - Place each item in the most appropriate category\n\
+            - Return results as a JSON object where keys are category names and values are arrays of items\n\n\
+            Data:\n{}",
             data_str
         ),
         "sentiment" => format!(
-            "Please analyze the sentiment of the following data:\n{}",
+            "You are a sentiment analysis expert. Please analyze the sentiment of the following data.\n\n\
+            Requirements:\n\
+            - Identify overall sentiment (positive/neutral/negative) with confidence score (0-1)\n\
+            - Highlight key phrases that indicate sentiment\n\
+            - If multiple topics exist, analyze each separately\n\
+            - Return as JSON: {{\"overall\": \"positive|neutral|negative\", \"confidence\": 0.X, \"details\": [...]}}\n\n\
+            Data:\n{}",
             data_str
         ),
         "custom" => {
@@ -354,11 +370,15 @@ pub async fn ai_chat(
         ai_config.provider, ai_config.api_key, ai_config.model, ai_config.base_url,
     ).await;
 
+    // 构建提示词，保留角色结构
+    let mut prompt_parts: Vec<String> = Vec::new();
+    for msg in &full_messages {
+        prompt_parts.push(format!("[{}]\n{}", msg.role.to_uppercase(), msg.content));
+    }
+    let combined_prompt = prompt_parts.join("\n\n");
+
     let prompt_data = json!({
-        "prompt": full_messages.iter()
-            .map(|m| format!("{}: {}", m.role, m.content))
-            .collect::<Vec<_>>()
-            .join("\n\n")
+        "prompt": combined_prompt
     });
 
     match analyzer.analyze_profile(&prompt_data).await {
@@ -489,6 +509,7 @@ pub async fn ai_image_generate(
                 .post("https://api.pixai.art/v1/task")
                 .header("Authorization", format!("Bearer {}", api_key))
                 .header("Content-Type", "application/json")
+                .header("x-apollo-operation-name", "createTask")
                 .json(&json!({
                     "parameters": {
                         "prompts": req.prompt,
@@ -572,6 +593,8 @@ pub async fn ai_image_task_status(
     let response = client
         .get(format!("https://api.pixai.art/v1/task/{}", req.task_id))
         .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .header("x-apollo-operation-name", "getTask")
         .send()
         .await
         .map_err(|e| {

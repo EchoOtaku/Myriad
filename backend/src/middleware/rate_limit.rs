@@ -121,11 +121,24 @@ static RATE_LIMITER: once_cell::sync::Lazy<RateLimiter> = once_cell::sync::Lazy:
 
 /// Rate limiting middleware
 pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
-    // Extract client IP
+    // Extract client IP: 优先使用 X-Forwarded-For / X-Real-IP（反向代理场景）
     let ip = req
-        .extensions()
-        .get::<std::net::SocketAddr>()
-        .map(|addr| addr.ip())
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .and_then(|s| s.trim().parse::<IpAddr>().ok())
+        .or_else(|| {
+            req.headers()
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.trim().parse::<IpAddr>().ok())
+        })
+        .or_else(|| {
+            req.extensions()
+                .get::<std::net::SocketAddr>()
+                .map(|addr| addr.ip())
+        })
         .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
 
     // Get endpoint path
@@ -134,28 +147,47 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
     // ✅ 安全修复 P0: 使用全局单例，确保限流计数器跨请求持久化
     // 不同类型的端点使用不同的路径前缀来区分限流规则
     let (allowed, retry_after) = if is_sensitive_endpoint(&path) {
-        // 敏感端点：5次请求/5分钟（全局限流器会跟踪每个IP+endpoint组合）
-        let _ = RATE_LIMITER.check_limit(ip, &path).await; // 记录请求
-                                                           // 手动检查是否超过敏感端点的阈值
+        // 敏感端点：5次请求/5分钟
+        // 直接读取并递增计数器（不使用 check_limit 避免双重计数）
         let record_count = {
-            let records = RATE_LIMITER.records.read().await;
-            records
-                .get(&ip)
-                .and_then(|ip_rec| ip_rec.get(&path))
-                .map(|rec| rec.count)
-                .unwrap_or(0)
+            let mut records = RATE_LIMITER.records.write().await;
+            let now = std::time::Instant::now();
+            let ip_records = records.entry(ip).or_insert_with(HashMap::new);
+            let record = ip_records
+                .entry(path.clone())
+                .or_insert(RequestRecord {
+                    count: 0,
+                    window_start: now,
+                });
+            // 敏感端点使用 5 分钟窗口
+            if now.duration_since(record.window_start) > Duration::from_secs(300) {
+                record.count = 1;
+                record.window_start = now;
+            } else {
+                record.count += 1;
+            }
+            record.count
         };
         (record_count <= 5, 300)
     } else if is_compute_intensive(&path) {
         // 计算密集型端点：10次请求/分钟
-        let _ = RATE_LIMITER.check_limit(ip, &path).await; // 记录请求
         let record_count = {
-            let records = RATE_LIMITER.records.read().await;
-            records
-                .get(&ip)
-                .and_then(|ip_rec| ip_rec.get(&path))
-                .map(|rec| rec.count)
-                .unwrap_or(0)
+            let mut records = RATE_LIMITER.records.write().await;
+            let now = std::time::Instant::now();
+            let ip_records = records.entry(ip).or_insert_with(HashMap::new);
+            let record = ip_records
+                .entry(path.clone())
+                .or_insert(RequestRecord {
+                    count: 0,
+                    window_start: now,
+                });
+            if now.duration_since(record.window_start) > Duration::from_secs(60) {
+                record.count = 1;
+                record.window_start = now;
+            } else {
+                record.count += 1;
+            }
+            record.count
         };
         (record_count <= 10, 60)
     } else {

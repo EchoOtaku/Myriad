@@ -37,6 +37,15 @@ export const PERMISSION_LEVELS: Record<TappPermission, PermissionLevel> = {
   'scheduler:register': 'elevated',
   'speech:tts': 'elevated',
   'speech:asr': 'elevated',
+  'tappList:read': 'basic',
+  'tappList:manage': 'privileged',
+  'brew:read': 'basic',
+  'brew:write': 'elevated',
+  'brew:comment': 'elevated',
+  'brew:manage': 'privileged',
+  'federation:read': 'basic',
+  'federation:write': 'elevated',
+  'federation:message': 'elevated',
 }
 
 /**
@@ -85,6 +94,49 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = ne
   ['widget.unregister', 'widget:register'],
   ['widget.listRegistered', 'widget:register'],
   ['widget.updateConfig', 'widget:register'],
+
+  // 内容列表权限 — Tapp
+  ['tappList.list', 'tappList:read'],
+  ['tappList.get', 'tappList:read'],
+  ['tappList.getRecent', 'tappList:read'],
+  ['tappList.install', 'tappList:manage'],
+  ['tappList.uninstall', 'tappList:manage'],
+  ['tappList.start', 'tappList:manage'],
+  ['tappList.stop', 'tappList:manage'],
+  ['tappList.export', 'tappList:manage'],
+
+  // 内容列表权限 — Brew 读取
+  ['brewList.list', 'brew:read'],
+  ['brewList.get', 'brew:read'],
+  ['brewList.sources', 'brew:read'],
+  ['brewList.categories', 'brew:read'],
+  ['brewList.stats', 'brew:read'],
+  ['brewList.discover', 'brew:read'],
+  ['brewList.exportOpml', 'brew:read'],
+
+  // 内容列表权限 — Brew 写入
+  ['brewList.markRead', 'brew:write'],
+  ['brewList.markUnread', 'brew:write'],
+  ['brewList.star', 'brew:write'],
+  ['brewList.unstar', 'brew:write'],
+  ['brewList.markAllRead', 'brew:write'],
+
+  // 内容列表权限 — Brew 评论
+  ['brewList.getComments', 'brew:comment'],
+  ['brewList.createComment', 'brew:comment'],
+  ['brewList.updateComment', 'brew:comment'],
+  ['brewList.deleteComment', 'brew:comment'],
+  ['brewList.getReplies', 'brew:comment'],
+  ['brewList.createReply', 'brew:comment'],
+
+  // 内容列表权限 — Brew 管理
+  ['brewList.addSource', 'brew:manage'],
+  ['brewList.updateSource', 'brew:manage'],
+  ['brewList.deleteSource', 'brew:manage'],
+  ['brewList.refreshSource', 'brew:manage'],
+  ['brewList.importOpml', 'brew:manage'],
+  ['brewList.createCategory', 'brew:manage'],
+  ['brewList.deleteCategory', 'brew:manage'],
 
   // 平台数据权限
   ['platform.listEnabled', 'platform:read'],
@@ -180,4 +232,32 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> = ne
   ['speech.getVoices', 'speech:tts'],
   ['speech.getStatus', 'speech:tts'],
   ['speech.asr', 'speech:asr'],
+
+  // 联邦权限
+  ['federation.getTimeline', 'federation:read'],
+  ['federation.getFollowing', 'federation:read'],
+  ['federation.getFollowers', 'federation:read'],
+  ['federation.getPublished', 'federation:read'],
+  ['federation.getChannels', 'federation:read'],
+  ['federation.getChannel', 'federation:read'],
+  ['federation.getMessages', 'federation:read'],
+  ['federation.getRooms', 'federation:read'],
+  ['federation.getRoom', 'federation:read'],
+  ['federation.getRoomMembers', 'federation:read'],
+  ['federation.getRoomMessages', 'federation:read'],
+  ['federation.getRings', 'federation:read'],
+  ['federation.getRing', 'federation:read'],
+  ['federation.getRingPeers', 'federation:read'],
+  ['federation.follow', 'federation:write'],
+  ['federation.unfollow', 'federation:write'],
+  ['federation.publish', 'federation:write'],
+  ['federation.unpublish', 'federation:write'],
+  ['federation.createChannel', 'federation:write'],
+  ['federation.closeChannel', 'federation:write'],
+  ['federation.createRoom', 'federation:write'],
+  ['federation.updateRoom', 'federation:write'],
+  ['federation.inviteMember', 'federation:write'],
+  ['federation.leaveRoom', 'federation:write'],
+  ['federation.sendMessage', 'federation:message'],
+  ['federation.sendRoomMessage', 'federation:message'],
 ])

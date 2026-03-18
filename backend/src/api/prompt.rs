@@ -2,6 +2,8 @@ use axum::{http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::services::ai::create_ai_analyzer;
+
 #[derive(Debug, Deserialize)]
 pub struct GeneratePromptRequest {
     pub title: String,
@@ -15,16 +17,14 @@ pub struct GeneratePromptResponse {
     pub negative_prompt: String,
 }
 
-/// 生成图片生成提示词的 AI 端点
+/// 生成图片生成提示词的 API 端点
 pub async fn generate_prompt(
     Json(payload): Json<GeneratePromptRequest>,
 ) -> Result<Json<GeneratePromptResponse>, (StatusCode, Json<Value>)> {
     tracing::info!("Generating prompt for: {}", payload.title);
 
-    // TODO: 未来可以接入真实的 AI API（如 OpenAI、Claude 等）
-    // 这里的 system_prompt 和 user_prompt 是预留给 AI API 调用的
-    let _system_prompt = r#"You are a professional prompt engineer for AI image generation. 
-Your task is to convert user's activity description into a high-quality Studio Ghibli style illustration prompt.
+    let system_prompt = r#"You are a professional prompt engineer for AI image generation.
+Your task is to convert the user's description into a high-quality Studio Ghibli style illustration prompt.
 
 Requirements:
 1. Create prompts for transparent background PNG images with a single isolated subject
@@ -33,24 +33,40 @@ Requirements:
 4. Add Ghibli-specific terms: Studio Ghibli art style, Hayao Miyazaki inspired, watercolor texture, hand-drawn animation style
 5. The character should be cute chibi/kawaii style
 6. Keep the prompt concise but descriptive (under 150 words)
-7. Output ONLY the prompt text, no explanations
+7. If the subject is a known character (anime, game, etc.), include their accurate visual features
+8. Output ONLY the prompt text, no explanations"#;
 
-Also provide a negative prompt to avoid: background, scenery, landscape, complex background, multiple subjects, low quality, blurry, distorted, deformed, ugly, bad anatomy"#;
-
-    let _user_prompt = format!(
+    let user_prompt = format!(
         "Create a Studio Ghibli style illustration prompt for this activity:\nTitle: {}\nDescription: {}\nCategory: {}",
         payload.title,
         payload.summary,
         payload.category.as_deref().unwrap_or("general")
     );
 
-    // 调用 AI API（这里使用本地推理或外部 API）
-    // 为了简化，这里使用规则生成，你可以替换为真实的 AI API 调用
-    let prompt = generate_prompt_with_rules(&payload.title, &payload.summary);
-
     let negative_prompt = "background, scenery, landscape, complex background, busy background, multiple subjects, crowd, low quality, blurry, distorted, deformed, ugly, bad anatomy, duplicate, text, watermark".to_string();
 
-    tracing::info!("Generated prompt length: {} chars", prompt.len());
+    // 尝试使用 AI 生成高质量提示词
+    if let Some(analyzer) = create_ai_analyzer().await {
+        match analyzer.analyze_with_system(system_prompt, &user_prompt).await {
+            Ok(result) => {
+                let cleaned = result.trim().trim_matches('"').trim_matches('`').trim();
+                if !cleaned.is_empty() {
+                    tracing::info!("AI-generated prompt length: {} chars", cleaned.len());
+                    return Ok(Json(GeneratePromptResponse {
+                        prompt: cleaned.to_string(),
+                        negative_prompt,
+                    }));
+                }
+            }
+            Err(e) => {
+                tracing::warn!("AI prompt generation failed, falling back to rules: {}", e);
+            }
+        }
+    }
+
+    // AI 不可用时使用规则引擎降级
+    let prompt = generate_prompt_with_rules(&payload.title, &payload.summary);
+    tracing::info!("Rule-generated prompt length: {} chars", prompt.len());
 
     Ok(Json(GeneratePromptResponse {
         prompt,

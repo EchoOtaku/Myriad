@@ -15,8 +15,11 @@ pub struct Model {
     pub id: String,
     pub user_id: i32,
     pub recipe_id: String,
+    #[sea_orm(nullable)]
+    pub name: Option<String>,
     pub status: String,
     pub current_step: i32,
+    pub total_steps: Option<i32>,
     #[sea_orm(column_type = "Json")]
     pub step_results: Json,
     #[sea_orm(column_type = "Json", nullable)]
@@ -28,6 +31,10 @@ pub struct Model {
     pub error: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub original_request: Option<String>,
+    #[sea_orm(nullable)]
+    pub session_id: Option<String>,
+    #[sea_orm(nullable)]
+    pub lane_id: Option<String>,
     pub started_at: DateTimeWithTimeZone,
     pub completed_at: Option<DateTimeWithTimeZone>,
     pub updated_at: DateTimeWithTimeZone,

@@ -1146,13 +1146,23 @@ async fn execute_page_understand(
     let query = params.get("query").and_then(|v| v.as_str()).unwrap_or("");
 
     if let Some(analyzer) = ctx.ai_analyzer {
+        let context_str = serde_json::to_string_pretty(&page_context).unwrap_or_default();
+        let truncated_context: String = context_str.chars().take(4000).collect();
+
         let prompt = format!(
-            "分析当前页面并理解用户意图：\n\
-            页面上下文: {}\n\
-            用户请求: {}\n\n\
-            请返回操作计划。",
-            serde_json::to_string_pretty(&page_context).unwrap_or_default(),
-            query
+            "你是一个页面交互分析助手。请分析当前页面上下文并理解用户意图，生成操作计划。\n\n\
+            页面上下文：\n{}\n\n\
+            用户请求：{}\n\n\
+            请返回 JSON 格式的操作计划：\n\
+            {{\n\
+              \"understood_intent\": \"对用户意图的理解\",\n\
+              \"actions\": [\n\
+                {{\"type\": \"click|input|navigate|scroll\", \"target\": \"目标元素描述\", \"value\": \"输入值（如有）\"}}\n\
+              ],\n\
+              \"explanation\": \"操作计划说明\"\n\
+            }}\n\n\
+            请直接返回 JSON。",
+            truncated_context, query
         );
 
         let result = analyzer
@@ -1853,7 +1863,7 @@ async fn execute_music_control(params: &HashMap<String, Value>) -> Result<Value,
     let action = params
         .get("action")
         .and_then(|v| v.as_str())
-        .ok_or("Missing action parameter")?;
+        .ok_or("缺少 action 参数（play/pause/next/previous/volume/mute/unmute）")?;
 
     let timestamp = chrono::Utc::now().timestamp_millis();
 

@@ -134,6 +134,45 @@ export function registerFederationHandlers(
     }
   })
 
+  bridge.registerHandler('federation.createChannel', async (message: TappMessage) => {
+    const [req] = (message.payload as { args: unknown[] }).args || []
+    if (!req)
+      return { success: false, error: 'Create channel request is required' }
+    try {
+      const data = await federationApi.createChannel(req as Parameters<typeof federationApi.createChannel>[0])
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to create channel' }
+    }
+  })
+
+  bridge.registerHandler('federation.acceptChannel', async (message: TappMessage) => {
+    const [channelId] = (message.payload as { args: unknown[] }).args || []
+    if (!channelId || typeof channelId !== 'string')
+      return { success: false, error: 'Channel ID is required' }
+    try {
+      const data = await federationApi.acceptChannel(channelId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to accept channel' }
+    }
+  })
+
+  bridge.registerHandler('federation.closeChannel', async (message: TappMessage) => {
+    const [channelId] = (message.payload as { args: unknown[] }).args || []
+    if (!channelId || typeof channelId !== 'string')
+      return { success: false, error: 'Channel ID is required' }
+    try {
+      const data = await federationApi.closeChannel(channelId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to close channel' }
+    }
+  })
+
   bridge.registerHandler('federation.getChannel', async (message: TappMessage) => {
     const [channelId] = (message.payload as { args: unknown[] }).args || []
     if (!channelId || typeof channelId !== 'string')
@@ -205,6 +244,102 @@ export function registerFederationHandlers(
     }
   })
 
+  bridge.registerHandler('federation.createRoom', async (message: TappMessage) => {
+    const [req] = (message.payload as { args: unknown[] }).args || []
+    if (!req)
+      return { success: false, error: 'Create room request is required' }
+    try {
+      const data = await federationApi.createRoom(req as Parameters<typeof federationApi.createRoom>[0])
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to create room' }
+    }
+  })
+
+  bridge.registerHandler('federation.updateRoom', async (message: TappMessage) => {
+    const [roomId, req] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string')
+      return { success: false, error: 'Room ID is required' }
+    if (!req)
+      return { success: false, error: 'Update room request is required' }
+    try {
+      const data = await federationApi.updateRoom(roomId, req as Parameters<typeof federationApi.updateRoom>[1])
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to update room' }
+    }
+  })
+
+  bridge.registerHandler('federation.getRoomMembers', async (message: TappMessage) => {
+    const [roomId] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string')
+      return { success: false, error: 'Room ID is required' }
+    try {
+      const data = await federationApi.getRoomMembers(roomId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to get members' }
+    }
+  })
+
+  bridge.registerHandler('federation.inviteMember', async (message: TappMessage) => {
+    const [roomId, req] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string' || !req)
+      return { success: false, error: 'Room ID and invite request are required' }
+    try {
+      const data = await federationApi.inviteMember(
+        roomId,
+        req as Parameters<typeof federationApi.inviteMember>[1],
+      )
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to invite' }
+    }
+  })
+
+  bridge.registerHandler('federation.removeMember', async (message: TappMessage) => {
+    const [roomId, actorUrl] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string' || !actorUrl || typeof actorUrl !== 'string')
+      return { success: false, error: 'Room ID and actor URL are required' }
+    try {
+      const data = await federationApi.removeMember(roomId, actorUrl)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to remove member' }
+    }
+  })
+
+  bridge.registerHandler('federation.leaveRoom', async (message: TappMessage) => {
+    const [roomId] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string')
+      return { success: false, error: 'Room ID is required' }
+    try {
+      const data = await federationApi.leaveRoom(roomId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to leave room' }
+    }
+  })
+
+  bridge.registerHandler('federation.deleteRoom', async (message: TappMessage) => {
+    const [roomId] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string')
+      return { success: false, error: 'Room ID is required' }
+    try {
+      const data = await federationApi.deleteRoom(roomId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to delete room' }
+    }
+  })
+
   bridge.registerHandler('federation.getRoomMessages', async (message: TappMessage) => {
     const [roomId, before, limit] = (message.payload as { args: unknown[] }).args || []
     if (!roomId || typeof roomId !== 'string')
@@ -231,6 +366,21 @@ export function registerFederationHandlers(
         roomId,
         req as Parameters<typeof federationApi.sendRoomMessage>[1],
       )
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  // ==================== Pin Room Message ====================
+
+  bridge.registerHandler('federation.pinRoomMessage', async (message: TappMessage) => {
+    const [roomId, messageId, pinned] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string' || !messageId || typeof messageId !== 'string')
+      return { success: false, error: 'Room ID and Message ID are required' }
+    try {
+      const data = await federationApi.pinRoomMessage(roomId, messageId, !!pinned)
       return { success: true, data }
     }
     catch (error) {
@@ -269,6 +419,75 @@ export function registerFederationHandlers(
       return { success: false, error: 'Ring ID is required' }
     try {
       const data = await federationApi.getRingPeers(ringId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.createRing', async (message: TappMessage) => {
+    const [req] = (message.payload as { args: unknown[] }).args || []
+    if (!req || typeof req !== 'object')
+      return { success: false, error: 'Ring request is required' }
+    try {
+      const data = await federationApi.createRing(req as any)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.leaveRing', async (message: TappMessage) => {
+    const [ringId] = (message.payload as { args: unknown[] }).args || []
+    if (!ringId || typeof ringId !== 'string')
+      return { success: false, error: 'Ring ID is required' }
+    try {
+      const data = await federationApi.leaveRing(ringId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.addPeer', async (message: TappMessage) => {
+    const [ringId, req] = (message.payload as { args: unknown[] }).args || []
+    if (!ringId || typeof ringId !== 'string')
+      return { success: false, error: 'Ring ID is required' }
+    if (!req || typeof req !== 'object')
+      return { success: false, error: 'Peer request is required' }
+    try {
+      const data = await federationApi.addPeer(ringId, req as any)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.removePeer', async (message: TappMessage) => {
+    const [ringId, peerUrl] = (message.payload as { args: unknown[] }).args || []
+    if (!ringId || typeof ringId !== 'string')
+      return { success: false, error: 'Ring ID is required' }
+    if (!peerUrl || typeof peerUrl !== 'string')
+      return { success: false, error: 'Peer URL is required' }
+    try {
+      const data = await federationApi.removePeer(ringId, peerUrl)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.triggerSync', async (message: TappMessage) => {
+    const [ringId] = (message.payload as { args: unknown[] }).args || []
+    if (!ringId || typeof ringId !== 'string')
+      return { success: false, error: 'Ring ID is required' }
+    try {
+      const data = await federationApi.triggerSync(ringId)
       return { success: true, data }
     }
     catch (error) {

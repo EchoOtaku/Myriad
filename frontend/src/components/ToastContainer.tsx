@@ -90,7 +90,7 @@ export function ToastContainer() {
           key={toast.id}
           className="toast-container-item"
           style={{
-            transform: `translateY(${index * 72}px)`,
+            transform: `translate(-50%, ${index * 72}px)`,
             zIndex: 9999 - index,
           }}
         >

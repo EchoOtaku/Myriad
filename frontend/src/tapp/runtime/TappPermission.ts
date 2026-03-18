@@ -29,6 +29,36 @@ const PERMISSION_INFO: Record<TappPermission, {
     description: '允许此应用读取你的平台数据（游戏、视频、音乐等）',
     level: 'basic',
   },
+  'tappList:read': {
+    title: '读取 Tapp 列表',
+    description: '允许此应用读取已安装 Tapp 列表和详情',
+    level: 'basic',
+  },
+  'tappList:manage': {
+    title: '管理 Tapp',
+    description: '允许此应用安装、卸载、启动、停止和导出 Tapp',
+    level: 'privileged',
+  },
+  'brew:read': {
+    title: '读取 Brew 内容',
+    description: '允许此应用读取 Brew 订阅源和文章内容',
+    level: 'basic',
+  },
+  'brew:write': {
+    title: '编辑 Brew 内容',
+    description: '允许此应用修改 Brew 阅读状态、收藏和来源',
+    level: 'elevated',
+  },
+  'brew:comment': {
+    title: 'Brew 评论',
+    description: '允许此应用创建、修改和删除 Brew 评论',
+    level: 'elevated',
+  },
+  'brew:manage': {
+    title: '管理 Brew',
+    description: '允许此应用进行 Brew 管理级操作',
+    level: 'privileged',
+  },
   'platform:write': {
     title: '写入平台数据',
     description: '允许此应用向资料库添加新数据',
@@ -147,6 +177,21 @@ const PERMISSION_INFO: Record<TappPermission, {
   'speech:asr': {
     title: '语音转文本',
     description: '允许此应用使用云端语音识别服务（ASR）',
+    level: 'elevated',
+  },
+  'federation:read': {
+    title: '读取联邦数据',
+    description: '允许此应用读取联邦时间线、频道、房间、环网等信息',
+    level: 'basic',
+  },
+  'federation:write': {
+    title: '联邦操作',
+    description: '允许此应用创建频道/房间、关注/取消关注、发布内容',
+    level: 'elevated',
+  },
+  'federation:message': {
+    title: '联邦消息',
+    description: '允许此应用发送联邦消息（频道和房间）',
     level: 'elevated',
   },
 }

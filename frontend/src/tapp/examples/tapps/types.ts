@@ -33,6 +33,12 @@ export interface TappCodeStructure {
   widgetCSS?: string
   /** Page 专用编译后的 Tailwind CSS */
   pageCSS?: string
+  /** i18n 翻译数据（语言代码 → 键值对） */
+  i18n?: Record<string, unknown>
+  /** Page 模块文件（文件名 → 代码内容） */
+  pageModules?: Record<string, string>
+  /** Page 模块加载顺序（优先于 manifest.pageModules） */
+  pageModuleOrder?: string[]
 }
 
 /** 示例 Tapp 数据 */
@@ -40,7 +46,7 @@ export interface ExampleTapp {
   manifest: TappManifest
   /** 代码结构（分离架构） */
   code: TappCodeStructure
-  category: 'widget' | 'tool' | 'platform' | 'demo' | 'test'
+  category: 'widget' | 'tool' | 'platform' | 'demo' | 'test' | 'social'
   tags: string[]
 }
 
