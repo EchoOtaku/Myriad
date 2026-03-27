@@ -12,15 +12,6 @@ pub enum Language {
 }
 
 impl Language {
-    /// 获取语言代码
-    #[allow(dead_code)]
-    pub fn code(&self) -> &'static str {
-        match self {
-            Language::Chinese => "zh",
-            Language::English => "en",
-            Language::Japanese => "ja",
-        }
-    }
 }
 
 /// 语言检测器（用于选择 prompt 语言）

@@ -5,9 +5,37 @@
 
 use super::HandlerContext;
 use crate::models::entities::{tapps, tapp_widgets, tapp_storage, tapp_scheduled_tasks, tapp_task_executions};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+
+// HTML element parsing regexes (compiled once)
+static RE_BUTTON: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<button[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:class=[\"']([^\"']*)[\"'])?[^>]*(?:title=[\"']([^\"']*)[\"'])?[^>]*>([^<]*)"#).unwrap());
+static RE_INPUT: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<(?:input|textarea)[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:type=[\"']([^\"']*)[\"'])?[^>]*(?:placeholder=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap());
+static RE_FORM: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<form[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:action=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap());
+static RE_LINK: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<a[^>]*href=[\"']([^\"']*)[\"'][^>]*>([^<]*)"#).unwrap());
+static RE_ONCLICK: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<(\w+)[^>]*onclick=[\"']([^\"']*)[\"'][^>]*(?:id=[\"']([^\"']*)[\"'])?"#).unwrap());
+
+// JS analysis regexes (compiled once)
+static RE_JS_FUNC: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?:async\s+)?function\s+(\w+)\s*\([^)]*\)"#).unwrap());
+static RE_TAPP_API: Lazy<Regex> = Lazy::new(|| Regex::new(r#"Tapp\.(\w+)\.(\w+)"#).unwrap());
+static RE_ADDEVENT: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\.addEventListener\(['\"](\w+)['\"]"#).unwrap());
+static RE_ON_PROP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\.on(\w+)\s*="#).unwrap());
+static RE_I18N_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r#"t\(['\"]([^'\"]+)['\"]\)"#).unwrap());
+static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwrap());
+
+/// Escape a string for safe embedding in a JS single-quoted string literal.
+/// Prevents injection when values are interpolated into generated JavaScript.
+fn sanitize_js_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('<', "\\x3c")
+}
 
 /// 执行 UI 控制能力
 pub async fn execute(
@@ -1029,7 +1057,8 @@ async fn execute_tapp_read(
         "#.to_string(),
         "content" => {
             if let Some(sel) = selector {
-                format!(r#"const el = document.querySelector('{}'); return el ? el.textContent : null;"#, sel)
+                let safe_sel = sanitize_js_string(sel);
+                format!(r#"const el = document.querySelector('{}'); return el ? el.textContent : null;"#, safe_sel)
             } else {
                 r#"return document.body.textContent;"#.to_string()
             }
@@ -1217,8 +1246,7 @@ fn parse_html_elements(html: &str, filter: &str) -> Value {
     let mut interactive = vec![];
 
     // 解析按钮
-    let button_re = regex::Regex::new(r#"<button[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:class=[\"']([^\"']*)[\"'])?[^>]*(?:title=[\"']([^\"']*)[\"'])?[^>]*>([^<]*)"#).unwrap();
-    for cap in button_re.captures_iter(html) {
+    for cap in RE_BUTTON.captures_iter(html) {
         let id = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let class = cap.get(2).map(|m| m.as_str()).unwrap_or("");
         let title = cap.get(3).map(|m| m.as_str()).unwrap_or("");
@@ -1231,8 +1259,7 @@ fn parse_html_elements(html: &str, filter: &str) -> Value {
     }
 
     // 解析输入框
-    let input_re = regex::Regex::new(r#"<(?:input|textarea)[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:type=[\"']([^\"']*)[\"'])?[^>]*(?:placeholder=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap();
-    for cap in input_re.captures_iter(html) {
+    for cap in RE_INPUT.captures_iter(html) {
         let id = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let input_type = cap.get(2).map(|m| m.as_str()).unwrap_or("text");
         let placeholder = cap.get(3).map(|m| m.as_str()).unwrap_or("");
@@ -1244,24 +1271,21 @@ fn parse_html_elements(html: &str, filter: &str) -> Value {
     }
 
     // 解析表单
-    let form_re = regex::Regex::new(r#"<form[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:action=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap();
-    for cap in form_re.captures_iter(html) {
+    for cap in RE_FORM.captures_iter(html) {
         let id = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let action = cap.get(2).map(|m| m.as_str()).unwrap_or("");
         forms.push(json!({ "type": "form", "id": id, "action": action }));
     }
 
     // 解析链接
-    let link_re = regex::Regex::new(r#"<a[^>]*href=[\"']([^\"']*)[\"'][^>]*>([^<]*)"#).unwrap();
-    for cap in link_re.captures_iter(html) {
+    for cap in RE_LINK.captures_iter(html) {
         let href = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let text = cap.get(2).map(|m| m.as_str()).unwrap_or("").trim();
         links.push(json!({ "type": "link", "href": href, "text": text }));
     }
 
     // 解析其他可交互元素
-    let onclick_re = regex::Regex::new(r#"<(\w+)[^>]*onclick=[\"']([^\"']*)[\"'][^>]*(?:id=[\"']([^\"']*)[\"'])?"#).unwrap();
-    for cap in onclick_re.captures_iter(html) {
+    for cap in RE_ONCLICK.captures_iter(html) {
         let tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let onclick = cap.get(2).map(|m| m.as_str()).unwrap_or("");
         let id = cap.get(3).map(|m| m.as_str()).unwrap_or("");
@@ -1316,17 +1340,15 @@ fn infer_input_purpose(id: &str, input_type: &str, placeholder: &str) -> String 
 fn parse_js_functions(js: &str) -> Vec<Value> {
     let mut functions = vec![];
 
-    let func_re = regex::Regex::new(r#"(?:async\s+)?function\s+(\w+)\s*\([^)]*\)"#).unwrap();
-    for cap in func_re.captures_iter(js) {
+    for cap in RE_JS_FUNC.captures_iter(js) {
         let name = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         if !name.is_empty() && !name.starts_with('_') {
             functions.push(json!({ "name": name, "type": "function", "purpose": infer_function_purpose(name) }));
         }
     }
 
-    let tapp_re = regex::Regex::new(r#"Tapp\.(\w+)\.(\w+)"#).unwrap();
     let mut tapp_apis: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for cap in tapp_re.captures_iter(js) {
+    for cap in RE_TAPP_API.captures_iter(js) {
         let module = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let method = cap.get(2).map(|m| m.as_str()).unwrap_or("");
         tapp_apis.insert(format!("Tapp.{}.{}", module, method));
@@ -1343,13 +1365,13 @@ fn parse_js_functions(js: &str) -> Vec<Value> {
 fn parse_js_events(js: &str) -> Vec<Value> {
     let mut events = vec![];
 
-    let event_re = regex::Regex::new(r#"\.addEventListener\(['\"](\w+)['\"]"#).unwrap();
+    let event_re = &*RE_ADDEVENT;
     for cap in event_re.captures_iter(js) {
         let event_type = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         events.push(json!({ "type": event_type, "binding": "addEventListener" }));
     }
 
-    let on_re = regex::Regex::new(r#"\.on(\w+)\s*="#).unwrap();
+    let on_re = &*RE_ON_PROP;
     for cap in on_re.captures_iter(js) {
         let event_type = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         events.push(json!({ "type": event_type, "binding": "property" }));
@@ -1375,8 +1397,7 @@ fn parse_i18n(js: &str) -> Value {
     }
 
     // 提取一些 i18n 键名
-    let key_re = regex::Regex::new(r#"t\(['\"]([^'\"]+)['\"]\)"#).unwrap();
-    for (i, cap) in key_re.captures_iter(js).enumerate() {
+    for (i, cap) in RE_I18N_KEY.captures_iter(js).enumerate() {
         if i >= 10 {
             break;
         } // 只取前 10 个
@@ -1413,8 +1434,7 @@ fn infer_tapp_api_purpose(api: &str) -> String {
 }
 
 fn extract_function_name(onclick: &str) -> String {
-    let func_re = regex::Regex::new(r#"(\w+)\s*\("#).unwrap();
-    func_re.captures(onclick)
+    RE_FUNC_NAME.captures(onclick)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().to_string())
         .unwrap_or_else(|| "inline".to_string())
@@ -1476,68 +1496,71 @@ fn generate_interaction_command(
     };
 
     let safe_target = target.replace('-', "_");
+    let escaped_target = sanitize_js_string(target);
 
     match action {
         "click" => {
-            let cmd = format!("document.getElementById('{}').click()", target);
+            let cmd = format!("document.getElementById('{}').click()", escaped_target);
             let script = format!(
                 "{}const el_{} = document.getElementById('{}');\n  if (el_{}) el_{}.click();",
-                delay_script, safe_target, target, safe_target, safe_target
+                delay_script, safe_target, escaped_target, safe_target, safe_target
             );
             (cmd, script)
         }
         "input" => {
             let val = value.unwrap_or("");
-            let escaped_val = val.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
-            let cmd = format!("document.getElementById('{}').value = '{}'", target, escaped_val);
+            let escaped_val = sanitize_js_string(val);
+            let cmd = format!("document.getElementById('{}').value = '{}'", escaped_target, escaped_val);
             let script = format!(
                 "{}const input_{} = document.getElementById('{}');\n  if (input_{}) {{\n    input_{}.value = '{}';\n    input_{}.dispatchEvent(new Event('input', {{ bubbles: true }}));\n  }}",
-                delay_script, safe_target, target, safe_target, safe_target, escaped_val, safe_target
+                delay_script, safe_target, escaped_target, safe_target, safe_target, escaped_val, safe_target
             );
             (cmd, script)
         }
         "submit" => {
-            let cmd = format!("document.getElementById('{}').submit()", target);
+            let cmd = format!("document.getElementById('{}').submit()", escaped_target);
             let script = format!(
                 "{}const form_{} = document.getElementById('{}');\n  if (form_{}) form_{}.submit();",
-                delay_script, safe_target, target, safe_target, safe_target
+                delay_script, safe_target, escaped_target, safe_target, safe_target
             );
             (cmd, script)
         }
         "call" => {
             let func = function_name.unwrap_or(target);
+            let safe_func = sanitize_js_string(func);
             let args_str = args.map(|a| {
                 a.iter()
-                    .map(|v| if v.is_string() { format!("'{}'", v.as_str().unwrap_or("")) } else { v.to_string() })
+                    .map(|v| if v.is_string() { format!("'{}'", sanitize_js_string(v.as_str().unwrap_or(""))) } else { v.to_string() })
                     .collect::<Vec<_>>()
                     .join(", ")
             }).unwrap_or_default();
-            let cmd = format!("{}({})", func, args_str);
-            let script = format!("{}if (typeof {} === 'function') {}({});", delay_script, func, func, args_str);
+            let cmd = format!("{}({})", safe_func, args_str);
+            let script = format!("{}if (typeof {} === 'function') {}({});", delay_script, safe_func, safe_func, args_str);
             (cmd, script)
         }
         "focus" => {
-            let cmd = format!("document.getElementById('{}').focus()", target);
+            let cmd = format!("document.getElementById('{}').focus()", escaped_target);
             let script = format!(
                 "{}const focus_{} = document.getElementById('{}');\n  if (focus_{}) focus_{}.focus();",
-                delay_script, safe_target, target, safe_target, safe_target
+                delay_script, safe_target, escaped_target, safe_target, safe_target
             );
             (cmd, script)
         }
         "clear" => {
-            let cmd = format!("document.getElementById('{}').value = ''", target);
+            let cmd = format!("document.getElementById('{}').value = ''", escaped_target);
             let script = format!(
                 "{}const clear_{} = document.getElementById('{}');\n  if (clear_{}) {{\n    clear_{}.value = '';\n    clear_{}.dispatchEvent(new Event('input', {{ bubbles: true }}));\n  }}",
-                delay_script, safe_target, target, safe_target, safe_target, safe_target
+                delay_script, safe_target, escaped_target, safe_target, safe_target, safe_target
             );
             (cmd, script)
         }
         "select" => {
             let val = value.unwrap_or("");
-            let cmd = format!("document.getElementById('{}').value = '{}'", target, val);
+            let escaped_val = sanitize_js_string(val);
+            let cmd = format!("document.getElementById('{}').value = '{}'", escaped_target, escaped_val);
             let script = format!(
                 "{}const select_{} = document.getElementById('{}');\n  if (select_{}) {{\n    select_{}.value = '{}';\n    select_{}.dispatchEvent(new Event('change', {{ bubbles: true }}));\n  }}",
-                delay_script, safe_target, target, safe_target, safe_target, val, safe_target
+                delay_script, safe_target, escaped_target, safe_target, safe_target, escaped_val, safe_target
             );
             (cmd, script)
         }
@@ -1744,87 +1767,6 @@ fn build_breadcrumb(path: &str) -> Vec<String> {
     }
 
     breadcrumb
-}
-
-/// 生成页面元素交互脚本
-#[allow(dead_code)]
-fn generate_page_interact_script(
-    action: &str,
-    target: &Value,
-    value: Option<&str>,
-    scroll_options: &Option<Value>,
-) -> String {
-    // 构建元素选择器
-    let selector_parts: Vec<String> = vec![
-        target.get("selector").and_then(|v| v.as_str()).map(|s| format!("document.querySelector('{}')", s)),
-        target.get("testId").and_then(|v| v.as_str()).map(|s| format!("document.querySelector('[data-testid=\"{}\"]')", s)),
-        target.get("ariaLabel").and_then(|v| v.as_str()).map(|s| format!("document.querySelector('[aria-label=\"{}\"]')", s)),
-        target.get("text").and_then(|v| v.as_str()).map(|text| {
-            format!(
-                "Array.from(document.querySelectorAll('button, a, [role=\"button\"], [role=\"link\"]')).find(el => el.textContent.includes('{}'))",
-                text.replace('\'', "\\'")
-            )
-        }),
-    ].into_iter().flatten().collect();
-
-    let element_finder = if selector_parts.is_empty() {
-        "null".to_string()
-    } else {
-        selector_parts.join(" || ")
-    };
-
-    let index = target.get("index").and_then(|v| v.as_i64()).unwrap_or(0);
-
-    let action_script = match action {
-        "click" => "if (el) { el.click(); }".to_string(),
-        "hover" => {
-            "if (el) { el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); }"
-                .to_string()
-        }
-        "focus" => "if (el) { el.focus(); }".to_string(),
-        "scroll" => {
-            if let Some(opts) = scroll_options {
-                let direction = opts
-                    .get("direction")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("top");
-                let smooth = opts.get("smooth").and_then(|v| v.as_bool()).unwrap_or(true);
-                let behavior = if smooth { "smooth" } else { "auto" };
-                match direction {
-                    "top" => format!("if (el) {{ el.scrollTo({{ top: 0, behavior: '{}' }}); }}", behavior),
-                    "bottom" => format!("if (el) {{ el.scrollTo({{ top: el.scrollHeight, behavior: '{}' }}); }}", behavior),
-                    _ => format!("if (el) {{ el.scrollIntoView({{ behavior: '{}' }}); }}", behavior),
-                }
-            } else {
-                "if (el) { el.scrollIntoView({ behavior: 'smooth' }); }".to_string()
-            }
-        }
-        "select" => {
-            if let Some(val) = value {
-                format!("if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('change', {{ bubbles: true }})); }}", val.replace('\'', "\\'"))
-            } else {
-                "// select action requires value".to_string()
-            }
-        }
-        "toggle" => "if (el) { el.click(); }".to_string(),
-        "expand" => "if (el) { if (el.getAttribute('aria-expanded') === 'false') el.click(); }"
-            .to_string(),
-        "collapse" => {
-            "if (el) { if (el.getAttribute('aria-expanded') === 'true') el.click(); }"
-                .to_string()
-        }
-        _ => format!("// Unknown action: {}", action),
-    };
-
-    format!(
-        r#"(function() {{
-  const el = {};
-  const index = {};
-  {}
-  return {{ success: !!el, element: el ? {{ tagName: el.tagName, text: el.textContent?.slice(0, 50) }} : null }};
-}})();"#,
-        element_finder, index, action_script
-    )
 }
 
 // ============================================================================

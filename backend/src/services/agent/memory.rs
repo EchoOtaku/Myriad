@@ -1,17 +1,24 @@
-//! Agent 混合记忆系统 (v2 — TF-IDF 语义搜索)
+//! Agent 智能记忆系统 (v3 — 语义记忆 + AI 提取)
 //!
 //! 三级记忆架构：
 //! - **ShortTerm**：当前对话上下文（高衰减，session 结束后归档）
 //! - **MediumTerm**：会话摘要、近期交互模式（天级留存）
 //! - **LongTerm**：用户偏好、重要事实、关键决策（永久）
 //!
-//! 搜索采用 TF-IDF 余弦相似度 + 时间衰减 + 重要性权重的复合评分，
-//! 无需外部 embedding 模型，零依赖。
+//! v3 改进：
+//! - **AI 驱动的记忆提取**：任务完成后用 AI 从对话+执行结果中提取有价值记忆
+//! - **结构化记忆类型**：偏好、知识纠错、执行教训、会话洞察
+//! - **纠错学习**：检测用户纠错模式，自动提取实体知识
+//! - **失败教训**：执行失败时记录教训，下次规划时规避已知坑
+//! - **记忆去重与合并**：相同主题的记忆自动合并
+//! - **容量管理**：上限 500 条，LRU 衰减淘汰
+//!
+//! 搜索采用 TF-IDF 余弦相似度 + 时间衰减 + 重要性权重的复合评分。
 //!
 //! 持久化：
 //! - `memory.md`：人类可读的长期记忆（向后兼容）
 //! - `memory_index.json`：完整索引状态（快速恢复）
-//! - `YYYY-MM-DD.md`：每日交互日志（追加写入）
+//! - `YYYY-MM-DD.md`：每日交互日志
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,7 +26,17 @@ use std::sync::Arc;
 
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use tokio::sync::RwLock;
+
+/// 记忆容量上限
+const MAX_MEMORY_ENTRIES: usize = 500;
+
+/// 记忆去重——TF-IDF 相似度超过此值认为重复
+const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.85;
+
+/// 合并——TF-IDF 相似度超过此值认为可合并
+const MERGE_SIMILARITY_THRESHOLD: f32 = 0.70;
 
 // ==================== 类型定义 ====================
 
@@ -48,6 +65,12 @@ pub struct MemoryEntry {
     /// 最后访问时间
     #[serde(default)]
     pub last_accessed_at: Option<String>,
+    /// 关联实体（人物、平台、作品等）
+    #[serde(default)]
+    pub entities: Vec<String>,
+    /// 关联能力 ID（该记忆涉及哪些 capability）
+    #[serde(default)]
+    pub related_capabilities: Vec<String>,
 }
 
 fn default_tier() -> MemoryTier {
@@ -61,15 +84,23 @@ fn default_importance() -> f32 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryType {
-    /// 用户偏好
+    /// 用户偏好（"用户喜欢ACG风格"、"用户常用中文"）
     Preference,
-    /// 事实性记忆
+    /// 实体知识（角色名纠错、作品关联等 — "昔涟是星穹铁道角色，不是希格雯"）
+    EntityKnowledge,
+    /// 执行教训（什么有效、什么失败 — "ai.image 不接受 loli 关键词"）
+    ExecutionLesson,
+    /// 有效参数模式（"生成角色图片时 category=anime 效果好"）
+    EffectivePattern,
+    /// 事实性记忆（向后兼容）
     Fact,
-    /// 交互记录
+    /// 交互记录（向后兼容，新逻辑不再生成此类型）
     Interaction,
     /// 决策记录
     Decision,
-    /// 会话摘要（由 consolidate 生成）
+    /// 会话洞察（从整个会话提炼的关键信息）
+    SessionInsight,
+    /// 会话摘要（向后兼容）
     SessionSummary,
 }
 
@@ -85,12 +116,38 @@ pub enum MemoryTier {
     LongTerm,
 }
 
+/// AI 提取的结构化记忆
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractedMemory {
+    /// 记忆内容
+    pub content: String,
+    /// 记忆类型
+    pub memory_type: String,
+    /// 重要性 0.0-1.0
+    pub importance: f32,
+    /// 关联实体
+    #[serde(default)]
+    pub entities: Vec<String>,
+    /// 关联能力
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+}
+
+/// AI 记忆提取结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryExtractionResult {
+    pub memories: Vec<ExtractedMemory>,
+}
+
 // ==================== TF-IDF 搜索索引 ====================
 
 /// 轻量级 TF-IDF 索引
 ///
 /// 对中英文混合文本做 token 化，支持 CJK bigram + 拉丁单词分词。
 /// 设计目标：百级文档集上的毫秒级搜索，零外部依赖。
+///
+/// IDF 采用惰性重建策略：add/remove 仅标记脏位，实际重建推迟到搜索时执行，
+/// 避免批量写入时 O(n) × k 的重复计算。
 struct TfIdfIndex {
     /// doc_id → { term → tf }
     tf: HashMap<String, HashMap<String, f32>>,
@@ -98,6 +155,8 @@ struct TfIdfIndex {
     idf: HashMap<String, f32>,
     /// 文档总数
     doc_count: usize,
+    /// IDF 是否过期（需要重建）
+    idf_dirty: bool,
 }
 
 impl TfIdfIndex {
@@ -106,6 +165,7 @@ impl TfIdfIndex {
             tf: HashMap::new(),
             idf: HashMap::new(),
             doc_count: 0,
+            idf_dirty: false,
         }
     }
 
@@ -146,21 +206,34 @@ impl TfIdfIndex {
             tokens.push(latin_buf);
         }
 
-        // CJK bigram（仅当两个字符都非停用词时生成）
-        let cjk_chars: Vec<char> = text_lower
-            .chars()
-            .filter(|c| is_cjk(*c) && !stop_set.contains(c))
-            .collect();
-        for window in cjk_chars.windows(2) {
+        // CJK bigram：从原始 CJK 字符连续序列生成（不过滤停用词），
+        // 确保存储和查询两侧对称。例如 "生成图像" → bigrams ["生成","成图","图像"]
+        // 停用词仅影响上面的 unigram，不影响 bigram 生成
+        let mut cjk_run: Vec<char> = Vec::new();
+        for ch in text_lower.chars() {
+            if is_cjk(ch) {
+                cjk_run.push(ch);
+            } else {
+                // flush CJK run as bigrams
+                for window in cjk_run.windows(2) {
+                    tokens.push(format!("{}{}", window[0], window[1]));
+                }
+                cjk_run.clear();
+            }
+        }
+        // flush trailing CJK run
+        for window in cjk_run.windows(2) {
             tokens.push(format!("{}{}", window[0], window[1]));
         }
 
         tokens
     }
 
-    /// 添加文档到索引
+    /// 添加文档到索引（不立即重建 IDF，标记为脏）
     fn add_document(&mut self, doc_id: &str, text: &str) {
-        let tokens = Self::tokenize(text);
+        // 截断过长文本，避免超大文档污染 TF-IDF 权重
+        let truncated: String = text.chars().take(1000).collect();
+        let tokens = Self::tokenize(&truncated);
         if tokens.is_empty() {
             return;
         }
@@ -177,16 +250,18 @@ impl TfIdfIndex {
 
         self.tf.insert(doc_id.to_string(), term_freq);
         self.doc_count += 1;
+        self.idf_dirty = true;
     }
 
     /// 移除文档
     fn remove_document(&mut self, doc_id: &str) {
         if self.tf.remove(doc_id).is_some() {
             self.doc_count = self.doc_count.saturating_sub(1);
+            self.idf_dirty = true;
         }
     }
 
-    /// 重建 IDF（在批量 add/remove 之后调用）
+    /// 重建 IDF（在批量 add/remove 之后调用，或搜索前惰性触发）
     fn rebuild_idf(&mut self) {
         let n = self.doc_count.max(1) as f32;
         let mut df: HashMap<String, u32> = HashMap::new();
@@ -202,6 +277,14 @@ impl TfIdfIndex {
             // IDF = ln(N / df) + 1 (smoothed)
             self.idf
                 .insert(term, (n / count as f32).ln() + 1.0);
+        }
+        self.idf_dirty = false;
+    }
+
+    /// 确保 IDF 索引是最新的（惰性重建）
+    fn ensure_idf_fresh(&mut self) {
+        if self.idf_dirty {
+            self.rebuild_idf();
         }
     }
 
@@ -252,7 +335,9 @@ impl TfIdfIndex {
     }
 
     /// 搜索：返回 (doc_id, similarity_score) 降序
-    fn search(&self, query: &str, limit: usize) -> Vec<(String, f32)> {
+    fn search(&mut self, query: &str, limit: usize) -> Vec<(String, f32)> {
+        self.ensure_idf_fresh();
+
         let tokens = Self::tokenize(query);
         if tokens.is_empty() {
             return Vec::new();
@@ -327,7 +412,7 @@ fn recency_score(created_at: &str) -> f32 {
 
 // ==================== AgentMemory 主结构 ====================
 
-/// Agent 记忆管理器 (v2)
+/// Agent 记忆管理器 (v3 — 智能记忆)
 pub struct AgentMemory {
     /// 记忆文件目录
     memory_dir: PathBuf,
@@ -340,6 +425,16 @@ pub struct AgentMemory {
 /// 索引文件名
 const INDEX_FILE: &str = "memory_index.json";
 
+/// 用户纠错模式的关键词
+const CORRECTION_PATTERNS_ZH: &[&str] = &[
+    "不是", "错了", "搞错", "弄错", "你搞混", "你搞反", "画错",
+    "识别错", "认错", "不对", "应该是", "其实是", "实际上是",
+];
+const CORRECTION_PATTERNS_EN: &[&str] = &[
+    "not", "wrong", "incorrect", "mistake", "actually", "should be",
+    "confused", "mixed up",
+];
+
 impl AgentMemory {
     /// 创建记忆管理器（异步加载持久化状态）
     pub async fn new(memory_dir: PathBuf) -> Self {
@@ -348,7 +443,16 @@ impl AgentMemory {
         let entries = Self::load_entries(&memory_dir).await;
         let mut idx = TfIdfIndex::new();
         for (id, entry) in &entries {
-            idx.add_document(id, &entry.content);
+            let mut index_text = entry.content.clone();
+            if !entry.entities.is_empty() {
+                index_text.push(' ');
+                index_text.push_str(&entry.entities.join(" "));
+            }
+            if !entry.related_capabilities.is_empty() {
+                index_text.push(' ');
+                index_text.push_str(&entry.related_capabilities.join(" "));
+            }
+            idx.add_document(id, &index_text);
         }
         idx.rebuild_idf();
 
@@ -382,7 +486,37 @@ impl AgentMemory {
         tier: MemoryTier,
         importance: f32,
     ) {
+        self.remember_full(content, memory_type, tier, importance, Vec::new(), Vec::new())
+            .await;
+    }
+
+    /// 记住一条记忆（完整参数，带实体和能力关联）
+    pub async fn remember_full(
+        &self,
+        content: &str,
+        memory_type: MemoryType,
+        tier: MemoryTier,
+        importance: f32,
+        entities: Vec<String>,
+        related_capabilities: Vec<String>,
+    ) {
+        // 去重检查：如果已有高度相似的记忆，跳过或合并
+        if self.should_dedup_or_merge(content, &memory_type).await {
+            return;
+        }
+
         let id = Self::make_id(content);
+
+        // 构建索引文本（需要在 move 之前）
+        let mut index_text = content.to_string();
+        if !entities.is_empty() {
+            index_text.push(' ');
+            index_text.push_str(&entities.join(" "));
+        }
+        if !related_capabilities.is_empty() {
+            index_text.push(' ');
+            index_text.push_str(&related_capabilities.join(" "));
+        }
 
         let entry = MemoryEntry {
             id: id.clone(),
@@ -394,13 +528,15 @@ impl AgentMemory {
             access_count: 0,
             created_at: Utc::now().to_rfc3339(),
             last_accessed_at: None,
+            entities,
+            related_capabilities,
         };
 
-        // 更新索引
+        // 更新索引（包含实体和能力关键词以提升语义召回率）
         {
             let mut idx = self.index.write().await;
-            idx.add_document(&id, content);
-            idx.rebuild_idf();
+            idx.add_document(&id, &index_text);
+            // IDF 将在下次搜索时惰性重建
         }
 
         // 更新条目
@@ -409,8 +545,555 @@ impl AgentMemory {
             entries.insert(id, entry);
         }
 
+        // 容量控制
+        self.enforce_capacity_limit().await;
+
         // 持久化
         self.save_all().await;
+    }
+
+    // ==================== AI 驱动的智能记忆提取 ====================
+
+    /// 从执行结果中 AI 提取有价值的记忆
+    ///
+    /// 在任务完成后调用，用 Standard AI 从对话历史+执行结果中提取：
+    /// - 用户偏好
+    /// - 实体知识（纠错）
+    /// - 执行教训（成功/失败模式）
+    /// - 有效参数模式
+    pub async fn extract_memories_from_execution(
+        &self,
+        user_input: &str,
+        conversation_history: Option<&[Value]>,
+        execution_results: &HashMap<String, Value>,
+        success: bool,
+        capabilities_used: &[String],
+    ) {
+        // Short-circuit: 极简交互不需要触发 AI 提取
+        let input_chars: usize = user_input.chars().count();
+        if input_chars < 6 && success && execution_results.len() <= 1 && capabilities_used.is_empty() {
+            tracing::debug!("[Memory] Skipping AI extraction for trivial interaction");
+            return;
+        }
+
+        // 构建上下文摘要
+        let mut context_parts = Vec::new();
+        context_parts.push(format!("用户请求: {}", user_input));
+
+        if let Some(history) = conversation_history {
+            let recent: Vec<String> = history
+                .iter()
+                .rev()
+                .take(6)
+                .filter_map(|msg| {
+                    let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("?");
+                    let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                    if content.len() > 200 {
+                        Some(format!("{}: {}...", role, &content.chars().take(200).collect::<String>()))
+                    } else {
+                        Some(format!("{}: {}", role, content))
+                    }
+                })
+                .collect();
+            if !recent.is_empty() {
+                context_parts.push(format!("对话历史:\n{}", recent.join("\n")));
+            }
+        }
+
+        // 执行结果摘要
+        let mut results_summary = Vec::new();
+        for (step_id, output) in execution_results {
+            let summary = summarize_value_for_memory(output);
+            results_summary.push(format!("  {}: {}", step_id, summary));
+        }
+        if !results_summary.is_empty() {
+            context_parts.push(format!(
+                "执行结果 ({}):\n{}",
+                if success { "成功" } else { "失败" },
+                results_summary.join("\n")
+            ));
+        }
+
+        context_parts.push(format!("使用的能力: {}", capabilities_used.join(", ")));
+
+        let context = context_parts.join("\n\n");
+
+        // 1. 检测纠错模式（规则匹配，不需要 AI）
+        self.detect_and_store_corrections(user_input, conversation_history).await;
+
+        // 2. 如果失败，记录执行教训（规则匹配）
+        if !success {
+            self.record_failure_lesson(user_input, execution_results, capabilities_used).await;
+        }
+
+        // 3. AI 提取深层记忆
+        let existing_memories = self.get_existing_summary().await;
+        let prompt = format!(
+            r#"你是记忆提取引擎。从以下对话和执行记录中提取**值得长期记住**的信息。
+
+## 已有记忆（避免重复）
+{existing}
+
+## 本次交互
+{ctx}
+
+## 提取规则
+1. **用户偏好** (preference): 用户表达的喜好/习惯/风格偏好（"喜欢ACG风格"、"常用日语"、"经常画初音未来"）
+2. **实体知识** (entity_knowledge): 角色/作品/人物的关联知识纠错（"芙芙=芙宁娜/原神水神"、"昔涟=星穹铁道角色"）
+3. **执行教训** (execution_lesson): 什么参数有效/无效、什么策略成功/失败（"生成角色图时详细描述外观效果更好"）
+4. **有效模式** (effective_pattern): 可复用的参数组合或执行策略（"动漫角色图片 category=anime 效果好"）
+
+只输出有价值的新信息，不重复已有记忆。如果没有值得记住的，返回空数组。
+
+输出 JSON：{{"memories": [{{"content": "...", "memory_type": "preference|entity_knowledge|execution_lesson|effective_pattern", "importance": 0.0-1.0, "entities": ["相关实体"], "capabilities": ["相关能力ID"]}}]}}"#,
+            existing = existing_memories,
+            ctx = context,
+        );
+
+        // 使用 Standard tier AI
+        let analyzer = match crate::services::ai::create_ai_analyzer_for_tier(
+            crate::config::ModelTier::Standard,
+        ).await {
+            Some(a) => a,
+            None => {
+                tracing::debug!("[Memory] No AI analyzer available for memory extraction");
+                return;
+            }
+        };
+
+        match analyzer.analyze(&prompt).await {
+            Ok(response) => {
+                if let Some(result) = parse_extraction_result(&response) {
+                    let count = result.memories.len();
+                    for mem in result.memories {
+                        let memory_type = match mem.memory_type.as_str() {
+                            "preference" => MemoryType::Preference,
+                            "entity_knowledge" => MemoryType::EntityKnowledge,
+                            "execution_lesson" => MemoryType::ExecutionLesson,
+                            "effective_pattern" => MemoryType::EffectivePattern,
+                            _ => continue,
+                        };
+                        self.remember_full(
+                            &mem.content,
+                            memory_type,
+                            MemoryTier::LongTerm,
+                            mem.importance.clamp(0.3, 1.0),
+                            mem.entities,
+                            mem.capabilities,
+                        ).await;
+                    }
+                    if count > 0 {
+                        tracing::info!(
+                            count = count,
+                            "[Memory] AI extracted {} valuable memories",
+                            count
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "[Memory] AI memory extraction failed");
+            }
+        }
+    }
+
+    /// 检测用户纠错模式并存储为实体知识
+    async fn detect_and_store_corrections(
+        &self,
+        user_input: &str,
+        conversation_history: Option<&[Value]>,
+    ) {
+        let input_lower = user_input.to_lowercase();
+
+        let is_correction = CORRECTION_PATTERNS_ZH.iter().any(|p| input_lower.contains(p))
+            || CORRECTION_PATTERNS_EN.iter().any(|p| input_lower.contains(p));
+
+        if !is_correction {
+            return;
+        }
+
+        // 纠错内容直接记录为高重要性 EntityKnowledge
+        let correction_content = if let Some(history) = conversation_history {
+            // 取最近一轮对话作为上下文
+            let recent_context: Vec<String> = history
+                .iter()
+                .rev()
+                .take(2)
+                .filter_map(|msg| msg.get("content").and_then(|c| c.as_str()).map(String::from))
+                .collect();
+            format!(
+                "用户纠正: {} (上下文: {})",
+                user_input,
+                recent_context.join(" → ")
+            )
+        } else {
+            format!("用户纠正: {}", user_input)
+        };
+
+        self.remember_full(
+            &correction_content,
+            MemoryType::EntityKnowledge,
+            MemoryTier::LongTerm,
+            0.9, // 纠错信息高重要性
+            Vec::new(),
+            Vec::new(),
+        ).await;
+
+        tracing::info!(
+            "[Memory] Detected user correction, stored as EntityKnowledge"
+        );
+    }
+
+    /// 记录执行失败教训
+    async fn record_failure_lesson(
+        &self,
+        user_input: &str,
+        execution_results: &HashMap<String, Value>,
+        capabilities_used: &[String],
+    ) {
+        for (step_id, output) in execution_results {
+            let error = output
+                .get("error")
+                .and_then(|e| e.as_str())
+                .or_else(|| {
+                    // 检查是否是失败结果
+                    if output.get("success") == Some(&json!(false)) {
+                        output.get("message").and_then(|m| m.as_str())
+                    } else {
+                        None
+                    }
+                });
+
+            if let Some(error_msg) = error {
+                let cap_id = capabilities_used
+                    .iter()
+                    .find(|c| step_id.contains(c.as_str()))
+                    .cloned()
+                    .unwrap_or_else(|| step_id.clone());
+
+                let lesson = format!(
+                    "执行 {} 时失败: {} (用户请求: {})",
+                    cap_id,
+                    error_msg,
+                    user_input.chars().take(50).collect::<String>()
+                );
+
+                self.remember_full(
+                    &lesson,
+                    MemoryType::ExecutionLesson,
+                    MemoryTier::LongTerm,
+                    0.8,
+                    Vec::new(),
+                    vec![cap_id],
+                ).await;
+            }
+        }
+    }
+
+    /// 获取已有记忆摘要（用于 AI 提取时避免重复）
+    async fn get_existing_summary(&self) -> String {
+        let entries = self.entries.read().await;
+        let mut summaries: Vec<String> = entries
+            .values()
+            .filter(|e| e.tier == MemoryTier::LongTerm && e.memory_type != MemoryType::Interaction)
+            .take(20)
+            .map(|e| {
+                let type_str = match e.memory_type {
+                    MemoryType::Preference => "偏好",
+                    MemoryType::EntityKnowledge => "知识",
+                    MemoryType::ExecutionLesson => "教训",
+                    MemoryType::EffectivePattern => "模式",
+                    MemoryType::SessionInsight => "会话洞察",
+                    MemoryType::Fact => "事实",
+                    MemoryType::Decision => "决策",
+                    MemoryType::SessionSummary => "会话摘要",
+                    _ => "其他",
+                };
+                format!("- [{}] {}", type_str, e.content)
+            })
+            .collect();
+        if summaries.is_empty() {
+            "（暂无已有记忆）".to_string()
+        } else {
+            summaries.truncate(15);
+            summaries.join("\n")
+        }
+    }
+
+    // ==================== 去重与合并 ====================
+
+    /// 检查是否应该去重或合并（返回 true 表示跳过写入）
+    ///
+    /// 合并策略：同类型且相似度 > 0.70 时，**用新内容覆盖旧内容**并提升重要性，
+    /// 保证纠错/更新信息能正确替换过时记忆。
+    async fn should_dedup_or_merge(&self, new_content: &str, new_type: &MemoryType) -> bool {
+        let mut idx = self.index.write().await;
+        let similar = idx.search(new_content, 3);
+        drop(idx);
+
+        if similar.is_empty() {
+            return false;
+        }
+
+        let entries = self.entries.read().await;
+
+        for (id, score) in &similar {
+            if let Some(existing) = entries.get(id) {
+                // 完全重复：跳过
+                if *score > DEDUP_SIMILARITY_THRESHOLD {
+                    tracing::debug!(
+                        score = score,
+                        existing = %existing.content.chars().take(50).collect::<String>(),
+                        "[Memory] Dedup: skipping duplicate memory"
+                    );
+                    return true;
+                }
+
+                // 可合并：同类型且高度相似 — 用新内容替换旧内容并提升重要性
+                if *score > MERGE_SIMILARITY_THRESHOLD && existing.memory_type == *new_type {
+                    let id_clone = id.clone();
+                    let new_id = Self::make_id(new_content);
+                    drop(entries);
+
+                    // 在 entries 写锁内完成合并 + 提取索引数据，避免 drop 后竞态
+                    let (entry_entities, entry_capabilities) = {
+                        let mut entries = self.entries.write().await;
+                        if let Some(entry) = entries.get_mut(&id_clone) {
+                            tracing::info!(
+                                score = score,
+                                old = %entry.content.chars().take(60).collect::<String>(),
+                                new = %new_content.chars().take(60).collect::<String>(),
+                                "[Memory] Merge: replacing old content with updated version"
+                            );
+                            entry.content = new_content.to_string();
+                            entry.importance = (entry.importance + 0.1).min(1.0);
+                            entry.access_count += 1;
+                            entry.last_accessed_at = Some(Utc::now().to_rfc3339());
+
+                            // 在锁内提取索引所需数据
+                            let entities = entry.entities.clone();
+                            let capabilities = entry.related_capabilities.clone();
+
+                            // 如果内容 hash 变了，需要重新映射 id
+                            if new_id != id_clone {
+                                let mut updated = entry.clone();
+                                updated.id = new_id.clone();
+                                entries.remove(&id_clone);
+                                entries.insert(new_id.clone(), updated);
+                            }
+
+                            (entities, capabilities)
+                        } else {
+                            (Vec::new(), Vec::new())
+                        }
+                    };
+
+                    // 更新搜索索引（entries 锁已释放，不会死锁）
+                    {
+                        let mut idx = self.index.write().await;
+                        idx.remove_document(&id_clone);
+                        let mut index_text = new_content.to_string();
+                        if !entry_entities.is_empty() {
+                            index_text.push(' ');
+                            index_text.push_str(&entry_entities.join(" "));
+                        }
+                        if !entry_capabilities.is_empty() {
+                            index_text.push(' ');
+                            index_text.push_str(&entry_capabilities.join(" "));
+                        }
+                        idx.add_document(&new_id, &index_text);
+                    }
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    // ==================== 容量管理 ====================
+
+    /// 强制容量上限，淘汰低价值记忆
+    async fn enforce_capacity_limit(&self) {
+        let mut entries = self.entries.write().await;
+        if entries.len() <= MAX_MEMORY_ENTRIES {
+            return;
+        }
+
+        // 计算每条记忆的综合存活分：importance × access_boost × recency
+        let mut scored: Vec<(String, f32)> = entries
+            .iter()
+            .map(|(id, e)| {
+                let recency = recency_score(&e.created_at);
+                let access_boost = 1.0 + (e.access_count as f32 * 0.1).min(1.0);
+                let type_bonus = match e.memory_type {
+                    MemoryType::Preference | MemoryType::EntityKnowledge => 0.2,
+                    MemoryType::ExecutionLesson | MemoryType::EffectivePattern => 0.1,
+                    MemoryType::SessionInsight | MemoryType::Decision => 0.1,
+                    _ => 0.0,
+                };
+                let score = (e.importance + type_bonus) * access_boost * (0.3 + 0.7 * recency);
+                (id.clone(), score)
+            })
+            .collect();
+
+        // 按分数升序排列（最低分的先淘汰）
+        scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let to_remove = entries.len() - MAX_MEMORY_ENTRIES;
+        let mut idx = self.index.write().await;
+
+        for (id, _score) in scored.iter().take(to_remove) {
+            entries.remove(id);
+            idx.remove_document(id);
+        }
+
+        tracing::info!(
+            removed = to_remove,
+            remaining = entries.len(),
+            "[Memory] Capacity enforcement: removed {} low-value memories",
+            to_remove
+        );
+    }
+
+    // ==================== 按能力召回 ====================
+
+    /// 按能力 ID 召回相关记忆（执行教训 + 有效模式）
+    #[allow(dead_code)]
+    pub async fn recall_by_capability(&self, capability_ids: &[String], limit: usize) -> Vec<MemoryEntry> {
+        let entries = self.entries.read().await;
+        let mut results: Vec<&MemoryEntry> = entries
+            .values()
+            .filter(|e| {
+                (e.memory_type == MemoryType::ExecutionLesson
+                    || e.memory_type == MemoryType::EffectivePattern)
+                    && e.related_capabilities.iter().any(|c| capability_ids.contains(c))
+            })
+            .collect();
+        results.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(limit);
+        results.into_iter().cloned().collect()
+    }
+
+    /// 按实体召回相关记忆
+    pub async fn recall_by_entity(&self, entity: &str, limit: usize) -> Vec<MemoryEntry> {
+        if entity.trim().is_empty() {
+            return Vec::new();
+        }
+
+        // 将输入拆分为有意义的片段进行匹配，而不是用整个句子匹配
+        let tokens = Self::tokenize_for_entity_match(entity);
+        if tokens.is_empty() {
+            return Vec::new();
+        }
+
+        let entries = self.entries.read().await;
+        let mut scored: Vec<(&MemoryEntry, f32)> = entries
+            .values()
+            .filter_map(|e| {
+                let content_lower = e.content.to_lowercase();
+                let entity_names: Vec<String> = e.entities.iter().map(|ent| ent.to_lowercase()).collect();
+
+                let mut match_score: f32 = 0.0;
+                for token in &tokens {
+                    // 实体名精确匹配（高权重）
+                    if entity_names.iter().any(|ent| ent.contains(token) || token.contains(ent.as_str())) {
+                        match_score += 2.0;
+                    }
+                    // 内容包含匹配（低权重）
+                    if content_lower.contains(token) {
+                        match_score += 1.0;
+                    }
+                }
+
+                if match_score > 0.0 {
+                    Some((e, match_score * e.importance))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(limit);
+        scored.into_iter().map(|(e, _)| e.clone()).collect()
+    }
+
+    /// 将用户输入拆分为用于实体匹配的有意义片段
+    fn tokenize_for_entity_match(input: &str) -> Vec<String> {
+        let input_lower = input.to_lowercase();
+
+        // 停用词（高频虚词 + 动作元词，避免匹配噪声）
+        let stop_words: &[&str] = &[
+            // 中文虚词
+            "的", "了", "是", "在", "和", "有", "我", "你", "他", "她", "它",
+            "这", "那", "就", "也", "都", "要", "会", "可以", "不", "很",
+            "吗", "呢", "吧", "啊", "哦", "嗯", "一下", "一个", "什么",
+            "看看", "帮我", "给我", "告诉我", "介绍", "关于", "最近",
+            "最新", "最热", "并", "然后", "以及", "或者", "还有",
+            // 中文动作/元动词（不构成实体信息）
+            "想", "想要", "需要", "需", "做", "能", "能否", "是否",
+            "哪", "哪个", "谁", "怎样", "怎么", "如何", "为什么", "因为",
+            "请", "让", "把", "被", "从", "向", "对", "用", "去", "来",
+            "生成", "搜索", "查找", "查看", "打开", "执行",
+            // English stop words
+            "the", "a", "an", "is", "are", "was", "were", "be", "been",
+            "and", "or", "but", "in", "on", "at", "to", "for", "of",
+            "with", "by", "from", "about", "into", "what", "how",
+            "show", "me", "please", "find", "get", "give", "tell",
+            "do", "can", "will", "would", "could", "should", "try",
+            "let", "make", "run", "use", "help", "want", "need",
+        ];
+
+        let mut tokens = Vec::new();
+
+        // 按空格/标点分割，过滤停用词和过短的 token
+        for segment in input_lower.split(|c: char| c.is_whitespace() || c == '，' || c == '。' || c == '、' || c == '！' || c == '？') {
+            let segment = segment.trim();
+            if segment.is_empty() {
+                continue;
+            }
+
+            // 对于纯 ASCII（英文），按空格继续拆分
+            if segment.is_ascii() {
+                for word in segment.split_whitespace() {
+                    let word = word.trim_matches(|c: char| !c.is_alphanumeric());
+                    if word.len() >= 2 && !stop_words.contains(&word) {
+                        tokens.push(word.to_string());
+                    }
+                }
+            } else {
+                // 中文：过滤停用词后保留整个片段，同时提取连续的中文字符子串（2-4字的组合）
+                let cleaned: String = {
+                    let mut s = segment.to_string();
+                    for sw in stop_words {
+                        s = s.replace(sw, "");
+                    }
+                    s
+                };
+                let cleaned = cleaned.trim();
+                if !cleaned.is_empty() {
+                    // 保留清理后的完整片段
+                    tokens.push(cleaned.to_string());
+                    // 如果片段较长（>4字），提取连续的2-4字组合作为子 token
+                    let chars: Vec<char> = cleaned.chars().collect();
+                    if chars.len() > 4 {
+                        for window_size in 2..=4 {
+                            for window in chars.windows(window_size) {
+                                let sub: String = window.iter().collect();
+                                if !stop_words.contains(&sub.as_str()) {
+                                    tokens.push(sub);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        tokens.sort();
+        tokens.dedup();
+        tokens
     }
 
     /// 追加今日日志
@@ -436,14 +1119,14 @@ impl AgentMemory {
         }
     }
 
-    /// 归档会话摘要到 MediumTerm 记忆
+    /// 归档会话洞察到 LongTerm 记忆
     ///
-    /// 在会话结束或切换时调用，将对话要点浓缩为一条 SessionSummary。
+    /// 在会话结束或切换时调用，用 AI 从会话历史中提炼关键信息。
     pub async fn consolidate_session(&self, summary: &str) {
         if summary.trim().is_empty() {
             return;
         }
-        self.remember_with_tier(summary, MemoryType::SessionSummary, MemoryTier::MediumTerm, 0.6)
+        self.remember_with_tier(summary, MemoryType::SessionInsight, MemoryTier::MediumTerm, 0.6)
             .await;
     }
 
@@ -486,18 +1169,51 @@ impl AgentMemory {
         recent.into_iter().cloned().collect()
     }
 
-    // ==================== 搜索 ====================
+    // ==================== 管理操作 ====================
 
-    /// 召回相关记忆（简单接口，向后兼容）
-    #[allow(dead_code)]
-    pub async fn recall(&self, query: &str, limit: usize) -> Vec<MemoryEntry> {
-        self.recall_with_params(RecallQuery {
-            query: query.to_string(),
-            limit,
-            ..Default::default()
-        })
-        .await
+    /// 删除指定 ID 的记忆条目
+    pub async fn remove_memory(&self, memory_id: &str) -> bool {
+        let removed = {
+            let mut entries = self.entries.write().await;
+            entries.remove(memory_id).is_some()
+        };
+        if removed {
+            let mut idx = self.index.write().await;
+            idx.remove_document(memory_id);
+            drop(idx);
+            self.save_all().await;
+            tracing::info!(id = memory_id, "[Memory] Removed memory entry");
+        }
+        removed
     }
+
+    /// 更新指定 ID 的记忆内容
+    pub async fn update_memory(&self, memory_id: &str, new_content: &str) -> bool {
+        let new_id = Self::make_id(new_content);
+        let updated = {
+            let mut entries = self.entries.write().await;
+            if let Some(mut entry) = entries.remove(memory_id) {
+                entry.content = new_content.to_string();
+                entry.id = new_id.clone();
+                entry.last_accessed_at = Some(Utc::now().to_rfc3339());
+                entries.insert(new_id.clone(), entry);
+                true
+            } else {
+                false
+            }
+        };
+        if updated {
+            let mut idx = self.index.write().await;
+            idx.remove_document(memory_id);
+            idx.add_document(&new_id, new_content);
+            drop(idx);
+            self.save_all().await;
+            tracing::info!(old_id = memory_id, new_id = %new_id, "[Memory] Updated memory entry");
+        }
+        updated
+    }
+
+    // ==================== 搜索 ====================
 
     /// 召回相关记忆（完整参数）
     pub async fn recall_with_params(&self, params: RecallQuery) -> Vec<MemoryEntry> {
@@ -507,9 +1223,16 @@ impl AgentMemory {
 
         // TF-IDF 搜索 — 拿多一些候选做后续过滤
         let tfidf_results = {
-            let idx = self.index.read().await;
+            let mut idx = self.index.write().await;
             idx.search(&params.query, params.limit * 3)
         };
+
+        if tfidf_results.is_empty() {
+            tracing::debug!(
+                query = %params.query,
+                "[Memory] TF-IDF recall returned 0 candidates for non-empty query"
+            );
+        }
 
         let entries = self.entries.read().await;
 
@@ -534,13 +1257,38 @@ impl AgentMemory {
                 // 复合评分（LongTerm 记忆降低时间衰减权重，确保持久知识不因时间被低估）
                 let r_score = recency_score(&entry.created_at);
                 let (sim_w, rec_w, imp_w) = if entry.tier == MemoryTier::LongTerm {
-                    (0.6, 0.1, 0.3) // LongTerm: 重语义+重要性，轻时间
+                    (0.6, 0.1, 0.3)
                 } else {
                     (params.similarity_weight, params.recency_weight, params.importance_weight)
                 };
+                // 权重归一化：防止自定义调用方传入非 1.0 总和的权重
+                let w_sum = sim_w + rec_w + imp_w;
+                let (sim_w, rec_w, imp_w) = if w_sum > 0.0 && (w_sum - 1.0).abs() > 0.01 {
+                    (sim_w / w_sum, rec_w / w_sum, imp_w / w_sum)
+                } else {
+                    (sim_w, rec_w, imp_w)
+                };
+
+                // 重要性时间衰减：基于最后访问时间，越久不访问重要性越低
+                let importance = {
+                    // 使用 last_accessed_at（如有），否则使用 created_at
+                    let reference_time = entry.last_accessed_at.as_deref()
+                        .unwrap_or(&entry.created_at);
+                    let days_since = chrono::DateTime::parse_from_rfc3339(reference_time)
+                        .map(|dt| (chrono::Utc::now() - dt.with_timezone(&chrono::Utc)).num_days().max(0) as f32)
+                        .unwrap_or(365.0);
+
+                    // 访问越多衰减越慢：半衰期 = 90 天 * ln(access_count + 1)
+                    // access_count=0: 90天(floor), =5: 161天, =10: 215天
+                    let half_life = 90.0 * (entry.access_count as f32).ln_1p();
+                    let half_life = half_life.max(90.0); // 最低 90 天
+                    let decay = (0.3_f32).max((-0.693 * days_since / half_life).exp());
+                    entry.importance * decay
+                };
+
                 let final_score = sim_w * sim_score
                     + rec_w * r_score
-                    + imp_w * entry.importance;
+                    + imp_w * importance;
 
                 Some((final_score, id))
             })
@@ -625,7 +1373,6 @@ impl AgentMemory {
                 entries.remove(id);
                 idx.remove_document(id);
             }
-            idx.rebuild_idf();
         }
         count
     }
@@ -669,39 +1416,55 @@ impl AgentMemory {
 
     /// 保存全部状态（memory_index.json + memory.md）
     async fn save_all(&self) {
-        let entries = self.entries.read().await;
+        // 快照数据后立即释放读锁，避免持锁做 I/O
+        let (json_opt, md) = {
+            let entries = self.entries.read().await;
 
-        // 1. memory_index.json（完整快速恢复）
-        let all_entries: Vec<&MemoryEntry> = entries.values().collect();
-        if let Ok(json) = serde_json::to_string_pretty(&all_entries) {
+            // 1. 序列化全量 JSON
+            let all_entries: Vec<&MemoryEntry> = entries.values().collect();
+            let json_opt = serde_json::to_string_pretty(&all_entries).ok();
+
+            // 2. 构建 memory.md（仅 LongTerm）
+            let mut md = String::from("# Agent Long-term Memory\n\n");
+            let mut long_term: Vec<&MemoryEntry> = entries
+                .values()
+                .filter(|e| e.tier == MemoryTier::LongTerm)
+                .collect();
+            long_term.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+            for entry in long_term {
+                let type_str = match entry.memory_type {
+                    MemoryType::Preference => "preference",
+                    MemoryType::EntityKnowledge => "knowledge",
+                    MemoryType::ExecutionLesson => "lesson",
+                    MemoryType::EffectivePattern => "pattern",
+                    MemoryType::Fact => "fact",
+                    MemoryType::Interaction => "interaction",
+                    MemoryType::Decision => "decision",
+                    MemoryType::SessionInsight => "insight",
+                    MemoryType::SessionSummary => "session",
+                };
+                md.push_str(&format!(
+                    "- [{}] [{}] {}\n",
+                    entry.created_at, type_str, entry.content
+                ));
+            }
+
+            (json_opt, md)
+        }; // 读锁在此释放
+
+        // 写文件（无锁状态）
+        if let Some(json) = json_opt {
             let index_path = self.memory_dir.join(INDEX_FILE);
-            let _ = tokio::fs::write(&index_path, json).await;
-        }
-
-        // 2. memory.md（人类可读 — 仅 LongTerm）
-        let mut md = String::from("# Agent Long-term Memory\n\n");
-        let mut long_term: Vec<&MemoryEntry> = entries
-            .values()
-            .filter(|e| e.tier == MemoryTier::LongTerm)
-            .collect();
-        long_term.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-
-        for entry in long_term {
-            let type_str = match entry.memory_type {
-                MemoryType::Preference => "preference",
-                MemoryType::Fact => "fact",
-                MemoryType::Interaction => "interaction",
-                MemoryType::Decision => "decision",
-                MemoryType::SessionSummary => "session",
-            };
-            md.push_str(&format!(
-                "- [{}] [{}] {}\n",
-                entry.created_at, type_str, entry.content
-            ));
+            if let Err(e) = tokio::fs::write(&index_path, json).await {
+                tracing::error!(error = %e, "[Memory] Failed to persist memory_index.json");
+            }
         }
 
         let memory_path = self.memory_dir.join("memory.md");
-        let _ = tokio::fs::write(&memory_path, md).await;
+        if let Err(e) = tokio::fs::write(&memory_path, md).await {
+            tracing::error!(error = %e, "[Memory] Failed to persist memory.md");
+        }
     }
 
     /// 解析旧版 memory.md 格式（迁移用）
@@ -722,9 +1485,13 @@ impl AgentMemory {
 
                 let memory_type = match type_str {
                     "preference" => MemoryType::Preference,
+                    "knowledge" | "entity_knowledge" => MemoryType::EntityKnowledge,
+                    "lesson" | "execution_lesson" => MemoryType::ExecutionLesson,
+                    "pattern" | "effective_pattern" => MemoryType::EffectivePattern,
                     "fact" => MemoryType::Fact,
                     "interaction" => MemoryType::Interaction,
                     "decision" => MemoryType::Decision,
+                    "insight" | "session_insight" => MemoryType::SessionInsight,
                     "session" => MemoryType::SessionSummary,
                     _ => MemoryType::Fact,
                 };
@@ -741,9 +1508,55 @@ impl AgentMemory {
                     access_count: 0,
                     created_at,
                     last_accessed_at: None,
+                    entities: Vec::new(),
+                    related_capabilities: Vec::new(),
                 })
             })
             .collect()
+    }
+}
+
+// ==================== 辅助函数 ====================
+
+/// 解析 AI 返回的记忆提取结果
+fn parse_extraction_result(response: &str) -> Option<MemoryExtractionResult> {
+    let text = response.trim();
+    // 尝试找到 JSON 块
+    let json_str = if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            &text[start..=end]
+        } else {
+            text
+        }
+    } else {
+        text
+    };
+    serde_json::from_str(json_str).ok()
+}
+
+/// 将 Value 摘要为紧凑字符串（用于记忆提取 prompt）
+pub fn summarize_value_for_memory(value: &Value) -> String {
+    match value {
+        Value::String(s) => {
+            if s.len() > 100 {
+                format!("\"{}...\"", s.chars().take(100).collect::<String>())
+            } else {
+                format!("\"{}\"", s)
+            }
+        }
+        Value::Array(arr) => format!("[{} items]", arr.len()),
+        Value::Object(obj) => {
+            if let Some(error) = obj.get("error").and_then(|e| e.as_str()) {
+                format!("{{error: \"{}\"}}", error)
+            } else if let Some(msg) = obj.get("message").and_then(|m| m.as_str()) {
+                format!("{{message: \"{}\"}}", msg.chars().take(80).collect::<String>())
+            } else {
+                format!("{{{} fields}}", obj.len())
+            }
+        }
+        Value::Bool(b) => format!("{}", b),
+        Value::Number(n) => format!("{}", n),
+        Value::Null => "null".to_string(),
     }
 }
 
@@ -778,4 +1591,116 @@ pub async fn init_memory(memory_dir: PathBuf) {
 /// 获取全局记忆管理器
 pub fn get_memory() -> Option<&'static Arc<AgentMemory>> {
     AGENT_MEMORY.get()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ======== TF-IDF 分词测试 ========
+
+    #[test]
+    fn test_tokenize_english() {
+        let tokens = TfIdfIndex::tokenize("Generate an image of sunset");
+        assert!(tokens.contains(&"generate".to_string()));
+        assert!(tokens.contains(&"image".to_string()));
+        assert!(tokens.contains(&"sunset".to_string()));
+        // "an" 有 2 个字符，满足 >= 2 阈值，会保留
+        assert!(tokens.contains(&"an".to_string()));
+        // 单字母 "a" 应被过滤
+        assert!(!tokens.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_cjk_unigram_filters_stopwords() {
+        let tokens = TfIdfIndex::tokenize("生成图像");
+        // 单字 token 应包含非停用词
+        assert!(tokens.contains(&"生".to_string()));
+        assert!(tokens.contains(&"成".to_string()));
+        assert!(tokens.contains(&"图".to_string()));
+        assert!(tokens.contains(&"像".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_cjk_bigram_generation() {
+        let tokens = TfIdfIndex::tokenize("生成图像");
+        // bigram 应从连续 CJK 序列生成
+        assert!(tokens.contains(&"生成".to_string()));
+        assert!(tokens.contains(&"成图".to_string()));
+        assert!(tokens.contains(&"图像".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_cjk_bigram_includes_stopwords() {
+        // bigram 不过滤停用词，确保存储和查询对称
+        let tokens = TfIdfIndex::tokenize("我的图像");
+        // "的" 是停用词，不应出现在 unigram
+        let unigrams: Vec<&String> = tokens.iter().filter(|t| t.chars().count() == 1).collect();
+        assert!(!unigrams.iter().any(|t| t.as_str() == "的"));
+        // 但 bigram 应包含 "我的" 和 "的图"
+        assert!(tokens.contains(&"我的".to_string()));
+        assert!(tokens.contains(&"的图".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_mixed_cjk_latin() {
+        let tokens = TfIdfIndex::tokenize("使用PixAI生成");
+        assert!(tokens.contains(&"pixai".to_string()));
+        assert!(tokens.contains(&"使用".to_string()));
+        // "使用" 和 "生成" 被 "PixAI" 隔断，不应生成 cross-boundary bigram
+        assert!(!tokens.contains(&"用生".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_single_cjk_char_no_bigram() {
+        // 单个 CJK 字符不应生成 bigram
+        let tokens = TfIdfIndex::tokenize("a 图 b");
+        let bigrams: Vec<&String> = tokens.iter().filter(|t| t.chars().count() == 2).collect();
+        assert!(bigrams.is_empty());
+    }
+
+    // ======== TF-IDF 检索测试 ========
+
+    #[test]
+    fn test_tfidf_similarity_basic() {
+        let mut idx = TfIdfIndex::new();
+        idx.add_document("doc1", "生成一张猫咪的图片");
+        idx.add_document("doc2", "搜索最新的新闻");
+        idx.add_document("doc3", "生成一张狗的图片");
+        idx.rebuild_idf();
+
+        let query_tokens = TfIdfIndex::tokenize("生成图片");
+        let s1 = idx.similarity(&query_tokens, "doc1");
+        let s2 = idx.similarity(&query_tokens, "doc2");
+        let s3 = idx.similarity(&query_tokens, "doc3");
+        assert!(s1 > s2, "doc1 ({s1}) should be more relevant than doc2 ({s2})");
+        assert!(s3 > s2, "doc3 ({s3}) should be more relevant than doc2 ({s2})");
+    }
+
+    // ======== 重要性衰减测试 ========
+
+    #[test]
+    fn test_importance_decay_formula() {
+        // access_count=0: ln_1p(0) = ln(1) = 0 → half_life = 0 → max(90) = 90
+        let hl0 = 90.0_f32 * (0.0_f32).ln_1p();
+        assert_eq!(hl0, 0.0);
+        assert_eq!(hl0.max(90.0), 90.0);
+
+        // access_count=5: ln_1p(5) = ln(6) ≈ 1.792 → half_life ≈ 161
+        let hl5 = 90.0 * (5.0_f32).ln_1p();
+        assert!((hl5 - 161.2).abs() < 1.0, "half_life for access_count=5: {hl5}");
+
+        // access_count=10: ln_1p(10) = ln(11) ≈ 2.398 → half_life ≈ 215
+        let hl10 = 90.0 * (10.0_f32).ln_1p();
+        assert!((hl10 - 215.8).abs() < 1.0, "half_life for access_count=10: {hl10}");
+    }
+
+    #[test]
+    fn test_importance_decay_floor() {
+        // 衰减永远不低于 0.3
+        let days_since = 10000.0_f32; // 极端：10000 天
+        let half_life = 90.0_f32;
+        let decay = (0.3_f32).max((-0.693 * days_since / half_life).exp());
+        assert!((decay - 0.3).abs() < f32::EPSILON, "decay should floor at 0.3, got {decay}");
+    }
 }

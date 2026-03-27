@@ -191,12 +191,6 @@ impl McpServer {
         &self.tools
     }
 
-    /// 获取服务器状态
-    #[allow(dead_code)]
-    pub fn state(&self) -> &ServerState {
-        &self.state
-    }
-
     /// 健康检查（检查子进程是否存活）
     pub fn is_healthy(&mut self) -> bool {
         if self.state != ServerState::Ready {

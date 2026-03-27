@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use super::identity::get_role_identity;
 use super::notifications::get_notification_manager;
 use super::routing::{get_router, AgentRole, TaskAssignment};
-use super::types::{Recipe, TaskState};
+use super::types::Recipe;
 
 /// 角色分组
 #[derive(Debug, Clone)]
@@ -144,59 +144,6 @@ impl Orchestrator {
     pub fn can_parallelize(groups: &[RoleGroup]) -> bool {
         // 至少有 2 个角色组且至少一个无跨角色依赖
         groups.len() >= 2 && groups.iter().any(|g| g.depends_on_roles.is_empty())
-    }
-
-    /// 生成 Orchestrator 执行结果摘要（用于有 TaskState 时的精确统计）
-    #[allow(dead_code)]
-    pub fn summarize_result(
-        recipe: &Recipe,
-        task_state: &TaskState,
-        groups: &[RoleGroup],
-    ) -> OrchestratorResult {
-        let total_steps = recipe.steps.len();
-        let successful_steps = task_state
-            .step_results
-            .values()
-            .filter(|r| r.success)
-            .count();
-        let used_parallel = Self::can_parallelize(groups);
-
-        let role_summaries: Vec<RoleSummary> = groups
-            .iter()
-            .map(|g| {
-                let success_count = g
-                    .step_indices
-                    .iter()
-                    .filter(|&&idx| {
-                        recipe.steps.get(idx).map_or(false, |step| {
-                            task_state
-                                .step_results
-                                .get(&step.id)
-                                .map_or(false, |r| r.success)
-                        })
-                    })
-                    .count();
-
-                RoleSummary {
-                    role: g.role.display_name().to_string(),
-                    icon: g.role.icon().to_string(),
-                    steps_count: g.step_indices.len(),
-                    success_count,
-                    identity_used: true,
-                }
-            })
-            .collect();
-
-        OrchestratorResult {
-            total_steps,
-            successful_steps,
-            participating_roles: groups
-                .iter()
-                .map(|g| g.role.display_name().to_string())
-                .collect(),
-            used_parallel,
-            role_summaries,
-        }
     }
 
     /// 发送多 Agent 协作开始通知

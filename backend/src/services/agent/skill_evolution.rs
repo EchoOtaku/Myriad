@@ -159,6 +159,8 @@ impl SkillEvolution {
     }
 
     /// 持久化统计到文件（仅当脏标记为 true）
+    ///
+    /// 使用临时文件 + rename 实现原子写入，防止并发导致数据损坏
     pub async fn flush(&self) {
         if self
             .stats_dirty
@@ -166,11 +168,21 @@ impl SkillEvolution {
         {
             let stats = self.stats.lock().await;
             let path = self.skills_dir.join(STATS_FILE);
+            let tmp_path = self.skills_dir.join(format!(".tmp_{}", STATS_FILE));
             if let Ok(json) = serde_json::to_string_pretty(&*stats) {
-                if let Err(e) = tokio::fs::write(&path, json).await {
-                    tracing::warn!("[SkillEvolution] Failed to write stats: {}", e);
-                    self.stats_dirty
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                match tokio::fs::write(&tmp_path, json).await {
+                    Ok(_) => {
+                        if let Err(e) = tokio::fs::rename(&tmp_path, &path).await {
+                            tracing::warn!("[SkillEvolution] Failed to rename stats: {}", e);
+                            self.stats_dirty
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("[SkillEvolution] Failed to write stats: {}", e);
+                        self.stats_dirty
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
             }
         }
@@ -180,11 +192,21 @@ impl SkillEvolution {
         {
             let gaps = self.capability_gaps.lock().await;
             let path = self.skills_dir.join(GAPS_FILE);
+            let tmp_path = self.skills_dir.join(format!(".tmp_{}", GAPS_FILE));
             if let Ok(json) = serde_json::to_string_pretty(&*gaps) {
-                if let Err(e) = tokio::fs::write(&path, json).await {
-                    tracing::warn!("[SkillEvolution] Failed to write gaps: {}", e);
-                    self.gaps_dirty
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                match tokio::fs::write(&tmp_path, json).await {
+                    Ok(_) => {
+                        if let Err(e) = tokio::fs::rename(&tmp_path, &path).await {
+                            tracing::warn!("[SkillEvolution] Failed to rename gaps: {}", e);
+                            self.gaps_dirty
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("[SkillEvolution] Failed to write gaps: {}", e);
+                        self.gaps_dirty
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
             }
         }
@@ -212,9 +234,15 @@ impl SkillEvolution {
         success: bool,
         failure_reason: Option<&str>,
     ) {
+        // Normalize stats key: strip "skill:" prefix so stats keys are consistent
+        // with improve_skill / prune_skills which use bare skill IDs.
+        let stats_key = capability_id
+            .strip_prefix("skill:")
+            .unwrap_or(capability_id);
+
         let (should_improve, should_prune) = {
             let mut stats = self.stats.lock().await;
-            let entry = stats.entry(capability_id.to_string()).or_default();
+            let entry = stats.entry(stats_key.to_string()).or_default();
 
             if success {
                 entry.success_count += 1;
@@ -247,8 +275,8 @@ impl SkillEvolution {
         // 只对 Agent 生成的 Skill 触发自动进化
         if should_improve || should_prune {
             if let Some(registry) = get_skill_registry() {
-                // capability_id 可能不是 skill，先检查
-                let skill_id = capability_id.strip_prefix("skill:").unwrap_or(capability_id);
+                // stats_key is already normalized ("skill:" prefix stripped)
+                let skill_id = stats_key;
                 if let Some(skill) = registry.get(skill_id).await {
                     if skill.origin == SkillOrigin::Manual {
                         // 手动 Skill 不自动修改，仅记录警告
@@ -273,32 +301,54 @@ impl SkillEvolution {
                             failure_reason = failure_reason,
                             "[SkillEvolution] Triggering AI-powered improvement"
                         );
-                        // 标记改进时间戳（防止重复触发）
+                        // 临时标记为"改进中"（使用未来时间戳防止并发重复触发）
+                        // 成功后更新为实际时间，失败后回滚
+                        let improving_marker = Utc::now();
                         {
                             let mut stats = self.stats.lock().await;
-                            if let Some(entry) = stats.get_mut(capability_id) {
-                                entry.last_improved_at = Some(Utc::now());
+                            if let Some(entry) = stats.get_mut(stats_key) {
+                                entry.last_improved_at = Some(improving_marker);
                             }
                             self.mark_stats_dirty();
                         }
                         // 后台 AI 改进
                         let skill_id_owned = skill_id.to_string();
+                        let stats_key_owned = stats_key.to_string();
                         let failure_reason_owned = failure_reason.map(String::from);
                         let old_instructions = skill.full_instructions.clone();
                         if let Some(evolution) = get_skill_evolution() {
                             let evo = evolution.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = Self::ai_improve_skill(
+                                match Self::ai_improve_skill(
                                     &evo,
                                     &skill_id_owned,
                                     &old_instructions,
                                     failure_reason_owned.as_deref(),
                                 ).await {
-                                    tracing::warn!(
-                                        skill_id = %skill_id_owned,
-                                        error = %e,
-                                        "[SkillEvolution] AI improvement failed"
-                                    );
+                                    Ok(()) => {
+                                        // 成功：确认改进时间戳
+                                        let mut stats = evo.stats.lock().await;
+                                        if let Some(entry) = stats.get_mut(&stats_key_owned) {
+                                            entry.last_improved_at = Some(Utc::now());
+                                        }
+                                        evo.mark_stats_dirty();
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            skill_id = %skill_id_owned,
+                                            error = %e,
+                                            "[SkillEvolution] AI improvement failed, rolling back cooldown"
+                                        );
+                                        // 失败：回滚 last_improved_at（允许下次失败重新触发）
+                                        let mut stats = evo.stats.lock().await;
+                                        if let Some(entry) = stats.get_mut(&stats_key_owned) {
+                                            // 只回滚自己设置的时间戳，避免覆盖其他并发改进
+                                            if entry.last_improved_at == Some(improving_marker) {
+                                                entry.last_improved_at = None;
+                                            }
+                                        }
+                                        evo.mark_stats_dirty();
+                                    }
                                 }
                             });
                         }
@@ -306,6 +356,131 @@ impl SkillEvolution {
                 }
             }
         }
+    }
+
+    // ==================== AI 抽象化创建 ====================
+
+    /// AI 驱动的 Skill 抽象化创建
+    ///
+    /// 与 `auto_create_skill` 不同：不是把用户原始输入当 trigger/name，
+    /// 而是用 AI 从成功执行中提取可复用的抽象模式。
+    ///
+    /// 例如用户说"帮我看看最近B站有没有新番更新"，AI 会抽象为：
+    /// - name: "平台内容更新检查"
+    /// - triggers: ["更新", "新番", "最近内容", "检查更新"]
+    /// - instructions: 参数化的通用流程（支持 ${platform}, ${content_type}）
+    pub async fn auto_create_skill_abstracted(
+        &self,
+        user_input: &str,
+        step_descriptions: &str,
+        capabilities_used: &[String],
+    ) -> Result<Skill, String> {
+        use crate::config::ModelTier;
+        use crate::services::ai::create_ai_analyzer_for_tier;
+
+        let analyzer = create_ai_analyzer_for_tier(ModelTier::Standard).await
+            .ok_or("AI analyzer not available")?;
+
+        let prompt = format!(
+            "你是一个 Skill 模板抽象专家。从以下成功执行中提取可复用的抽象 Skill 模板。\n\n\
+            用户原始请求：{}\n\n\
+            实际执行步骤：\n{}\n\n\
+            使用到的能力：{}\n\n\
+            请输出以下 JSON（不要多余解释）：\n\
+            {{\n\
+              \"name\": \"简洁的 Skill 名称（不要包含具体人名/番名/平台名，要抽象化）\",\n\
+              \"description\": \"一句话描述这个 Skill 能做什么（抽象化）\",\n\
+              \"category\": \"分类（如 media, social, game, data, creative）\",\n\
+              \"triggers\": [\"3-6个抽象化的触发关键词，包含中英文\"],\n\
+              \"parameters\": [\"从具体值中提取的参数槽位名\"],\n\
+              \"instructions\": \"参数化的执行指令，用 ${{param}} 表示可变部分\"\n\
+            }}\n",
+            user_input,
+            step_descriptions,
+            capabilities_used.join(", ")
+        );
+
+        let ai_result = analyzer.analyze(&prompt).await
+            .map_err(|e| format!("AI abstraction failed: {}", e))?;
+
+        // 解析 AI 输出的 JSON
+        let json_str = extract_json_from_response(&ai_result)
+            .ok_or("AI response does not contain valid JSON")?;
+
+        let parsed: serde_json::Value = serde_json::from_str(&json_str)
+            .map_err(|e| format!("Failed to parse AI JSON: {}", e))?;
+
+        let name = parsed["name"].as_str().unwrap_or("auto_skill").to_string();
+        let description = parsed["description"].as_str().unwrap_or("").to_string();
+        let category = parsed["category"].as_str().unwrap_or("auto").to_string();
+        let triggers: Vec<String> = parsed["triggers"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let parameters: Vec<String> = parsed["parameters"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let instructions = parsed["instructions"].as_str().unwrap_or(step_descriptions).to_string();
+
+        if triggers.is_empty() || instructions.len() < 20 {
+            return Err("AI abstraction produced insufficient content".to_string());
+        }
+
+        // 验证 triggers 质量：过短的触发词无效（容易误触发）
+        let valid_triggers: Vec<String> = triggers.into_iter()
+            .filter(|t| t.chars().count() >= 2)
+            .collect();
+        if valid_triggers.is_empty() {
+            return Err("All triggers are too short (< 2 chars)".to_string());
+        }
+
+        // 验证参数在 instructions 中被引用
+        let unreferenced: Vec<&str> = parameters.iter()
+            .filter(|p| !instructions.contains(&format!("${{{}}}", p)))
+            .map(|p| p.as_str())
+            .collect();
+        if !unreferenced.is_empty() {
+            tracing::warn!(
+                unreferenced = ?unreferenced,
+                "[SkillEvolution] Parameters not referenced in instructions: {:?}",
+                unreferenced
+            );
+        }
+
+        // 验证 instructions 中的 ${} 都有闭合（精确扫描每个 ${ 是否有匹配的 }）
+        if instructions.contains("${") {
+            let mut unclosed = 0u32;
+            let bytes = instructions.as_bytes();
+            let mut i = 0;
+            while i < bytes.len().saturating_sub(1) {
+                if bytes[i] == b'$' && bytes[i + 1] == b'{' {
+                    // 找到 ${，向后扫描直到找到 } 或到达末尾
+                    if let Some(close_pos) = instructions[i + 2..].find('}') {
+                        i = i + 2 + close_pos + 1; // 跳过整个 ${...}
+                    } else {
+                        unclosed += 1;
+                        i += 2;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            if unclosed > 0 {
+                return Err(format!("Instructions have {} unclosed ${{}} placeholders", unclosed));
+            }
+        }
+
+        // 委托给基础创建方法（传入参数声明）
+        self.auto_create_skill_with_params(
+            &name,
+            &description,
+            &valid_triggers,
+            &category,
+            &instructions,
+            capabilities_used,
+            &parameters,
+        ).await
     }
 
     // ==================== AI 驱动的改进 ====================
@@ -358,8 +533,8 @@ impl SkillEvolution {
 
     // ==================== 自动创建 ====================
 
-    /// 自动创建 Skill：当某个 Recipe 执行成功且模式可复用时
-    pub async fn auto_create_skill(
+    /// 自动创建 Skill（带参数声明）
+    pub async fn auto_create_skill_with_params(
         &self,
         name: &str,
         description: &str,
@@ -367,19 +542,83 @@ impl SkillEvolution {
         category: &str,
         instructions: &str,
         required_capabilities: &[String],
+        parameters: &[String],
     ) -> Result<Skill, String> {
-        // 检查每日限额
-        self.reset_daily_counter_if_needed().await;
-        let current = self.daily_create_count.load(Ordering::Relaxed);
-        if current >= DAILY_AUTO_CREATE_LIMIT {
-            return Err(format!(
-                "Daily auto-create limit reached ({}/{})",
-                current, DAILY_AUTO_CREATE_LIMIT
-            ));
+        self.auto_create_skill_inner(name, description, triggers, category, instructions, required_capabilities, parameters).await
+    }
+
+    /// 自动创建 Skill 内部实现
+    async fn auto_create_skill_inner(
+        &self,
+        name: &str,
+        description: &str,
+        triggers: &[String],
+        category: &str,
+        instructions: &str,
+        required_capabilities: &[String],
+        parameters: &[String],
+    ) -> Result<Skill, String> {
+        // 检查每日限额（在 daily_date mutex 保护下检查，避免 TOCTOU）
+        {
+            let today = Utc::now().date_naive();
+            let mut date = self.daily_date.lock().await;
+            if *date != today {
+                *date = today;
+                self.daily_create_count.store(0, Ordering::SeqCst);
+            }
+            let current = self.daily_create_count.load(Ordering::SeqCst);
+            if current >= DAILY_AUTO_CREATE_LIMIT {
+                return Err(format!(
+                    "Daily auto-create limit reached ({}/{})",
+                    current, DAILY_AUTO_CREATE_LIMIT
+                ));
+            }
+            // 在 mutex 保护下递增，确保原子性
+            self.daily_create_count.fetch_add(1, Ordering::SeqCst);
         }
 
         // 验证所需能力是否存在
-        self.validate_capabilities(required_capabilities).await?;
+        if let Err(e) = self.validate_capabilities(required_capabilities).await {
+            self.daily_create_count.fetch_sub(1, Ordering::SeqCst);
+            return Err(e);
+        }
+
+        // 去重检查：如果已有高度相似的 Skill，跳过创建或改进已有 Skill
+        if let Some(registry) = get_skill_registry() {
+            // 用新 skill 的描述+触发词构建查询文本
+            let query_text = format!("{} {} {}", name, description, triggers.join(" "));
+            let existing_matches = registry.get_relevant_skills(&query_text, 3).await;
+
+            for m in &existing_matches {
+                if m.relevance > 1.5 {
+                    // 高度相似的 Skill 已存在 — 尝试改进而非创建
+                    if m.skill.origin != SkillOrigin::Manual {
+                        tracing::info!(
+                            existing = %m.skill.name,
+                            relevance = m.relevance,
+                            "[SkillEvolution] Similar skill exists, improving instead of creating"
+                        );
+                        // 改进已有 skill 的指令
+                        let _ = self.improve_skill(&m.skill.id, instructions).await;
+                        self.daily_create_count.fetch_sub(1, Ordering::SeqCst);
+                        return Err(format!(
+                            "Similar skill '{}' already exists (relevance={:.2}), improved it instead",
+                            m.skill.name, m.relevance
+                        ));
+                    } else {
+                        tracing::info!(
+                            existing = %m.skill.name,
+                            "[SkillEvolution] Similar manual skill exists, skipping auto-create"
+                        );
+                        self.daily_create_count.fetch_sub(1, Ordering::SeqCst);
+                        return Err(format!(
+                            "Similar manual skill '{}' already exists, skipping creation",
+                            m.skill.name
+                        ));
+                    }
+                }
+            }
+        }
 
         // 生成安全文件名
         let safe_name = name
@@ -401,12 +640,23 @@ impl SkillEvolution {
             .collect::<Vec<_>>()
             .join(", ");
 
+        let params_yaml = if parameters.is_empty() {
+            String::new()
+        } else {
+            let items = parameters
+                .iter()
+                .map(|p| format!("\"{}\"" , p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("\nparameters: [{}]", items)
+        };
+
         let content = format!(
             r#"---
 name: {name}
 description: "{description}"
 category: {category}
-triggers: [{triggers_yaml}]
+triggers: [{triggers_yaml}]{params_yaml}
 tier_hint: standard
 gating:
   capabilities: [{caps_yaml}]
@@ -417,16 +667,19 @@ origin: agent_generated
 "#
         );
 
-        // 原子写入
+        // 原子写入（失败时回滚 daily_create_count）
         let tmp_path = self.skills_dir.join(format!(".tmp_{}", file_name));
-        tokio::fs::write(&tmp_path, &content)
-            .await
-            .map_err(|e| format!("Failed to write skill file: {}", e))?;
-        tokio::fs::rename(&tmp_path, &file_path)
-            .await
-            .map_err(|e| format!("Failed to rename skill file: {}", e))?;
+        if let Err(e) = tokio::fs::write(&tmp_path, &content).await {
+            self.daily_create_count.fetch_sub(1, Ordering::SeqCst);
+            return Err(format!("Failed to write skill file: {}", e));
+        }
+        if let Err(e) = tokio::fs::rename(&tmp_path, &file_path).await {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            self.daily_create_count.fetch_sub(1, Ordering::SeqCst);
+            return Err(format!("Failed to rename skill file: {}", e));
+        }
 
-        self.daily_create_count.fetch_add(1, Ordering::Relaxed);
+        // （daily_create_count 已在入口处原子递增，无需再次增加）
 
         // 重新加载 Skills
         if let Some(registry) = get_skill_registry() {
@@ -452,6 +705,7 @@ origin: agent_generated
             },
             tier_hint: Some(super::skill::ModelTierHint::Standard),
             origin: SkillOrigin::AgentGenerated,
+            parameters: parameters.to_vec(),
             file_path,
             loaded_at: Some(std::time::Instant::now()),
         };
@@ -713,17 +967,42 @@ origin: agent_generated
         self.capability_gaps.lock().await.clone()
     }
 
-    // ==================== 内部方法 ====================
+    /// 手动删除一个 Agent 生成的 Skill（不允许删除 manual Skill）
+    pub async fn delete_skill(&self, skill_id: &str) -> Result<(), String> {
+        let registry = get_skill_registry().ok_or("Skill registry not initialized")?;
+        let skill = registry
+            .get(skill_id)
+            .await
+            .ok_or_else(|| format!("Skill not found: {}", skill_id))?;
 
-    /// 如果日期变更，重置每日计数器
-    async fn reset_daily_counter_if_needed(&self) {
-        let today = Utc::now().date_naive();
-        let mut date = self.daily_date.lock().await;
-        if *date != today {
-            *date = today;
-            self.daily_create_count.store(0, Ordering::Relaxed);
+        if skill.origin == SkillOrigin::Manual {
+            return Err("Cannot delete manual skills".to_string());
         }
+
+        // 删除文件
+        if skill.file_path.exists() {
+            tokio::fs::remove_file(&skill.file_path)
+                .await
+                .map_err(|e| format!("Failed to delete skill file: {}", e))?;
+        }
+
+        // 清理统计
+        {
+            let mut stats = self.stats.lock().await;
+            stats.remove(skill_id);
+            self.mark_stats_dirty();
+        }
+
+        // 重新加载 registry
+        if let Some(r) = get_skill_registry() {
+            r.reload().await;
+        }
+
+        tracing::info!(skill_id = skill_id, "[SkillEvolution] Manually deleted skill");
+        Ok(())
     }
+
+    // ==================== 内部方法 ====================
 
     /// 验证所需能力是否全部存在
     async fn validate_capabilities(&self, required: &[String]) -> Result<(), String> {
@@ -735,6 +1014,36 @@ origin: agent_generated
         }
         Ok(())
     }
+}
+
+/// 从 AI 响应中提取 JSON 块（支持 ```json 包裹和裸 JSON）
+fn extract_json_from_response(response: &str) -> Option<String> {
+    // 尝试 ```json ... ``` 包裹
+    if let Some(start) = response.find("```json") {
+        let after = &response[start + 7..];
+        if let Some(end) = after.find("```") {
+            return Some(after[..end].trim().to_string());
+        }
+    }
+    // 尝试 ``` ... ``` 包裹
+    if let Some(start) = response.find("```") {
+        let after = &response[start + 3..];
+        if let Some(end) = after.find("```") {
+            let inner = after[..end].trim();
+            if inner.starts_with('{') {
+                return Some(inner.to_string());
+            }
+        }
+    }
+    // 尝试裸 JSON
+    if let Some(start) = response.find('{') {
+        if let Some(end) = response.rfind('}') {
+            if end > start {
+                return Some(response[start..=end].to_string());
+            }
+        }
+    }
+    None
 }
 
 /// 全局 SkillEvolution 实例

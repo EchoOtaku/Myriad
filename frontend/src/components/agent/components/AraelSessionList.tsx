@@ -2,13 +2,15 @@
  * AraelSessionList - 会话列表组件
  *
  * 现代化设计，显示：
+ * - 搜索过滤
  * - 最近会话（标题 + 消息数 + 最后活跃时间）
  * - 点击会话加载消息
+ * - 滑动/长按删除会话
  * - 新建对话按钮
  */
 
 import type { ChatSession } from '../types'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 
@@ -45,12 +47,15 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
 }) => {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [loading, setLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const { t, format } = useI18n()
 
   const loadSessions = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await agentService.listSessions(1, 30)
+      const list = await agentService.listSessions(1, 50)
       setSessions(list.map(s => ({
         id: s.id,
         title: s.title,
@@ -71,8 +76,56 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
     loadSessions()
   }, [loadSessions])
 
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery.trim()) return sessions
+    const q = searchQuery.toLowerCase()
+    return sessions.filter(s =>
+      (s.title || '').toLowerCase().includes(q),
+    )
+  }, [sessions, searchQuery])
+
+  const handleDelete = useCallback(async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation()
+    if (deletingId) return
+    setDeletingId(sessionId)
+    try {
+      await agentService.archiveSession(sessionId)
+      setSessions(prev => prev.filter(s => s.id !== sessionId))
+    }
+    catch {
+      // silent
+    }
+    finally {
+      setDeletingId(null)
+    }
+  }, [deletingId])
+
   return (
     <div className="arael-sessions">
+      {/* Search bar */}
+      <div className="arael-sessions-search">
+        <svg className="arael-sessions-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          ref={searchRef}
+          type="text"
+          className="arael-sessions-search-input"
+          placeholder={t.arael.searchSessions}
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button className="arael-sessions-search-clear" onClick={() => setSearchQuery('')}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       {/* Loading */}
       {loading && (
         <div className="arael-sessions-loading">
@@ -82,7 +135,7 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
 
       {/* List */}
       <div className="arael-sessions-items">
-        {sessions.map(session => (
+        {filteredSessions.map(session => (
           <button
             key={session.id}
             className={`arael-sessions-item${session.id === activeSessionId ? ' active' : ''}`}
@@ -100,12 +153,27 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
               </span>
             </div>
             <div className="arael-sessions-item-sub">
-              {format(t.arael.messageCount, { count: session.messageCount })}
+              <span>{format(t.arael.messageCount, { count: session.messageCount })}</span>
+              <button
+                className="arael-sessions-item-delete"
+                onClick={(e) => handleDelete(e, session.id)}
+                title={t.arael.deleteSession}
+                disabled={deletingId === session.id}
+              >
+                {deletingId === session.id ? (
+                  <span className="arael-spinner-tiny" />
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                )}
+              </button>
             </div>
           </button>
         ))}
 
-        {!loading && sessions.length === 0 && (
+        {!loading && filteredSessions.length === 0 && (
           <div className="arael-sessions-empty">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />

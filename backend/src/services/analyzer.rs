@@ -24,21 +24,34 @@ struct GeminiPart {
 
 #[derive(Debug, Deserialize)]
 struct GeminiResponse {
+    #[serde(default)]
     candidates: Vec<GeminiCandidate>,
+    #[serde(default, rename = "promptFeedback")]
+    prompt_feedback: Option<GeminiPromptFeedback>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeminiPromptFeedback {
+    #[serde(default, rename = "blockReason")]
+    block_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiCandidate {
-    content: GeminiCandidateContent,
+    content: Option<GeminiCandidateContent>,
+    #[serde(default, rename = "finishReason")]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiCandidateContent {
+    #[serde(default)]
     parts: Vec<GeminiResponsePart>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiResponsePart {
+    #[serde(default)]
     text: String,
 }
 
@@ -191,10 +204,32 @@ impl AiAnalyzer {
             .await
             .context("Failed to parse Gemini API response")?;
 
+        // 检测 prompt 级别的安全过滤
+        if let Some(ref feedback) = gemini_response.prompt_feedback {
+            if let Some(ref reason) = feedback.block_reason {
+                return Err(anyhow::anyhow!(
+                    "Gemini blocked the request (reason: {})",
+                    reason
+                ));
+            }
+        }
+
+        // 检测 candidate 级别的安全过滤（有 candidate 但无 content）
+        if let Some(candidate) = gemini_response.candidates.first() {
+            if candidate.content.is_none() {
+                let reason = candidate.finish_reason.as_deref().unwrap_or("UNKNOWN");
+                return Err(anyhow::anyhow!(
+                    "Gemini blocked the response (finishReason: {})",
+                    reason
+                ));
+            }
+        }
+
         let analysis = gemini_response
             .candidates
             .first()
-            .and_then(|c| c.content.parts.first())
+            .and_then(|c| c.content.as_ref())
+            .and_then(|c| c.parts.first())
             .map(|p| p.text.clone())
             .unwrap_or_else(|| "No analysis generated".to_string());
 

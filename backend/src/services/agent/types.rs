@@ -55,6 +55,11 @@ pub struct ConversationMessage {
 }
 
 /// 解析后的意图
+///
+/// **已废弃**: v3 Planner 直接输出 PlannerOutput，不再经过 ParsedIntent。
+/// 保留以兼容序列化格式和 EscalationLevel 的类型签名。
+#[deprecated(note = "v3 Planner 已不使用 ParsedIntent，请直接使用 PlannerOutput")]
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedIntent {
     /// 意图 ID
@@ -111,51 +116,6 @@ pub enum IntentAction {
     Control,
     /// 未知动作
     Unknown(String),
-}
-
-impl IntentAction {
-    #[allow(dead_code)]
-    pub fn from_verb(verb: &str) -> Self {
-        match verb.to_lowercase().as_str() {
-            "查" | "看" | "获取" | "读取" | "显示" | "列出" | "query" | "get" | "show" | "list" => {
-                Self::Query
-            }
-            "总结" | "汇总" | "概括" | "summarize" | "summary" => Self::Summarize,
-            "分析" | "统计" | "计算" | "analyze" | "analyse" => Self::Analyze,
-            "监控" | "追踪" | "跟踪" | "观察" | "monitor" | "track" | "watch" => {
-                Self::Monitor
-            }
-            "创建" | "生成" | "新建" | "制作" | "写" | "create" | "generate" | "make" | "write" => {
-                Self::Create
-            }
-            "更新" | "修改" | "编辑" | "改" | "update" | "edit" | "modify" => Self::Update,
-            "删除" | "移除" | "清除" | "delete" | "remove" | "clear" => Self::Delete,
-            "比较" | "对比" | "compare" => Self::Compare,
-            "推荐" | "建议" | "suggest" | "recommend" => Self::Recommend,
-            "导出" | "下载" | "export" | "download" => Self::Export,
-            "打开" | "跳转" | "前往" | "去" | "进入" | "访问" | "open" | "navigate" | "goto"
-            | "go" => Self::Navigate,
-            "播放" | "暂停" | "停止" | "继续" | "下一首" | "上一首" | "调节" | "静音" | "play"
-            | "pause" | "stop" | "resume" | "next" | "previous" | "mute" | "control" => {
-                Self::Control
-            }
-            _ => Self::Unknown(verb.to_string()),
-        }
-    }
-}
-
-impl ParsedIntent {
-    /// 检查是否需要 AI 处理
-    #[allow(dead_code)]
-    pub fn requires_ai_processing(&self) -> bool {
-        matches!(
-            self.action,
-            IntentAction::Summarize
-                | IntentAction::Analyze
-                | IntentAction::Recommend
-                | IntentAction::Compare
-        )
-    }
 }
 
 /// 意图目标类型
@@ -330,6 +290,7 @@ pub struct Recipe {
     /// 创建时间
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// 元数据
+    #[serde(default)]
     pub metadata: HashMap<String, Value>,
     /// 页面上下文（当前阅读的文章等）
     #[serde(default)]
@@ -368,8 +329,10 @@ pub struct RecipeStep {
     /// 动作
     pub action: String,
     /// 输入参数
+    #[serde(default)]
     pub params: HashMap<String, Value>,
     /// 依赖的步骤 ID 列表
+    #[serde(default)]
     pub depends_on: Vec<String>,
     /// 失败处理策略
     pub on_failure: FailureStrategy,
@@ -430,6 +393,9 @@ pub struct AiRecipeStep {
     /// 失败策略: "abort" | "skip"
     #[serde(default = "default_on_failure")]
     pub on_failure: String,
+    /// 重试配置
+    #[serde(default)]
+    pub retry: Option<RetryConfig>,
     /// 超时时间（毫秒）
     #[serde(default)]
     pub timeout_ms: Option<u64>,
@@ -455,7 +421,7 @@ impl AiRecipeStep {
             params: self.params,
             depends_on: self.depends_on,
             on_failure: failure_strategy,
-            retry: None,
+            retry: self.retry,
             timeout_ms: self.timeout_ms.or(Some(30000)),
             model_tier: tier,
             generator: None,
@@ -532,6 +498,7 @@ pub struct TaskState {
     /// 当前步骤索引
     pub current_step: usize,
     /// 步骤执行结果
+    #[serde(default)]
     pub step_results: HashMap<String, StepResult>,
     /// 开始时间
     pub started_at: chrono::DateTime<chrono::Utc>,
@@ -570,6 +537,33 @@ pub struct ExecutionTrace {
     pub total_duration_ms: u64,
     /// 各 tier 使用次数
     pub tier_usage: std::collections::HashMap<String, u32>,
+    /// 主 Agent（Planner）的原始决策
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planner_decision: Option<PlannerDecisionInfo>,
+}
+
+/// Planner 决策快照（嵌入到 ExecutionTrace 中持久化）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannerDecisionInfo {
+    /// Planner 状态
+    pub status: String,
+    /// AI 推理说明
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// 置信度
+    pub confidence: f32,
+    /// 计划的步骤摘要
+    pub planned_steps: Vec<PlannerStepSummary>,
+}
+
+/// Planner 规划的单步摘要
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannerStepSummary {
+    pub id: String,
+    pub capability_id: String,
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
 }
 
 /// 步骤追踪 — 记录单步执行详情
@@ -581,6 +575,18 @@ pub struct StepTrace {
     pub duration_ms: u64,
     pub success: bool,
     pub error: Option<String>,
+    /// 主 Agent 对此步骤的指令（step.action）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub action: String,
+    /// 解析后的参数快照（脱敏）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
+    /// 输出预览（截断）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_preview: Option<String>,
+    /// 是否为动态生成的步骤
+    #[serde(default)]
+    pub is_dynamic: bool,
 }
 
 /// 用户问题 - Agent 向用户提出的澄清问题
@@ -951,10 +957,14 @@ pub struct UserConfirmation {
     pub confirmed: bool,
     /// 用户备注（可选）
     pub user_note: Option<String>,
+    /// 操作发起者的用户 ID（用于归属校验）
+    #[serde(default)]
+    pub user_id: i32,
 }
 
 // ============ 辅助 trait ============
 
+#[allow(deprecated)]
 impl Default for ParsedIntent {
     fn default() -> Self {
         Self {
@@ -968,43 +978,6 @@ impl Default for ParsedIntent {
             suggested_capabilities: Vec::new(),
             unsupported_reason: None,
         }
-    }
-}
-
-impl Capability {
-    /// 创建基础能力（不需要确认）
-    #[allow(dead_code)]
-    pub fn new(id: &str, name: &str, description: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            name: name.to_string(),
-            description: description.to_string(),
-            category: CapabilityCategory::DataRead,
-            supported_actions: vec![],
-            input_schema: serde_json::json!({}),
-            output_schema: serde_json::json!({}),
-            required_permissions: vec![],
-            requires_ai: false,
-            estimated_duration_ms: None,
-            requires_confirmation: false,
-            confirmation_message: None,
-            risk_level: RiskLevel::None,
-        }
-    }
-
-    /// 设置为需要确认的敏感操作
-    #[allow(dead_code)]
-    pub fn with_confirmation(mut self, message: &str, risk: RiskLevel) -> Self {
-        self.requires_confirmation = true;
-        self.confirmation_message = Some(message.to_string());
-        self.risk_level = risk;
-        self
-    }
-
-    /// 检查是否是敏感操作
-    #[allow(dead_code)]
-    pub fn is_sensitive(&self) -> bool {
-        self.requires_confirmation || self.risk_level != RiskLevel::None
     }
 }
 
@@ -1047,20 +1020,6 @@ impl Recipe {
         }
     }
 
-    /// 设置页面上下文（当前阅读的文章等）
-    #[allow(dead_code)]
-    pub fn with_page_context(mut self, context: Option<Value>) -> Self {
-        self.page_context = context;
-        self
-    }
-
-    /// 设置对话历史上下文（用于继续对话模式）
-    #[allow(dead_code)]
-    pub fn with_conversation_context(mut self, context: Option<Vec<ConversationMessage>>) -> Self {
-        self.conversation_context = context;
-        self
-    }
-
     pub fn add_step(&mut self, step: RecipeStep) {
         self.steps.push(step);
         self.recalculate_duration();
@@ -1096,14 +1055,12 @@ impl TaskState {
     }
 
     /// 设置待回答的问题，并将状态改为等待输入
-    #[allow(dead_code)]
     pub fn set_pending_question(&mut self, question: UserQuestion) {
         self.pending_question = Some(question);
         self.status = TaskStatus::WaitingForInput;
     }
 
     /// 清除待回答问题，恢复执行状态
-    #[allow(dead_code)]
     pub fn clear_pending_question(&mut self) {
         self.pending_question = None;
         self.status = TaskStatus::Running;
@@ -1117,53 +1074,6 @@ impl TaskState {
 }
 
 // ============ 动态任务更新机制 ============
-
-/// 动态步骤触发器 - 定义何时触发动态步骤生成
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DynamicTrigger {
-    /// 步骤完成后触发
-    AfterStep(String),
-    /// 当输出匹配特定模式时触发
-    OnOutputMatch { step_id: String, pattern: String },
-    /// 当发现特定类型的数据时触发
-    OnDataDiscovery {
-        step_id: String,
-        data_type: DiscoveredDataType,
-    },
-}
-
-/// 发现的数据类型
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum DiscoveredDataType {
-    /// UI 元素（按钮、输入框等）
-    UiElements,
-    /// 可交互内容
-    InteractiveContent,
-    /// 需要进一步获取的数据
-    PendingData,
-    /// 错误需要处理
-    ErrorToHandle,
-    /// 用户需要确认
-    NeedsConfirmation,
-}
-
-/// 动态步骤生成器配置
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamicStepConfig {
-    /// 触发条件
-    pub trigger: DynamicTrigger,
-    /// 生成器类型
-    pub generator: StepGenerator,
-    /// 最大生成步骤数
-    pub max_steps: Option<usize>,
-    /// 是否允许递归生成
-    pub allow_recursive: bool,
-}
 
 /// 步骤生成器类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1202,7 +1112,8 @@ pub enum StepGenerator {
 }
 
 /// 执行上下文 - 在步骤间传递的动态上下文
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ExecutionContext {
     /// 所有步骤的输出
     pub step_outputs: HashMap<String, Value>,
@@ -1236,6 +1147,43 @@ pub struct ExecutionContext {
     /// key = capability_id prefix (如 "ai"), value = 该角色的 SOUL 身份文本
     #[serde(default)]
     pub role_contexts: HashMap<String, String>,
+    /// 全局重试预算剩余（跨 resume 保持）
+    #[serde(default = "default_retry_budget")]
+    pub retry_budget_remaining: u32,
+    /// 待提问队列（DAG 中多个问题排队，每次 resume 后检查是否还有待问问题）
+    #[serde(default)]
+    pub pending_questions: Vec<UserQuestion>,
+    /// 记忆上下文摘要（Executor 初始化时召回，供 AI 步骤参考）
+    #[serde(default)]
+    pub memory_context: Option<String>,
+}
+
+fn default_retry_budget() -> u32 {
+    5
+}
+
+impl Default for ExecutionContext {
+    fn default() -> Self {
+        Self {
+            step_outputs: HashMap::new(),
+            discovered_ui_elements: None,
+            interaction_target: None,
+            pending_dynamic_steps: Vec::new(),
+            dynamic_steps_generated: 0,
+            variables: HashMap::new(),
+            original_request: String::new(),
+            user_intent: String::new(),
+            uncertainties: Vec::new(),
+            answered_questions: HashMap::new(),
+            decision_history: Vec::new(),
+            page_context: None,
+            conversation_context: None,
+            role_contexts: HashMap::new(),
+            retry_budget_remaining: 5,
+            pending_questions: Vec::new(),
+            memory_context: None,
+        }
+    }
 }
 
 /// 不确定性 - 执行过程中发现的需要澄清的点
@@ -1335,38 +1283,6 @@ pub struct InteractionTarget {
     pub params: Option<Value>,
 }
 
-/// 动态更新请求 - 用于在执行过程中请求更新任务
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamicUpdateRequest {
-    /// 任务 ID
-    pub task_id: String,
-    /// 更新类型
-    pub update_type: UpdateType,
-    /// 更新数据
-    pub data: Value,
-}
-
-/// 更新类型
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UpdateType {
-    /// 追加新步骤
-    AppendSteps(Vec<RecipeStep>),
-    /// 插入步骤（在指定步骤后）
-    InsertStepsAfter {
-        after_step_id: String,
-        steps: Vec<RecipeStep>,
-    },
-    /// 替换后续步骤
-    ReplaceRemainingSteps(Vec<RecipeStep>),
-    /// 终止执行
-    Abort { reason: String },
-    /// 暂停等待用户输入
-    PauseForInput { prompt: String },
-}
-
 #[allow(dead_code)]
 impl ExecutionContext {
     pub fn new() -> Self {
@@ -1422,6 +1338,11 @@ impl ExecutionContext {
         self.step_outputs.get(step_id)
     }
 
+    /// 获取所有步骤输出（用于向后续步骤共享已有结果）
+    pub fn get_all_outputs(&self) -> &HashMap<String, Value> {
+        &self.step_outputs
+    }
+
     /// 设置变量
     pub fn set_var(&mut self, key: &str, value: Value) {
         self.variables.insert(key.to_string(), value);
@@ -1432,16 +1353,33 @@ impl ExecutionContext {
         self.variables.get(key)
     }
 
-    /// 添加待执行的动态步骤
+    /// 添加待执行的动态步骤（硬上限 15 个）
     pub fn queue_dynamic_steps(&mut self, steps: Vec<RecipeStep>) {
-        self.dynamic_steps_generated += steps.len();
-        self.pending_dynamic_steps.extend(steps);
+        const MAX_DYNAMIC_QUEUE: usize = 15;
+        let remaining = MAX_DYNAMIC_QUEUE.saturating_sub(self.dynamic_steps_generated);
+        if remaining == 0 {
+            tracing::warn!(
+                "[ExecutionContext] Dynamic steps queue full ({}/{}), rejecting {} new steps",
+                self.dynamic_steps_generated, MAX_DYNAMIC_QUEUE, steps.len()
+            );
+            return;
+        }
+        let accepted: Vec<RecipeStep> = steps.into_iter().take(remaining).collect();
+        let accepted_count = accepted.len();
+        self.dynamic_steps_generated += accepted_count;
+        self.pending_dynamic_steps.extend(accepted);
     }
 
-    /// 在队列前端插入步骤（优先执行）
+    /// 在队列前端插入步骤（优先执行，受硬上限约束）
     pub fn prepend_dynamic_steps(&mut self, steps: Vec<RecipeStep>) {
-        self.dynamic_steps_generated += steps.len();
-        let mut new_steps = steps;
+        const MAX_DYNAMIC_QUEUE: usize = 15;
+        let remaining = MAX_DYNAMIC_QUEUE.saturating_sub(self.dynamic_steps_generated);
+        if remaining == 0 {
+            return;
+        }
+        let accepted: Vec<RecipeStep> = steps.into_iter().take(remaining).collect();
+        self.dynamic_steps_generated += accepted.len();
+        let mut new_steps = accepted;
         new_steps.append(&mut self.pending_dynamic_steps);
         self.pending_dynamic_steps = new_steps;
     }
@@ -1567,12 +1505,12 @@ impl UserQuestion {
             options: Some(vec![
                 QuestionOption {
                     value: "yes".to_string(),
-                    label: "是".to_string(),
+                    label: crate::services::agent::response_agent::yes_label(),
                     description: None,
                 },
                 QuestionOption {
                     value: "no".to_string(),
-                    label: "否".to_string(),
+                    label: crate::services::agent::response_agent::no_label(),
                     description: None,
                 },
             ]),
@@ -1594,7 +1532,6 @@ impl QuestionOption {
         }
     }
 
-    #[allow(dead_code)]
     pub fn with_description(mut self, description: &str) -> Self {
         self.description = Some(description.to_string());
         self
@@ -1617,6 +1554,9 @@ pub enum AgentProgressEvent {
         message: String,
         #[serde(rename = "totalSteps")]
         total_steps: u32,
+        /// 各步骤的描述（用于前端展示执行计划）
+        #[serde(rename = "stepDescriptions", skip_serializing_if = "Vec::is_empty")]
+        step_descriptions: Vec<String>,
     },
     /// 任务已分配给多个 Agent（多 Agent 协作时发送）
     TaskAssigned {
@@ -1661,6 +1601,19 @@ pub enum AgentProgressEvent {
         total_steps: u32,
         message: String,
     },
+    /// 步骤重试中（智能重试：分析错误后修改参数重试）
+    StepRetrying {
+        #[serde(rename = "stepId")]
+        step_id: String,
+        #[serde(rename = "stepIndex")]
+        step_index: u32,
+        #[serde(rename = "retryCount")]
+        retry_count: u32,
+        #[serde(rename = "maxRetries")]
+        max_retries: u32,
+        /// 重试原因（错误分析结果）
+        reason: String,
+    },
     /// 任务完成（response 为序列化后的 ApiResponse JSON）
     TaskCompleted {
         #[serde(rename = "taskId")]
@@ -1669,8 +1622,7 @@ pub enum AgentProgressEvent {
         /// 已序列化的 API 响应（由 api 层填充）
         response: Box<Value>,
     },
-    /// 需要用户输入（预留，用于未来的交互式任务）
-    #[allow(dead_code)]
+    /// 需要用户输入（Agent 向用户提问）
     WaitingForInput {
         #[serde(rename = "taskId")]
         task_id: String,
@@ -1679,13 +1631,27 @@ pub enum AgentProgressEvent {
         #[serde(rename = "questionType")]
         question_type: String,
         question: String,
+        /// 问题上下文（为什么要问这个问题）
         #[serde(skip_serializing_if = "Option::is_none")]
-        options: Option<Vec<String>>,
+        context: Option<String>,
+        /// 选项（选择类问题）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        options: Option<Vec<QuestionOptionCompact>>,
+        /// 是否必填
+        #[serde(default)]
+        required: bool,
+        /// 默认值（供前端预填）
+        #[serde(rename = "defaultValue", skip_serializing_if = "Option::is_none")]
+        default_value: Option<String>,
     },
     /// 会话已创建/确认（通知前端 session_id）
     SessionCreated {
         #[serde(rename = "sessionId")]
         session_id: String,
+    },
+    /// 会话标题已生成（AI 并行生成）
+    SessionTitleUpdated {
+        title: String,
     },
     /// AI 汇总流式 token（逐步推送主 Agent 生成的汇总文本）
     SummaryToken {
@@ -1701,4 +1667,61 @@ pub enum AgentProgressEvent {
         message: String,
         code: String,
     },
+    /// 主 Agent（Planner）决策 — 调试用
+    PlannerDecision {
+        /// Planner 输出状态
+        status: String,
+        /// AI 推理
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning: Option<String>,
+        /// 置信度
+        confidence: f32,
+        /// 规划的步骤列表
+        steps: Vec<PlannerStepSummary>,
+        /// 用户原始请求
+        #[serde(rename = "userRequest")]
+        user_request: String,
+    },
+    /// 子 Agent 步骤执行详情 — 调试用
+    StepDebug {
+        #[serde(rename = "stepId")]
+        step_id: String,
+        /// 步骤阶段："start" 或 "complete"
+        phase: String,
+        #[serde(rename = "capabilityId")]
+        capability_id: String,
+        /// 主 Agent 给此步骤的指令
+        #[serde(skip_serializing_if = "Option::is_none")]
+        directive: Option<String>,
+        /// 用户原始请求
+        #[serde(rename = "userRequest", skip_serializing_if = "Option::is_none")]
+        user_request: Option<String>,
+        /// 解析后的参数
+        #[serde(skip_serializing_if = "Option::is_none")]
+        params: Option<Value>,
+        /// 执行输出预览（仅 phase=complete）
+        #[serde(rename = "outputPreview", skip_serializing_if = "Option::is_none")]
+        output_preview: Option<String>,
+        /// 是否动态步骤
+        #[serde(rename = "isDynamic")]
+        is_dynamic: bool,
+        /// 耗时 ms（仅 phase=complete）
+        #[serde(rename = "durationMs", skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+        /// 是否成功（仅 phase=complete）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        success: Option<bool>,
+        /// 错误信息（仅 phase=complete 且失败时）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+}
+
+/// SSE 事件中的精简选项（仅 value + label）
+#[derive(Debug, Clone, Serialize)]
+pub struct QuestionOptionCompact {
+    pub value: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }

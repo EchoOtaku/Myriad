@@ -2077,6 +2077,14 @@ export interface TranslationKeys {
     memFact: string
     memDecision: string
     memNote: string
+    memKnowledge: string
+    memLesson: string
+    memPattern: string
+    memInsight: string
+    memSession: string
+    deleteMemory: string
+    editMemory: string
+    deleteSkill: string
     // 聊天消息
     waiting: string
     failed: string
@@ -2098,6 +2106,40 @@ export interface TranslationKeys {
     partialComplete: string
     failReason: string
     answerFailed: string
+    // 思考面板
+    thinking: string
+    completed: string
+    errorOccurred: string
+    elapsedTime: string
+    totalTime: string
+    stepLabel: string
+    imageLoadFailed: string
+    taskCompleted: string
+    // 操作按钮
+    manage: string
+    debugPanel: string
+    inputAnswer: string
+    errorWithDetail: string
+    aiGeneratedImage: string
+    // 记忆 tier
+    memTierLong: string
+    memTierMid: string
+    memTierShort: string
+    // Heartbeat
+    toggleOn: string
+    toggleOff: string
+    // 错误消息
+    streamError: string
+    noResponse: string
+    requestTimeout: string
+    taskEndedWithStatus: string
+    // 消息操作
+    copyMessage: string
+    copied: string
+    // 会话管理
+    searchSessions: string
+    deleteSession: string
+    deleteSessionConfirm: string
   }
 }
 

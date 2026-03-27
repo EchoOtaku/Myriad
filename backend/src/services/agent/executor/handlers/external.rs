@@ -133,6 +133,12 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
     };
 
     let status = response.status().as_u16();
+    // 预检查 Content-Length，防止分配超大内存
+    if let Some(content_length) = response.content_length() {
+        if content_length > 10 * 1024 * 1024 {
+            return Err(format!("Response Content-Length ({} bytes) exceeds 10MB limit", content_length));
+        }
+    }
     // 限制响应体大小，防止 OOM
     let body_bytes = response
         .bytes()
@@ -692,9 +698,16 @@ async fn execute_mcp_tool(
     capability_id: &str,
     params: &HashMap<String, Value>,
 ) -> Result<Value, String> {
-    let tool_name = capability_id
+    // capability_id 格式: "mcp.{server_id}.{tool_name}"
+    // tool_index 中的 key 是纯 tool_name，需要剥离 server_id 前缀
+    let rest = capability_id
         .strip_prefix("mcp.")
         .ok_or("Invalid MCP capability ID")?;
+    // rest = "server_id.tool_name" — 找第一个 '.' 后的部分作为 tool_name
+    let tool_name = rest
+        .split_once('.')
+        .map(|(_, name)| name)
+        .unwrap_or(rest);
 
     let manager = crate::services::agent::mcp::get_mcp_manager()
         .ok_or("MCP manager not initialized")?;

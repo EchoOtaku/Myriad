@@ -121,6 +121,8 @@ export interface TaskCreatedEvent {
   taskId: string
   message: string
   totalSteps: number
+  /** 各步骤的描述（用于展示执行计划） */
+  stepDescriptions?: string[]
   /** 队列位置，0=立即执行 */
   queuePosition?: number
   /** 触发的技能 ID */
@@ -159,6 +161,17 @@ export interface StepCompletedEvent {
   imageUrl?: string
 }
 
+/** 步骤重试事件（智能重试：分析错误后修改参数） */
+export interface StepRetryingEvent {
+  type: 'step_retrying'
+  stepId: string
+  stepIndex: number
+  retryCount: number
+  maxRetries: number
+  /** 重试原因（错误分析结果） */
+  reason: string
+}
+
 /** 进度更新事件 */
 export interface ProgressUpdateEvent {
   type: 'progress'
@@ -180,12 +193,13 @@ export interface TaskCompletedEvent {
 export interface WaitingForInputEvent {
   type: 'waiting_for_input'
   taskId: string
-  question: {
-    questionId: string
-    questionType: string
-    question: string
-    options?: string[]
-  }
+  questionId: string
+  questionType: string
+  question: string
+  context?: string
+  options?: Array<{ value: string; label: string; description?: string }>
+  required: boolean
+  defaultValue?: string
 }
 
 /** 错误事件 */
@@ -208,6 +222,37 @@ export interface TaskAssignedEvent {
   type: 'task_assigned'
   taskId: string
   assignment: TaskAssignment
+}
+
+/** 主 Agent（Planner）决策调试事件 */
+export interface PlannerDecisionEvent {
+  type: 'planner_decision'
+  status: string
+  reasoning?: string
+  confidence: number
+  steps: Array<{
+    id: string
+    capabilityId: string
+    action: string
+    params?: Record<string, unknown>
+  }>
+  userRequest: string
+}
+
+/** 子 Agent 步骤执行调试事件 */
+export interface StepDebugEvent {
+  type: 'step_debug'
+  stepId: string
+  phase: 'start' | 'complete'
+  capabilityId: string
+  directive?: string
+  userRequest?: string
+  params?: Record<string, unknown>
+  outputPreview?: string
+  isDynamic: boolean
+  durationMs?: number
+  success?: boolean
+  error?: string
 }
 
 /** 任务分配详情 */
@@ -242,18 +287,28 @@ export interface SessionCreatedEvent {
   sessionId: string
 }
 
+/** 会话标题已生成事件 */
+export interface SessionTitleUpdatedEvent {
+  type: 'session_title_updated'
+  title: string
+}
+
 /** 所有进度事件类型 */
 export type ProgressEvent
   = | TaskCreatedEvent
     | TaskAssignedEvent
     | StepStartedEvent
     | StepCompletedEvent
+    | StepRetryingEvent
     | ProgressUpdateEvent
     | TaskCompletedEvent
     | WaitingForInputEvent
     | ErrorEvent
     | SessionCreatedEvent
+    | SessionTitleUpdatedEvent
     | SummaryTokenEvent
+    | PlannerDecisionEvent
+    | StepDebugEvent
 
 /** 进度回调函数 */
 export type ProgressCallback = (event: ProgressEvent) => void
@@ -507,6 +562,10 @@ export interface StepTrace {
   tokensOut?: number
   success: boolean
   error?: string
+  action?: string
+  params?: Record<string, unknown>
+  outputPreview?: string
+  isDynamic?: boolean
 }
 
 /** 执行追踪 */
@@ -515,16 +574,32 @@ export interface ExecutionTrace {
   totalDurationMs: number
   tierUsage: Record<string, number>
   steps: StepTrace[]
+  plannerDecision?: {
+    status: string
+    reasoning?: string
+    confidence: number
+    plannedSteps: Array<{
+      id: string
+      capabilityId: string
+      action: string
+      params?: Record<string, unknown>
+    }>
+  }
 }
 
 // ============ 记忆 (Phase 3) ============
 
 /** 记忆条目 */
 export interface MemoryEntry {
-  memoryType: 'preference' | 'fact' | 'interaction' | 'decision'
+  id: string
+  memoryType: 'preference' | 'fact' | 'interaction' | 'decision' | 'entity_knowledge' | 'execution_lesson' | 'effective_pattern' | 'session_insight' | 'session_summary'
   content: string
   source?: string
   createdAt: string
+  tier?: string
+  importance?: number
+  entities?: string[]
+  relatedCapabilities?: string[]
 }
 
 // ============ 技能 (Phase 2B) ============

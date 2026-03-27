@@ -8,12 +8,16 @@ use crate::config::ModelTier;
 use std::collections::HashMap;
 
 /// 根据 capability_id 建议 model_tier（复用 TierRouter 逻辑）
+/// 不使用 LLM 的能力返回 None，不参与 tier 标注
 fn suggest_tier(capability_id: &str) -> Option<ModelTier> {
+    if !TierRouter::requires_llm(capability_id) {
+        return None;
+    }
     Some(TierRouter::resolve_with_override(capability_id, None))
 }
 
 /// 步骤数量上限
-const MAX_STEPS: usize = 12;
+const MAX_STEPS: usize = 8;
 
 /// 校验 AI 生成的步骤并转换为 RecipeStep（供 Planner 复用）
 pub fn validate_and_convert_steps(
@@ -33,6 +37,54 @@ pub fn validate_and_convert_steps(
         );
     }
     let ai_steps: Vec<AiRecipeStep> = ai_steps.into_iter().take(MAX_STEPS).collect();
+
+    // Skill 去重：同一个 skill:xxx 只保留第一次出现，后续合并为 variations 参数
+    let ai_steps = {
+        let mut seen_skills: HashMap<String, usize> = HashMap::new();
+        let mut deduped: Vec<AiRecipeStep> = Vec::new();
+        for step in ai_steps {
+            if step.capability_id.starts_with("skill:") {
+                if let Some(&first_idx) = seen_skills.get(&step.capability_id) {
+                    // 合并到第一个同 skill 步骤：将此步骤的 action 追加到 variations
+                    tracing::warn!(
+                        capability_id = %step.capability_id,
+                        duplicate_id = %step.id,
+                        merged_into = %deduped[first_idx].id,
+                        "[validate_and_convert] Merging duplicate skill call into first occurrence"
+                    );
+                    let first = &mut deduped[first_idx];
+                    // 收集 variation 描述
+                    let variation = serde_json::Value::String(step.action.clone());
+                    match first.params.get_mut("variations") {
+                        Some(v) if v.is_array() => {
+                            v.as_array_mut().unwrap().push(variation);
+                        }
+                        _ => {
+                            // 将原始 action 也加入 variations
+                            let original = serde_json::Value::String(first.action.clone());
+                            first.params.insert(
+                                "variations".to_string(),
+                                serde_json::Value::Array(vec![original, variation]),
+                            );
+                        }
+                    }
+                    // 增加 count
+                    let current_count = first.params.get("count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1);
+                    first.params.insert("count".to_string(), serde_json::json!(current_count + 1));
+                }
+                else {
+                    seen_skills.insert(step.capability_id.clone(), deduped.len());
+                    deduped.push(step);
+                }
+            }
+            else {
+                deduped.push(step);
+            }
+        }
+        deduped
+    };
 
     let cap_ids: std::collections::HashSet<&str> =
         cap_schemas.iter().map(|c| c.id.as_str()).collect();
@@ -112,6 +164,48 @@ pub fn validate_and_convert_steps(
         steps.push(recipe_step);
     }
 
+    // xxxFrom → depends_on 自动推断：扫描 params 中的 xxxFrom 引用，补全缺失的 depends_on
+    {
+        // 收集所有有效 step_id
+        let valid_ids: std::collections::HashSet<String> =
+            steps.iter().map(|s| s.id.clone()).collect();
+
+        for step in &mut steps {
+            for (key, value) in &step.params {
+                if !key.ends_with("From") {
+                    continue;
+                }
+                // xxxFrom 的值可能是 "step_id" 或 "step_id.field"
+                let ref_str = match value.as_str() {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let dep_id = ref_str.split('.').next().unwrap_or("");
+                if dep_id.is_empty() || dep_id == step.id {
+                    continue;
+                }
+                if valid_ids.contains(dep_id) {
+                    if !step.depends_on.contains(&dep_id.to_string()) {
+                        tracing::info!(
+                            step_id = %step.id,
+                            param = %key,
+                            inferred_dep = %dep_id,
+                            "[validate_and_convert] Auto-inferred depends_on from xxxFrom reference"
+                        );
+                        step.depends_on.push(dep_id.to_string());
+                    }
+                } else {
+                    tracing::warn!(
+                        step_id = %step.id,
+                        param = %key,
+                        ref_id = %dep_id,
+                        "[validate_and_convert] xxxFrom references non-existent step, will resolve to null at runtime"
+                    );
+                }
+            }
+        }
+    }
+
     // DAG 环检测
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
     for step in &steps {
@@ -148,4 +242,105 @@ pub fn validate_and_convert_steps(
     }
 
     Ok(steps)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn make_cap(id: &str) -> Capability {
+        Capability {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: String::new(),
+            category: CapabilityCategory::AiProcess,
+            supported_actions: vec![],
+            input_schema: json!({"type": "object", "properties": {}, "required": []}),
+            output_schema: json!({}),
+            required_permissions: vec![],
+            requires_ai: false,
+            estimated_duration_ms: None,
+            ..Default::default()
+        }
+    }
+
+    fn make_ai_step(id: &str, cap: &str, params: serde_json::Value) -> AiRecipeStep {
+        AiRecipeStep {
+            id: id.to_string(),
+            capability_id: cap.to_string(),
+            action: "test".to_string(),
+            params: params.as_object().cloned().unwrap_or_default().into_iter().collect(),
+            depends_on: vec![],
+            on_failure: "abort".to_string(),
+            retry: None,
+            timeout_ms: None,
+        }
+    }
+
+    #[test]
+    fn test_basic_validation() {
+        let caps = vec![make_cap("ai.image")];
+        let steps = vec![make_ai_step("s1", "ai.image", json!({"prompt": "cat"}))];
+        let result = validate_and_convert_steps(steps, None, &caps);
+        assert!(result.is_ok());
+        let steps = result.unwrap();
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].id, "s1");
+    }
+
+    #[test]
+    fn test_xxxfrom_auto_depends_on() {
+        let caps = vec![make_cap("ai.image"), make_cap("ai.analyze")];
+        let steps = vec![
+            make_ai_step("s1", "ai.image", json!({"prompt": "cat"})),
+            make_ai_step("s2", "ai.analyze", json!({"dataFrom": "s1"})),
+        ];
+        let result = validate_and_convert_steps(steps, None, &caps).unwrap();
+        assert!(result[1].depends_on.contains(&"s1".to_string()),
+            "s2 should auto-depend on s1 via dataFrom");
+    }
+
+    #[test]
+    fn test_xxxfrom_invalid_reference_warns() {
+        let caps = vec![make_cap("ai.analyze")];
+        let steps = vec![
+            make_ai_step("s1", "ai.analyze", json!({"dataFrom": "nonexistent"})),
+        ];
+        let result = validate_and_convert_steps(steps, None, &caps).unwrap();
+        assert!(result[0].depends_on.is_empty(),
+            "invalid xxxFrom should not add depends_on");
+    }
+
+    #[test]
+    fn test_circular_dependency_detection() {
+        let caps = vec![make_cap("ai.image")];
+        let mut s1 = make_ai_step("s1", "ai.image", json!({}));
+        let mut s2 = make_ai_step("s2", "ai.image", json!({}));
+        s1.depends_on = vec!["s2".to_string()];
+        s2.depends_on = vec!["s1".to_string()];
+        let result = validate_and_convert_steps(vec![s1, s2], None, &caps);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Circular dependency"));
+    }
+
+    #[test]
+    fn test_skill_deduplication() {
+        let caps = vec![make_cap("skill:img_gen")];
+        let s1 = make_ai_step("s1", "skill:img_gen", json!({}));
+        let s2 = make_ai_step("s2", "skill:img_gen", json!({}));
+        let result = validate_and_convert_steps(vec![s1, s2], None, &caps).unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].params.contains_key("variations"));
+    }
+
+    #[test]
+    fn test_duplicate_step_id() {
+        let caps = vec![make_cap("ai.image")];
+        let s1 = make_ai_step("same_id", "ai.image", json!({}));
+        let s2 = make_ai_step("same_id", "ai.image", json!({}));
+        let result = validate_and_convert_steps(vec![s1, s2], None, &caps);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Duplicate step ID"));
+    }
 }

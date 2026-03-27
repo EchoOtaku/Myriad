@@ -193,6 +193,16 @@ async fn run_server() -> anyhow::Result<()> {
                 .await;
                 tracing::info!("✅ Agent heartbeat system initialized");
 
+                // Spawn confirmation cleanup background worker
+                tokio::spawn(async {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+                    loop {
+                        interval.tick().await;
+                        services::agent::cleanup_expired_confirmations().await;
+                    }
+                });
+                tracing::info!("✅ Agent confirmation cleanup worker started");
+
                 // Spawn heartbeat background worker
                 {
                     let heartbeat_db = db.clone();

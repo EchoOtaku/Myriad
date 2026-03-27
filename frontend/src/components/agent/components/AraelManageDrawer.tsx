@@ -8,7 +8,7 @@
  */
 
 import type { HeartbeatTask, MemoryEntry, SkillInfo } from '../../../services/agent'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 
@@ -56,6 +56,46 @@ const TAB_ICONS: Record<ManageTab, React.ReactNode> = {
   ),
 }
 
+/** Inline edit component for memory content */
+const MemoryEditInput: React.FC<{
+  value: string
+  onSave: (v: string) => void
+  onCancel: () => void
+}> = ({ value, onSave, onCancel }) => {
+  const [text, setText] = useState(value)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  return (
+    <div className="arael-mem-edit">
+      <textarea
+        ref={inputRef}
+        className="arael-mem-edit-input"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            if (text.trim())
+              onSave(text.trim())
+          }
+          if (e.key === 'Escape')
+            onCancel()
+        }}
+        rows={2}
+      />
+      <div className="arael-mem-edit-actions">
+        <button className="arael-mem-edit-save" onClick={() => text.trim() && onSave(text.trim())}>✓</button>
+        <button className="arael-mem-edit-cancel" onClick={onCancel}>✕</button>
+      </div>
+    </div>
+  )
+}
+
 export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
   const { t: i18n, format } = useI18n()
   const [tab, setTab] = useState<ManageTab>('heartbeat')
@@ -69,6 +109,7 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null)
 
   const loadTabData = useCallback(async (currentTab: ManageTab) => {
     setLoading(true)
@@ -114,6 +155,53 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
       // ignore
     }
   }, [])
+
+  const handleDeleteMemory = useCallback(async (memoryId: string) => {
+    try {
+      await agentService.deleteMemory(memoryId)
+      setMemories(prev => prev.filter(m => m.id !== memoryId))
+    }
+    catch {
+      // ignore
+    }
+  }, [])
+
+  const handleUpdateMemory = useCallback(async (memoryId: string, newContent: string) => {
+    try {
+      await agentService.updateMemory(memoryId, newContent)
+      setEditingMemoryId(null)
+      // Reload to get updated data (id may change)
+      const m = await agentService.getMemories()
+      setMemories(m)
+    }
+    catch {
+      // ignore
+    }
+  }, [])
+
+  const handleDeleteSkill = useCallback(async (skillId: string) => {
+    try {
+      await agentService.deleteSkill(skillId)
+      setSkills(prev => prev.filter(s => s.id !== skillId))
+    }
+    catch {
+      // ignore
+    }
+  }, [])
+
+  const memoryTypeLabel = (type: string) => {
+    switch (type) {
+      case 'preference': return i18n.arael.memPreference
+      case 'fact': return i18n.arael.memFact
+      case 'decision': return i18n.arael.memDecision
+      case 'entity_knowledge': return i18n.arael.memKnowledge
+      case 'execution_lesson': return i18n.arael.memLesson
+      case 'effective_pattern': return i18n.arael.memPattern
+      case 'session_insight': return i18n.arael.memInsight
+      case 'session_summary': return i18n.arael.memSession
+      default: return i18n.arael.memNote
+    }
+  }
 
   return (
     <div className="arael-manage">
@@ -161,7 +249,7 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
                         className={`arael-hb-toggle ${task.enabled ? 'on' : 'off'}`}
                         onClick={() => handleToggleHeartbeat(task.id)}
                       >
-                        {task.enabled ? 'ON' : 'OFF'}
+                        {task.enabled ? i18n.arael.toggleOn : i18n.arael.toggleOff}
                       </button>
                     </div>
                   ))}
@@ -177,9 +265,23 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
                     <div key={skill.id} className="arael-skill-item">
                       <div className="arael-skill-header">
                         <span className="arael-skill-name">{skill.name}</span>
-                        <span className={`arael-skill-origin arael-skill-origin-${skill.origin}`}>
-                          {skill.origin === 'manual' ? i18n.arael.originManual : skill.origin === 'agent_generated' ? i18n.arael.originAuto : i18n.arael.originImproved}
-                        </span>
+                        <div className="arael-skill-header-right">
+                          <span className={`arael-skill-origin arael-skill-origin-${skill.origin}`}>
+                            {skill.origin === 'manual' ? i18n.arael.originManual : skill.origin === 'agent_generated' ? i18n.arael.originAuto : i18n.arael.originImproved}
+                          </span>
+                          {skill.origin !== 'manual' && (
+                            <button
+                              className="arael-manage-delete-btn"
+                              onClick={() => handleDeleteSkill(skill.id)}
+                              title={i18n.arael.deleteSkill}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="arael-skill-desc">{skill.description}</div>
                       <div className="arael-skill-stats">
@@ -209,15 +311,54 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
             <div className="arael-manage-section">
               {memories.length === 0
                 ? <div className="arael-manage-empty">{i18n.arael.emptyMemory}</div>
-                : memories.map((mem, i) => (
-                    <div key={i} className="arael-mem-item">
-                      <span className="arael-mem-type">
-                        {mem.memoryType === 'preference' ? i18n.arael.memPreference
-                          : mem.memoryType === 'fact' ? i18n.arael.memFact
-                            : mem.memoryType === 'decision' ? i18n.arael.memDecision
-                              : i18n.arael.memNote}
-                      </span>
-                      <span className="arael-mem-content">{mem.content}</span>
+                : memories.map(mem => (
+                    <div key={mem.id} className="arael-mem-item">
+                      <div className="arael-mem-header">
+                        <span className="arael-mem-type">
+                          {memoryTypeLabel(mem.memoryType)}
+                        </span>
+                        <div className="arael-mem-actions">
+                          <button
+                            className="arael-manage-action-btn"
+                            onClick={() => setEditingMemoryId(editingMemoryId === mem.id ? null : mem.id)}
+                            title={i18n.arael.editMemory}
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            className="arael-manage-delete-btn"
+                            onClick={() => handleDeleteMemory(mem.id)}
+                            title={i18n.arael.deleteMemory}
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {editingMemoryId === mem.id
+                        ? (
+                            <MemoryEditInput
+                              value={mem.content}
+                              onSave={v => handleUpdateMemory(mem.id, v)}
+                              onCancel={() => setEditingMemoryId(null)}
+                            />
+                          )
+                        : <span className="arael-mem-content">{mem.content}</span>}
+                      {mem.importance != null && (
+                        <div className="arael-mem-meta">
+                          <span className="arael-mem-importance">
+                            {'★'.repeat(Math.round(mem.importance * 5))}
+                          </span>
+                          {mem.tier && (
+                            <span className="arael-mem-tier">{mem.tier === 'long_term' ? i18n.arael.memTierLong : mem.tier === 'medium_term' ? i18n.arael.memTierMid : i18n.arael.memTierShort}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
             </div>

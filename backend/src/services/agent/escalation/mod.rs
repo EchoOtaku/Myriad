@@ -15,10 +15,10 @@ pub use evaluator::ResultEvaluator;
 // 能力升级映射表（供 Planner 提示词参考）
 #[allow(unused_imports)]
 pub use capability_mapping::{
-    get_escalation, has_escalation, transform_params,
+    get_escalation, transform_params,
     CapabilityEscalation, CAPABILITY_ESCALATION_MAP
 };
 
 // 升级策略类型
 #[allow(unused_imports)]
-pub use strategy::{EscalationLevel, EscalationDecision};
+pub use strategy::EscalationLevel;

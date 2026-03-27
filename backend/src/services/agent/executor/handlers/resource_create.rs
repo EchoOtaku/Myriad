@@ -4,15 +4,11 @@
 
 use super::HandlerContext;
 use crate::models::entities::{tapp_storage, tapps};
+use crate::services::agent::executor::utils::is_valid_platform as validate_platform_name;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-
-/// 验证平台名称白名单，防止路径穿越
-fn validate_platform_name(platform: &str) -> bool {
-    matches!(platform, "steam" | "bilibili" | "github" | "netease")
-}
 
 /// 简易 HTML 转义
 fn escape_html(s: &str) -> String {
@@ -558,8 +554,8 @@ async fn execute_reminder_create(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": format!("提醒已创建: {}", title),
-                "message": format!("将在 {} 提醒你", datetime),
+                "title": crate::services::agent::response_agent::reminder_created(title),
+                "message": crate::services::agent::response_agent::reminder_time(datetime),
                 "reminderId": reminder_id
             },
             "timestamp": now.timestamp_millis()
@@ -635,7 +631,7 @@ async fn execute_note_create(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": format!("笔记已保存: {}", auto_title),
+                "title": crate::services::agent::response_agent::note_saved(&auto_title),
                 "noteId": note_id
             },
             "timestamp": now.timestamp_millis()
@@ -746,7 +742,7 @@ async fn execute_bookmark_save(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": format!("书签已保存: {}", final_title),
+                "title": crate::services::agent::response_agent::bookmark_saved(&final_title),
                 "bookmarkId": bookmark_id,
                 "url": url
             },

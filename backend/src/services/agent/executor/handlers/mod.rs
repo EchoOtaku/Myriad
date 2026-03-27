@@ -27,25 +27,6 @@ pub struct HandlerContext<'a> {
 }
 
 impl<'a> HandlerContext<'a> {
-    /// 获取对话历史的格式化字符串
-    /// 用于非 AI 类 handler 需要对话上下文时
-    #[allow(dead_code)]
-    pub fn get_conversation_context_prompt(&self) -> Option<String> {
-        self.execution_context
-            .as_ref()
-            .and_then(|ctx| ctx.conversation_context.as_ref())
-            .filter(|history| !history.is_empty())
-            .map(|history| {
-                let messages: Vec<String> = history
-                    .iter()
-                    .map(|msg| format!("[{}]: {}", msg.role, msg.content))
-                    .collect();
-                format!(
-                    "\n\n=== 之前的对话历史 ===\n{}\n=== 对话历史结束 ===\n\n请参考上述对话历史来理解用户的当前请求。",
-                    messages.join("\n")
-                )
-            })
-    }
 }
 
 /// 根据能力类别分发执行

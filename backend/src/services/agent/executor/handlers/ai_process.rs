@@ -42,7 +42,26 @@ fn inject_role_identity(
         }
     }
 
-    // 2. 注入对话历史（仅对话/分析类能力需要，纯处理类不注入）
+    // 2. 注入记忆上下文（对话/分析/推荐类能力，帮助 AI 基于用户历史偏好生成回复）
+    let needs_memory = matches!(capability_id,
+        "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content" | "prompt.generate"
+    );
+    if needs_memory {
+        if let Some(ref mem_ctx) = exec_ctx.memory_context {
+            let existing = params
+                .get("systemPrompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let with_memory = if existing.is_empty() {
+                format!("参考记忆（仅供参考，不要照搬）：\n{}", mem_ctx)
+            } else {
+                format!("{}\n\n参考记忆（仅供参考，不要照搬）：\n{}", existing, mem_ctx)
+            };
+            params.insert("systemPrompt".to_string(), Value::String(with_memory));
+        }
+    }
+
+    // 3. 注入对话历史（仅对话/分析类能力需要，纯处理类不注入）
     let needs_context = matches!(capability_id,
         "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content"
     );
@@ -82,7 +101,19 @@ pub async fn execute(
         .ok_or("AI analyzer not configured")?;
 
     // 注入角色身份上下文到 systemPrompt（如果 Orchestrator 提供了角色 identity）
-    let params = inject_role_identity(capability_id, params, ctx);
+    let mut params = inject_role_identity(capability_id, params, ctx);
+
+    // 🔑 从 __directive (Planner 主 Agent 的具体指令) 和 __user_request 提取上下文
+    // 用于补充 AI handler 缺失的具体指令
+    let directive = params.remove(&"__directive".to_string())
+        .and_then(|v| v.as_str().map(String::from));
+    let user_request = params.remove(&"__user_request".to_string())
+        .and_then(|v| v.as_str().map(String::from));
+
+    // 将主 Agent 指令注入到对应的 handler 参数中
+    if let Some(ref dir) = directive {
+        inject_directive_to_params(capability_id, dir, user_request.as_deref(), &mut params);
+    }
 
     match capability_id {
         "ai.summarize" => execute_ai_summarize(&params, analyzer).await,
@@ -107,6 +138,64 @@ pub async fn execute(
     }
 }
 
+/// 将主 Agent 的 directive 注入到对应 handler 的参数中
+///
+/// 这解决了核心问题：Planner（主 Agent）通过 step.action 给出的具体指令
+/// 之前从未传递给实际执行 handler，导致子 Agent 自行发挥不听主 Agent。
+fn inject_directive_to_params(
+    capability_id: &str,
+    directive: &str,
+    user_request: Option<&str>,
+    params: &mut HashMap<String, Value>,
+) {
+    if directive.is_empty() {
+        return;
+    }
+
+    match capability_id {
+        // ai.analyze: 把主 Agent 的指令作为 instruction（如果没有手动设置）
+        "ai.analyze" | "compare.content" => {
+            if !params.contains_key("instruction") {
+                let full_instruction = if let Some(req) = user_request {
+                    format!("用户请求：{}\n具体任务：{}", req, directive)
+                } else {
+                    directive.to_string()
+                };
+                params.insert("instruction".to_string(), Value::String(full_instruction));
+            }
+        }
+        // ai.chat: 如果没有 message，用 directive 作为 message
+        "ai.chat" => {
+            if !params.contains_key("message") {
+                let msg = if let Some(req) = user_request {
+                    format!("{}（用户原始请求：{}）", directive, req)
+                } else {
+                    directive.to_string()
+                };
+                params.insert("message".to_string(), Value::String(msg));
+            }
+        }
+        // ai.summarize: 把 directive 的具体指示加入参数
+        "ai.summarize" => {
+            if !params.contains_key("focus") {
+                params.insert("focus".to_string(), Value::String(directive.to_string()));
+            }
+        }
+        // prompt.generate: directive 是 planner 的元指令（如"根据角色特征生成提示词"），
+        // 不是画面内容。真正的内容通过 titleFrom/descriptionFrom 传入。
+        // 仅当没有任何内容参数时才用 directive 兜底。
+        "prompt.generate" => {
+            let has_content = params.get("title").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
+                || params.get("description").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
+                || params.get("summary").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty());
+            if !has_content {
+                params.insert("description".to_string(), Value::String(directive.to_string()));
+            }
+        }
+        _ => {}
+    }
+}
+
 // ============================================================================
 // AI 核心能力
 // ============================================================================
@@ -115,7 +204,11 @@ async fn execute_ai_summarize(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
-    let input = params.get("input").cloned().unwrap_or(json!(null));
+    // schema 声明 "content"，兼容历史 key "input"
+    let input = params.get("content")
+        .or_else(|| params.get("input"))
+        .cloned()
+        .unwrap_or(json!(null));
     let style = params
         .get("style")
         .and_then(|v| v.as_str())
@@ -142,7 +235,7 @@ async fn execute_ai_summarize(
         None => String::new(),
     };
 
-    let input_str = serde_json::to_string_pretty(&input).unwrap_or_default();
+    let input_str = extract_semantic_text(&input);
     // 截断过长的输入，避免 token 溢出
     let truncated_input: String = input_str.chars().take(8000).collect();
 
@@ -170,65 +263,75 @@ async fn execute_ai_analyze(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
-    let input = params.get("input").cloned().unwrap_or(json!(null));
+    // schema 声明 "data"，兼容历史 key "input"
+    let input = params.get("data")
+        .or_else(|| params.get("input"))
+        .cloned()
+        .unwrap_or(json!(null));
     let analysis_type = params
         .get("analysisType")
         .and_then(|v| v.as_str())
         .unwrap_or("general");
     let instruction = params.get("instruction").and_then(|v| v.as_str());
 
-    let input_str = serde_json::to_string_pretty(&input).unwrap_or_default();
-    let truncated_input: String = input_str.chars().take(8000).collect();
+    // 智能提取输入数据的文本内容，避免把原始 JSON 数组丢给 AI
+    let input_text = extract_semantic_text(&input);
+    let truncated_input: String = input_text.chars().take(8000).collect();
 
-    let custom_instruction = instruction
-        .map(|i| format!("\n用户额外指示：{}", i))
-        .unwrap_or_default();
-
-    let prompt = match analysis_type {
-        "trend" => format!(
-            "你是一个数据分析专家。请分析以下数据中的趋势和模式。\n\n\
-            要求：\n\
-            1. 识别数据中的增长/下降趋势\n\
-            2. 指出异常值或转折点\n\
-            3. 提供可能的原因解释\n\
-            4. 给出趋势预测\n\
-            {}\n\n\
+    // 当 Planner 提供了具体 instruction 时，instruction 是主要驱动指令，
+    // 数据分析模板仅作为无 instruction 时的 fallback。
+    // 这避免了"介绍一个角色"被套进"数据分析报告"框架的问题。
+    let prompt = if let Some(inst) = instruction {
+        let safe_inst: String = sanitize_prompt_input(inst);
+        format!(
+            "请根据以下指示处理数据，直接回复用户需要的内容。\n\n\
+            指示：{}\n\n\
             数据：\n{}",
-            custom_instruction, truncated_input
-        ),
-        "sentiment" => format!(
-            "你是一个情感分析专家。请分析以下内容的情感倾向。\n\n\
-            要求：\n\
-            1. 判断整体情感（正面/中性/负面）及置信度\n\
-            2. 识别关键情感词汇和表达\n\
-            3. 如果有多个主题，分别分析每个主题的情感\n\
-            4. 总结情感分布\n\
-            {}\n\n\
-            内容：\n{}",
-            custom_instruction, truncated_input
-        ),
-        "compare" => format!(
-            "你是一个数据比较分析专家。请对以下数据进行对比分析。\n\n\
-            要求：\n\
-            1. 列出各项数据的关键维度\n\
-            2. 逐维度对比异同\n\
-            3. 总结主要差异和共同点\n\
-            4. 给出比较结论和建议\n\
-            {}\n\n\
-            数据：\n{}",
-            custom_instruction, truncated_input
-        ),
-        _ => format!(
-            "你是一个数据分析专家。请深入分析以下数据并提供洞察。\n\n\
-            要求：\n\
-            1. 概括数据的整体特征\n\
-            2. 提取 3-5 个关键发现\n\
-            3. 指出值得注意的亮点或问题\n\
-            4. 给出可行的建议\n\
-            {}\n\n\
-            数据：\n{}",
-            custom_instruction, truncated_input
-        ),
+            safe_inst, truncated_input
+        )
+    } else {
+        match analysis_type {
+            "trend" => format!(
+                "你是一个数据分析专家。请分析以下数据中的趋势和模式。\n\n\
+                要求：\n\
+                1. 识别数据中的增长/下降趋势\n\
+                2. 指出异常值或转折点\n\
+                3. 提供可能的原因解释\n\
+                4. 给出趋势预测\n\n\
+                数据：\n{}",
+                truncated_input
+            ),
+            "sentiment" => format!(
+                "你是一个情感分析专家。请分析以下内容的情感倾向。\n\n\
+                要求：\n\
+                1. 判断整体情感（正面/中性/负面）及置信度\n\
+                2. 识别关键情感词汇和表达\n\
+                3. 如果有多个主题，分别分析每个主题的情感\n\
+                4. 总结情感分布\n\n\
+                内容：\n{}",
+                truncated_input
+            ),
+            "compare" => format!(
+                "你是一个数据比较分析专家。请对以下数据进行对比分析。\n\n\
+                要求：\n\
+                1. 列出各项数据的关键维度\n\
+                2. 逐维度对比异同\n\
+                3. 总结主要差异和共同点\n\
+                4. 给出比较结论和建议\n\n\
+                数据：\n{}",
+                truncated_input
+            ),
+            _ => format!(
+                "你是一个数据分析专家。请深入分析以下数据并提供洞察。\n\n\
+                要求：\n\
+                1. 概括数据的整体特征\n\
+                2. 提取 3-5 个关键发现\n\
+                3. 指出值得注意的亮点或问题\n\
+                4. 给出可行的建议\n\n\
+                数据：\n{}",
+                truncated_input
+            ),
+        }
     };
 
     let result = analyzer
@@ -280,13 +383,10 @@ async fn execute_ai_recommend(
         .map_err(|e| format!("AI recommendation failed: {}", e))?;
 
     // 尝试解析 JSON 数组，否则回退到文本
-    let recommendations: Value = extract_json_array_from_text(&result)
-        .first()
-        .map(|_| {
-            let arr = extract_json_array_from_text(&result);
-            json!(arr)
-        })
-        .unwrap_or_else(|| json!(result));
+    let recommendations: Value = {
+        let arr = extract_json_array_from_text(&result);
+        if arr.is_empty() { json!(result) } else { json!(arr) }
+    };
 
     Ok(json!({
         "recommendations": recommendations,
@@ -302,6 +402,7 @@ async fn execute_ai_chat(
         .get("message")
         .and_then(|v| v.as_str())
         .ok_or("Missing message parameter")?;
+    let message = sanitize_prompt_input(message);
 
     let system_prompt = params
         .get("systemPrompt")
@@ -367,28 +468,97 @@ async fn execute_gemini_grounding_search_wrapper(
     }))
 }
 
+/// 从步骤输出中智能提取语义文本，避免把原始 JSON 数组丢给 AI
+///
+/// 优先级：aiSummary > analysis > reply > summary > description，
+/// 若都没有则 fallback 到 JSON stringify
+fn extract_semantic_text(value: &Value) -> String {
+    // 纯字符串直接返回
+    if let Some(s) = value.as_str() {
+        return s.to_string();
+    }
+
+    // 对象：提取有语义的文本字段
+    if let Some(obj) = value.as_object() {
+        let text_keys = ["aiSummary", "analysis", "reply", "summary", "description", "message", "content"];
+        let mut parts: Vec<String> = Vec::new();
+
+        for key in &text_keys {
+            if let Some(text) = obj.get(*key).and_then(|v| v.as_str()) {
+                if !text.is_empty() {
+                    parts.push(text.to_string());
+                }
+            }
+        }
+
+        // 搜索结果数组：提取文本摘要而非原始 JSON
+        if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
+            for item in results.iter().take(10) {
+                let mut item_parts: Vec<String> = Vec::new();
+                for key in &["name", "title"] {
+                    if let Some(v) = item.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                        item_parts.push(v.to_string());
+                    }
+                }
+                for key in &["description", "snippet", "status", "reason", "source", "expectation"] {
+                    if let Some(v) = item.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                        item_parts.push(v.to_string());
+                    }
+                }
+                // 嵌套数组（rankings、hot_topics、anticipated_characters 等）
+                for arr_key in &["rankings", "hot_topics", "anticipated_characters"] {
+                    if let Some(arr) = item.get(arr_key).and_then(|v| v.as_array()) {
+                        for entry in arr.iter().take(10) {
+                            let name = entry.get("name")
+                                .or_else(|| entry.get("character"))
+                                .and_then(|v| v.as_str()).unwrap_or("");
+                            let desc = entry.get("status")
+                                .or_else(|| entry.get("reason"))
+                                .or_else(|| entry.get("expectation"))
+                                .and_then(|v| v.as_str()).unwrap_or("");
+                            let src = entry.get("source").and_then(|v| v.as_str()).unwrap_or("");
+                            if !name.is_empty() {
+                                if !src.is_empty() {
+                                    item_parts.push(format!("{} ({}): {}", name, src, desc));
+                                } else {
+                                    item_parts.push(format!("{}: {}", name, desc));
+                                }
+                            }
+                        }
+                    }
+                }
+                if !item_parts.is_empty() {
+                    parts.push(item_parts.join(" | "));
+                }
+            }
+        }
+
+        if !parts.is_empty() {
+            return parts.join("\n\n");
+        }
+    }
+
+    // 最后手段：JSON stringify
+    serde_json::to_string_pretty(value).unwrap_or_default()
+}
+
 /// 清洗用户输入，防止 Prompt Injection
 ///
 /// - 移除 ASCII 控制字符（换行除外，保留可读性）
-/// - 限制最大长度为 500 字符
+/// - 限制最大长度为 1000 字符
 /// - 去除首尾空白
 fn sanitize_prompt_input(input: &str) -> String {
     input
         .chars()
         .filter(|c| !c.is_control() || *c == '\n')
-        .take(500)
+        .take(1000)
         .collect::<String>()
         .trim()
         .to_string()
 }
 
 /// 验证平台名称白名单，防止路径穿越
-fn validate_platform_name(platform: &str) -> Result<&str, String> {
-    match platform {
-        "steam" | "bilibili" | "github" | "netease" | "all" => Ok(platform),
-        _ => Err(format!("不支持的平台名称: {}", platform)),
-    }
-}
+use crate::services::agent::executor::utils::validate_platform_name;
 
 /// 使用 Gemini Grounding (Google Search) 进行联网搜索
 async fn execute_gemini_grounding_search(
@@ -402,10 +572,10 @@ async fn execute_gemini_grounding_search(
     let api_key = config
         .gemini_api_key
         .clone()
-        .ok_or("Gemini API Key 未配置")?;
+        .ok_or(crate::services::agent::response_agent::api_key_not_configured("Gemini"))?;
 
     if api_key.is_empty() {
-        return Err("Gemini API Key 未配置".to_string());
+        return Err(crate::services::agent::response_agent::api_key_not_configured("Gemini"));
     }
 
     let model = if config.gemini_model.is_empty() {
@@ -464,8 +634,8 @@ async fn execute_gemini_grounding_search(
     });
 
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model, api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        model
     );
 
     let client = reqwest::Client::builder()
@@ -478,6 +648,7 @@ async fn execute_gemini_grounding_search(
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")
+        .header("x-goog-api-key", &api_key)
         .json(&request_body)
         .send()
         .await
@@ -720,7 +891,7 @@ async fn execute_brewlia_podcast(
 // ============================================================================
 
 async fn execute_speech_tts(_params: &HashMap<String, Value>) -> Result<Value, String> {
-    Err("TTS 服务未配置。请在设置中配置语音合成服务后重试。".to_string())
+    Err(crate::services::agent::response_agent::tts_not_configured())
 }
 
 async fn execute_smart_filter(
@@ -1036,8 +1207,8 @@ async fn execute_code_explain(
 
 async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
     // prompt 可能是字符串，也可能是上一步输出的对象（包含 .prompt 字段）
-    let prompt = params
-        .get("prompt")
+    let prompt_val = params.get("prompt");
+    let prompt = prompt_val
         .and_then(|v| {
             v.as_str().map(|s| s.to_string()).or_else(|| {
                 // 如果是对象（如 prompt.generate 的输出），尝试提取 .prompt 字段
@@ -1047,21 +1218,20 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
         .ok_or("Missing prompt parameter")?;
     let prompt = prompt.as_str();
 
+    // negativePrompt：优先从 params 直接取，其次从 prompt.generate 的输出对象中提取
+    let negative_prompt = params
+        .get("negativePrompt")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            prompt_val
+                .and_then(|v| v.get("negativePrompt"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        });
+
     if prompt.len() > 1000 {
         return Err("Prompt too long (max 1000 characters)".to_string());
-    }
-
-    // 安全校验（复用 tapp_runtime 的逻辑）
-    let prompt_lower = prompt.to_lowercase();
-    let blocked_patterns = [
-        "nsfw", "nude", "naked", "porn", "sex", "hentai",
-        "gore", "blood", "murder", "kill", "violence",
-        "child", "minor", "underage", "loli", "shota",
-    ];
-    for pattern in &blocked_patterns {
-        if prompt_lower.contains(pattern) {
-            return Err(format!("Prompt contains disallowed content: {}", pattern));
-        }
     }
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
@@ -1109,19 +1279,28 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                 .map_err(|e| format!("HTTP client error: {}", e))?;
 
             // 1. 提交生成任务
+            let mut pixai_params = json!({
+                "prompts": prompt,
+                "modelId": model,
+                "width": width,
+                "height": height,
+                "batchSize": 1
+            });
+            if let Some(ref neg) = negative_prompt {
+                if let Some(obj) = pixai_params.as_object_mut() {
+                    obj.insert(
+                        "negativePrompt".to_string(),
+                        Value::String(neg.clone()),
+                    );
+                }
+            }
             let response = client
                 .post("https://api.pixai.art/v1/task")
                 .header("Authorization", format!("Bearer {}", api_key))
                 .header("Content-Type", "application/json")
                 .header("x-apollo-operation-name", "createTask")
                 .json(&json!({
-                    "parameters": {
-                        "prompts": prompt,
-                        "modelId": model,
-                        "width": width,
-                        "height": height,
-                        "batchSize": 1
-                    }
+                    "parameters": pixai_params
                 }))
                 .send()
                 .await
@@ -1231,7 +1410,7 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                                 "width": width,
                                 "height": height,
                                 "taskData": task_data,
-                                "message": "图片生成完成，但无法提取图片 URL，请查看任务详情"
+                                "message": crate::services::agent::response_agent::image_generated_no_url()
                             }));
                         }
 

@@ -4,6 +4,35 @@
 
 use serde_json::Value;
 
+/// 安全截断 UTF-8 字符串到指定字节长度（不会在多字节字符中间截断）
+pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// 支持的平台名称列表
+pub const VALID_PLATFORMS: &[&str] = &["steam", "bilibili", "github", "netease"];
+
+/// 验证平台名称是否在白名单中（含 "all"），返回 Result
+pub fn validate_platform_name(platform: &str) -> Result<&str, String> {
+    if platform == "all" || VALID_PLATFORMS.contains(&platform) {
+        Ok(platform)
+    } else {
+        Err(crate::services::agent::response_agent::unsupported_platform(platform))
+    }
+}
+
+/// 验证平台名称是否在白名单中（不含 "all"），返回 bool
+pub fn is_valid_platform(platform: &str) -> bool {
+    VALID_PLATFORMS.contains(&platform)
+}
+
 /// 简单的 Levenshtein 相似度检查（用于模糊匹配）
 /// 如果两个字符串的编辑距离小于较短字符串长度的一半，认为相似
 pub fn levenshtein_similar(a: &str, b: &str) -> bool {
@@ -21,29 +50,26 @@ pub fn levenshtein_similar(a: &str, b: &str) -> bool {
         return false;
     }
 
-    // 简化版：使用 DP 计算编辑距离
-    let mut dp = vec![vec![0usize; n + 1]; m + 1];
-    for i in 0..=m {
-        dp[i][0] = i;
-    }
-    for j in 0..=n {
-        dp[0][j] = j;
-    }
+    // 防御：对超长字符串截断以防 O(m*n) 爆炸
+    let m = m.min(500);
+    let n = n.min(500);
+
+    // 两行滚动 DP（O(n) 内存而非 O(m*n)）
+    let mut prev = (0..=n).collect::<Vec<usize>>();
+    let mut curr = vec![0usize; n + 1];
 
     for i in 1..=m {
+        curr[0] = i;
         for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] {
-                0
-            } else {
-                1
-            };
-            dp[i][j] = (dp[i - 1][j] + 1)
-                .min(dp[i][j - 1] + 1)
-                .min(dp[i - 1][j - 1] + cost);
+            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1)
+                .min(curr[j - 1] + 1)
+                .min(prev[j - 1] + cost);
         }
+        std::mem::swap(&mut prev, &mut curr);
     }
 
-    let distance = dp[m][n];
+    let distance = prev[n];
     let threshold = m.min(n) / 2;
 
     distance <= threshold.max(2)
@@ -59,49 +85,9 @@ pub fn extract_image_url(output: &Value) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// 简化输出摘要（用于实时进度显示）
+/// 简化输出摘要（用于实时进度显示）— 委托给 response_agent
 pub fn summarize_output(output: &Value) -> Option<String> {
-    if let Some(obj) = output.as_object() {
-        // 图片生成结果：返回人类可读摘要，不嵌入 URL（URL 通过 StepCompleted.image_url 单独传递）
-        if obj.get("imageUrl").and_then(|v| v.as_str()).is_some() {
-            let provider = obj.get("provider").and_then(|v| v.as_str()).unwrap_or("AI");
-            return Some(format!("已通过 {} 生成图片", provider));
-        }
-        if let Some(msg) = obj.get("message").and_then(|v| v.as_str()) {
-            return Some(msg.to_string());
-        }
-        if let Some(count) = obj.get("total").and_then(|v| v.as_i64()) {
-            return Some(format!("返回 {} 条结果", count));
-        }
-        if let Some(arr) = obj.get("feeds").and_then(|v| v.as_array()) {
-            return Some(format!("找到 {} 个订阅源", arr.len()));
-        }
-        if let Some(arr) = obj.get("items").and_then(|v| v.as_array()) {
-            return Some(format!("获取 {} 条数据", arr.len()));
-        }
-        if let Some(summary) = obj.get("aiSummary").and_then(|v| v.as_str()) {
-            let chars: Vec<char> = summary.chars().collect();
-            if chars.len() > 80 {
-                return Some(format!("{}...", chars[..80].iter().collect::<String>()));
-            }
-            return Some(summary.to_string());
-        }
-        return Some(format!("返回 {} 个字段", obj.len()));
-    }
-    if let Some(arr) = output.as_array() {
-        return Some(format!("返回 {} 条记录", arr.len()));
-    }
-    if let Some(s) = output.as_str() {
-        let chars: Vec<char> = s.chars().collect();
-        if chars.len() > 80 {
-            return Some(format!("{}...", chars[..80].iter().collect::<String>()));
-        }
-        return Some(s.to_string());
-    }
-    if let Some(b) = output.as_bool() {
-        return Some(if b { "成功".to_string() } else { "失败".to_string() });
-    }
-    None
+    crate::services::agent::response_agent::summarize_step_output(output)
 }
 
 #[cfg(test)]
@@ -126,11 +112,11 @@ mod tests {
         );
         assert_eq!(
             summarize_output(&json!({"total": 10})),
-            Some("返回 10 条结果".to_string())
+            Some("获取了 10 条结果".to_string())
         );
         assert_eq!(
             summarize_output(&json!([1, 2, 3])),
-            Some("返回 3 条记录".to_string())
+            Some("获取了 3 条记录".to_string())
         );
     }
 }

@@ -24,8 +24,6 @@ pub struct CapabilityRegistry {
     capabilities: HashMap<String, Capability>,
     /// 类别 -> 能力 ID 列表
     by_category: HashMap<CapabilityCategory, Vec<String>>,
-    /// 动作 -> 能力 ID 列表
-    by_action: HashMap<String, Vec<String>>,
 }
 
 impl CapabilityRegistry {
@@ -33,7 +31,6 @@ impl CapabilityRegistry {
         let mut registry = Self {
             capabilities: HashMap::new(),
             by_category: HashMap::new(),
-            by_action: HashMap::new(),
         };
         // 注册内置能力
         definitions::register_all(&mut registry);
@@ -50,15 +47,6 @@ impl CapabilityRegistry {
             .or_default()
             .push(id.clone());
 
-        // 更新动作索引
-        for action in &capability.supported_actions {
-            let action_key = format!("{:?}", action).to_lowercase();
-            self.by_action
-                .entry(action_key)
-                .or_default()
-                .push(id.clone());
-        }
-
         self.capabilities.insert(id, capability);
     }
 
@@ -72,163 +60,6 @@ impl CapabilityRegistry {
         self.capabilities.values().collect()
     }
 
-    /// 根据类别获取能力
-    #[allow(dead_code)]
-    pub fn get_by_category(&self, category: &CapabilityCategory) -> Vec<&Capability> {
-        self.by_category
-            .get(category)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.capabilities.get(id))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// 根据动作获取能力
-    pub fn get_by_action(&self, action: &IntentAction) -> Vec<&Capability> {
-        let action_key = format!("{:?}", action).to_lowercase();
-        self.by_action
-            .get(&action_key)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.capabilities.get(id))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// 匹配最佳能力
-    #[allow(dead_code)]
-    pub fn find_best_match(&self, intent: &ParsedIntent) -> Option<&Capability> {
-        let candidates = self.get_by_action(&intent.action);
-
-        let filtered: Vec<_> = candidates
-            .into_iter()
-            .filter(|cap| self.matches_target(cap, &intent.target))
-            .collect();
-
-        if filtered.is_empty() {
-            return None;
-        }
-
-        let mut scored: Vec<_> = filtered
-            .into_iter()
-            .map(|cap| {
-                let score = self.calculate_capability_score(cap, intent);
-                (cap, score)
-            })
-            .collect();
-
-        scored.sort_by(|a, b| b.1.cmp(&a.1));
-        scored.into_iter().next().map(|(cap, _)| cap)
-    }
-
-    /// 计算能力匹配分数
-    #[allow(dead_code)]
-    fn calculate_capability_score(&self, capability: &Capability, intent: &ParsedIntent) -> i32 {
-        let mut score = 0;
-        let cap_id = &capability.id;
-
-        if intent.suggested_capabilities.contains(cap_id) {
-            score += 100;
-        }
-
-        match &intent.target {
-            IntentTarget::Platform(platform) => {
-                if cap_id.starts_with(&format!("{}.", platform)) {
-                    score += 50;
-                } else if cap_id.starts_with("platform.") {
-                    score += 30;
-                }
-            }
-            IntentTarget::Brew(_) => {
-                if cap_id == "brew.subscribe" && intent.action == IntentAction::Create {
-                    score += 50;
-                } else if cap_id == "brew.discover" {
-                    score += 40;
-                } else if cap_id.starts_with("brew.") {
-                    score += 30;
-                }
-            }
-            IntentTarget::Tapp(_) => {
-                if cap_id.starts_with("tapp.") {
-                    score += 40;
-                }
-            }
-            IntentTarget::Report(_) => {
-                if cap_id.starts_with("report.") {
-                    score += 40;
-                }
-            }
-            IntentTarget::Music(_) => {
-                if cap_id.starts_with("music.") {
-                    score += 50;
-                }
-            }
-            _ => {}
-        }
-
-        if capability.supported_actions.contains(&intent.action) {
-            score += 20;
-        }
-
-        if capability.requires_ai && intent.requires_ai_processing() {
-            score += 15;
-        }
-
-        if cap_id.matches('.').count() == 1 {
-            score += 5;
-        }
-
-        score
-    }
-
-    /// 检查能力是否匹配目标
-    pub fn matches_target(&self, capability: &Capability, target: &IntentTarget) -> bool {
-        let cap_id = &capability.id;
-
-        match target {
-            IntentTarget::Platform(platform) => {
-                cap_id.starts_with("platform.")
-                    || cap_id.starts_with(&format!("{}.", platform))
-                    || cap_id == platform
-            }
-            IntentTarget::Report(_) => cap_id.starts_with("report.") || cap_id == "report",
-            IntentTarget::Tapp(_) => cap_id.starts_with("tapp.") || cap_id == "tapp",
-            IntentTarget::Brew(_) => cap_id.starts_with("brew.") || cap_id == "brew",
-            IntentTarget::Music(_) => cap_id.starts_with("music."),
-            IntentTarget::Profile => {
-                cap_id.starts_with("profile.") || cap_id.starts_with("user.")
-            }
-            IntentTarget::Data(data_type) => {
-                if data_type == "web_search" {
-                    cap_id == "ai.webSearch" || cap_id.starts_with("search.")
-                } else {
-                    cap_id.starts_with("data.")
-                        || cap_id.starts_with("storage.")
-                        || cap_id.starts_with("cache.")
-                        || cap_id.starts_with("export.")
-                }
-            }
-            IntentTarget::Event(_) => {
-                cap_id.starts_with("event.") || cap_id.starts_with("scheduler.")
-            }
-            IntentTarget::CurrentPage(page_type) => match page_type.as_str() {
-                "brew" => cap_id.starts_with("brew."),
-                "tapp" => cap_id.starts_with("tapp."),
-                "report" => cap_id.starts_with("report."),
-                "dashboard" => cap_id.starts_with("platform.") || cap_id.starts_with("profile."),
-                _ => true,
-            },
-            IntentTarget::Unspecified => {
-                !cap_id.starts_with("tapp.")
-                    && !cap_id.starts_with("brew.")
-                    && !cap_id.starts_with("report.")
-                    && !cap_id.starts_with("scheduler.")
-            }
-        }
-    }
 }
 
 impl Default for CapabilityRegistry {
@@ -260,7 +91,7 @@ pub async fn capability_requires_confirmation_async(
             let message = cap
                 .confirmation_message
                 .clone()
-                .unwrap_or_else(|| format!("此操作将执行 {}", cap.name));
+                .unwrap_or_else(|| crate::services::agent::response_agent::will_execute(&cap.name));
             return Some((message, cap.risk_level));
         }
     }
@@ -409,20 +240,4 @@ mod tests {
         assert!(registry.get("ai.summarize").is_some());
     }
 
-    #[test]
-    fn test_action_mapping() {
-        let action = IntentAction::from_verb("总结");
-        assert_eq!(action, IntentAction::Summarize);
-
-        let action = IntentAction::from_verb("query");
-        assert_eq!(action, IntentAction::Query);
-    }
-
-    #[test]
-    fn test_find_by_action() {
-        let registry = CapabilityRegistry::new();
-        let caps = registry.get_by_action(&IntentAction::Summarize);
-        assert!(!caps.is_empty());
-        assert!(caps.iter().any(|c| c.id == "ai.summarize"));
-    }
 }

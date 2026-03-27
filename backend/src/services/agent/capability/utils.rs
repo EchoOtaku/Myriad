@@ -27,9 +27,32 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
         "brew.stats" => "阅读统计".to_string(),
         "tapp.list" => "获取 Tapp 列表".to_string(),
         "tapp.page" => "获取 Tapp 页面".to_string(),
+        "ai.image" => "生成图片".to_string(),
+        "prompt.generate" => "生成提示词".to_string(),
+        "compare.content" => "内容对比".to_string(),
+        "speech.tts" => "文字转语音".to_string(),
         "search.global" => "全局搜索".to_string(),
         "report.generate" => "生成报告".to_string(),
         _ => {
+            // Skill 能力：从 ID 提取可读名称
+            if let Some(skill_id) = capability_id.strip_prefix("skill:") {
+                let clean = skill_id.strip_prefix("_auto_").unwrap_or(skill_id);
+                // 将连字符和下划线替换为空格
+                let name: String = clean.chars().map(|c| if c == '-' || c == '_' { ' ' } else { c }).collect();
+                let trimmed = name.trim();
+                if !trimmed.is_empty() {
+                    return format!("执行技能: {}", truncate_str(trimmed, 20));
+                }
+                return "执行技能".to_string();
+            }
+            // MCP 工具：提取工具名
+            if let Some(rest) = capability_id.strip_prefix("mcp.") {
+                // mcp.server_id.tool_name → 取最后一段
+                if let Some(tool_name) = rest.rsplit('.').next() {
+                    return format!("调用工具: {}", tool_name);
+                }
+                return "调用外部工具".to_string();
+            }
             // 尝试提取友好名称
             if let Some(name) = capability_id.split('.').next_back() {
                 // 将 camelCase 转换为空格分隔
@@ -51,6 +74,16 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
 /// 获取步骤的详细描述（带上下文参数）
 /// 返回类似 "搜索知乎日报"、"订阅知乎日报" 的描述
 pub fn get_step_description(step: &RecipeStep) -> String {
+    // Skill 和 MCP 步骤：使用 planner 提供的 action 描述（已是人类可读的）
+    if step.capability_id.starts_with("skill:") || step.capability_id.starts_with("mcp.") {
+        let action = step.action.trim();
+        if !action.is_empty() {
+            return truncate_str(action, 30);
+        }
+        // action 为空时，回退到 capability 友好名称
+        return get_capability_friendly_name(&step.capability_id);
+    }
+
     let params = &step.params;
 
     // 尝试从参数中提取关键信息
@@ -148,6 +181,41 @@ pub fn get_step_description(step: &RecipeStep) -> String {
             }
         }
         "ai.chat" => "AI 对话".to_string(),
+        "ai.image" => {
+            let desc = params.get("description").and_then(|v| v.as_str())
+                .or(params.get("prompt").and_then(|v| v.as_str()));
+            if let Some(d) = desc {
+                format!("生成图片: {}", truncate_str(d, 20))
+            } else if !target.is_empty() {
+                format!("生成图片: {}", truncate_str(&target, 20))
+            } else {
+                "生成图片".to_string()
+            }
+        }
+        "prompt.generate" => {
+            let desc = params.get("description").and_then(|v| v.as_str());
+            if let Some(d) = desc {
+                format!("生成提示词: {}", truncate_str(d, 20))
+            } else if !target.is_empty() {
+                format!("生成提示词: {}", truncate_str(&target, 20))
+            } else {
+                "生成提示词".to_string()
+            }
+        }
+        "compare.content" => {
+            if !target.is_empty() {
+                format!("对比: {}", truncate_str(&target, 20))
+            } else {
+                "内容对比".to_string()
+            }
+        }
+        "speech.tts" => {
+            if !target.is_empty() {
+                format!("朗读: {}", truncate_str(&target, 20))
+            } else {
+                "文字转语音".to_string()
+            }
+        }
 
         // 平台相关
         "platform.read" | "platform.bilibili" | "platform.steam" | "platform.github"
@@ -267,26 +335,6 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
     map.insert("export.data", ("此操作将导出您的数据", RiskLevel::Low));
 
     map
-}
-
-/// 检查能力是否需要确认
-/// 优先从注册的 Capability 结构体读取配置，回退到静态配置
-#[allow(dead_code)]
-pub fn capability_requires_confirmation(capability_id: &str) -> Option<(&'static str, RiskLevel)> {
-    // 首先尝试从静态配置获取（向后兼容）
-    if let Some(config) = get_sensitive_capabilities().get(capability_id) {
-        return Some(*config);
-    }
-    None
-}
-
-/// 获取能力的风险等级
-#[allow(dead_code)]
-pub fn get_capability_risk_level(capability_id: &str) -> RiskLevel {
-    get_sensitive_capabilities()
-        .get(capability_id)
-        .map(|(_, risk)| *risk)
-        .unwrap_or(RiskLevel::None)
 }
 
 /// 获取能力的使用提示（帮助 AI 更好地选择能力）
@@ -456,7 +504,42 @@ pub fn get_quick_reference() -> Value {
             "刷新数据": ["platform.refresh"],
             "清除缓存": ["cache.clear"],
             "导出数据": ["export.data"],
-            "定时任务": ["scheduler.create", "scheduler.list"]
+            "定时任务": ["scheduler.create", "scheduler.list"],
+            "生成图片/画图": ["prompt.generate", "ai.image"],
+            "翻译": ["translate.text"],
+            "文字转语音/朗读": ["speech.tts"],
+            "天气": ["weather.get"],
+            "一言/语录": ["hitokoto.get"]
+        },
+        "多步工作流模板": {
+            "总结文章": {
+                "steps": ["brew.items → ai.summarize"],
+                "note": "先获取文章内容，再传给 ai.summarize（contentFrom 引用前步）"
+            },
+            "搜索并分析": {
+                "steps": ["ai.webSearch → ai.analyze"],
+                "note": "先搜索获取资料，再用 ai.analyze 深度分析"
+            },
+            "播放指定音乐": {
+                "steps": ["netease.searchPlaylist → music.playlist"],
+                "note": "先搜索歌单获取ID，再加载播放。两步必须有 depends_on"
+            },
+            "生成AI图片": {
+                "steps": ["prompt.generate → ai.image"],
+                "note": "先用 prompt.generate 生成优化 prompt（description 必须详细），再传给 ai.image"
+            },
+            "多平台对比": {
+                "steps": ["platform.read(A) + platform.read(B) → ai.analyze"],
+                "note": "并行获取各平台数据，然后汇总分析。analysisType=custom"
+            },
+            "发现并订阅RSS": {
+                "steps": ["brew.discover → brew.subscribe"],
+                "note": "先搜索 RSS 源，再用返回的 URL 订阅"
+            },
+            "翻译后朗读": {
+                "steps": ["translate.text → speech.tts"],
+                "note": "先翻译文本，再将翻译结果转语音"
+            }
         },
         "特殊规则": [
             "用户说'打开最新的xx' -> action=navigate + brew.items",
@@ -467,7 +550,19 @@ pub fn get_quick_reference() -> Value {
             "用户说'播放/暂停/下一首/上一首' -> music.control",
             "用户说'放点音乐/找点音乐听/播放ACG音乐' -> netease.searchPlaylist + music.playlist (两步)",
             "用户说'播放歌单ID xxx' -> music.playlist",
-            "用户说'给我推荐/找几篇文章/生成阅读列表' -> brew.generateReadingList"
-        ]
+            "用户说'给我推荐/找几篇文章/生成阅读列表' -> brew.generateReadingList",
+            "用户说'注释文章/解读文章' -> brewlia.annotate (需要文章ID)",
+            "用户说'做成播客/对话形式' -> brewlia.podcast (需要文章ID)",
+            "brew.article 是内部能力，不要主动使用，由 brew.items 链式调用"
+        ],
+        "常见参数示例": {
+            "platform.read": {"platform": "bilibili|steam|github|netease", "type": "overview|favorites|recent"},
+            "ai.summarize": {"content": "文章内容或 contentFrom 引用", "maxLength": 300},
+            "ai.analyze": {"content": "待分析文本", "analysisType": "sentiment|trends|custom", "customPrompt": "自定义分析角度"},
+            "brew.items": {"limit": 10, "source_id": "可选源ID", "unread_only": true},
+            "router.navigate": {"path": "/library, /brew, /reports, /config, /data-management, /tapp"},
+            "music.control": {"action": "play|pause|next|prev|mute|unmute|volume", "volume": 50},
+            "scheduler.create": {"name": "任务名", "cron": "*/30 * * * *", "capability_id": "定时执行的能力"}
+        }
     })
 }

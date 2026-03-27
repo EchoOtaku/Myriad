@@ -31,12 +31,7 @@ fn sanitize_feed_name(name: &str) -> Result<String, String> {
 }
 
 /// 验证平台名称白名单，防止路径穿越
-fn validate_platform_name(platform: &str) -> Result<&str, String> {
-    match platform {
-        "steam" | "bilibili" | "github" | "netease" | "all" => Ok(platform),
-        _ => Err(format!("不支持的平台名称: {}", platform)),
-    }
-}
+use crate::services::agent::executor::utils::validate_platform_name;
 
 /// 订阅 URL 最大尝试数
 const MAX_FEED_URLS: usize = 10;
@@ -151,7 +146,7 @@ async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // 写入文件
-    tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap())
+    tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap_or_else(|_| data.to_string()))
         .await
         .map_err(|e| format!("Failed to write data: {}", e))?;
 
@@ -185,7 +180,7 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
                     "platform": p,
                     "status": "submitted",
                     "taskId": task_id,
-                    "message": format!("刷新任务已提交: {}", p)
+                    "message": crate::services::agent::response_agent::refresh_submitted(p)
                 }));
             }
             Err(e) => {
@@ -193,7 +188,7 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
                 results.push(json!({
                     "platform": p,
                     "status": "failed",
-                    "message": format!("提交失败: {}", e)
+                    "message": crate::services::agent::response_agent::refresh_submit_failed(&e.to_string())
                 }));
             }
         }
@@ -202,7 +197,7 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
     let submitted = results.iter().filter(|r| r["status"] == "submitted").count();
     Ok(json!({
         "success": submitted > 0,
-        "message": format!("已提交 {}/{} 个平台的刷新任务", submitted, platforms_to_refresh.len()),
+        "message": crate::services::agent::response_agent::refresh_submitted_summary(submitted, platforms_to_refresh.len()),
         "results": results
     }))
 }
@@ -611,7 +606,7 @@ async fn execute_brew_subscribe(
                         brew_sources::FeedType::RssHub => "rsshub",
                     },
                     "triedUrls": tried_urls.len(),
-                    "message": format!("成功订阅「{}」，已获取 {} 篇文章", name, inserted_count)
+                    "message": crate::services::agent::response_agent::subscribe_success(&name, inserted_count)
                 }));
             }
             Ok(Err(e)) => {
@@ -626,10 +621,9 @@ async fn execute_brew_subscribe(
     }
 
     // 所有 URL 都失败了
-    Err(format!(
-        "尝试了 {} 个源都无法订阅。最后一个错误: {}",
+    Err(crate::services::agent::response_agent::subscribe_all_failed(
         tried_urls.len(),
-        last_error
+        &last_error,
     ))
 }
 
@@ -873,7 +867,7 @@ async fn execute_content_write(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": format!("内容已保存: {}", title),
+                "title": crate::services::agent::response_agent::content_saved(title),
                 "contentId": content_id
             },
             "timestamp": now.timestamp_millis()

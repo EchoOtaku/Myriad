@@ -40,9 +40,17 @@ Arael operates on the **OpenClaw** self-evolving agent framework — a closed-lo
 - Repeated reports increase confidence; the top 50 gaps are retained for developer review
 
 ### Memory System
-- **Long-term Memory**: Interaction logs stored in `memory/memory.md` — records what the user asked and what action was taken
-- **Daily Journals**: Date-stamped files (e.g. `memory/2026-03-18.md`) capture daily interaction summaries
-- **Memory Index**: `memory/memory_index.json` provides fast lookup for memory retrieval
+- **Structured Memory Types**:
+  - `Preference` — user preferences and habits ("likes ACG style", "prefers Japanese")
+  - `EntityKnowledge` — entity corrections and associations ("芙芙=芙宁娜/Genshin Hydro Archon")
+  - `ExecutionLesson` — what worked and what failed ("detailed character descriptions produce better images")
+  - `EffectivePattern` — reusable parameter/strategy combinations ("anime character images work best with category=anime")
+  - `SessionInsight` — session-level observations and steering directives
+  - `SessionSummary` — condensed session summaries for long-term context
+- **Three Tiers**: ShortTerm (expires quickly), MediumTerm (session-scoped), LongTerm (persistent)
+- **AI Extraction**: After each execution, valuable memories are automatically extracted by AI and deduplicated against existing entries
+- **Semantic Recall**: TF-IDF cosine similarity, entity-aware lookup, and capability-based filtering
+- **Storage**: `memory/memory.md` with indexed entries; date-stamped daily journals; `memory/memory_index.json` for fast lookup
 - Old memory logs are automatically cleaned up after 30 days
 
 ### Multi-Agent Workers

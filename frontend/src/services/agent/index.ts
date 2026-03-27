@@ -56,6 +56,7 @@ export type {
   // 记忆
   MemoryEntry,
   PageElementTarget,
+  PlannerDecisionEvent,
   // 预设
   PresetType,
   // 上下文
@@ -76,6 +77,8 @@ export type {
   // 技能
   SkillInfo,
   StepCompletedEvent,
+  StepDebugEvent,
+  StepRetryingEvent,
   StepStartedEvent,
   StepTrace,
   SummaryTokenEvent,

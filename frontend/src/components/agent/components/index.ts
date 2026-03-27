@@ -18,4 +18,7 @@ export { AraelSessionList } from './AraelSessionList'
 export type { AraelSessionListProps } from './AraelSessionList'
 
 export { AraelTraceDetail } from './AraelTraceDetail'
+
+export { AraelDebugPanel } from './AraelDebugPanel'
+export type { AraelDebugPanelProps } from './AraelDebugPanel'
 export type { AraelTraceDetailProps } from './AraelTraceDetail'

@@ -162,12 +162,15 @@ impl Planner {
             }
         }
 
-        // 2. 记忆（TF-IDF 语义搜索）
+        // 2. 记忆系统（多维召回：语义 + 能力 + 实体 + 教训）
         if let Some(mem) = memory::get_memory() {
-            let memories = mem
+            let mut mem_lines: Vec<String> = Vec::new();
+
+            // 2a. TF-IDF 语义相关记忆（长期+中期）
+            let semantic_memories = mem
                 .recall_with_params(memory::RecallQuery {
                     query: request.raw_input.clone(),
-                    limit: 5,
+                    limit: 4,
                     tier_filter: Some(vec![
                         memory::MemoryTier::LongTerm,
                         memory::MemoryTier::MediumTerm,
@@ -175,28 +178,117 @@ impl Planner {
                     ..Default::default()
                 })
                 .await;
-            if !memories.is_empty() {
-                let mem_lines: Vec<String> = memories
-                    .iter()
-                    .map(|m| {
-                        let tier_tag = match m.tier {
-                            memory::MemoryTier::LongTerm => "📌",
-                            memory::MemoryTier::MediumTerm => "📝",
-                            memory::MemoryTier::ShortTerm => "💬",
-                        };
-                        format!("- {} {}", tier_tag, m.content)
+            for m in &semantic_memories {
+                let tier_tag = match m.tier {
+                    memory::MemoryTier::LongTerm => "📌",
+                    memory::MemoryTier::MediumTerm => "📝",
+                    memory::MemoryTier::ShortTerm => "💬",
+                };
+                // 计算记忆年龄，帮助 Planner 判断时效性
+                let age_tag = chrono::DateTime::parse_from_rfc3339(&m.created_at)
+                    .map(|dt| {
+                        let days = (chrono::Utc::now() - dt.with_timezone(&chrono::Utc)).num_days();
+                        if days <= 1 { String::new() }
+                        else if days < 30 { format!(" ({}天前)", days) }
+                        else { format!(" ({}个月前)", days / 30) }
                     })
-                    .collect();
-                sections.push(format!("## 参考记忆\n{}", mem_lines.join("\n")));
+                    .unwrap_or_default();
+                // 截断过长的记忆内容，防止上下文爆炸
+                let content: String = m.content.chars().take(300).collect();
+                let truncated = if m.content.chars().count() > 300 {
+                    format!("{}...", content)
+                } else {
+                    content
+                };
+                mem_lines.push(format!("- {}{} {}", tier_tag, age_tag, truncated));
+            }
+
+            // 2b. 实体相关记忆（从用户输入提取的实体）
+            let entity_memories = mem.recall_by_entity(&request.raw_input, 3).await;
+            for m in &entity_memories {
+                if !semantic_memories.iter().any(|sm| sm.id == m.id) {
+                    mem_lines.push(format!("- 🏷️ {}", m.content));
+                }
+            }
+
+            // 2c. 执行教训（EffectivePattern + ExecutionLesson）
+            let lesson_memories = mem
+                .recall_with_params(memory::RecallQuery {
+                    query: request.raw_input.clone(),
+                    limit: 3,
+                    type_filter: Some(vec![
+                        memory::MemoryType::ExecutionLesson,
+                        memory::MemoryType::EffectivePattern,
+                    ]),
+                    ..Default::default()
+                })
+                .await;
+            let mut lesson_lines: Vec<String> = Vec::new();
+            for m in &lesson_memories {
+                if !semantic_memories.iter().any(|sm| sm.id == m.id) {
+                    lesson_lines.push(format!("- ⚠️ {}", m.content));
+                }
+            }
+
+            if !mem_lines.is_empty() {
+                sections.push(format!(
+                    "## 参考记忆\n以下是历史记忆，仅供参考。当用户请求包含「最近」「最新」「目前」「现在」等时效性词汇时，\
+                    必须通过搜索获取实时信息，不要用历史记忆中的旧结论替代。\n<memory_context>\n{}\n</memory_context>",
+                    mem_lines.join("\n")
+                ));
+            }
+            if !lesson_lines.is_empty() {
+                sections.push(format!("## 注意事项（历史教训）\n<lessons>\n{}\n</lessons>", lesson_lines.join("\n")));
             }
         }
 
-        // 3. 能力索引
+        // 3. 能力索引（含相关 Skill）
         let compact_index = get_compact_index().await;
         sections.push(format!(
             "## 可用能力（紧凑索引）\n```json\n{}\n```",
             serde_json::to_string_pretty(&compact_index).unwrap_or_default()
         ));
+
+        // 3.2 近期执行摘要（从对话历史中提取能力使用记录，帮助 Planner 了解上下文）
+        if let Some(ref context) = request.context {
+            if let Some(ref history) = context.conversation_history {
+                let exec_summary = Self::extract_execution_summary(history);
+                if !exec_summary.is_empty() {
+                    sections.push(format!(
+                        "## 本轮对话执行记录\n{}",
+                        exec_summary
+                    ));
+                }
+            }
+        }
+
+        // 3.5 相关 Skill 预过滤（语义匹配 top-5）
+        if let Some(registry) = super::skill::get_skill_registry() {
+            let relevant = registry.get_relevant_skills(&request.raw_input, 5).await;
+            if !relevant.is_empty() {
+                let skill_lines: Vec<String> = relevant
+                    .iter()
+                    .map(|sm| {
+                        let params_hint = if sm.skill.parameters.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" (参数: {})", sm.skill.parameters.join(", "))
+                        };
+                        format!(
+                            "- **skill:{}** (相关度 {:.0}%) — {}{}",
+                            sm.skill.id,
+                            sm.relevance * 100.0,
+                            sm.skill.description,
+                            params_hint,
+                        )
+                    })
+                    .collect();
+                sections.push(format!(
+                    "## 推荐 Skill\n以下 Skill 与用户请求高度相关，可优先考虑使用：\n{}",
+                    skill_lines.join("\n")
+                ));
+            }
+        }
 
         // 4. 升级提示
         if let Some(hint) = escalation_hint {
@@ -212,9 +304,9 @@ impl Planner {
         sections.join("\n\n")
     }
 
-    /// 构建用户 prompt
+    /// 构建用户 prompt（使用结构化边界防止提示词注入）
     fn build_user_prompt(&self, request: &UserRequest, escalation_hint: Option<&str>) -> String {
-        let mut prompt = format!("用户请求：{}", request.raw_input);
+        let mut prompt = format!("<user_request>\n{}\n</user_request>", request.raw_input);
 
         if let Some(context) = &request.context {
             if let Some(route) = &context.current_route {
@@ -231,10 +323,11 @@ impl Planner {
             // 对话历史（直接从 conversation_history 读取，不再走 custom_data hack）
             if let Some(history) = &context.conversation_history {
                 if !history.is_empty() {
-                    prompt.push_str("\n\n最近对话历史：");
+                    prompt.push_str("\n\n<conversation_history>");
                     for msg in history.iter().rev().take(20).collect::<Vec<_>>().into_iter().rev() {
                         prompt.push_str(&format!("\n{}：{}", msg.role, msg.content));
                     }
+                    prompt.push_str("\n</conversation_history>");
                     prompt.push_str(
                         "\n\n请注意：用户可能在引用之前对话中提到的内容，注意理解代词和上下文指代。",
                     );
@@ -368,7 +461,7 @@ impl Planner {
                 steps: vec![],
                 clarification: None,
                 unsupported_reason: None,
-                chat_reply: Some("你好！有什么我可以帮你的吗？".to_string()),
+                chat_reply: Some(crate::services::agent::response_agent::greeting()),
             };
         }
 
@@ -391,12 +484,48 @@ impl Planner {
                 },
                 depends_on: vec![],
                 on_failure: "abort".to_string(),
+                retry: None,
                 timeout_ms: Some(30000),
             }],
             clarification: None,
             unsupported_reason: None,
             chat_reply: None,
         }
+    }
+
+    /// 从对话历史中提取近期执行摘要
+    ///
+    /// 扫描 assistant 消息中的执行结果标记，构建简洁的能力使用记录。
+    /// 帮助 Planner 了解当前会话中已经执行过什么、结果如何。
+    fn extract_execution_summary(history: &[ConversationMessage]) -> String {
+        let mut summaries: Vec<String> = Vec::new();
+
+        // 仅检查最近 10 条 assistant 消息
+        for msg in history.iter().rev().filter(|m| m.role == "assistant").take(10) {
+            let content = &msg.content;
+            // 检测常见的执行结果标记词
+            let has_exec_markers = content.contains("执行")
+                || content.contains("获取")
+                || content.contains("生成")
+                || content.contains("分析")
+                || content.contains("搜索")
+                || content.contains("completed")
+                || content.contains("failed");
+
+            if has_exec_markers && content.len() > 10 {
+                // 截取摘要（最多 120 字符）
+                let preview: String = content.chars().take(120).collect();
+                let suffix = if content.chars().count() > 120 { "..." } else { "" };
+                summaries.push(format!("- {}{}", preview, suffix));
+            }
+        }
+
+        summaries.reverse();
+        // 最多保留最近 5 条
+        if summaries.len() > 5 {
+            summaries.drain(..summaries.len() - 5);
+        }
+        summaries.join("\n")
     }
 }
 
@@ -428,44 +557,67 @@ const PLANNER_RULES: &str = r#"## 规则
 3. **clarify**: 用户请求模糊，无法确定意图 → 请求澄清
 4. **unsupported**: 用户请求超出能力范围 → 解释原因
 
+### 主动征询意图识别（极其重要）
+
+当用户**明确要求你提问或征求意见**时（"问我"、"问问我"、"你问一下我"、"让我选"、"给我选项"、"我来决定"、"先问问我的意见"），**必须使用 clarify**，绝不能用 chat。
+- 这些表达是用户主动要求参与决策，不是闲聊
+- clarification.message 里写出你需要了解的具体问题
+- clarification.options 里给出 3-5 个合理选项供用户选择
+- 结合对话历史和上次执行结果，让问题和选项尽量具体，不要泛泛而问
+
 ### 执行步骤规则（status=plan 时）
 
 1. `capability_id` 必须匹配可用能力索引中的 ID。能力索引中 `"p"` 字段列出了必需参数，务必包含
 2. 如果可用能力中有 `skill:xxx` 类型恰好匹配用户意图，优先使用 Skill（它封装了完整的多步骤编排）
-3. `params` 根据能力描述和 `"p"` 参数列表推断合理值
-4. 如果步骤 B 需要步骤 A 的输出，使用 `depends_on` 声明依赖，并在 params 中用 `"xxxFrom": "step_id"` 引用
-5. 如果页面上下文可用，可用 `"inputFrom": "__page_context__"` 引用当前页面内容
-6. `on_failure` 策略：
+3. **Skill 单次调用原则**：同一个 `skill:xxx` 在整个计划中最多出现一次。如果用户要求多张图/多个变体/一些/一批，通过 Skill 的参数传达数量和变体需求（如 `"count": 3`、`"variations": ["场景A", "场景B"]`），由 Skill 内部自行编排多轮生成。**绝不允许**把同一个 Skill 在步骤列表里重复调用多次
+4. `params` 根据能力描述和 `"p"` 参数列表推断合理值
+5. **❗ xxxFrom 必须配合 depends_on**：使用 `"xxxFrom": "step_id"` 引用其他步骤输出时，**必须同时在 `depends_on` 中声明该步骤**。例如 `"dataFrom": "search"` → `"depends_on": ["search"]`。缺少 depends_on 会导致步骤并行执行、引用为 null
+6. 如果页面上下文可用，可用 `"inputFrom": "__page_context__"` 引用当前页面内容
+7. `on_failure` 策略：
    - 数据获取步骤用 `"abort"`（后续步骤依赖数据，获取失败则无法继续）
    - AI 处理步骤可用 `"skip"`（非关键性分析/总结可跳过）
    - 如果步骤是其他步骤的 `depends_on` 数据源，必须 `"abort"`
-7. `timeout_ms`: 数据获取 15000，AI 处理 30000，图片生成 60000
-8. 可选字段：`"retry": {"max_attempts": 2, "delay_ms": 1000, "exponential_backoff": true}` — 对网络请求类步骤建议添加
-9. 可选字段：`"model_tier": "pro"` — 需要高质量分析/创作时指定 pro，普通任务省略即可
-10. **步骤数量上限 12 个**，尽量用最少步骤完成任务。超过 5 步的计划应认真检查是否有冗余
+8. `timeout_ms`: 数据获取 15000，AI 处理 30000，图片生成 60000
+9. 可选字段：`"retry": {"max_attempts": 2, "delay_ms": 1000, "exponential_backoff": true}` — 对网络请求类步骤建议添加
+10. 可选字段：`"model_tier": "pro"` — 需要高质量分析/创作时指定 pro，普通任务省略即可
+
+### ❗ 步骤最小化原则（极其重要）
+
+- **步骤数量绝对上限 8 个**，但大多数请求应在 1-3 步内完成
+- **简单请求**（查询、搜索、生成一张图、问答）→ 1-2 步
+- **中等请求**（搜索+分析、获取+总结）→ 2-3 步
+- **复杂请求**（多平台对比、多步骤工作流）→ 3-6 步
+- 每步都必须有明确且不可替代的作用，不允许「为了形式」增加步骤
+- **当一个能力就能完成时，绝不拆成多步**
+- step.action 字段是你对这个步骤的直接命令，必须具体、明确、与用户请求直接相关
+
+### Skill 单次调用铁律
+
+- **同一个 `skill:xxx` 在整个计划中只能出现一次**，重复调用同一 Skill 是严重错误
+- 用户要求多张图/多个变体/一些/一批时，通过 params 传达（如 `"count": 3`、`"variations": ["场景A", "场景B", "场景C"]`），Skill 内部自行编排
+- 举例：用户说"帮我生成一些XX图片" → 一个 `skill:xxx` 步骤 + params 中 `"count": 3` 或 `"variations": [...]`，而不是 3 个重复的 skill 步骤
 
 ### 数量意图识别
 
-用户请求中包含数量词时，你必须据此调整执行计划的步骤数量和参数规模：
-- **明确单数**（"一张"、"一个"、"一首"）→ 生成单个步骤
-- **明确复数/模糊多数**（"一些"、"几张"、"几个"、"多个"、"若干"、"一批"）→ 生成**多个并行步骤**，每个步骤使用不同的参数变体（如不同的风格、角度、配色、关键词侧重等），使结果多样化
-- **指定具体数量**（"三张"、"5个"）→ 步骤数量与之对应
-- **无数量词**（"帮我生成图"、"写个总结"）→ 默认为单个
+用户请求中包含数量词时：
+- **明确单数**（"一张"、"一个"）→ 1 个步骤
+- **指定具体数量**（"三张"、"5个"）→ 通过 params 传达数量，不要拆分为多步骤
+- **无数量词或模糊词**（“帮我生成图”、“一些”、“几个”）→ **默认单个**，不要自行展开为多个
 
-多个并行步骤之间**不设 `depends_on`**，使其能被同时执行。每个步骤的参数应有**明确差异**——仅仅重复相同参数毫无意义。差异方向由能力类型决定：视觉类改变构图/风格/色调，文本类改变视角/侧重/深度，搜索类调整关键词/范围/排序等。
+### 多目标与并行
 
-### 多目标与并行展开
+**执行引擎会自动并行执行所有 `depends_on` 为空的步骤。** 因此：
+- 互相独立、无数据依赖的步骤 → `depends_on: []`（引擎自动并行）
+- 只有当步骤 B 需要步骤 A 的输出时 → `depends_on: ["step_a"]`
 
-当用户请求涉及**多个独立目标**时，必须为每个目标生成独立的步骤并行执行：
-- 列举多个平台（"B站和Steam"、"所有平台"）→ 为每个平台生成独立的 `platform.read` 或 `platform.stats` 步骤
-- 列举多个关键词（"搜索X和Y"）→ 多个 `search.global` 并行
-- "所有"、"全部" 修饰的平台请求 → 展开为用户全部活跃平台的并行步骤
-- 如果后续还有汇总/对比需求，汇总步骤应 `depends_on` 所有并行步骤
+仅当用户**明确列举**多个目标时（"B站和Steam"、"搜索X和Y"）为每个目标生成独立步骤。
+- "所有平台" → 最多展开 3 个主要平台
+- 如果后续还有汇总需求，汇总步骤 `depends_on` 所有并行步骤
 
 ### 对比意图
 
 用户表达对比、比较、PK 等意图时（"对比"、"比一比"、"哪个更好"、"有什么区别"），执行计划必须包含：
-1. **并行数据获取**：为每个对比目标生成独立的数据获取步骤
+1. **并行数据获取**：为每个对比目标生成独立的数据获取步骤（`depends_on: []`，引擎自动并行）
 2. **对比分析步骤**：一个 `compare.content` 或 `ai.analyze`（analysisType="custom"）步骤，`depends_on` 全部获取步骤，将获取结果作为对比输入
 
 ### 串联意图（A 然后 B）
@@ -477,43 +629,43 @@ const PLANNER_RULES: &str = r#"## 规则
 
 ### 时间表达映射
 
-用户请求包含时间修饰词时，必须转化为对应参数（`since`、`startDate`、`endDate`、`daysBack` 等）：
-- "最近的"、"近期" → `daysBack: 7` 或 `limit` 设小值
-- "今天"、"今天的" → `since` 设为当天零点
-- "这周"、"本周" → `daysBack: 7`
-- "这个月"、"本月" → `daysBack: 30`
-- "去年"、"上个月" → 对应的 `startDate` + `endDate` 区间
-- 无时间修饰 → 使用默认值，不额外设置
+用户请求包含时间修饰词时，转化为对应参数（`since`、`daysBack` 等）：
+- “最近”/“近期” → `daysBack: 7`
+- “今天” → `since` 当天零点
+- “本周” → `daysBack: 7`
+- “本月” → `daysBack: 30`
+- 无时间修饰 → 使用默认值
 
-### 深度与详略控制
+### 后续/修改请求
 
-用户通过修饰词暗示期望的详细程度时，据此调整参数规模：
-- **详细请求**（"详细分析"、"全面报告"、"深入看看"）→ `limit` 设较大值，`style` 用 "detailed"，`maxLength` 设较大值
-- **简略请求**（"随便看看"、"简单说说"、"快速总结"）→ `limit` 设较小值，`style` 用 "brief"，`maxLength` 设较小值
-- **无深度修饰** → 使用中等默认值
+用户发出后续请求（"换个XX"、"再来一个"、"改一下"、"不满意"、"不够XX"）时：
+- 结合对话历史理解意图
+- 用户给了反馈但未指定具体修改方向 → status="clarify"，给出修改选项
+- 用户给了反馈且要求被征询意见（"问我"、"你问问我"）→ status="clarify"，必须提问
+- 明确指定了具体修改方向时才直接执行（status="plan"）
 
 ### 指代消歧与上下文引用
 
-用户使用代词或指示词时（"这个"、"它"、"刚才那个"、"这篇文章"、"当前页面"），你必须结合以下信息解析其真实指代：
-- **当前页面路由和页面上下文**：如果用户说"这篇"且当前在阅读器页面，通过 `"inputFrom": "__page_context__"` 引用
-- **对话历史**：如果用户说"刚才那个"，从历史消息中找到最近提到的实体
-- **不要猜测**：如果上下文不足以消歧，使用 status="clarify" 要求用户明确
+用户使用代词时（“这个”、“它”、“刚才那个”），结合页面上下文和对话历史解析指代。
+如果歧义无法解决，使用 status="clarify" 提问。
 
-### 否定与排除
+### 图片生成规则（prompt.generate + ai.image）
 
-用户表达排除意图时（"除了X以外"、"不要包含Y"、"不包括Z"），将排除条件传入对应参数：
-- 搜索类能力：在 `query` 中加入否定词，或设置 `filters` 排除
-- AI 分析类能力：在 `instruction` 或 `criteria` 中明确排除要求
-- 数据读取类：通过 `keyword`、`filter` 参数设置排除条件
+生成图片时，在 `prompt.generate` 的 `description` 中提供详尽描述：
+- 已知角色必须写出完整视觉特征（发型发色、瞳色、服装细节、标志性元素）
+- 昵称/简称必须展开为完整角色描述
+- 包含场景、氛围、构图
+- 绝不要只写简短标题
 
-### 图片生成特别规则（prompt.generate + ai.image）
+**当需要引用前置步骤的输出作为描述来源时**，使用 `xxxFrom` 约定：
+- `descriptionFrom: "step_id"` — 从指定步骤的输出中提取文本作为 description
+- `titleFrom: "step_id"` — 从指定步骤的输出中提取文本作为 title
+- 与 `dataFrom` 一样，引擎会自动解析引用并提取文本内容
 
-当用户请求生成图片时，你**必须**在 `prompt.generate` 步骤的 `description` 参数中提供**尽可能详尽的描述**：
-- 如果涉及已知角色（动漫、游戏、影视等），你应利用自身知识写出角色的**完整视觉特征**：全名（含英文名）、来源作品、发型发色、瞳色（是否异色瞳）、标志性服装细节（颜色、样式、配饰如帽子/发带/披风等）、体型、标志性元素等
-- 如果用户使用了昵称/简称（如"芙芙"→芙宁娜/Furina），你必须识别并在 description 中展开为完整的角色描述
-- 同时包含场景、氛围、构图建议等
-- `category` 应设为 "anime"（动漫角色）、"photo"（写实）等对应类型
-- `description` 内容越详细，生成的图片越准确，**绝对不要偷懒只写简短标题**
+典型链式计划（搜索 → 分析 → 生成提示词 → 生成图片）：
+```
+search(ai.webSearch) → analyze(ai.analyze, dataFrom:"search") → gen_prompt(prompt.generate, descriptionFrom:"analyze") → image(ai.image, promptFrom:"gen_prompt")
+```
 
 ### 输出格式
 
@@ -525,18 +677,41 @@ const PLANNER_RULES: &str = r#"## 规则
   "confidence": 0.0-1.0,
   "reasoning": "简要说明你的判断思路",
 
-  // status=plan 时:
+  // status=plan 时（示例：搜索→分析→生成提示词→生成图片）:
   "steps": [
     {
-      "id": "step_1",
-      "capability_id": "能力ID",
-      "action": "动作描述",
-      "params": { "必需参数": "值" },
+      "id": "search",
+      "capability_id": "ai.webSearch",
+      "action": "搜索角色信息",
+      "params": { "query": "..." },
       "depends_on": [],
       "on_failure": "abort",
-      "timeout_ms": 15000,
-      "retry": { "max_attempts": 2, "delay_ms": 1000, "exponential_backoff": true },
-      "model_tier": "standard"
+      "timeout_ms": 15000
+    },
+    {
+      "id": "analyze",
+      "capability_id": "ai.analyze",
+      "action": "分析并介绍角色",
+      "params": { "dataFrom": "search", "instruction": "根据搜索结果介绍该角色..." },
+      "depends_on": ["search"],
+      "on_failure": "skip",
+      "timeout_ms": 30000
+    },
+    {
+      "id": "gen_prompt",
+      "capability_id": "prompt.generate",
+      "action": "生成角色图片提示词",
+      "params": { "descriptionFrom": "analyze" },
+      "depends_on": ["analyze"],
+      "timeout_ms": 15000
+    },
+    {
+      "id": "gen_image",
+      "capability_id": "ai.image",
+      "action": "生成角色图片",
+      "params": { "promptFrom": "gen_prompt" },
+      "depends_on": ["gen_prompt"],
+      "timeout_ms": 60000
     }
   ],
 

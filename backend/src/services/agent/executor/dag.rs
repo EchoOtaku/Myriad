@@ -3,7 +3,8 @@
 //! 将 Recipe 步骤按 `depends_on` 关系组织为有向无环图（DAG），
 //! 并行执行所有依赖已满足的步骤。
 //!
-//! 当所有步骤的 `depends_on` 为空时，退化为顺序执行（与现有行为兼容）。
+//! 当有 2+ 步骤时启用并行模式：无依赖的步骤整波并行，有依赖的按拓扑序执行。
+//! 仅当唯一 1 个步骤时退化为顺序执行。
 
 use std::collections::{HashMap, HashSet};
 
@@ -51,10 +52,12 @@ impl DagScheduler {
 
     /// 是否使用并行模式
     ///
-    /// 只有当至少一个步骤有显式 `depends_on` 时才启用并行模式。
-    /// 否则退化为顺序执行。
+    /// 当有 2 个以上步骤时启用并行模式：
+    /// - 有显式 `depends_on` 时：按 DAG 拓扑排序，依赖满足的步骤并行执行
+    /// - 全部 `depends_on` 为空时：所有步骤视为独立，整波并行执行
+    /// 仅当唯一 1 个步骤时退化为顺序执行。
     pub fn is_parallel_mode(&self) -> bool {
-        self.steps.values().any(|s| !s.depends_on.is_empty())
+        self.steps.len() > 1
     }
 
     /// 获取当前可执行的步骤（所有依赖已满足）
@@ -90,6 +93,23 @@ impl DagScheduler {
             .collect()
     }
 
+    /// 动态注入新步骤（如 Skill 生成的子步骤）
+    ///
+    /// 新步骤的 `depends_on` 可引用已有步骤（含已完成的）或同批注入的步骤。
+    /// 注入后重新校验无环。
+    pub fn add_steps(&mut self, steps: &[RecipeStep]) -> Result<(), String> {
+        for step in steps {
+            self.steps.insert(step.id.clone(), step.clone());
+            self.order.push(step.id.clone());
+        }
+        self.validate_no_cycles()
+    }
+
+    /// 是否还有未完成的步骤
+    pub fn has_remaining(&self) -> bool {
+        self.steps.len() > self.completed.len() + self.failed.len()
+    }
+
     /// 标记步骤成功完成
     pub fn mark_completed(&mut self, step_id: &str) {
         self.completed.insert(step_id.to_string());
@@ -120,39 +140,6 @@ impl DagScheduler {
                 );
             }
         }
-    }
-
-    /// 是否所有步骤都已完成（或被跳过）
-    #[allow(dead_code)]
-    pub fn is_complete(&self) -> bool {
-        self.steps.keys().all(|id| {
-            self.completed.contains(id)
-                || self.failed.contains(id)
-                || self.is_blocked_by_failure(id)
-        })
-    }
-
-    /// 检查步骤是否被失败的依赖阻塞
-    fn is_blocked_by_failure(&self, step_id: &str) -> bool {
-        if let Some(step) = self.steps.get(step_id) {
-            step.depends_on.iter().any(|dep| {
-                self.failed.contains(dep) || self.is_blocked_by_failure(dep)
-            })
-        } else {
-            false
-        }
-    }
-
-    /// 已完成数量
-    #[allow(dead_code)]
-    pub fn completed_count(&self) -> usize {
-        self.completed.len()
-    }
-
-    /// 总步骤数
-    #[allow(dead_code)]
-    pub fn total_count(&self) -> usize {
-        self.steps.len()
     }
 
     /// 拓扑排序检测环
@@ -232,18 +219,29 @@ mod tests {
     }
 
     #[test]
-    fn test_sequential_mode() {
-        let steps = vec![
-            make_step("a", 0, vec![]),
-            make_step("b", 1, vec![]),
-            make_step("c", 2, vec![]),
-        ];
+    fn test_single_step_sequential() {
+        let steps = vec![make_step("a", 0, vec![])];
         let scheduler = DagScheduler::new(&steps).unwrap();
         assert!(!scheduler.is_parallel_mode());
 
         let ready = scheduler.get_ready_steps();
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].id, "a");
+    }
+
+    #[test]
+    fn test_independent_steps_parallel() {
+        // 多个独立步骤（全部 depends_on 为空）应自动并行
+        let steps = vec![
+            make_step("a", 0, vec![]),
+            make_step("b", 1, vec![]),
+            make_step("c", 2, vec![]),
+        ];
+        let scheduler = DagScheduler::new(&steps).unwrap();
+        assert!(scheduler.is_parallel_mode());
+
+        let ready = scheduler.get_ready_steps();
+        assert_eq!(ready.len(), 3, "All independent steps should be ready simultaneously");
     }
 
     #[test]
@@ -328,5 +326,53 @@ mod tests {
         let ready = scheduler.get_ready_steps();
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].id, "analyze");
+    }
+
+    #[test]
+    fn test_add_steps_dynamic_injection() {
+        // 模拟：初始只有 1 个 skill 步骤，执行后动态注入并行子步骤
+        let skill_step = vec![make_step("skill_main", 0, vec![])];
+        let mut scheduler = DagScheduler::new(&skill_step).unwrap();
+        assert!(!scheduler.is_parallel_mode()); // 1 步骤 → 顺序
+
+        // 标记 skill 步骤完成
+        scheduler.mark_completed("skill_main");
+        assert!(!scheduler.has_remaining());
+
+        // 注入 3 组 prompt+image 动态步骤（模拟多变体并行）
+        let dynamic_steps = vec![
+            make_step("gen_prompt_1", 10, vec![]),
+            make_step("gen_prompt_2", 11, vec![]),
+            make_step("gen_prompt_3", 12, vec![]),
+            make_step("gen_image_1", 20, vec!["gen_prompt_1"]),
+            make_step("gen_image_2", 21, vec!["gen_prompt_2"]),
+            make_step("gen_image_3", 22, vec!["gen_prompt_3"]),
+        ];
+        scheduler.add_steps(&dynamic_steps).unwrap();
+        assert!(scheduler.is_parallel_mode()); // 7 步骤 → 并行
+        assert!(scheduler.has_remaining());
+
+        // Wave 1: 所有 prompt 步骤并行就绪
+        let ready = scheduler.get_ready_steps();
+        let mut ids: Vec<String> = ready.iter().map(|s| s.id.clone()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["gen_prompt_1", "gen_prompt_2", "gen_prompt_3"]);
+
+        // 完成所有 prompt
+        for id in &ids {
+            scheduler.mark_completed(id);
+        }
+
+        // Wave 2: 所有 image 步骤并行就绪
+        let ready = scheduler.get_ready_steps();
+        let mut ids: Vec<String> = ready.iter().map(|s| s.id.clone()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["gen_image_1", "gen_image_2", "gen_image_3"]);
+
+        // 完成所有 image
+        for id in &ids {
+            scheduler.mark_completed(id);
+        }
+        assert!(!scheduler.has_remaining());
     }
 }

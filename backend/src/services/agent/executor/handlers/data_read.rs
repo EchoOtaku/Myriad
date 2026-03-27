@@ -4,18 +4,16 @@
 
 use super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources, brew_user_states, tapps, tapp_widgets, tapp_storage, tapp_scheduled_tasks};
+use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
+use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// 验证平台名称白名单，防止路径穿越
-fn validate_platform_name(platform: &str) -> Result<&str, String> {
-    match platform {
-        "steam" | "bilibili" | "github" | "netease" | "all" => Ok(platform),
-        _ => Err(format!("不支持的平台名称: {}", platform)),
-    }
-}
+static RE_HTML_TAG: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"<[^>]+>").unwrap());
+static RE_WHITESPACE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"\s+").unwrap());
+
 
 /// 执行数据读取能力
 pub async fn execute(
@@ -622,11 +620,11 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
                 "notFound": true,
                 "searchedFor": name,
                 "ambiguous": true,
-                "ambiguous_reason": format!("未找到名为「{}」的订阅源或作者", name),
+                "ambiguous_reason": crate::services::agent::response_agent::feed_ambiguous(name),
                 "suggestions": suggestions,
                 "choices": choices,
                 "availableSources": valid_sources,
-                "hint": format!("你是不是想找: {}?", suggestions.join(", "))
+                "hint": crate::services::agent::response_agent::feed_hint(&suggestions.join(", "))
             }));
         }
     }
@@ -899,7 +897,7 @@ async fn execute_brew_generate_reading_list(
                         "listName": format!("网络搜索 - {}", if !keyword.is_empty() { keyword } else { criteria }),
                         "criteria": criteria,
                         "fromWebSearch": true,
-                        "message": format!("数据库中未找到相关文章，已通过 AI 联网搜索获取 {} 条结果", web_results.len()),
+                        "message": crate::services::agent::response_agent::web_search_fallback(web_results.len()),
                         "action": {
                             "type": "reading_list",
                             "payload": {
@@ -933,7 +931,7 @@ async fn execute_brew_generate_reading_list(
             "totalMatched": 0,
             "listName": list_name,
             "criteria": criteria,
-            "message": format!("未找到符合条件的文章（{}）", ai_search_hint),
+            "message": crate::services::agent::response_agent::no_articles_found(&ai_search_hint),
             "suggestions": [
                 "检查 Gemini API Key 是否已配置",
                 "尝试更换关键词",
@@ -1377,8 +1375,7 @@ fn parse_brew_content(content: &str) -> Vec<Value> {
 /// 从 HTML 中提取纯文本
 fn extract_plain_text(html: &str) -> String {
     // 移除 HTML 标签
-    let tag_re = regex::Regex::new(r"<[^>]+>").unwrap();
-    let text = tag_re.replace_all(html, " ");
+    let text = RE_HTML_TAG.replace_all(html, " ");
 
     // 解码常见 HTML 实体
     let text = text
@@ -1389,8 +1386,7 @@ fn extract_plain_text(html: &str) -> String {
         .replace("&quot;", "\"");
 
     // 压缩空白
-    let whitespace_re = regex::Regex::new(r"\s+").unwrap();
-    whitespace_re.replace_all(&text, " ").trim().to_string()
+    RE_WHITESPACE.replace_all(&text, " ").trim().to_string()
 }
 
 // ============================================================================
@@ -1525,7 +1521,7 @@ async fn execute_fuzzy_search(
         let discovery_hint = if can_discover {
             Some(json!({
                 "searchQuery": query,
-                "message": format!("未在已订阅源中找到「{}」，可以使用 brew.discover 从 RSSHub 路由中搜索", query),
+                "message": crate::services::agent::response_agent::not_found_in_feeds(query),
                 "suggestAction": "brew.discover",
                 "suggestParams": { "query": query }
             }))
@@ -1713,7 +1709,7 @@ async fn execute_brew_discover(
         "discoveryMethods": discovery_methods,
         "suggestions": if !found {
             json!({
-                "message": "未能找到匹配的 RSS 源",
+                "message": crate::services::agent::response_agent::no_rss_found(),
                 "tips": [
                     "尝试更具体的关键词",
                     "直接提供 RSS/Atom URL",
@@ -2021,7 +2017,7 @@ async fn fetch_rsshub_routes() -> Result<Value, String> {
                 let _ = tokio::fs::create_dir_all(paths().cache.clone()).await;
                 let _ = tokio::fs::write(
                     &cache_path,
-                    serde_json::to_string_pretty(&cache_data).unwrap(),
+                    serde_json::to_string_pretty(&cache_data).unwrap_or_else(|_| cache_data.to_string()),
                 )
                 .await;
 
@@ -2297,7 +2293,7 @@ async fn execute_brew_page_content(
                         "guid": item.guid.clone(),
                         "title": item.title.clone(),
                         "summary": item.summary.as_ref().map(|s| {
-                            if s.len() > 200 { format!("{}...", &s[..200]) } else { s.clone() }
+                            if s.len() > 200 { let i = s.floor_char_boundary(200); format!("{}...", &s[..i]) } else { s.clone() }
                         }),
                         "link": item.link.clone(),
                         "author": item.author.clone(),
@@ -2801,7 +2797,7 @@ async fn execute_netease_search_playlist(
             "success": false,
             "keyword": keyword,
             "playlists": [],
-            "message": "没有找到相关歌单，请尝试其他关键词"
+            "message": crate::services::agent::response_agent::playlist_not_found()
         }));
     }
 
@@ -2825,7 +2821,7 @@ async fn execute_netease_search_playlist(
         "recommendedPlaylistId": recommended_id,
         "recommendedPlaylistName": recommended_name,
         "source": "netease",
-        "message": format!("找到 {} 个「{}」相关歌单", formatted_playlists.len(), keyword)
+        "message": crate::services::agent::response_agent::playlist_found(formatted_playlists.len(), keyword)
     }))
 }
 
@@ -3351,7 +3347,7 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
     }
 
     Ok(json!({
-        "summary": format!("活跃在 {} 个平台", platforms.len()),
+        "summary": crate::services::agent::response_agent::active_platforms(platforms.len()),
         "interests": interests,
         "activities": activities,
         "platformStats": platform_stats
@@ -3374,7 +3370,7 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
             "query": query,
             "results": [],
             "total": 0,
-            "message": "请提供搜索关键词。系统支持搜索的内容包括：Steam 游戏、Bilibili 追番、GitHub 仓库、网易云音乐播放记录。",
+            "message": crate::services::agent::response_agent::search_empty_hint(),
             "supportedPlatforms": ["steam", "bilibili", "github", "netease"],
             "hint": "试试搜索你已有数据中的内容，例如：'搜索我的 Steam 游戏'、'查看 GitHub 仓库'"
         }));
@@ -3419,12 +3415,9 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
 
     // 提供更好的无结果提示
     let message = if results.is_empty() {
-        format!(
-            "在你的数据中没有找到与 '{}' 相关的内容。\n\n系统目前只能搜索你已同步的平台数据：\n- Steam 游戏库\n- Bilibili 追番\n- GitHub 仓库\n- 网易云音乐\n\n如果你想搜索网络新闻或其他外部内容，这个功能暂不支持。",
-            query
-        )
+        crate::services::agent::response_agent::search_no_results(query)
     } else {
-        format!("找到 {} 条与 '{}' 相关的结果", results.len(), query)
+        crate::services::agent::response_agent::search_results_found(results.len(), query)
     };
 
     Ok(json!({
@@ -3753,12 +3746,12 @@ async fn trigger_ai_web_search_for_reading_list(
 
     let api_key = config.gemini_api_key.clone().ok_or_else(|| {
         tracing::error!("[AI Web Search] Gemini API Key is not configured");
-        "Gemini API Key 未配置，请在设置中配置 API Key".to_string()
+        crate::services::agent::response_agent::api_key_not_configured("Gemini") + "，请在设置中配置 API Key"
     })?;
 
     if api_key.is_empty() {
         tracing::error!("[AI Web Search] Gemini API Key is empty");
-        return Err("Gemini API Key 为空".to_string());
+        return Err(crate::services::agent::response_agent::api_key_not_configured("Gemini"));
     }
 
     let model = if config.gemini_model.is_empty() {
@@ -3992,7 +3985,7 @@ async fn trigger_ai_web_search_for_reading_list(
             if summary.is_empty() || summary.len() < 30 {
                 let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
                 let source = item.get("sourceName").and_then(|v| v.as_str()).unwrap_or("");
-                item["summary"] = json!(format!("这是一篇来自 {} 的文章：{}。点击阅读原文获取完整内容。", source, title));
+                item["summary"] = json!(crate::services::agent::response_agent::article_summary_placeholder(source, title));
             }
 
             // 确保 publishedAt 存在

@@ -39,6 +39,21 @@ import { apiService } from '../api'
 class AgentService {
   private baseUrl = '/agent'
 
+  /** 当前 SSE 请求的 AbortController，用于客户端侧中断 */
+  private currentAbortController: AbortController | null = null
+
+  /**
+   * 中断当前正在进行的 SSE 请求（客户端侧）
+   *
+   * 调用后 executeSSERequest 的 Promise 将 reject 并释放连接。
+   */
+  abortCurrentRequest(): void {
+    if (this.currentAbortController) {
+      this.currentAbortController.abort()
+      this.currentAbortController = null
+    }
+  }
+
   /**
    * 处理自然语言请求
    */
@@ -157,6 +172,26 @@ class AgentService {
     return apiService.post<AgentResponse>(
       `${this.baseUrl}/tasks/${taskId}/answer`,
       { questionId, answer },
+    )
+  }
+
+  /**
+   * 回答任务中的问题（SSE 流式，带进度回调）
+   */
+  async answerQuestionWithProgress(
+    taskId: string,
+    questionId: string,
+    answer: string,
+    onProgress: ProgressCallback,
+  ): Promise<AgentResponse> {
+    // abortPrevious=false: process_stream 的 SSE 连接仍在后端 hold 住等待回答结果，
+    // 不能中断它，否则 processWithProgress 会收到 AbortError
+    return this.executeSSERequest(
+      `/api${this.baseUrl}/tasks/${taskId}/answer/stream`,
+      'POST',
+      { questionId, answer },
+      onProgress,
+      false,
     )
   }
 
@@ -360,16 +395,27 @@ class AgentService {
    * 获取记忆条目（通过 recall）
    */
   async getMemories(): Promise<MemoryEntry[]> {
-    // 记忆通过 recall 接口获取，这里使用 capabilities 路径下的记忆端点
-    // 如果后端没有专门的记忆列表 API，则通过任务详情中的 recalledMemories 获取
     try {
       const response = await apiService.get<{ memories: MemoryEntry[] }>(`${this.baseUrl}/memory`)
       return response.memories
     }
     catch {
-      // 记忆 API 可能尚未实现，graceful fallback
       return []
     }
+  }
+
+  /**
+   * 删除记忆条目
+   */
+  async deleteMemory(memoryId: string): Promise<void> {
+    await apiService.delete(`${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`)
+  }
+
+  /**
+   * 更新记忆条目内容
+   */
+  async updateMemory(memoryId: string, content: string): Promise<void> {
+    await apiService.put(`${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`, { content })
   }
 
   // ============ 技能 (Phase 2B) ============
@@ -383,9 +429,15 @@ class AgentService {
       return response.skills
     }
     catch {
-      // 技能 API 可能尚未实现，graceful fallback
       return []
     }
+  }
+
+  /**
+   * 删除技能
+   */
+  async deleteSkill(skillId: string): Promise<void> {
+    await apiService.delete(`${this.baseUrl}/skills/${encodeURIComponent(skillId)}`)
   }
 
   // ============ 会话管理 ============
@@ -435,21 +487,47 @@ class AgentService {
     return apiService.patch<SessionInfo>(`${this.baseUrl}/sessions/${sessionId}`, { title })
   }
 
+  /**
+   * AI 生成会话标题
+   */
+  async generateSessionTitle(sessionId: string): Promise<{ title: string }> {
+    return apiService.post<{ title: string }>(`${this.baseUrl}/sessions/${sessionId}/generate-title`, {})
+  }
+
   // ============ 内部方法 ============
 
   /**
    * 执行 SSE 请求的通用方法
+   *
+   * @param abortPrevious - 是否中断前一个活跃请求（默认 true）。
+   *   answerQuestion 场景下应传 false，因为 process_stream 的 SSE 连接
+   *   仍在等待后端 done_rx 信号，中断它会导致 AbortError。
    */
   private async executeSSERequest(
     url: string,
     method: 'GET' | 'POST',
     body?: unknown,
     onProgress?: ProgressCallback,
+    abortPrevious = true,
   ): Promise<AgentResponse> {
+    // 中断前一个活跃请求（如果有）
+    if (abortPrevious) {
+      this.abortCurrentRequest()
+    }
+
     return new Promise((resolve, reject) => {
       const token = TokenManager.getToken()
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 180000)
+      this.currentAbortController = controller
+      const timeoutId = setTimeout(() => controller.abort(), 600000)
+
+      // 请求结束后清理引用
+      const cleanup = () => {
+        clearTimeout(timeoutId)
+        if (this.currentAbortController === controller) {
+          this.currentAbortController = null
+        }
+      }
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -476,7 +554,7 @@ class AgentService {
 
           const reader = response.body?.getReader()
           if (!reader) {
-            throw new Error('无法读取响应流')
+            throw new Error('Unable to read response stream')
           }
 
           const decoder = new TextDecoder()
@@ -505,8 +583,8 @@ class AgentService {
                       const event: ProgressEvent = JSON.parse(data)
 
                       // 捕获 task_id，供流中断时 fallback 使用
-                      if (event.type === 'task_created' && (event as any).taskId) {
-                        capturedTaskId = (event as any).taskId
+                      if (event.type === 'task_created' && event.taskId) {
+                        capturedTaskId = event.taskId
                       }
 
                       if (onProgress) {
@@ -534,7 +612,7 @@ class AgentService {
           }
           finally {
             reader.releaseLock()
-            clearTimeout(timeoutId)
+            cleanup()
           }
 
           if (finalResponse) {
@@ -546,16 +624,16 @@ class AgentService {
             try {
               const task = await this.pollTaskUntilComplete(capturedTaskId, {
                 intervalMs: 2000,
-                timeoutMs: 120000,
+                timeoutMs: 300000,
                 onProgress: onProgress ? (t) => {
-                  onProgress({ type: 'progress', taskId: t.taskId, progress: t.progress } as any)
+                  onProgress({ type: 'progress', progress: t.progress, completedSteps: 0, totalSteps: 0, message: '' })
                 } : undefined,
               })
               if (task.status === 'completed' && task.results) {
                 resolve(task.results as unknown as AgentResponse)
               }
               else {
-                reject(new Error(`任务 ${capturedTaskId} 以状态 ${task.status} 结束`))
+                reject(new Error(`Task ${capturedTaskId} ended with status ${task.status}`))
               }
             }
             catch (pollError) {
@@ -563,13 +641,13 @@ class AgentService {
             }
           }
           else {
-            reject(new Error('未收到完成响应'))
+            reject(new Error('No completion response received'))
           }
         })
         .catch((error) => {
-          clearTimeout(timeoutId)
+          cleanup()
           if (error.name === 'AbortError') {
-            reject(new Error('请求超时'))
+            reject(new Error('Request timed out or interrupted'))
           }
           else {
             reject(error)

@@ -31,10 +31,9 @@ impl TaskComplexity {
         }
     }
 
-    /// 是否支持升级（Standard 失败后 fallback 到 Pro）
-    #[allow(dead_code)]
-    pub fn supports_escalation(&self) -> bool {
-        matches!(self, TaskComplexity::Medium)
+    /// Simple 级别的能力不使用 LLM，不需要 tier 标注和计量
+    pub fn requires_llm(&self) -> bool {
+        !matches!(self, TaskComplexity::Simple)
     }
 }
 
@@ -120,10 +119,10 @@ impl TierRouter {
             }
             // 生成阅读列表需要 AI
             "brew.generateReadingList" => TaskComplexity::Medium,
-            // TTS
+            // TTS（调用外部 TTS API，不使用 LLM）
             "speech.tts" => TaskComplexity::Simple,
-            // AI 图像生成
-            "ai.image" => TaskComplexity::Complex,
+            // AI 图像生成（调用外部图像 API，不使用 LLM）
+            "ai.image" => TaskComplexity::Simple,
             // 数据库查询
             id if id.starts_with("database.") => TaskComplexity::Simple,
             // 其他未知能力
@@ -143,6 +142,11 @@ impl TierRouter {
     /// 根据能力 ID 推断 ModelTier
     pub fn resolve_tier(capability_id: &str) -> ModelTier {
         Self::assess_complexity(capability_id).to_tier()
+    }
+
+    /// 该能力是否需要 LLM（不需要 LLM 的能力不参与 tier 标注和计量）
+    pub fn requires_llm(capability_id: &str) -> bool {
+        Self::assess_complexity(capability_id).requires_llm()
     }
 
     /// 带显式覆盖的 tier 解析
@@ -216,11 +220,11 @@ impl CircuitBreaker {
             CircuitState::Open => {
                 // 检查是否到了恢复时间
                 let now = Self::now_ms();
-                let last = self.last_failure.load(Ordering::Relaxed);
+                let last = self.last_failure.load(Ordering::Acquire);
                 if now - last >= self.recovery_ms {
                     // 切换到半开状态
                     self.state
-                        .store(CircuitState::HalfOpen as u8, Ordering::Relaxed);
+                        .store(CircuitState::HalfOpen as u8, Ordering::Release);
                     true
                 } else {
                     false
@@ -232,22 +236,22 @@ impl CircuitBreaker {
 
     /// 记录成功
     pub fn record_success(&self) {
-        self.failure_count.store(0, Ordering::Relaxed);
+        self.failure_count.store(0, Ordering::Release);
         self.state
-            .store(CircuitState::Closed as u8, Ordering::Relaxed);
+            .store(CircuitState::Closed as u8, Ordering::Release);
     }
 
     /// 记录失败
     pub fn record_failure(&self) {
-        let count = self.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
+        let count = self.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
         self.last_failure
-            .store(Self::now_ms(), Ordering::Relaxed);
+            .store(Self::now_ms(), Ordering::Release);
 
         if count >= self.threshold {
-            let prev = self.state.load(Ordering::Relaxed);
+            let prev = self.state.load(Ordering::Acquire);
             if prev == CircuitState::HalfOpen as u8 || count >= self.threshold {
                 self.state
-                    .store(CircuitState::Open as u8, Ordering::Relaxed);
+                    .store(CircuitState::Open as u8, Ordering::Release);
                 tracing::warn!(
                     failures = count,
                     "[CircuitBreaker] Circuit opened after {} consecutive failures",
@@ -259,7 +263,7 @@ impl CircuitBreaker {
 
     /// 获取当前状态
     pub fn get_state(&self) -> CircuitState {
-        match self.state.load(Ordering::Relaxed) {
+        match self.state.load(Ordering::Acquire) {
             0 => CircuitState::Closed,
             1 => CircuitState::Open,
             2 => CircuitState::HalfOpen,
@@ -394,10 +398,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_medium_supports_escalation() {
-        assert!(TierRouter::assess_complexity("ai.summarize").supports_escalation());
-        assert!(!TierRouter::assess_complexity("ai.chat").supports_escalation());
-        assert!(!TierRouter::assess_complexity("platform.read").supports_escalation());
-    }
 }

@@ -49,6 +49,9 @@ pub struct Notification {
     pub priority: NotificationPriority,
     pub title: String,
     pub body: String,
+    /// 目标用户 ID（None = 广播给所有用户）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<i32>,
     /// 可选的结构化数据（如任务 ID、链接等）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
@@ -69,6 +72,7 @@ impl Notification {
             priority,
             title: title.into(),
             body: body.into(),
+            user_id: None,
             metadata: None,
             created_at: Utc::now(),
             read: false,
@@ -79,6 +83,7 @@ impl Notification {
         self.metadata = Some(metadata);
         self
     }
+
 }
 
 /// SSE 推送事件（broadcast channel 传输类型）
@@ -89,9 +94,6 @@ pub enum NotificationEvent {
     NewNotification { notification: Notification },
     /// 通知已读
     NotificationRead { id: String },
-    /// 心跳（keep-alive）
-    #[allow(dead_code)]
-    Ping { timestamp: i64 },
 }
 
 /// 通知管理器
@@ -143,22 +145,41 @@ impl NotificationManager {
         self.tx.subscribe()
     }
 
-    /// 获取历史通知（最新的 N 条）
-    pub async fn get_history(&self, limit: usize) -> Vec<Notification> {
+    /// 获取指定用户的历史通知（最新的 N 条，包含广播通知）
+    pub async fn get_history_for_user(&self, user_id: i32, limit: usize) -> Vec<Notification> {
         let history = self.history.read().await;
-        history.iter().rev().take(limit).cloned().collect()
+        history
+            .iter()
+            .rev()
+            .filter(|n| n.user_id.is_none() || n.user_id == Some(user_id))
+            .take(limit)
+            .cloned()
+            .collect()
     }
 
     /// 获取未读通知数
+    #[allow(dead_code)]
     pub async fn unread_count(&self) -> usize {
         let history = self.history.read().await;
         history.iter().filter(|n| !n.read).count()
     }
 
-    /// 标记通知已读
-    pub async fn mark_read(&self, notification_id: &str) -> bool {
+    /// 获取指定用户的未读通知数
+    pub async fn unread_count_for_user(&self, user_id: i32) -> usize {
+        let history = self.history.read().await;
+        history
+            .iter()
+            .filter(|n| !n.read && (n.user_id.is_none() || n.user_id == Some(user_id)))
+            .count()
+    }
+
+    /// 标记通知已读（带用户归属校验）
+    pub async fn mark_read(&self, notification_id: &str, user_id: i32) -> bool {
         let mut history = self.history.write().await;
-        if let Some(n) = history.iter_mut().find(|n| n.id == notification_id) {
+        if let Some(n) = history.iter_mut().find(|n| {
+            n.id == notification_id
+                && (n.user_id.is_none() || n.user_id == Some(user_id))
+        }) {
             n.read = true;
             let _ = self.tx.send(NotificationEvent::NotificationRead {
                 id: notification_id.to_string(),
@@ -169,10 +190,12 @@ impl NotificationManager {
         }
     }
 
-    /// 标记全部已读
-    pub async fn mark_all_read(&self) {
+    /// 标记全部已读（仅影响该用户的通知）
+    pub async fn mark_all_read(&self, user_id: i32) {
         let mut history = self.history.write().await;
-        for n in history.iter_mut() {
+        for n in history.iter_mut().filter(|n| {
+            n.user_id.is_none() || n.user_id == Some(user_id)
+        }) {
             n.read = true;
         }
     }

@@ -27,14 +27,6 @@ static DB_FOR_TASKS: Lazy<Arc<RwLock<Option<DatabaseConnection>>>> =
 pub static CANCELLATION_TOKENS: Lazy<Arc<RwLock<HashSet<String>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashSet::new())));
 
-/// 请求取消任务
-#[allow(dead_code)]
-pub async fn request_cancellation(task_id: &str) {
-    let mut tokens = CANCELLATION_TOKENS.write().await;
-    tokens.insert(task_id.to_string());
-    tracing::info!(task_id = %task_id, "[TaskStore] Cancellation requested");
-}
-
 /// 检查任务是否被请求取消
 pub async fn is_cancelled(task_id: &str) -> bool {
     let tokens = CANCELLATION_TOKENS.read().await;
@@ -83,33 +75,6 @@ impl TaskStore {
         }
     }
 
-    /// 存储任务并等待数据库保存完成
-    #[allow(dead_code)]
-    pub async fn store_and_persist(&mut self, user_id: i32, task: TaskState) -> Result<(), String> {
-        let task_id = task.task_id.clone();
-        let task_clone = task.clone();
-
-        self.tasks.insert(task_id.clone(), task);
-        self.user_tasks.entry(user_id).or_default().push(task_id);
-
-        save_task_to_db(user_id, &task_clone).await
-    }
-
-    /// 更新任务状态并持久化
-    #[allow(dead_code)]
-    pub async fn update_and_persist(
-        &mut self,
-        user_id: i32,
-        task: TaskState,
-    ) -> Result<(), String> {
-        let task_id = task.task_id.clone();
-        let task_clone = task.clone();
-
-        self.tasks.insert(task_id.clone(), task);
-
-        save_task_to_db(user_id, &task_clone).await
-    }
-
     /// 获取任务
     pub fn get(&self, task_id: &str) -> Option<&TaskState> {
         self.tasks.get(task_id)
@@ -128,22 +93,38 @@ impl TaskStore {
             .unwrap_or_default()
     }
 
-    /// 清理过期任务（超过24小时的已完成任务）
+    /// 清理过期任务
+    ///
+    /// - 已完成/失败超过24小时的任务
+    /// - WaitingForInput 超过2小时未响应的任务（标记为超时失败）
     #[allow(dead_code)]
     pub async fn cleanup_expired(&mut self) {
         let now = Utc::now();
-        let expired_ids: Vec<String> = self
-            .tasks
-            .iter()
-            .filter(|(_, task)| {
-                if let Some(completed_at) = &task.completed_at {
-                    (now - *completed_at).num_hours() > 24
-                } else {
-                    false
+        let mut expired_ids: Vec<String> = Vec::new();
+
+        for (id, task) in &mut self.tasks {
+            // 已完成的任务：24小时后清理
+            if let Some(completed_at) = &task.completed_at {
+                if (now - *completed_at).num_hours() > 24 {
+                    expired_ids.push(id.clone());
                 }
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
+            }
+            // WaitingForInput 任务：2小时未响应则标记为超时
+            else if task.status == TaskStatus::WaitingForInput {
+                let age_hours = (now - task.started_at).num_hours();
+                if age_hours > 2 {
+                    tracing::info!(
+                        task_id = %id,
+                        age_hours = age_hours,
+                        "[TaskStore] Expiring abandoned WaitingForInput task"
+                    );
+                    task.status = TaskStatus::Failed;
+                    task.error = Some("任务等待用户输入超时（2小时），已自动取消".to_string());
+                    task.completed_at = Some(now);
+                    expired_ids.push(id.clone());
+                }
+            }
+        }
 
         for id in &expired_ids {
             self.tasks.remove(id);
@@ -209,7 +190,7 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
                 );
                 task_state.status = TaskStatus::Cancelled;
                 task_state.error =
-                    Some("任务因服务重启而中断，请重新提交".to_string());
+                    Some(crate::services::agent::response_agent::task_interrupted());
                 recovered += 1;
             }
             let user_id = task_model.user_id;
@@ -329,7 +310,9 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             session_id: Set(None),
             lane_id: Set(task.lane_id.clone()),
             name: Set(None),
-            total_steps: Set(None),
+            total_steps: Set(Some(
+                task.recipe.as_ref().map(|r| r.steps.len()).unwrap_or(task.step_results.len()).max(1) as i32
+            )),
         };
 
         new_task
@@ -368,13 +351,6 @@ pub fn persist_task_async(user_id: i32, task: TaskState) {
 }
 
 // ============ 公共 API ============
-
-/// 获取任务状态（不含所有权校验）
-#[allow(dead_code)]
-pub async fn get_task(task_id: &str) -> Option<TaskState> {
-    let store = TASK_STORE.read().await;
-    store.get(task_id).cloned()
-}
 
 /// 获取任务状态（带所有权校验）
 ///
@@ -423,7 +399,7 @@ pub async fn cancel_task_for_user(task_id: &str, user_id: i32) -> bool {
         let mut store = TASK_STORE.write().await;
         if let Some(task) = store.get_mut(task_id) {
             task.status = TaskStatus::Cancelled;
-            task.error = Some("任务已被用户取消".to_string());
+            task.error = Some(crate::services::agent::response_agent::task_cancelled_by_user());
         }
     }
 
@@ -435,13 +411,6 @@ pub async fn cancel_task_for_user(task_id: &str, user_id: i32) -> bool {
 pub async fn get_user_tasks(user_id: i32) -> Vec<TaskState> {
     let store = TASK_STORE.read().await;
     store.get_user_tasks(user_id).into_iter().cloned().collect()
-}
-
-/// 清理过期任务
-#[allow(dead_code)]
-pub async fn cleanup_tasks() {
-    let mut store = TASK_STORE.write().await;
-    store.cleanup_expired().await;
 }
 
 /// 以约 5% 的概率触发一次过期任务清理（请求驱动，避免独立定时任务）

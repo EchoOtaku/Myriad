@@ -3,6 +3,7 @@
 //! 处理 data.transform, scheduler.create, cache.status 等系统操作类能力
 
 use super::HandlerContext;
+use crate::services::agent::executor::utils::is_valid_platform as validate_platform_name;
 use crate::services::background_processor::BACKGROUND_PROCESSOR;
 use crate::services::brew_scheduler::get_brew_scheduler;
 use serde_json::{json, Value};
@@ -191,8 +192,8 @@ async fn execute_scheduler_create(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": format!("定时任务已创建: {}", name),
-                "message": schedule.map(|s| format!("调度: {}", s)).unwrap_or_default(),
+                "title": crate::services::agent::response_agent::scheduled_task_created(name),
+                "message": schedule.map(|s| crate::services::agent::response_agent::scheduled_task_schedule(s)).unwrap_or_default(),
                 "taskId": task_id
             },
             "timestamp": now.timestamp_millis()
@@ -213,7 +214,7 @@ async fn execute_scheduler_trigger(params: &HashMap<String, Value>) -> Result<Va
                             "triggered": true,
                             "tapp_id": tapp_id,
                             "newItems": new_count,
-                            "message": format!("已触发刷新，获取 {} 条新内容", new_count),
+                            "message": crate::services::agent::response_agent::refresh_triggered(new_count as usize),
                             "timestamp": chrono::Utc::now().to_rfc3339()
                         }));
                     }
@@ -246,15 +247,12 @@ async fn execute_system_metrics() -> Result<Value, String> {
 }
 
 /// 验证平台名称白名单，防止路径穿越
-fn validate_platform_name(platform: &str) -> bool {
-    matches!(platform, "steam" | "bilibili" | "github" | "netease")
-}
 
 async fn execute_cache_status(params: &HashMap<String, Value>) -> Result<Value, String> {
     let platform = params.get("platform").and_then(|v| v.as_str());
     let platforms = if let Some(p) = platform {
         if !validate_platform_name(p) {
-            return Err(format!("不支持的平台名称: {}", p));
+            return Err(crate::services::agent::response_agent::unsupported_platform(p));
         }
         vec![p.to_string()]
     } else {
@@ -313,7 +311,7 @@ async fn execute_cache_clear(params: &HashMap<String, Value>) -> Result<Value, S
 
     // 白名单校验，防止路径穿越和任意文件删除
     if !validate_platform_name(platform) {
-        return Err(format!("不支持的平台名称: {}", platform));
+        return Err(crate::services::agent::response_agent::unsupported_platform(platform));
     }
 
     let cache_path = format!("cache/platforms/{}_filtered.json", platform);
@@ -499,8 +497,10 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
     };
 
     // Ensure dir exists and write
-    let _ = tokio::fs::create_dir_all("cache/exports").await;
-    let _ = tokio::fs::write(&export_path, &export_content).await;
+    tokio::fs::create_dir_all("cache/exports").await
+        .map_err(|e| format!("创建导出目录失败: {}", e))?;
+    tokio::fs::write(&export_path, &export_content).await
+        .map_err(|e| format!("写入导出文件失败: {}", e))?;
 
     Ok(json!({
         "format": format,

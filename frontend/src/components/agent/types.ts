@@ -28,6 +28,10 @@ export interface ExecutionStep {
   name: string
   status: 'pending' | 'running' | 'completed' | 'error'
   message?: string
+  /** 步骤序号（0-based） */
+  stepIndex?: number
+  /** 总步骤数 */
+  totalSteps?: number
   /** 能力分类（用于角色图标） */
   capabilityCategory?: string
   /** 使用的模型层级（仅在执行详情中展示） */
@@ -56,7 +60,10 @@ export interface PendingQuestion {
   questionId: string
   questionType: string
   question: string
-  options?: string[]
+  context?: string
+  options?: Array<{ value: string; label: string; description?: string }>
+  required?: boolean
+  defaultValue?: string
 }
 
 /** 执行追踪汇总 */
@@ -70,7 +77,23 @@ export interface ExecutionTrace {
     durationMs: number
     success: boolean
     error?: string
+    action?: string
+    params?: Record<string, unknown>
+    outputPreview?: string
+    isDynamic?: boolean
   }>
+  /** Planner 决策（持久化数据） */
+  plannerDecision?: {
+    status: string
+    reasoning?: string
+    confidence: number
+    plannedSteps: Array<{
+      id: string
+      capabilityId: string
+      action: string
+      params?: Record<string, unknown>
+    }>
+  }
 }
 
 /** 多 Agent 协作分配信息 */
@@ -106,6 +129,8 @@ export interface ChatMessage {
   taskExecution?: TaskExecution
   suggestions?: string[]
   pendingQuestion?: PendingQuestion
+  /** 用户已选中的回答（选项 value），用于冻结选项 UI */
+  selectedAnswer?: string
   dataDisplay?: DataDisplayHint
   data?: unknown
   /** 图片生成结果 URL（支持多张） */
@@ -127,6 +152,50 @@ export interface TaskExecution {
   queuePosition?: number
   /** 过程状态文本（进度描述、步骤摘要等） */
   statusMessage?: string
+  /** 计划阶段的步骤描述列表（TaskCreated 时设置） */
+  planStepDescriptions?: string[]
+  /** 调试追踪数据（实时收集的 SSE 调试事件） */
+  debugTrace?: DebugTrace
+}
+
+/** 实时调试追踪数据（从 SSE 事件中收集） */
+export interface DebugTrace {
+  /** Planner 决策信息 */
+  plannerDecision?: {
+    status: string
+    reasoning?: string
+    confidence: number
+    steps: Array<{
+      id: string
+      capabilityId: string
+      action: string
+      params?: Record<string, unknown>
+    }>
+    userRequest: string
+  }
+  /** 各步骤调试信息（按 stepId 索引） */
+  stepDebugEntries: StepDebugEntry[]
+}
+
+/** 单个步骤的调试信息（合并 start + complete 阶段） */
+export interface StepDebugEntry {
+  stepId: string
+  capabilityId: string
+  isDynamic: boolean
+  /** 主 Agent 给此步骤的指令 */
+  directive?: string
+  /** 用户原始请求 */
+  userRequest?: string
+  /** 解析后的参数 */
+  params?: Record<string, unknown>
+  /** 执行输出预览 */
+  outputPreview?: string
+  /** 耗时 ms */
+  durationMs?: number
+  /** 是否成功 */
+  success?: boolean
+  /** 错误信息 */
+  error?: string
 }
 
 /** 会话 */

@@ -146,12 +146,6 @@ impl McpManager {
         all_tools
     }
 
-    /// 获取服务器数量
-    #[allow(dead_code)]
-    pub fn server_count(&self) -> usize {
-        self.servers.len()
-    }
-
     /// 优雅关闭所有服务器
     #[allow(dead_code)]
     pub async fn shutdown_all(&self) {

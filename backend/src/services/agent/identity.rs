@@ -13,7 +13,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 use tokio::sync::RwLock;
 
@@ -26,9 +25,6 @@ pub struct AgentIdentity {
     pub soul: Option<String>,
     /// USER.md 内容（用户偏好、语言、响应风格）
     pub user_profile: Option<String>,
-    /// 加载时间
-    #[allow(dead_code)]
-    pub loaded_at: Instant,
 }
 
 impl AgentIdentity {
@@ -47,7 +43,6 @@ impl AgentIdentity {
         Self {
             soul,
             user_profile,
-            loaded_at: Instant::now(),
         }
     }
 
@@ -117,18 +112,6 @@ impl IdentityManager {
         self.identity.read().await.clone()
     }
 
-    /// 获取角色专属身份文本
-    ///
-    /// 返回该角色的 SOUL 内容。Orchestrator 返回全局 SOUL.md。
-    /// 如果角色没有专属身份文件，返回 None。
-    #[allow(dead_code)]
-    pub async fn get_role_soul(&self, role: AgentRole) -> Option<String> {
-        if role == AgentRole::Orchestrator {
-            return self.identity.read().await.soul.clone();
-        }
-        self.role_identities.read().await.get(&role).cloned()
-    }
-
     /// 获取所有角色的简短描述（用于 Planner 注入上下文）
     ///
     /// 返回格式：`"📊 Data Worker: <第一行>\n📝 Content Worker: <第一行>"`
@@ -144,6 +127,12 @@ impl IdentityManager {
         }
         summaries.sort(); // 稳定排序
         summaries.join("\n")
+    }
+
+    /// 获取指定角色的身份文本
+    pub async fn get_role_soul(&self, role: AgentRole) -> Option<String> {
+        let roles = self.role_identities.read().await;
+        roles.get(&role).cloned()
     }
 
     /// 重新加载身份文件

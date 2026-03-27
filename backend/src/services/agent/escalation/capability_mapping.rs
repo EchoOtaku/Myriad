@@ -212,18 +212,6 @@ pub fn get_escalation(capability_id: &str) -> Option<&'static CapabilityEscalati
     CAPABILITY_ESCALATION_MAP.get(capability_id)
 }
 
-/// 检查能力是否有升级路径
-#[allow(dead_code)]
-pub fn has_escalation(capability_id: &str) -> bool {
-    CAPABILITY_ESCALATION_MAP.contains_key(capability_id)
-}
-
-/// 获取所有可升级的能力 ID 列表
-#[allow(dead_code)]
-pub fn get_all_escalatable_capabilities() -> Vec<&'static str> {
-    CAPABILITY_ESCALATION_MAP.keys().copied().collect()
-}
-
 /// 根据原始能力和参数，生成升级后的参数
 pub fn transform_params(
     capability_id: &str,
@@ -325,22 +313,6 @@ mod tests {
         // keyword 应该映射到 criteria（brew.generateReadingList 的参数）
         assert!(params.get("criteria").is_some());
         assert_eq!(params.get("criteria").unwrap(), "政治新闻");
-    }
-
-    #[test]
-    fn test_has_escalation() {
-        assert!(has_escalation("brew.items"));
-        assert!(has_escalation("netease.playlist"));
-        assert!(!has_escalation("ai.webSearch")); // 联网能力本身不需要升级
-        assert!(!has_escalation("ai.summarize")); // AI 处理能力不需要升级
-    }
-
-    #[test]
-    fn test_all_escalatable() {
-        let all = get_all_escalatable_capabilities();
-        assert!(all.len() > 10); // 应该有足够多的可升级能力
-        assert!(all.contains(&"brew.items"));
-        assert!(all.contains(&"database.anime"));
     }
 
     /// 升级目标完整性校验

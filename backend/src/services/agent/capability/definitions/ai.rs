@@ -61,7 +61,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         }),
         required_permissions: vec!["ai:analyze".to_string()],
         requires_ai: true,
-        estimated_duration_ms: Some(5000),
+        estimated_duration_ms: Some(15000),
         ..Default::default()
     });
 
@@ -210,6 +210,49 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
+    // AI Grounding 搜索（ai.webSearch 的别名，用于强调事实性搜索）
+    registry.register(Capability {
+        id: "ai.groundingSearch".to_string(),
+        name: "AI Grounding 搜索".to_string(),
+        description: "通过 AI 联网搜索验证事实、获取实时信息".to_string(),
+        category: CapabilityCategory::AiProcess,
+        supported_actions: vec![
+            IntentAction::Query,
+            IntentAction::Summarize,
+            IntentAction::Analyze,
+        ],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string", "description": "搜索查询内容" },
+                "searchType": {
+                    "type": "string",
+                    "enum": ["rss_source", "api_docs", "general"],
+                    "default": "general"
+                },
+                "resultFormat": {
+                    "type": "string",
+                    "enum": ["url", "json", "text"],
+                    "default": "json"
+                },
+                "maxResults": { "type": "integer", "default": 5 },
+                "searchPrompt": { "type": "string", "description": "自定义搜索提示词" }
+            },
+            "required": ["query"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "results": { "type": "array", "description": "搜索结果列表" },
+                "source": { "type": "string", "description": "结果来源" }
+            }
+        }),
+        required_permissions: vec!["ai:search".to_string()],
+        requires_ai: true,
+        estimated_duration_ms: Some(8000),
+        ..Default::default()
+    });
+
     // AI 文章注释
     registry.register(Capability {
         id: "brewlia.annotate".to_string(),
@@ -329,7 +372,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "prompt.generate".to_string(),
         name: "提示词生成".to_string(),
-        description: "为图片生成提供优化的提示词。务必在 description 中传入尽可能详细的描述，包括角色名、出处、外貌特征、场景和风格等".to_string(),
+        description: "为图片生成提供优化的提示词。在 description 中传入详细描述（角色名、出处、外貌特征、场景和风格等），或用 descriptionFrom 引用前序步骤的输出".to_string(),
         category: CapabilityCategory::AiProcess,
         supported_actions: vec![IntentAction::Create],
         input_schema: json!({
@@ -337,11 +380,10 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "properties": {
                 "title": { "type": "string", "description": "主题/标题" },
                 "summary": { "type": "string", "description": "简要说明" },
-                "description": { "type": "string", "description": "详细描述：角色全名、来源作品、外貌特征（发型发色、瞳色、服装配饰等）、场景、姿势、画风等" },
+                "description": { "type": "string", "description": "详细描述：角色全名、来源作品、外貌特征（发型发色、瞳色、服装配饰等）、场景、姿势、画风等。可用 descriptionFrom 引用前序步骤" },
                 "category": { "type": "string" },
                 "style": { "type": "string", "description": "画风偏好，例如 anime, photorealistic, watercolor 等" }
-            },
-            "required": ["title"]
+            }
         }),
         output_schema: json!({
             "type": "object",

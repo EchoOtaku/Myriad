@@ -311,36 +311,9 @@ impl AgentRouter {
         distribution
     }
 
-    /// 获取 Agent 配置
-    #[allow(dead_code)]
-    pub fn get_profile(&self, role: &AgentRole) -> Option<&AgentProfile> {
-        self.profiles.get(role)
-    }
-
     /// 获取所有 Agent 配置
     pub fn get_all_profiles(&self) -> Vec<&AgentProfile> {
         self.profiles.values().collect()
-    }
-
-    /// 获取能力应使用的 ModelTier（结合 Agent 角色和 TierRouter）
-    ///
-    /// Agent 角色提供默认 tier，TierRouter 提供精细调整，
-    /// 两者取较高的 tier（Pro > Standard）。
-    #[allow(dead_code)]
-    pub fn resolve_tier_for_capability(&self, capability_id: &str) -> ModelTier {
-        let role = self.route_capability(capability_id);
-        let agent_tier = self
-            .profiles
-            .get(&role)
-            .map(|p| p.default_tier)
-            .unwrap_or(ModelTier::Standard);
-        let router_tier = super::tier_router::TierRouter::resolve_tier(capability_id);
-
-        // 取两者中较高的 tier
-        match (&agent_tier, &router_tier) {
-            (ModelTier::Pro, _) | (_, ModelTier::Pro) => ModelTier::Pro,
-            _ => ModelTier::Standard,
-        }
     }
 
     /// 生成任务分配摘要（用于日志和前端展示）
@@ -541,23 +514,4 @@ mod tests {
         assert!(assignment.is_multi_agent);
     }
 
-    #[test]
-    fn test_tier_resolution() {
-        let router = AgentRouter::new();
-        // ai.chat → CreativeWorker(Pro) + TierRouter(Pro) → Pro
-        assert_eq!(
-            router.resolve_tier_for_capability("ai.chat"),
-            ModelTier::Pro
-        );
-        // platform.read → DataWorker(Standard) + TierRouter(Standard) → Standard
-        assert_eq!(
-            router.resolve_tier_for_capability("platform.read"),
-            ModelTier::Standard
-        );
-        // ai.summarize → ContentWorker(Standard) + TierRouter(Standard) → Standard
-        assert_eq!(
-            router.resolve_tier_for_capability("ai.summarize"),
-            ModelTier::Standard
-        );
-    }
 }

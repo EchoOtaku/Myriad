@@ -13,10 +13,12 @@
 import type { TranslationKeys } from '../../i18n'
 import type {
   AgentResponse,
+  PlannerDecisionEvent,
   ProgressEvent,
   ProgressUpdateEvent,
   SessionInfo,
   StepCompletedEvent,
+  StepDebugEvent,
   StepStartedEvent,
   SummaryTokenEvent,
   TaskCreatedEvent,
@@ -33,13 +35,14 @@ import {
   agentService,
   executeFrontendAction,
 } from '../../services/agent'
-import { audioToBase64, getSpeechStatus, speechToText } from '../../services/speechApi'
 
 import { AraelChatMessage } from './components/AraelChatMessage'
+import { AraelDebugPanel } from './components/AraelDebugPanel'
 import { AraelInput } from './components/AraelInput'
 import { AraelManageDrawer } from './components/AraelManageDrawer'
 import { AraelPresets } from './components/AraelPresets'
 import { AraelSessionList } from './components/AraelSessionList'
+import { useLongPress, useMessageState, useVoiceRecording } from './hooks'
 import {
   LONG_PRESS_DURATION,
   SPRING_SNAPPY,
@@ -47,7 +50,9 @@ import {
 import './AraelPanel.css'
 
 /** 面板内视图 */
-type PanelView = 'chat' | 'sessions' | 'manage'
+type PanelView = 'chat' | 'sessions' | 'manage' | 'debug'
+
+const ARAEL_PREFIX_RE = /^Arael\s*/
 
 // 智能提示词生成
 function getSmartGreeting(pathname: string, _historyCount: number, arael: TranslationKeys['arael']): string {
@@ -82,8 +87,15 @@ function getSmartGreeting(pathname: string, _historyCount: number, arael: Transl
   return `Arael ${timeGreeting}，${hint}`
 }
 
+/** 调试日志条目 */
+interface DebugLogEntry {
+  time: string
+  type: 'response' | 'sse' | 'error'
+  data: unknown
+}
+
 /** 构建完整调试信息 */
-function buildDebugInfo(s: {
+function _buildDebugInfo(s: {
   sessionId: string | null
   sessionTitle: string | null
   sessionTitleSetRef: boolean
@@ -99,6 +111,7 @@ function buildDebugInfo(s: {
   speechAvailable: boolean
   isRecording: boolean
   isProcessingVoice: boolean
+  debugLog: DebugLogEntry[]
 }): string {
   const msgs = s.messages
   const lastAssistant = msgs.toReversed().find(m => m.role === 'assistant')
@@ -122,7 +135,7 @@ function buildDebugInfo(s: {
     `isLoading: ${s.isLoading}`,
     `hasActiveExec: ${s.hasActiveExecution}`,
     `input: "${s.input}"`,
-    `expandedMsg: ${s.expandedMessageId ?? '-'}`,
+    `expandedMsg: ${s.expandedMessageId ?? '-'}`, // debug only
     ``,
     `[Messages] total: ${msgs.length} (u:${uCount} a:${aCount} s:${sCount})`,
   ]
@@ -208,6 +221,33 @@ function buildDebugInfo(s: {
     lines.push(`  none`)
   }
 
+  // ---- 最后一条 assistant 消息的原始 data 完整输出 ----
+  if (lastAssistant?.data) {
+    lines.push(``)
+    lines.push(`[Last Message Raw Data]`)
+    try {
+      lines.push(JSON.stringify(lastAssistant.data, null, 2))
+    }
+    catch {
+      lines.push(`  (stringify failed)`)
+    }
+  }
+
+  // ---- 调试日志（原始响应 / SSE 事件 / 错误） ----
+  if (s.debugLog.length > 0) {
+    lines.push(``)
+    lines.push(`[Debug Log] (${s.debugLog.length} entries)`)
+    for (const entry of s.debugLog) {
+      lines.push(`  --- ${entry.type} @ ${entry.time} ---`)
+      try {
+        lines.push(`  ${JSON.stringify(entry.data, null, 2).split('\n').join('\n  ')}`)
+      }
+      catch {
+        lines.push(`  (stringify failed)`)
+      }
+    }
+  }
+
   lines.push(``)
   lines.push(`[Other]`)
   lines.push(`presets: ${s.presetFavorites}`)
@@ -223,7 +263,7 @@ function buildDebugInfo(s: {
 
 export const AraelPanel: React.FC = () => {
   const location = useLocation()
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
 
   // 页面内容上下文
   const pageContentContext = usePageContentOptional()
@@ -237,14 +277,19 @@ export const AraelPanel: React.FC = () => {
 
   // ============ 对话系统核心状态 ============
 
-  // 聊天消息列表（核心 source of truth）
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  // 消息状态（提取到 useMessageState hook）
+  const {
+    messages,
+    setMessages,
+    messagesRef,
+    updateMessage,
+    updateMessageExecution,
+    addExecutionStep,
+    updateExecutionStep,
+  } = useMessageState()
 
   // 当前会话 ID（服务端持久化）
   const [sessionId, setSessionId] = useState<string | null>(null)
-
-  // 展开的消息（用于展示执行详情）
-  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null)
 
   // 面板内视图切换
   const [panelView, setPanelView] = useState<PanelView>('chat')
@@ -255,42 +300,95 @@ export const AraelPanel: React.FC = () => {
   // 空状态继续对话候选（上一个、上上个）
   const [continueSessions, setContinueSessions] = useState<ChatSession[]>([])
 
-  // 语音服务可用性
-  const [speechAvailable, setSpeechAvailable] = useState(false)
-
-  // 语音录制状态
-  const [isRecording, setIsRecording] = useState(false)
-  const [isProcessingVoice, setIsProcessingVoice] = useState(false)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
+  // 语音录制（提取到 useVoiceRecording hook）
+  const handleSendRef = useRef<(text?: string) => Promise<void>>(null)
+  const voiceResultHandler = useCallback((text: string) => {
+    setInput(text)
+    setTimeout(() => handleSendRef.current?.(text), 100)
+  }, [])
+  const {
+    speechAvailable,
+    isRecording,
+    isProcessingVoice,
+    toggleRecording,
+  } = useVoiceRecording(voiceResultHandler, locale)
 
   // Refs
-  const handleSendRef = useRef<(text?: string) => Promise<void>>(null)
   const handleAgentResponseRef = useRef<(messageId: string, response: AgentResponse) => Promise<void>>(null)
+  const answerQuestionRef = useRef<(messageId: string, answer: string) => void>(null)
   const sessionTitleSetRef = useRef(false)
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
   const [sessionTitle, setSessionTitle] = useState<string | null>(null)
 
-  // 长按检测
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const longPressStartRef = useRef<{ x: number, y: number } | null>(null)
-  const isLongPressingRef = useRef(false)
-  const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number, active: boolean }>({ x: 0, y: 0, active: false })
+  // 长按检测（提取到 useLongPress hook）
+  const { indicator: longPressIndicator } = useLongPress(
+    LONG_PRESS_DURATION,
+    useCallback(() => setVisibility('visible'), []),
+    visibility === 'hidden',
+  )
 
   // DOM 引用
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesListRef = useRef<HTMLDivElement>(null)
+  const isNearBottomRef = useRef(true)
+
+  // 调试日志（最近 30 条原始数据 / SSE 事件 / 错误）
+  const debugLogRef = useRef<DebugLogEntry[]>([])
+  const pushDebugLog = useCallback((type: DebugLogEntry['type'], data: unknown) => {
+    const log = debugLogRef.current
+    log.push({ time: new Date().toISOString(), type, data })
+    if (log.length > 30)
+      log.splice(0, log.length - 30)
+  }, [])
+  const [lastError, setLastError] = useState<string | null>(null)
+
+  // 最近一次执行（用于调试面板）
+  const latestExecution = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].taskExecution)
+        return messages[i].taskExecution
+    }
+    return undefined
+  }, [messages])
 
   // 计算是否有活跃的处理中消息
   const hasActiveExecution = useMemo(() =>
     messages.some(m => m.taskExecution?.status === 'processing' || m.taskExecution?.status === 'waiting'), [messages])
 
-  // 自动滚动到底部
+  // 检测是否有待回答的问题（用于将主输入框路由到回答逻辑）
+  const pendingAnswerMsg = useMemo(() => {
+    // 从后往前找第一个有 pendingQuestion 且未回答的消息
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.pendingQuestion && !m.selectedAnswer && m.taskExecution?.status === 'waiting') {
+        return m
+      }
+    }
+    return null
+  }, [messages])
+
+  // 自动滚动到底部（仅当用户已在底部附近时）
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && isNearBottomRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages])
+
+  // 跟踪用户是否在底部附近
+  useEffect(() => {
+    const el = messagesListRef.current
+    if (!el)
+      return
+    const onScroll = () => {
+      const threshold = 80
+      isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   // ============ 预设管理 ============
 
@@ -309,15 +407,6 @@ export const AraelPanel: React.FC = () => {
       loadPresets()
     }
   }, [visibility, loadPresets])
-
-  // 语音服务状态
-  useEffect(() => {
-    if (visibility === 'visible') {
-      getSpeechStatus()
-        .then(status => setSpeechAvailable(status.available && status.asr_enabled))
-        .catch(() => setSpeechAvailable(false))
-    }
-  }, [visibility])
 
   const smartGreeting = useMemo(() =>
     getSmartGreeting(location.pathname, 0, t.arael), [visibility, location.pathname, t.arael])
@@ -365,69 +454,6 @@ export const AraelPanel: React.FC = () => {
     setTimeout(() => inputRef.current?.focus(), 100)
   }, [])
 
-  // ============ 消息管理 ============
-
-  const updateMessage = useCallback((messageId: string, updates: Partial<ChatMessage>) => {
-    setMessages(prev => prev.map(m =>
-      m.id === messageId ? { ...m, ...updates } : m,
-    ))
-  }, [])
-
-  const updateMessageExecution = useCallback((messageId: string, updates: Partial<TaskExecution>) => {
-    setMessages(prev => prev.map((m) => {
-      if (m.id !== messageId || !m.taskExecution)
-        return m
-      // progress 仅递增，避免回退
-      const newProgress = updates.progress != null
-        ? Math.max(updates.progress, m.taskExecution.progress)
-        : m.taskExecution.progress
-      return {
-        ...m,
-        taskExecution: { ...m.taskExecution, ...updates, progress: newProgress },
-      }
-    }))
-  }, [])
-
-  const addExecutionStep = useCallback((messageId: string, step: ExecutionStep) => {
-    setMessages(prev => prev.map((m) => {
-      if (m.id !== messageId || !m.taskExecution)
-        return m
-      const exists = m.taskExecution.steps.some(s => s.id === step.id)
-      if (exists) {
-        return {
-          ...m,
-          taskExecution: {
-            ...m.taskExecution,
-            steps: m.taskExecution.steps.map(s => s.id === step.id ? { ...s, ...step } : s),
-          },
-        }
-      }
-      return {
-        ...m,
-        taskExecution: {
-          ...m.taskExecution,
-          steps: [...m.taskExecution.steps, step],
-        },
-      }
-    }))
-  }, [])
-
-  const updateExecutionStep = useCallback((messageId: string, stepId: string, updates: Partial<ExecutionStep>) => {
-    setMessages(prev => prev.map((m) => {
-      if (m.id !== messageId || !m.taskExecution)
-        return m
-      return {
-        ...m,
-        taskExecution: {
-          ...m.taskExecution,
-          steps: m.taskExecution.steps.map(s =>
-            s.id === stepId ? { ...s, ...updates } : s,
-          ),
-        },
-      }
-    }))
-  }, [])
-
   // ============ 会话管理 ============
 
   const startNewSession = useCallback(async () => {
@@ -444,7 +470,6 @@ export const AraelPanel: React.FC = () => {
     setIsLoading(false)
     setSessionId(null)
     setMessages([])
-    setExpandedMessageId(null)
     setPanelView('chat')
     sessionTitleSetRef.current = false
     setSessionTitle(null)
@@ -496,6 +521,9 @@ export const AraelPanel: React.FC = () => {
   // ============ 中断 ============
 
   const interruptCurrentTask = useCallback(async () => {
+    // 客户端侧中断 SSE 连接（防止连接泄露）
+    agentService.abortCurrentRequest()
+
     const processingMsgs = messages.filter(m => m.taskExecution?.status === 'processing')
     for (const msg of processingMsgs) {
       const taskId = msg.taskExecution?.taskId
@@ -511,238 +539,11 @@ export const AraelPanel: React.FC = () => {
     setIsLoading(false)
   }, [messages, updateMessage])
 
-  // ============ 语音录制 ============
-
-  const startRecording = useCallback(async () => {
-    try {
-      const status = await getSpeechStatus()
-      if (!status.available || !status.asr_enabled) {
-        return
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      })
-
-      const audioContext = new AudioContext({ sampleRate: 16000 })
-      const source = audioContext.createMediaStreamSource(stream)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      const pcmData: Float32Array[] = []
-
-      processor.onaudioprocess = (e) => {
-        pcmData.push(new Float32Array(e.inputBuffer.getChannelData(0)))
-      }
-
-      source.connect(processor)
-      processor.connect(audioContext.destination)
-
-      audioChunksRef.current = [];
-      (mediaRecorderRef.current as unknown as {
-        audioContext: AudioContext
-        stream: MediaStream
-        processor: ScriptProcessorNode
-        pcmData: Float32Array[]
-      }) = { audioContext, stream, processor, pcmData }
-
-      setIsRecording(true)
-    }
-    catch (err) {
-      console.error('[AraelPanel] 无法访问麦克风:', err)
-    }
-  }, [])
-
-  const pcmToWav = useCallback((pcmData: Float32Array[], sampleRate: number): Blob => {
-    const totalLength = pcmData.reduce((acc, arr) => acc + arr.length, 0)
-    const merged = new Float32Array(totalLength)
-    let offset = 0
-    for (const arr of pcmData) {
-      merged.set(arr, offset)
-      offset += arr.length
-    }
-
-    const buffer = new ArrayBuffer(44 + merged.length * 2)
-    const view = new DataView(buffer)
-
-    const writeString = (offset: number, string: string) => {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i))
-      }
-    }
-
-    writeString(0, 'RIFF')
-    view.setUint32(4, 36 + merged.length * 2, true)
-    writeString(8, 'WAVE')
-    writeString(12, 'fmt ')
-    view.setUint32(16, 16, true)
-    view.setUint16(20, 1, true)
-    view.setUint16(22, 1, true)
-    view.setUint32(24, sampleRate, true)
-    view.setUint32(28, sampleRate * 2, true)
-    view.setUint16(32, 2, true)
-    view.setUint16(34, 16, true)
-    writeString(36, 'data')
-    view.setUint32(40, merged.length * 2, true)
-
-    let dataOffset = 44
-    for (let i = 0; i < merged.length; i++) {
-      const sample = Math.max(-1, Math.min(1, merged[i]))
-      view.setInt16(dataOffset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true)
-      dataOffset += 2
-    }
-
-    return new Blob([buffer], { type: 'audio/wav' })
-  }, [])
-
-  const stopRecording = useCallback(async () => {
-    const recorder = mediaRecorderRef.current as unknown as {
-      audioContext: AudioContext
-      stream: MediaStream
-      processor: ScriptProcessorNode
-      pcmData: Float32Array[]
-    } | null
-
-    if (!recorder || !isRecording)
-      return
-
-    setIsRecording(false)
-
-    recorder.processor.disconnect()
-    recorder.stream.getTracks().forEach(track => track.stop())
-    await recorder.audioContext.close()
-
-    if (recorder.pcmData.length === 0) {
-      return
-    }
-
-    setIsProcessingVoice(true)
-
-    try {
-      const wavBlob = pcmToWav(recorder.pcmData, 16000)
-      const base64Audio = await audioToBase64(wavBlob)
-      const result = await speechToText({
-        audio_data: base64Audio,
-        format: 'wav',
-        engine: '16k_zh',
-      })
-
-      if (result.success && result.text) {
-        setInput(result.text)
-        setTimeout(() => handleSendRef.current?.(result.text), 100)
-      }
-    }
-    catch (err) {
-      console.error('[AraelPanel] 语音识别出错:', err)
-    }
-    finally {
-      setIsProcessingVoice(false)
-      mediaRecorderRef.current = null
-    }
-  }, [isRecording, pcmToWav])
-
-  const toggleRecording = useCallback(() => {
-    if (isRecording) { stopRecording() }
-    else { startRecording() }
-  }, [isRecording, startRecording, stopRecording])
-
-  useEffect(() => {
-    return () => {
-      const recorder = mediaRecorderRef.current as unknown as {
-        audioContext?: AudioContext
-        stream?: MediaStream
-        processor?: ScriptProcessorNode
-      } | null
-      if (recorder && isRecording) {
-        recorder.processor?.disconnect()
-        recorder.stream?.getTracks().forEach(track => track.stop())
-        recorder.audioContext?.close()
-      }
-    }
-  }, [isRecording])
-
-  // ============ 长按检测 ============
-
-  const startLongPress = useCallback((e: MouseEvent | TouchEvent) => {
-    if (visibility !== 'hidden')
-      return
-    const point = 'touches' in e ? e.touches[0] : e
-    longPressStartRef.current = { x: point.clientX, y: point.clientY }
-    isLongPressingRef.current = true
-    setLongPressIndicator({ x: point.clientX, y: point.clientY, active: true })
-
-    longPressTimerRef.current = setTimeout(async () => {
-      if (isLongPressingRef.current) {
-        setLongPressIndicator(prev => ({ ...prev, active: false }))
-        setVisibility('visible')
-        if (navigator.vibrate)
-          navigator.vibrate(50)
-      }
-    }, LONG_PRESS_DURATION)
-  }, [visibility])
-
-  const cancelLongPress = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-    isLongPressingRef.current = false
-    longPressStartRef.current = null
-    setLongPressIndicator(prev => ({ ...prev, active: false }))
-  }, [])
-
-  const checkMovement = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!longPressStartRef.current || !isLongPressingRef.current)
-      return
-    const point = 'touches' in e ? e.touches[0] : e
-    const dx = Math.abs(point.clientX - longPressStartRef.current.x)
-    const dy = Math.abs(point.clientY - longPressStartRef.current.y)
-    if (dx > 10 || dy > 10)
-      cancelLongPress()
-  }, [cancelLongPress])
-
-  useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('.arael-panel') || target.closest('input') || target.closest('textarea') || target.closest('button') || target.closest('a') || target.closest('[contenteditable]') || target.closest('.tapp-window'))
-        return
-      startLongPress(e)
-    }
-
-    const handleTouchStart = (e: TouchEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('.arael-panel') || target.closest('input') || target.closest('textarea') || target.closest('button') || target.closest('a') || target.closest('[contenteditable]') || target.closest('.tapp-window'))
-        return
-      startLongPress(e)
-    }
-
-    const handleMouseUp = () => cancelLongPress()
-    const handleTouchEnd = () => cancelLongPress()
-    const handleMouseMove = (e: MouseEvent) => checkMovement(e)
-    const handleTouchMove = (e: TouchEvent) => checkMovement(e)
-
-    document.addEventListener('mousedown', handleMouseDown)
-    document.addEventListener('touchstart', handleTouchStart, { passive: true })
-    document.addEventListener('mouseup', handleMouseUp)
-    document.addEventListener('touchend', handleTouchEnd)
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('touchmove', handleTouchMove, { passive: true })
-
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown)
-      document.removeEventListener('touchstart', handleTouchStart)
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.removeEventListener('touchend', handleTouchEnd)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('touchmove', handleTouchMove)
-      cancelLongPress()
-    }
-  }, [startLongPress, cancelLongPress, checkMovement])
-
   // ============ 面板控制 ============
 
   const closePanel = useCallback(() => {
     setVisibility('hidden')
     setInput('')
-    setExpandedMessageId(null)
     setPanelView('chat')
   }, [])
 
@@ -782,9 +583,25 @@ export const AraelPanel: React.FC = () => {
   const createProgressHandler = useCallback((assistantMessageId: string) => {
     let streamedSummary = ''
     return (event: ProgressEvent) => {
+      // 记录关键 SSE 事件到调试日志
+      if (event.type === 'task_created' || event.type === 'task_completed' || event.type === 'error'
+        || (event.type === 'step_completed' && !(event as StepCompletedEvent).success)) {
+        pushDebugLog('sse', event)
+      }
       switch (event.type) {
         case 'session_created': {
           setSessionId(event.sessionId)
+          // 同步更新 ref，确保后续同帧事件能立即读到
+          sessionIdRef.current = event.sessionId
+          break
+        }
+
+        case 'session_title_updated': {
+          // 后端并行 AI 生成的标题通过 SSE 推送
+          if (event.title) {
+            sessionTitleSetRef.current = true
+            setSessionTitle(event.title)
+          }
           break
         }
 
@@ -801,8 +618,14 @@ export const AraelPanel: React.FC = () => {
           if (tcEvent.queuePosition != null && tcEvent.queuePosition > 0) {
             execUpdates.queuePosition = tcEvent.queuePosition
           }
-          execUpdates.statusMessage = tcEvent.message
+
+          // 存储计划步骤描述（用于前端显示执行计划概览）
+          if (tcEvent.stepDescriptions && tcEvent.stepDescriptions.length > 0) {
+            execUpdates.planStepDescriptions = tcEvent.stepDescriptions
+          }
+
           updateMessageExecution(assistantMessageId, execUpdates)
+          // content 留空 — 进度信息由 live steps 展示，避免与步骤进度重复
           break
         }
 
@@ -815,16 +638,20 @@ export const AraelPanel: React.FC = () => {
         }
 
         case 'step_started': {
+          streamedSummary = '' // ai_summarize 从零开始，替换 announce_plan
           const stepEvent = event as StepStartedEvent
           addExecutionStep(assistantMessageId, {
             id: stepEvent.stepId,
             name: stepEvent.description,
             status: 'running',
+            stepIndex: stepEvent.stepIndex,
+            totalSteps: stepEvent.totalSteps,
             capabilityCategory: stepEvent.capabilityCategory,
             retryAttempt: stepEvent.retryAttempt,
           })
-          updateMessageExecution(assistantMessageId, { queuePosition: 0 })
-          // 不更新 message.content，避免与步骤列表重复显示
+          updateMessageExecution(assistantMessageId, {
+            queuePosition: 0,
+          })
           break
         }
 
@@ -845,28 +672,49 @@ export const AraelPanel: React.FC = () => {
                 : m,
             ))
           }
-          if (stepEvent.outputSummary) {
-            updateMessageExecution(assistantMessageId, { statusMessage: stepEvent.outputSummary })
-          }
+          break
+        }
+
+        case 'step_retrying': {
+          const retryEvent = event as import('../../services/agent/types').StepRetryingEvent
+          // 更新步骤状态为重试中
+          updateExecutionStep(assistantMessageId, retryEvent.stepId, {
+            status: 'running',
+            message: `🔄 ${retryEvent.reason} (${retryEvent.retryCount}/${retryEvent.maxRetries})`,
+            retryAttempt: retryEvent.retryCount,
+          })
           break
         }
 
         case 'progress': {
           const progressEvent = event as ProgressUpdateEvent
-          const progressUpdates: Partial<TaskExecution> = {
+          updateMessageExecution(assistantMessageId, {
             progress: progressEvent.progress,
-          }
-          if (progressEvent.message) {
-            progressUpdates.statusMessage = progressEvent.message
-          }
-          updateMessageExecution(assistantMessageId, progressUpdates)
+          })
           break
         }
 
-        case 'waiting_for_input':
-          updateMessageExecution(assistantMessageId, { status: 'waiting' })
-          updateMessage(assistantMessageId, { content: '需要更多信息...' })
+        case 'waiting_for_input': {
+          const wEvent = event as import('../../services/agent/types').WaitingForInputEvent
+          const pendingQ: import('./types').PendingQuestion = {
+            questionId: wEvent.questionId,
+            questionType: wEvent.questionType,
+            question: wEvent.question,
+            context: wEvent.context,
+            options: wEvent.options,
+            required: wEvent.required,
+            defaultValue: wEvent.defaultValue,
+          }
+          updateMessage(assistantMessageId, {
+            pendingQuestion: pendingQ,
+            selectedAnswer: undefined,
+          })
+          updateMessageExecution(assistantMessageId, {
+            status: 'waiting',
+            taskId: wEvent.taskId,
+          })
           break
+        }
 
         case 'error':
           updateMessageExecution(assistantMessageId, { status: 'error' })
@@ -875,25 +723,145 @@ export const AraelPanel: React.FC = () => {
 
         case 'summary_token': {
           const tokenEvent = event as SummaryTokenEvent
-          if (!tokenEvent.done) {
+          if (tokenEvent.done) {
+            // 一轮流式结束 — 保存快照到 statusMessage 供思考面板引用
+            if (streamedSummary) {
+              updateMessageExecution(assistantMessageId, {
+                statusMessage: streamedSummary,
+              })
+            }
+            // 不清 streamedSummary — step_started 事件负责在步骤开始时重置
+          }
+          else {
             streamedSummary += tokenEvent.token
+            // announce_plan 和 ai_summarize 都写入正文，用户都看得到
+            // announce_plan: "好的，让我帮你查一下~"（执行前的温暖感）
+            // ai_summarize: "东京25°C，芙莉莲好看~"（执行后的结果）
+            // ai_summarize 自然替换 announce_plan（因为 step_started 已重置 streamedSummary）
             updateMessage(assistantMessageId, { content: streamedSummary })
-            updateMessageExecution(assistantMessageId, { statusMessage: '正在生成回复...' })
           }
           break
         }
 
-        case 'task_completed':
+        case 'task_completed': {
+          // 检查任务是否真正完成（多轮问答时可能仍在等待用户输入）
+          const completedEvent = event as import('../../services/agent/types').TaskCompletedEvent
+          const taskInfo = completedEvent.response?.task as Record<string, unknown> | undefined
+          const isStillWaiting = taskInfo?.status === 'waitingforinput'
+
+          if (!isStillWaiting) {
+            // 任务真正完成：清除 pendingQuestion、更新状态、确保 isLoading 归位
+            updateMessage(assistantMessageId, {
+              pendingQuestion: undefined,
+              selectedAnswer: undefined,
+            })
+            updateMessageExecution(assistantMessageId, {
+              status: completedEvent.success ? 'completed' : 'error',
+              progress: 100,
+            })
+            setIsLoading(false)
+          }
           break
+        }
+
+        case 'planner_decision': {
+          const pdEvent = event as PlannerDecisionEvent
+          pushDebugLog('sse', event)
+          setMessages(prev => prev.map((m) => {
+            if (m.id !== assistantMessageId || !m.taskExecution)
+              return m
+            const existing = m.taskExecution.debugTrace ?? { stepDebugEntries: [] }
+            return {
+              ...m,
+              taskExecution: {
+                ...m.taskExecution,
+                debugTrace: {
+                  ...existing,
+                  plannerDecision: {
+                    status: pdEvent.status,
+                    reasoning: pdEvent.reasoning,
+                    confidence: pdEvent.confidence,
+                    steps: pdEvent.steps,
+                    userRequest: pdEvent.userRequest,
+                  },
+                },
+              },
+            }
+          }))
+          break
+        }
+
+        case 'step_debug': {
+          const sdEvent = event as StepDebugEvent
+          setMessages(prev => prev.map((m) => {
+            if (m.id !== assistantMessageId || !m.taskExecution)
+              return m
+            const existing = m.taskExecution.debugTrace ?? { stepDebugEntries: [] }
+            const entries = [...existing.stepDebugEntries]
+
+            if (sdEvent.phase === 'start') {
+              entries.push({
+                stepId: sdEvent.stepId,
+                capabilityId: sdEvent.capabilityId,
+                isDynamic: sdEvent.isDynamic,
+                directive: sdEvent.directive,
+                userRequest: sdEvent.userRequest,
+                params: sdEvent.params,
+              })
+            }
+            else if (sdEvent.phase === 'complete') {
+              const idx = entries.findIndex(e => e.stepId === sdEvent.stepId)
+              if (idx >= 0) {
+                entries[idx] = {
+                  ...entries[idx],
+                  outputPreview: sdEvent.outputPreview,
+                  durationMs: sdEvent.durationMs,
+                  success: sdEvent.success,
+                  error: sdEvent.error,
+                }
+              }
+              else {
+                entries.push({
+                  stepId: sdEvent.stepId,
+                  capabilityId: sdEvent.capabilityId,
+                  isDynamic: sdEvent.isDynamic,
+                  outputPreview: sdEvent.outputPreview,
+                  durationMs: sdEvent.durationMs,
+                  success: sdEvent.success,
+                  error: sdEvent.error,
+                })
+              }
+            }
+
+            return {
+              ...m,
+              taskExecution: {
+                ...m.taskExecution,
+                debugTrace: { ...existing, stepDebugEntries: entries },
+              },
+            }
+          }))
+          break
+        }
       }
     }
-  }, [updateMessage, updateMessageExecution, addExecutionStep, updateExecutionStep])
+  }, [updateMessage, updateMessageExecution, addExecutionStep, updateExecutionStep, pushDebugLog])
 
   // ============ 发送消息 ============
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = text || input.trim()
-    if (!messageText || isLoading)
+    if (!messageText)
+      return
+
+    // 如果有待回答的问题，将输入路由到 answerQuestion（即使 isLoading 也允许）
+    if (pendingAnswerMsg && answerQuestionRef.current) {
+      setInput('')
+      answerQuestionRef.current(pendingAnswerMsg.id, messageText)
+      return
+    }
+
+    if (isLoading)
       return
 
     // 切回对话视图
@@ -957,27 +925,41 @@ export const AraelPanel: React.FC = () => {
         context,
       )
 
+      pushDebugLog('response', response)
+      setLastError(null)
+
       if (handleAgentResponseRef.current) {
         handleAgentResponseRef.current(assistantMsgId, response)
       }
     }
     catch (error) {
-      const errorMsg = error instanceof Error ? error.message : '未知错误'
+      const errorMsg = error instanceof Error ? error.message : t.arael.unknownError
+      pushDebugLog('error', { message: errorMsg, stack: error instanceof Error ? error.stack : undefined })
+      setLastError(errorMsg)
 
-      updateMessage(assistantMsgId, {
-        content: `出错了：${errorMsg}`,
-        taskExecution: {
-          taskId: '',
-          status: 'error',
-          progress: 0,
-          steps: [],
-        },
-      })
+      // 保留已收集的 debugTrace 和步骤信息，只更新状态
+      setMessages(prev => prev.map((m) => {
+        if (m.id !== assistantMsgId)
+          return m
+        const existing = m.taskExecution
+        return {
+          ...m,
+          content: m.content || t.arael.errorWithDetail.replace('{error}', errorMsg),
+          taskExecution: {
+            taskId: existing?.taskId ?? '',
+            status: 'error' as const,
+            progress: existing?.progress ?? 0,
+            steps: existing?.steps ?? [],
+            debugTrace: existing?.debugTrace,
+            executionTrace: existing?.executionTrace,
+          },
+        }
+      }))
     }
     finally {
       setIsLoading(false)
     }
-  }, [input, isLoading, sessionId, location.pathname, pageContentContext, createProgressHandler, updateMessage])
+  }, [input, isLoading, sessionId, location.pathname, pageContentContext, createProgressHandler, updateMessage, pushDebugLog, pendingAnswerMsg])
 
   useEffect(() => {
     handleSendRef.current = handleSend
@@ -989,10 +971,10 @@ export const AraelPanel: React.FC = () => {
     const taskData = response.task as Record<string, unknown> | undefined
     const pendingQuestion = taskData?.pendingQuestion as PendingQuestion | undefined
 
-    if (pendingQuestion && pendingQuestion.options && pendingQuestion.options.length > 0) {
+    if (pendingQuestion && pendingQuestion.question) {
       updateMessage(messageId, {
-        content: pendingQuestion.question,
         pendingQuestion,
+        selectedAnswer: undefined,
       })
       updateMessageExecution(messageId, {
         status: 'waiting',
@@ -1006,27 +988,6 @@ export const AraelPanel: React.FC = () => {
 
     const responseData = response.data as Record<string, unknown> | undefined
 
-    // 从 response.data 中提取 AI 生成的实际文本
-    // 后端各能力的文本字段：reply(ai.chat), aiSummary(搜索), analysis(分析), summary(总结)
-    const aiText = responseData
-      ? (typeof responseData.reply === 'string' ? responseData.reply : undefined)
-      ?? (typeof responseData.aiSummary === 'string' ? responseData.aiSummary : undefined)
-      ?? (typeof responseData.analysis === 'string' ? responseData.analysis : undefined)
-      ?? (typeof responseData.summary === 'string' ? responseData.summary : undefined)
-      : undefined
-
-    // 优先使用 data 中的 AI 文本，其次 response.message，再从 data.message 回退
-    const dataMessage = typeof responseData?.message === 'string' ? responseData.message : undefined
-    let displayMessage = aiText || response.message || dataMessage
-
-    console.log('[Arael] handleAgentResponse:', {
-      responseType: response.responseType,
-      message: response.message,
-      aiText,
-      dataKeys: responseData ? Object.keys(responseData) : [],
-      displayMessage,
-    })
-
     const stepHistory = taskData?.stepHistory as Array<{
       stepId: string
       status: string
@@ -1036,40 +997,86 @@ export const AraelPanel: React.FC = () => {
       error?: string
     }> | undefined
 
+    const isMultiStep = stepHistory && stepHistory.length > 1
+
+    // 构建显示内容
+    // 多步骤：response.message 已由后端 ai_summarize 生成人格化汇总，直接使用
+    // 单步骤：优先使用 data 中的 AI 文本（reply/aiSummary/analysis/summary）
+    // 注：announce_plan 已通过 SSE 实时写入正文，此处 response.message（= ai_summarize）会覆盖它
+    let displayMessage: string | undefined
+
+    if (isMultiStep) {
+      // 多步骤：后端 response.message 是人格化汇总
+      displayMessage = response.message
+    }
+    else {
+      // 单步骤：从 data 提取 AI 文本
+      const aiText = responseData
+        ? (typeof responseData.reply === 'string' ? responseData.reply : undefined)
+        ?? (typeof responseData.aiSummary === 'string' ? responseData.aiSummary : undefined)
+        ?? (typeof responseData.analysis === 'string' ? responseData.analysis : undefined)
+        ?? (typeof responseData.summary === 'string' ? responseData.summary : undefined)
+        : undefined
+      const dataMessage = typeof responseData?.message === 'string' ? responseData.message : undefined
+      displayMessage = aiText || response.message || dataMessage
+    }
+
+    // 失败步骤信息追加
     if (stepHistory && stepHistory.length > 0) {
       const failedSteps = stepHistory.filter(s => s.status === 'failed')
-      const completedSteps = stepHistory.filter(s => s.status === 'completed')
+      if (failedSteps.length > 0 && failedSteps.length < stepHistory.length) {
+        const failInfo = failedSteps.map(s => s.error || s.outputSummary || t.arael.executionFailed).join('；')
+        displayMessage = `${displayMessage || ''}\n${format(t.arael.failReason, { reason: failInfo })}`
+      }
+      else if (failedSteps.length === stepHistory.length) {
+        displayMessage = t.arael.executionFailed
+        const failInfo = failedSteps.map(s => s.error || s.outputSummary || t.arael.unknownError).join('；')
+        displayMessage += `\n${failInfo}`
+      }
+    }
 
-      if (!aiText && (displayMessage === '任务已完成' || !displayMessage)) {
-        if (failedSteps.length > 0 && completedSteps.length > 0) {
-          displayMessage = format(t.arael.partialComplete, { completed: completedSteps.length, total: stepHistory.length })
-          const failInfo = failedSteps
-            .map(s => s.error || s.outputSummary || t.arael.executionFailed)
-            .join('；')
-          displayMessage += `\n${format(t.arael.failReason, { reason: failInfo })}`
-        }
-        else if (failedSteps.length === stepHistory.length) {
-          displayMessage = t.arael.executionFailed
-          const failInfo = failedSteps
-            .map(s => s.error || s.outputSummary || t.arael.unknownError)
-            .join('；')
-          displayMessage += `\n${failInfo}`
-        }
-        else if (completedSteps.length === stepHistory.length) {
-          if (responseData?.prompt && typeof responseData.prompt === 'string') {
-            displayMessage = `已生成图片提示词:\n${responseData.prompt as string}`
-          }
-          else if (responseData?.title && typeof responseData.title === 'string') {
-            displayMessage = `${responseData.title as string} - 已完成`
-          }
+    console.log('[Arael] handleAgentResponse:', {
+      responseType: response.responseType,
+      message: response.message,
+      isMultiStep,
+      dataKeys: responseData ? Object.keys(responseData) : [],
+      displayMessage,
+    })
+
+    // 从 response.data 和 stepHistory 中兜底提取 imageUrls（SSE 丢失时恢复）
+    // 与已通过 SSE 实时收集的 imageUrls 合并（不覆盖）
+    const fallbackImageUrls: string[] = []
+    if (typeof responseData?.imageUrl === 'string') {
+      fallbackImageUrls.push(responseData.imageUrl as string)
+    }
+    if (stepHistory) {
+      for (const s of stepHistory) {
+        const url = (s as Record<string, unknown>).imageUrl
+        if (typeof url === 'string' && !fallbackImageUrls.includes(url)) {
+          fallbackImageUrls.push(url)
         }
       }
     }
 
+    // 合并：SSE 实时收集的 + fallback，去重
+    const existingImageUrls: string[] = ((): string[] => {
+      const msg = messagesRef.current.find(m => m.id === messageId)
+      return msg?.imageUrls ?? []
+    })()
+    const mergedImageUrls = [...existingImageUrls]
+    for (const url of fallbackImageUrls) {
+      if (!mergedImageUrls.includes(url)) {
+        mergedImageUrls.push(url)
+      }
+    }
+
     updateMessage(messageId, {
-      content: displayMessage || response.message || '任务已完成',
+      content: displayMessage || response.message || t.arael.taskCompleted,
       suggestions: response.suggestions?.length ? response.suggestions : undefined,
       data: response.data,
+      pendingQuestion: undefined,
+      selectedAnswer: undefined,
+      ...(mergedImageUrls.length > 0 ? { imageUrls: mergedImageUrls } : {}),
     })
 
     const hasFailedSteps = stepHistory?.some(s => s.status === 'failed') ?? false
@@ -1115,19 +1122,6 @@ export const AraelPanel: React.FC = () => {
       progress: 100,
       ...(executionTrace ? { executionTrace } : {}),
     })
-
-    // Auto-update session title from first user message
-    if (sessionId && !sessionTitleSetRef.current) {
-      sessionTitleSetRef.current = true
-      const firstUserMsg = messages.find(m => m.role === 'user')
-      if (firstUserMsg) {
-        const title = firstUserMsg.content.length > 50
-          ? `${firstUserMsg.content.slice(0, 47)}...`
-          : firstUserMsg.content
-        setSessionTitle(title)
-        agentService.updateSessionTitle(sessionId, title).catch(() => {})
-      }
-    }
 
     // 执行前端动作
     const frontendActions = responseData?.frontendActions as typeof response.frontendAction[] | undefined
@@ -1178,9 +1172,9 @@ export const AraelPanel: React.FC = () => {
     if (!msg?.taskExecution?.taskId || !msg.pendingQuestion)
       return
 
+    // 保留 pendingQuestion 以显示选中状态，同时用 selectedAnswer 锁定
     updateMessage(messageId, {
-      content: `正在处理选择: ${answer}...`,
-      pendingQuestion: undefined,
+      selectedAnswer: answer,
     })
     updateMessageExecution(messageId, {
       status: 'processing',
@@ -1188,10 +1182,12 @@ export const AraelPanel: React.FC = () => {
     })
 
     try {
-      const response = await agentService.answerQuestion(
+      const progressHandler = createProgressHandler(messageId)
+      const response = await agentService.answerQuestionWithProgress(
         msg.taskExecution.taskId,
         msg.pendingQuestion.questionId,
         answer,
+        progressHandler,
       )
       handleAgentResponseRef.current?.(messageId, response)
     }
@@ -1200,7 +1196,15 @@ export const AraelPanel: React.FC = () => {
       updateMessage(messageId, { content: format(t.arael.answerFailed, { error: errorMsg }) })
       updateMessageExecution(messageId, { status: 'error' })
     }
-  }, [messages, updateMessage, updateMessageExecution])
+    finally {
+      // 安全保障：回答流完成后确保 isLoading 归位
+      setIsLoading(false)
+    }
+  }, [messages, updateMessage, updateMessageExecution, createProgressHandler])
+
+  useEffect(() => {
+    answerQuestionRef.current = answerQuestion
+  }, [answerQuestion])
 
   // 键盘事件
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -1238,14 +1242,14 @@ export const AraelPanel: React.FC = () => {
                   <span className="arael-tasks-title">
                     {hasActiveExecution
                       ? <span className="arael-tasks-title-rest">{sessionTitle || t.arael.processing}</span>
-                      : <span className="arael-tasks-title-rest">{sessionTitle || (smartGreeting.startsWith('Arael') ? smartGreeting.slice(6) : smartGreeting)}</span>}
+                      : <span className="arael-tasks-title-rest">{sessionTitle || smartGreeting.replace(ARAEL_PREFIX_RE, '')}</span>}
                   </span>
                   <div className="arael-tasks-actions">
                     {/* 新对话 */}
                     <button
                       className="arael-header-btn"
                       onClick={startNewSession}
-                      title="新对话"
+                      title={t.arael.newSession}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
@@ -1256,7 +1260,7 @@ export const AraelPanel: React.FC = () => {
                     <button
                       className={`arael-header-btn${panelView === 'sessions' ? ' active' : ''}`}
                       onClick={() => setPanelView(panelView === 'sessions' ? 'chat' : 'sessions')}
-                      title="历史对话"
+                      title={t.arael.historyTitle}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" />
@@ -1267,7 +1271,7 @@ export const AraelPanel: React.FC = () => {
                     <button
                       className={`arael-header-btn${panelView === 'manage' ? ' active' : ''}`}
                       onClick={() => setPanelView(panelView === 'manage' ? 'chat' : 'manage')}
-                      title="管理"
+                      title={t.arael.manage}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="3" />
@@ -1276,27 +1280,9 @@ export const AraelPanel: React.FC = () => {
                     </button>
                     {/* Debug */}
                     <button
-                      className="arael-debug-badge"
-                      onClick={() => {
-                        const info = buildDebugInfo({
-                          sessionId,
-                          sessionTitle,
-                          sessionTitleSetRef: sessionTitleSetRef.current,
-                          panelView,
-                          visibility,
-                          isLoading,
-                          hasActiveExecution,
-                          input,
-                          expandedMessageId,
-                          messages,
-                          presetFavorites: presetFavorites.length,
-                          continueSessions: continueSessions.length,
-                          speechAvailable,
-                          isRecording,
-                          isProcessingVoice,
-                        })
-                        navigator.clipboard.writeText(info)
-                      }}
+                      className={`arael-debug-badge${panelView === 'debug' ? ' arael-debug-active' : ''}${lastError ? ' arael-debug-error' : ''}`}
+                      onClick={() => setPanelView(panelView === 'debug' ? 'chat' : 'debug')}
+                      title={t.arael.debugPanel}
                     >
                       {sessionId ? sessionId.slice(0, 4) : '--'}
                       {' | '}
@@ -1308,6 +1294,13 @@ export const AraelPanel: React.FC = () => {
                 </div>
 
                 {/* 面板视图切换 */}
+                {panelView === 'debug' && (
+                  <AraelDebugPanel
+                    execution={latestExecution}
+                    onClose={() => setPanelView('chat')}
+                  />
+                )}
+
                 {panelView === 'sessions' && (
                   <AraelSessionList
                     activeSessionId={sessionId}
@@ -1321,7 +1314,7 @@ export const AraelPanel: React.FC = () => {
                 )}
 
                 {panelView === 'chat' && (
-                  <div className="arael-msg-list">
+                  <div className="arael-msg-list" ref={messagesListRef}>
                     {messages.length === 0 && !isLoading && (
                       <div className="arael-empty-state">
                         {/* Hero */}
@@ -1360,10 +1353,6 @@ export const AraelPanel: React.FC = () => {
                       <AraelChatMessage
                         key={msg.id}
                         message={msg}
-                        isExpanded={expandedMessageId === msg.id}
-                        onToggleExpand={() => setExpandedMessageId(
-                          expandedMessageId === msg.id ? null : msg.id,
-                        )}
                         onRetry={() => {
                           // 找到此 assistant 消息之前最近的 user 消息
                           const userMsg = messages.slice(0, idx).reverse().find(m => m.role === 'user')
@@ -1372,6 +1361,7 @@ export const AraelPanel: React.FC = () => {
                           }
                         }}
                         onAnswerQuestion={answerQuestion}
+                        onSuggestionClick={text => handleSendRef.current?.(text)}
                       />
                     ))}
                     <div ref={messagesEndRef} />
@@ -1387,11 +1377,12 @@ export const AraelPanel: React.FC = () => {
                 onChange={setInput}
                 onSubmit={() => handleSend()}
                 onKeyDown={handleKeyDown}
-                isLoading={isLoading}
+                isLoading={isLoading && !pendingAnswerMsg}
                 isRecording={isRecording}
                 isProcessingVoice={isProcessingVoice}
                 onToggleRecording={speechAvailable ? toggleRecording : undefined}
-                onInterrupt={hasActiveExecution ? interruptCurrentTask : undefined}
+                onInterrupt={hasActiveExecution && !pendingAnswerMsg ? interruptCurrentTask : undefined}
+                placeholder={pendingAnswerMsg ? t.arael.inputAnswer : undefined}
                 inputRef={inputRef}
               />
             )}
