@@ -628,15 +628,27 @@ impl SkillEvolution {
         let file_name = format!("_auto_{}.md", safe_name);
         let file_path = self.skills_dir.join(&file_name);
 
+        // 对 YAML 字符串值做转义（防止 AI 输出含换行/引号破坏 frontmatter 结构）
+        let escape_yaml = |s: &str| -> String {
+            s.replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', " ")
+                .replace('\r', "")
+        };
+
+        let name_safe = escape_yaml(name);
+        let desc_safe = escape_yaml(description);
+        let category_safe = escape_yaml(category);
+
         // 构建 YAML frontmatter
         let triggers_yaml = triggers
             .iter()
-            .map(|t| format!("\"{}\"", t))
+            .map(|t| format!("\"{}\"", escape_yaml(t)))
             .collect::<Vec<_>>()
             .join(", ");
         let caps_yaml = required_capabilities
             .iter()
-            .map(|c| format!("\"{}\"", c))
+            .map(|c| format!("\"{}\"", escape_yaml(c)))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -645,7 +657,7 @@ impl SkillEvolution {
         } else {
             let items = parameters
                 .iter()
-                .map(|p| format!("\"{}\"" , p))
+                .map(|p| format!("\"{}\"", escape_yaml(p)))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("\nparameters: [{}]", items)
@@ -653,9 +665,9 @@ impl SkillEvolution {
 
         let content = format!(
             r#"---
-name: {name}
-description: "{description}"
-category: {category}
+name: {name_safe}
+description: "{desc_safe}"
+category: {category_safe}
 triggers: [{triggers_yaml}]{params_yaml}
 tier_hint: standard
 gating:

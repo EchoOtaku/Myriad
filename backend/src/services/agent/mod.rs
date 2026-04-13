@@ -244,7 +244,7 @@ impl Agent {
         }
 
         // 4.5 检查必需参数缺失
-        if let Some(missing_response) = self.check_missing_required_parameters(&recipe, &planner_output, user_id, &tokio::sync::mpsc::channel(1).0).await? {
+        if let Some(missing_response) = self.check_missing_required_parameters(&recipe, &planner_output, user_id, None).await? {
             return Ok(missing_response);
         }
 
@@ -626,7 +626,7 @@ impl Agent {
         }
 
         // 4.5 检查必需参数缺失 — 执行前收集用户信息
-        if let Some(missing_response) = self.check_missing_required_parameters(&recipe, &planner_output, user_id, &progress_tx).await? {
+        if let Some(missing_response) = self.check_missing_required_parameters(&recipe, &planner_output, user_id, Some(&progress_tx)).await? {
             return Ok(missing_response);
         }
 
@@ -1171,7 +1171,7 @@ impl Agent {
         recipe: &Recipe,
         _planner_output: &PlannerOutput,
         user_id: i32,
-        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+        progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
     ) -> Result<Option<AgentResponse>, String> {
         let registry = capability::get_registry().await;
         let skill_registry = skill::get_skill_registry();
@@ -1293,27 +1293,29 @@ impl Agent {
         }
         executor::persist_task_async(user_id, task_state.clone());
 
-        // 发送 SSE 事件
-        let _ = progress_tx.send(AgentProgressEvent::TaskCreated {
-            task_id: task_state.task_id.clone(),
-            message: String::new(),
-            total_steps: recipe.steps.len() as u32,
-            step_descriptions: Vec::new(),
-        }).await;
+        // 发送 SSE 事件（仅 streaming 路径有 progress_tx）
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(AgentProgressEvent::TaskCreated {
+                task_id: task_state.task_id.clone(),
+                message: String::new(),
+                total_steps: recipe.steps.len() as u32,
+                step_descriptions: Vec::new(),
+            }).await;
 
-        let _ = progress_tx.send(AgentProgressEvent::WaitingForInput {
-            task_id: task_state.task_id.clone(),
-            question_id: question.question_id.clone(),
-            question_type: serde_json::to_value(&question.question_type)
-                .ok()
-                .and_then(|v| v.as_str().map(String::from))
-                .unwrap_or_else(|| "free_text".to_string()),
-            question: question.question.clone(),
-            context: None,
-            options: None,
-            required: question.required,
-            default_value: None,
-        }).await;
+            let _ = tx.send(AgentProgressEvent::WaitingForInput {
+                task_id: task_state.task_id.clone(),
+                question_id: question.question_id.clone(),
+                question_type: serde_json::to_value(&question.question_type)
+                    .ok()
+                    .and_then(|v| v.as_str().map(String::from))
+                    .unwrap_or_else(|| "free_text".to_string()),
+                question: question.question.clone(),
+                context: None,
+                options: None,
+                required: question.required,
+                default_value: None,
+            }).await;
+        }
 
         // 构建响应 — task 就是 TaskState，前端通过 SSE 得到 WaitingForInput
         Ok(Some(AgentResponse {

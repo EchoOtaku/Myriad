@@ -87,7 +87,6 @@ impl HeartbeatManager {
     }
 
     /// 获取已启用的任务
-    #[allow(dead_code)]
     pub async fn get_enabled_tasks(&self) -> Vec<HeartbeatTask> {
         self.tasks
             .read()
@@ -116,7 +115,6 @@ impl HeartbeatManager {
     }
 
     /// 记录任务执行结果
-    #[allow(dead_code)]
     pub async fn record_result(&self, task_id: &str, result: &str) {
         let mut tasks = self.tasks.write().await;
         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
@@ -129,7 +127,6 @@ impl HeartbeatManager {
     ///
     /// 简化实现：使用分钟粒度匹配。
     /// 未来可引入完整 cron 解析库。
-    #[allow(dead_code)]
     pub async fn check_due_tasks(&self) -> Vec<HeartbeatTask> {
         let tasks = self.tasks.read().await;
         let now = Utc::now();
@@ -181,7 +178,6 @@ impl HeartbeatManager {
     }
 
     /// 重新加载配置
-    #[allow(dead_code)]
     pub async fn reload(&self) {
         if let Some(tasks) = Self::load_tasks(&self.config_path).await {
             let mut current = self.tasks.write().await;

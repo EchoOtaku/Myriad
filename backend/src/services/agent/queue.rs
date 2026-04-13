@@ -116,8 +116,7 @@ impl LaneQueue {
         }
     }
 
-    /// 清理空闲 Lane（定期调用，防止 HashMap 无限增长）
-    #[allow(dead_code)]
+    /// 清理空闲 Lane（请求驱动调用，防止 HashMap 无限增长）
     pub async fn cleanup_idle_lanes(&self) {
         let mut lanes = self.lanes.write().await;
         lanes.retain(|_, mutex| {

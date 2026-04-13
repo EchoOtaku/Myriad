@@ -431,8 +431,9 @@ const CORRECTION_PATTERNS_ZH: &[&str] = &[
     "识别错", "认错", "不对", "应该是", "其实是", "实际上是",
 ];
 const CORRECTION_PATTERNS_EN: &[&str] = &[
-    "not", "wrong", "incorrect", "mistake", "actually", "should be",
-    "confused", "mixed up",
+    "that's wrong", "that is wrong", "you're wrong", "you are wrong",
+    "incorrect", "mistake", "actually is", "actually it's",
+    "should be", "confused with", "mixed up",
 ];
 
 impl AgentMemory {
@@ -765,11 +766,9 @@ impl AgentMemory {
                 });
 
             if let Some(error_msg) = error {
-                let cap_id = capabilities_used
-                    .iter()
-                    .find(|c| step_id.contains(c.as_str()))
-                    .cloned()
-                    .unwrap_or_else(|| step_id.clone());
+                // 取第一个 capability（或用 step_id 作兜底），而不是用 step_id 去反向匹配
+                // step_id 通常是 "step1"/"search" 等名字，不含 capability ID
+                let cap_id = capabilities_used.first().cloned().unwrap_or_else(|| step_id.clone());
 
                 let lesson = format!(
                     "执行 {} 时失败: {} (用户请求: {})",
@@ -793,10 +792,16 @@ impl AgentMemory {
     /// 获取已有记忆摘要（用于 AI 提取时避免重复）
     async fn get_existing_summary(&self) -> String {
         let entries = self.entries.read().await;
-        let mut summaries: Vec<String> = entries
+        // 按重要性降序取最高价值的记忆，给 AI 提取时避免重复
+        let mut filtered: Vec<&MemoryEntry> = entries
             .values()
             .filter(|e| e.tier == MemoryTier::LongTerm && e.memory_type != MemoryType::Interaction)
-            .take(20)
+            .collect();
+        filtered.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+
+        let summaries: Vec<String> = filtered
+            .into_iter()
+            .take(15)
             .map(|e| {
                 let type_str = match e.memory_type {
                     MemoryType::Preference => "偏好",
@@ -812,10 +817,10 @@ impl AgentMemory {
                 format!("- [{}] {}", type_str, e.content)
             })
             .collect();
+
         if summaries.is_empty() {
             "（暂无已有记忆）".to_string()
         } else {
-            summaries.truncate(15);
             summaries.join("\n")
         }
     }
@@ -903,6 +908,9 @@ impl AgentMemory {
                         }
                         idx.add_document(&new_id, &index_text);
                     }
+
+                    // 合并后持久化（remember_full 会提前返回，不会调用 save_all）
+                    self.save_all().await;
                     return true;
                 }
             }
@@ -914,45 +922,63 @@ impl AgentMemory {
     // ==================== 容量管理 ====================
 
     /// 强制容量上限，淘汰低价值记忆
+    ///
+    /// 锁顺序：先 index.write()，再 entries.write()（与其他所有路径一致，避免死锁）
     async fn enforce_capacity_limit(&self) {
-        let mut entries = self.entries.write().await;
-        if entries.len() <= MAX_MEMORY_ENTRIES {
+        // Step 1: 快照当前条目并评分（用 read 锁，不持锁做后续操作）
+        let scored: Vec<(String, f32)> = {
+            let entries = self.entries.read().await;
+            if entries.len() <= MAX_MEMORY_ENTRIES {
+                return;
+            }
+
+            let mut v: Vec<(String, f32)> = entries
+                .iter()
+                .map(|(id, e)| {
+                    let recency = recency_score(&e.created_at);
+                    let access_boost = 1.0 + (e.access_count as f32 * 0.1).min(1.0);
+                    let type_bonus = match e.memory_type {
+                        MemoryType::Preference | MemoryType::EntityKnowledge => 0.2,
+                        MemoryType::ExecutionLesson | MemoryType::EffectivePattern => 0.1,
+                        MemoryType::SessionInsight | MemoryType::Decision => 0.1,
+                        _ => 0.0,
+                    };
+                    let score = (e.importance + type_bonus) * access_boost * (0.3 + 0.7 * recency);
+                    (id.clone(), score)
+                })
+                .collect();
+
+            // 按分数升序排列（最低分的先淘汰）
+            v.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            v
+        };
+        // entries read lock dropped here
+
+        // Step 2: 计算要删除多少
+        let current_len = {
+            let entries = self.entries.read().await;
+            entries.len()
+        };
+        if current_len <= MAX_MEMORY_ENTRIES {
             return;
         }
+        let to_remove = current_len - MAX_MEMORY_ENTRIES;
+        let ids_to_remove: Vec<String> = scored.into_iter().take(to_remove).map(|(id, _)| id).collect();
 
-        // 计算每条记忆的综合存活分：importance × access_boost × recency
-        let mut scored: Vec<(String, f32)> = entries
-            .iter()
-            .map(|(id, e)| {
-                let recency = recency_score(&e.created_at);
-                let access_boost = 1.0 + (e.access_count as f32 * 0.1).min(1.0);
-                let type_bonus = match e.memory_type {
-                    MemoryType::Preference | MemoryType::EntityKnowledge => 0.2,
-                    MemoryType::ExecutionLesson | MemoryType::EffectivePattern => 0.1,
-                    MemoryType::SessionInsight | MemoryType::Decision => 0.1,
-                    _ => 0.0,
-                };
-                let score = (e.importance + type_bonus) * access_boost * (0.3 + 0.7 * recency);
-                (id.clone(), score)
-            })
-            .collect();
-
-        // 按分数升序排列（最低分的先淘汰）
-        scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        let to_remove = entries.len() - MAX_MEMORY_ENTRIES;
-        let mut idx = self.index.write().await;
-
-        for (id, _score) in scored.iter().take(to_remove) {
-            entries.remove(id);
-            idx.remove_document(id);
+        // Step 3: 按一致的顺序获取锁（index 先，entries 后）
+        {
+            let mut idx = self.index.write().await;
+            let mut entries = self.entries.write().await;
+            for id in &ids_to_remove {
+                entries.remove(id);
+                idx.remove_document(id);
+            }
         }
 
         tracing::info!(
-            removed = to_remove,
-            remaining = entries.len(),
+            removed = ids_to_remove.len(),
             "[Memory] Capacity enforcement: removed {} low-value memories",
-            to_remove
+            ids_to_remove.len()
         );
     }
 
@@ -1172,45 +1198,57 @@ impl AgentMemory {
     // ==================== 管理操作 ====================
 
     /// 删除指定 ID 的记忆条目
+    ///
+    /// 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
     pub async fn remove_memory(&self, memory_id: &str) -> bool {
-        let removed = {
-            let mut entries = self.entries.write().await;
-            entries.remove(memory_id).is_some()
+        // 先检查是否存在（read 锁）
+        let exists = {
+            let entries = self.entries.read().await;
+            entries.contains_key(memory_id)
         };
-        if removed {
-            let mut idx = self.index.write().await;
-            idx.remove_document(memory_id);
-            drop(idx);
-            self.save_all().await;
-            tracing::info!(id = memory_id, "[Memory] Removed memory entry");
+        if !exists {
+            return false;
         }
-        removed
+        // 按正确顺序获取写锁
+        {
+            let mut idx = self.index.write().await;
+            let mut entries = self.entries.write().await;
+            idx.remove_document(memory_id);
+            entries.remove(memory_id);
+        }
+        self.save_all().await;
+        tracing::info!(id = memory_id, "[Memory] Removed memory entry");
+        true
     }
 
     /// 更新指定 ID 的记忆内容
+    ///
+    /// 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
     pub async fn update_memory(&self, memory_id: &str, new_content: &str) -> bool {
         let new_id = Self::make_id(new_content);
-        let updated = {
+        // 先检查是否存在
+        let exists = {
+            let entries = self.entries.read().await;
+            entries.contains_key(memory_id)
+        };
+        if !exists {
+            return false;
+        }
+        {
+            let mut idx = self.index.write().await;
             let mut entries = self.entries.write().await;
+            idx.remove_document(memory_id);
+            idx.add_document(&new_id, new_content);
             if let Some(mut entry) = entries.remove(memory_id) {
                 entry.content = new_content.to_string();
                 entry.id = new_id.clone();
                 entry.last_accessed_at = Some(Utc::now().to_rfc3339());
                 entries.insert(new_id.clone(), entry);
-                true
-            } else {
-                false
             }
-        };
-        if updated {
-            let mut idx = self.index.write().await;
-            idx.remove_document(memory_id);
-            idx.add_document(&new_id, new_content);
-            drop(idx);
-            self.save_all().await;
-            tracing::info!(old_id = memory_id, new_id = %new_id, "[Memory] Updated memory entry");
         }
-        updated
+        self.save_all().await;
+        tracing::info!(old_id = memory_id, new_id = %new_id, "[Memory] Updated memory entry");
+        true
     }
 
     // ==================== 搜索 ====================
@@ -1309,16 +1347,20 @@ impl AgentMemory {
             .collect();
         drop(entries);
 
-        // 异步更新 access_count
+        // 更新 access_count 并持久化（promote_memories 的晋升阈值依赖此计数）
         if !hit_ids.is_empty() {
-            let mut entries = self.entries.write().await;
-            let now = Utc::now().to_rfc3339();
-            for id in &hit_ids {
-                if let Some(entry) = entries.get_mut(id) {
-                    entry.access_count += 1;
-                    entry.last_accessed_at = Some(now.clone());
+            {
+                let mut entries = self.entries.write().await;
+                let now = Utc::now().to_rfc3339();
+                for id in &hit_ids {
+                    if let Some(entry) = entries.get_mut(id) {
+                        entry.access_count += 1;
+                        entry.last_accessed_at = Some(now.clone());
+                    }
                 }
             }
+            // 写锁释放后再持久化
+            self.save_all().await;
         }
 
         results
@@ -1367,8 +1409,9 @@ impl AgentMemory {
 
         let count = removed.len();
         if !removed.is_empty() {
-            let mut entries = self.entries.write().await;
+            // 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
             let mut idx = self.index.write().await;
+            let mut entries = self.entries.write().await;
             for id in &removed {
                 entries.remove(id);
                 idx.remove_document(id);
@@ -1379,13 +1422,12 @@ impl AgentMemory {
 
     // ==================== 持久化 ====================
 
-    /// 生成确定性 ID（基于内容 hash）
+    /// 生成确定性 ID（纯内容 hash，相同内容产生相同 ID，支持幂等去重）
     fn make_id(content: &str) -> String {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         content.hash(&mut hasher);
-        let now = Utc::now().timestamp_millis();
-        format!("mem_{:016x}_{:x}", hasher.finish(), now & 0xFFFF)
+        format!("mem_{:016x}", hasher.finish())
     }
 
     /// 加载全部记忆条目

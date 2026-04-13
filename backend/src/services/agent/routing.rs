@@ -281,11 +281,14 @@ impl AgentRouter {
             return *role;
         }
 
-        // 前缀匹配
-        for (prefix, role) in &self.prefix_cache {
-            if capability_id.starts_with(prefix.as_str()) {
-                return *role;
-            }
+        // 前缀匹配（最长前缀优先，避免 "brew." 抢占 "brew.subscribe" 等特化前缀）
+        let best = self
+            .prefix_cache
+            .iter()
+            .filter(|(prefix, _)| capability_id.starts_with(prefix.as_str()))
+            .max_by_key(|(prefix, _)| prefix.len());
+        if let Some((_, role)) = best {
+            return *role;
         }
 
         // 默认路由到 ContentWorker（最通用）

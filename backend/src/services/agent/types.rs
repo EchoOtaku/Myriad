@@ -57,7 +57,7 @@ pub struct ConversationMessage {
 /// 解析后的意图
 ///
 /// **已废弃**: v3 Planner 直接输出 PlannerOutput，不再经过 ParsedIntent。
-/// 保留以兼容序列化格式和 EscalationLevel 的类型签名。
+/// 保留以兼容已持久化的序列化格式。
 #[deprecated(note = "v3 Planner 已不使用 ParsedIntent，请直接使用 PlannerOutput")]
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1353,7 +1353,7 @@ impl ExecutionContext {
         self.variables.get(key)
     }
 
-    /// 添加待执行的动态步骤（硬上限 15 个）
+    /// 添加待执行的动态步骤（硬上限 15 个，含 ID 去重和自依赖检测）
     pub fn queue_dynamic_steps(&mut self, steps: Vec<RecipeStep>) {
         const MAX_DYNAMIC_QUEUE: usize = 15;
         let remaining = MAX_DYNAMIC_QUEUE.saturating_sub(self.dynamic_steps_generated);
@@ -1364,7 +1364,39 @@ impl ExecutionContext {
             );
             return;
         }
-        let accepted: Vec<RecipeStep> = steps.into_iter().take(remaining).collect();
+
+        // 收集已有的 step_id（已完成 + 待执行队列）
+        let existing_ids: std::collections::HashSet<&str> = self
+            .step_outputs
+            .keys()
+            .map(|s| s.as_str())
+            .chain(self.pending_dynamic_steps.iter().map(|s| s.id.as_str()))
+            .collect();
+
+        let accepted: Vec<RecipeStep> = steps
+            .into_iter()
+            .take(remaining)
+            .filter(|step| {
+                // 去重：跳过 ID 已存在的步骤
+                if existing_ids.contains(step.id.as_str()) {
+                    tracing::warn!(
+                        step_id = %step.id,
+                        "[ExecutionContext] Rejecting dynamic step with duplicate ID"
+                    );
+                    return false;
+                }
+                // 自依赖检测：移除 depends_on 中引用自身的条目
+                if step.depends_on.iter().any(|d| d == &step.id) {
+                    tracing::warn!(
+                        step_id = %step.id,
+                        "[ExecutionContext] Dynamic step has self-dependency, rejecting"
+                    );
+                    return false;
+                }
+                true
+            })
+            .collect();
+
         let accepted_count = accepted.len();
         self.dynamic_steps_generated += accepted_count;
         self.pending_dynamic_steps.extend(accepted);

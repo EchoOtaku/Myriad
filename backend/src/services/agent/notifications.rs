@@ -192,11 +192,20 @@ impl NotificationManager {
 
     /// 标记全部已读（仅影响该用户的通知）
     pub async fn mark_all_read(&self, user_id: i32) {
-        let mut history = self.history.write().await;
-        for n in history.iter_mut().filter(|n| {
-            n.user_id.is_none() || n.user_id == Some(user_id)
-        }) {
-            n.read = true;
+        let marked_ids: Vec<String> = {
+            let mut history = self.history.write().await;
+            let mut ids = Vec::new();
+            for n in history.iter_mut().filter(|n| {
+                !n.read && (n.user_id.is_none() || n.user_id == Some(user_id))
+            }) {
+                n.read = true;
+                ids.push(n.id.clone());
+            }
+            ids
+        };
+        // 广播已读事件，让 SSE 客户端同步状态
+        for id in marked_ids {
+            let _ = self.tx.send(NotificationEvent::NotificationRead { id });
         }
     }
 

@@ -211,7 +211,7 @@ pub fn validate_and_convert_steps(
     for step in &steps {
         in_degree.entry(step.id.as_str()).or_insert(0);
         for dep in &step.depends_on {
-            *in_degree.entry(dep.as_str()).or_insert(0) += 0;
+            in_degree.entry(dep.as_str()).or_insert(0); // 确保依赖也在 map 里
             *in_degree.entry(step.id.as_str()).or_insert(0) += 1;
         }
     }
