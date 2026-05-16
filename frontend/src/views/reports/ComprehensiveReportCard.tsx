@@ -12,6 +12,7 @@ import {
   FaPalette,
   FaRobot,
   FaRocket,
+  LuPalette,
 } from '@lib/icons'
 import { memo, useCallback } from 'react'
 
@@ -33,8 +34,8 @@ const ThemeIcon = memo(({ iconImageUrl, iconPrompt, iconName }: {
 
   if (iconPrompt) {
     return (
-      <div className="w-20 h-20 flex items-center justify-center bg-white/20 rounded-lg text-2xl text-white/60" title={iconPrompt}>
-        🎨
+      <div className="w-20 h-20 flex items-center justify-center bg-white/20 rounded-lg text-white/60" title={iconPrompt}>
+        <LuPalette size={32} />
       </div>
     )
   }

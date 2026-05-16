@@ -28,7 +28,7 @@ export interface DefaultModeProps {
   currentSortOption: SortOption
   showSortDropdown: boolean
   setShowSortDropdown: (show: boolean) => void
-  sortDropdownRef: React.RefObject<HTMLDivElement>
+  sortDropdownRef: React.RefObject<HTMLDivElement | null>
   onSortModeChange?: (mode: SortMode) => void
   // 模式切换
   onModeChange: (mode: ControlMode) => void

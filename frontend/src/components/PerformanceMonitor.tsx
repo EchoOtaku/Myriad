@@ -717,7 +717,7 @@ export default function PerformanceMonitor() {
       <div className="p-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="font-bold">⚡ 性能</span>
+            <span className="font-bold">性能</span>
             <span className={`font-bold ${getFPSColor(metrics.fps)}`}>
               {metrics.fps}
               {' '}
@@ -725,7 +725,7 @@ export default function PerformanceMonitor() {
             </span>
             {hasAnimationIssues && (
               <span className="text-orange-400 animate-pulse" title="检测到可能影响性能的动效">
-                ⚠️
+                !
               </span>
             )}
           </div>
@@ -812,10 +812,10 @@ export default function PerformanceMonitor() {
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                {tab === 'overview' && '📊 概览'}
-                {tab === 'animations' && `🎬 CSS`}
-                {tab === 'js' && `⚡ JS`}
-                {tab === 'layout' && '📐 布局'}
+                {tab === 'overview' && '概览'}
+                {tab === 'animations' && `CSS`}
+                {tab === 'js' && `JS`}
+                {tab === 'layout' && '布局'}
               </button>
             ))}
           </div>
@@ -895,7 +895,7 @@ export default function PerformanceMonitor() {
                       }}
                       disabled={!hasActivity}
                     >
-                      🗑️ 清空
+                      清空
                     </button>
                     <button
                       className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 rounded text-[10px] transition-colors"
@@ -904,7 +904,7 @@ export default function PerformanceMonitor() {
                         setResourceStats(globalResourceLoader.getStats())
                       }}
                     >
-                      🔄 重置
+                      重置
                     </button>
                     <button
                       className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 rounded text-[10px] transition-colors col-span-2"
@@ -915,7 +915,7 @@ export default function PerformanceMonitor() {
                         setTimeout(() => setShowCacheCleared(false), 2000)
                       }}
                     >
-                      🗑️ 清除缓存
+                      清除缓存
                     </button>
                   </div>
                   {showCacheCleared && (
@@ -972,7 +972,7 @@ export default function PerformanceMonitor() {
                 {/* 可能有问题的动效 */}
                 {animationStats.expensiveAnimations.length > 0 && (
                   <div>
-                    <div className="font-bold mb-2 text-orange-400">⚠️ 可能影响性能</div>
+                    <div className="font-bold mb-2 text-orange-400">可能影响性能</div>
                     <div className="space-y-1 text-[10px] max-h-25 overflow-y-auto">
                       {animationStats.expensiveAnimations.map((anim, i) => (
                         <div key={i} className="bg-orange-500/10 border border-orange-500/30 rounded px-2 py-1">
@@ -1047,7 +1047,7 @@ export default function PerformanceMonitor() {
                           : 'bg-white/5 hover:bg-white/10 text-gray-300'
                       }`}
                     >
-                      {highlightAnimations ? '🔍 高亮中' : '🔍 高亮动效'}
+                      {highlightAnimations ? '高亮中' : '高亮动效'}
                     </button>
                     <button
                       onClick={() => setPauseAllAnimations(!pauseAllAnimations)}
@@ -1057,13 +1057,13 @@ export default function PerformanceMonitor() {
                           : 'bg-white/5 hover:bg-white/10 text-gray-300'
                       }`}
                     >
-                      {pauseAllAnimations ? '▶️ 恢复' : '⏸️ 暂停全部'}
+                      {pauseAllAnimations ? '恢复' : '暂停全部'}
                     </button>
                     <button
                       onClick={scanAnimations}
                       className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-[10px] transition-colors text-gray-300 col-span-2"
                     >
-                      🔄 刷新扫描
+                      刷新扫描
                     </button>
                   </div>
                   <div className="text-[9px] text-gray-500 mt-2">
@@ -1156,7 +1156,7 @@ export default function PerformanceMonitor() {
                   || jsAnimationStats.rafCallsPerSecond > 180
                   || jsAnimationStats.totalJsAnimations > 15) && (
                   <div>
-                    <div className="font-bold mb-2 text-orange-400">⚠️ 潜在问题</div>
+                    <div className="font-bold mb-2 text-orange-400">潜在问题</div>
                     <div className="space-y-1 text-[10px]">
                       {jsAnimationStats.activeRAFs > 5 && (
                         <div className="bg-orange-500/10 text-orange-300 rounded px-2 py-1">
@@ -1209,7 +1209,7 @@ export default function PerformanceMonitor() {
 
                 {/* 动画调度器状态 */}
                 <div>
-                  <div className="font-bold mb-2 text-gray-300">🎬 动画协调器</div>
+                  <div className="font-bold mb-2 text-gray-300">动画协调器</div>
                   {(() => {
                     const status = coordinator.getConcurrencyStatus()
                     return (
@@ -1231,7 +1231,7 @@ export default function PerformanceMonitor() {
                             <div className="text-gray-400">上限</div>
                             <div className={status.inBurstMode ? 'text-green-400' : 'text-gray-400'}>
                               {status.maxConcurrent}
-                              {status.inBurstMode && ' 🚀'}
+                              {status.inBurstMode && ' burst'}
                             </div>
                           </div>
                         </div>
@@ -1266,23 +1266,23 @@ export default function PerformanceMonitor() {
                   <div className="space-y-1.5 text-[10px]">
                     {jsAnimationStats.activeRAFs > 3 && (
                       <div className="bg-purple-500/10 text-purple-300 rounded px-2 py-1">
-                        💡 使用单一 RAF 循环管理多个动画
+                        使用单一 RAF 循环管理多个动画
                       </div>
                     )}
                     {jsAnimationStats.framerMotionElements > 10 && (
                       <div className="bg-blue-500/10 text-blue-300 rounded px-2 py-1">
-                        💡 为 Framer Motion 元素添加 layout=
+                        为 Framer Motion 元素添加 layout=
                         {false}
                       </div>
                     )}
                     {jsAnimationStats.webAnimationsRunning > 10 && (
                       <div className="bg-orange-500/10 text-orange-300 rounded px-2 py-1">
-                        💡 使用 IntersectionObserver 暂停视口外动画
+                        使用 IntersectionObserver 暂停视口外动画
                       </div>
                     )}
                     {jsAnimationStats.totalJsAnimations <= 10 && jsAnimationStats.rafCallsPerSecond <= 120 && (
                       <div className="bg-green-500/10 text-green-300 rounded px-2 py-1">
-                        ✅ JS 动画性能良好
+                        JS 动画性能良好
                       </div>
                     )}
                   </div>
@@ -1333,7 +1333,7 @@ export default function PerformanceMonitor() {
                   </div>
                   {animationStats.willChangeElements > 20 && (
                     <div className="mt-2 text-[9px] text-orange-400 bg-orange-500/10 rounded px-2 py-1">
-                      ⚠️ will-change 过多可能导致内存问题
+                      will-change 过多可能导致内存问题
                     </div>
                   )}
                 </div>
@@ -1343,22 +1343,22 @@ export default function PerformanceMonitor() {
                   <div className="space-y-1 text-[10px]">
                     {metrics.longTasks > 5 && (
                       <div className="bg-red-500/10 text-red-300 rounded px-2 py-1">
-                        💡 考虑使用 Web Worker 处理耗时任务
+                        考虑使用 Web Worker 处理耗时任务
                       </div>
                     )}
                     {animationStats.infinite > 5 && (
                       <div className="bg-orange-500/10 text-orange-300 rounded px-2 py-1">
-                        💡 减少无限循环动画，使用 IntersectionObserver 按需播放
+                        减少无限循环动画，使用 IntersectionObserver 按需播放
                       </div>
                     )}
                     {animationStats.willChangeElements > 20 && (
                       <div className="bg-yellow-500/10 text-yellow-300 rounded px-2 py-1">
-                        💡 减少 will-change 使用，仅在动画时添加
+                        减少 will-change 使用，仅在动画时添加
                       </div>
                     )}
                     {layoutStats.lastLayoutShift > 0.1 && (
                       <div className="bg-orange-500/10 text-orange-300 rounded px-2 py-1">
-                        💡 为图片/动态内容预留空间避免布局偏移
+                        为图片/动态内容预留空间避免布局偏移
                       </div>
                     )}
                     {metrics.longTasks <= 5
@@ -1366,7 +1366,7 @@ export default function PerformanceMonitor() {
                       && animationStats.willChangeElements <= 20
                       && layoutStats.lastLayoutShift <= 0.1 && (
                       <div className="bg-green-500/10 text-green-300 rounded px-2 py-1">
-                        ✅ 当前页面性能良好
+                        当前页面性能良好
                       </div>
                     )}
                   </div>

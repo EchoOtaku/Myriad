@@ -1,4 +1,4 @@
-import { FaCheck, FaDatabase, FaExclamationTriangle, FaUser } from '@lib/icons'
+import { FaCheck, FaDatabase, FaExclamationTriangle, FaUser, LuClipboardList, LuDatabase, LuInfo, LuWrench } from '@lib/icons'
 import React, { useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
@@ -143,7 +143,7 @@ const SetupWizard: React.FC = () => {
       }
     }
     catch (err: any) {
-      alert(`❌ ${t.setup.saveConfigFailed}: ${err.message}`)
+      alert(`${t.setup.saveConfigFailed}: ${err.message}`)
       setSavingDb(false)
     }
   }
@@ -224,7 +224,7 @@ const SetupWizard: React.FC = () => {
       await checkSetupStatus()
     }
     catch (err: any) {
-      alert(`❌ ${t.setup.dbMigrationFailed}: ${err.message}`)
+      alert(`${t.setup.dbMigrationFailed}: ${err.message}`)
     }
     finally {
       setMigratingDb(false)
@@ -393,8 +393,7 @@ const SetupWizard: React.FC = () => {
                           <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
                           <div>
                             <p className="text-sm font-semibold text-amber-800 mb-1">
-                              🔧
-                              {' '}
+                              <LuWrench size={14} className="inline mr-1" />
                               {t.setup.configurationMode}
                             </p>
                             <p className="text-xs text-amber-700">
@@ -474,15 +473,14 @@ const SetupWizard: React.FC = () => {
                         disabled={savingDb || !dbConfig.password}
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
-                        {savingDb ? <Spinner size="sm" variant="white" /> : '💾'}
+                        {savingDb ? <Spinner size="sm" variant="white" /> : <LuDatabase size={16} />}
                         <span>{savingDb ? t.setup.saving : t.setup.saveAndConnect}</span>
                       </button>
                     </div>
 
                     {/* 说明文字 */}
                     <div className="text-xs text-gray-500 text-center">
-                      💡
-                      {' '}
+                      <LuInfo size={12} className="inline mr-1" />
                       {t.setup.saveHint}
                     </div>
                   </div>
@@ -516,8 +514,7 @@ const SetupWizard: React.FC = () => {
                           <FaDatabase className="text-blue-600 mt-0.5 shrink-0" />
                           <div className="flex-1">
                             <p className="text-sm font-semibold text-blue-800 mb-2">
-                              📋
-                              {' '}
+                              <LuClipboardList size={14} className="inline mr-1" />
                               {t.setup.initDatabase}
                             </p>
                             <p className="text-xs text-blue-700 mb-3">

@@ -35,7 +35,7 @@ const ResourceLoaderMonitor: React.FC = () => {
   if (!isVisible) {
     return (
       <button className="toggle-monitor-btn" onClick={() => setIsVisible(true)}>
-        📊 Ctrl+Shift+R
+        Ctrl+Shift+R
       </button>
     )
   }
@@ -45,7 +45,7 @@ const ResourceLoaderMonitor: React.FC = () => {
   return (
     <div className="resource-monitor">
       <div className="monitor-header">
-        <h3>📊 Resource Loader</h3>
+        <h3>Resource Loader</h3>
         <button className="monitor-close-btn" onClick={() => setIsVisible(false)}>
           ✕
         </button>
@@ -98,7 +98,7 @@ const ResourceLoaderMonitor: React.FC = () => {
             }}
             disabled={!hasActivity}
           >
-            🗑️ Clear Queue
+            Clear Queue
           </button>
           <button
             className="action-btn clear"
@@ -107,7 +107,7 @@ const ResourceLoaderMonitor: React.FC = () => {
               setStats(globalResourceLoader.getStats())
             }}
           >
-            🔄 Reset All
+            Reset All
           </button>
           <button
             className="action-btn clear"
@@ -118,7 +118,7 @@ const ResourceLoaderMonitor: React.FC = () => {
               setTimeout(() => setShowCacheCleared(false), 2000)
             }}
           >
-            🗑️ Clear Cache
+            Clear Cache
           </button>
         </div>
         {showCacheCleared && (

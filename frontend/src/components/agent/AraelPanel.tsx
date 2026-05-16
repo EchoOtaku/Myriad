@@ -680,7 +680,7 @@ export const AraelPanel: React.FC = () => {
           // 更新步骤状态为重试中
           updateExecutionStep(assistantMessageId, retryEvent.stepId, {
             status: 'running',
-            message: `🔄 ${retryEvent.reason} (${retryEvent.retryCount}/${retryEvent.maxRetries})`,
+            message: `${retryEvent.reason} (${retryEvent.retryCount}/${retryEvent.maxRetries})`,
             retryAttempt: retryEvent.retryCount,
           })
           break

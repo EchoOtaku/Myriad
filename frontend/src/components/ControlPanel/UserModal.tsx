@@ -5,7 +5,7 @@ import type { RecentTappItem, TappListItem } from '../../tapp'
 import { TappIcon, getRecentTapps, listTapps } from '../../tapp'
 
 import { API_URL } from '../../config'
-import { SiAppstore } from '@lib/icons'
+import { SiAppstore, LuCrown, LuUser } from '@lib/icons'
 import type { User } from '../../contexts/AuthContext'
 import { getCSRFToken } from '../../utils/csrf'
 import { useI18n } from '../../contexts/I18nContext'
@@ -185,7 +185,7 @@ export const UserModal: React.FC<UserModalProps> = ({
           <div className="user-modal-badges">
             {/* 角色徽章 */}
             <span className={`user-modal-badge ${user.is_admin ? 'badge-admin' : 'badge-user'}`}>
-              {user.is_admin ? '👑 Admin' : '👤 User'}
+              {user.is_admin ? <><LuCrown size={12} className="inline" /> Admin</> : <><LuUser size={12} className="inline" /> User</>}
             </span>
             {/* 账户类型徽章 - 根据数据库记录正确判断 */}
             {/* 混合账户：auth_provider='local' + linked_github_id 存在 = 本地管理员绑定了 GitHub */}

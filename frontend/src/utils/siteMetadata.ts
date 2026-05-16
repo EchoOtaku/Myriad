@@ -15,7 +15,7 @@ export interface SiteMetadata {
 const DEFAULT_METADATA: SiteMetadata = {
   site_title: 'Myriad - A myriad of lights, in one place.',
   site_description: 'A myriad of lights, in one place.',
-  site_favicon: '/logo.png',
+  site_favicon: '/favicon.webp',
 }
 
 // 缓存键名
@@ -147,6 +147,9 @@ function updateFavicon(faviconUrl: string): void {
     if (faviconUrl.endsWith('.svg')) {
       favicon.type = 'image/svg+xml'
     }
+    else if (faviconUrl.endsWith('.webp')) {
+      favicon.type = 'image/webp'
+    }
     else if (faviconUrl.endsWith('.png')) {
       favicon.type = 'image/png'
     }
@@ -157,8 +160,8 @@ function updateFavicon(faviconUrl: string): void {
       favicon.type = 'image/jpeg'
     }
     else {
-      // 默认假设是 PNG
-      favicon.type = 'image/png'
+      // 默认假设是 WebP
+      favicon.type = 'image/webp'
     }
   }
   else {
@@ -168,6 +171,9 @@ function updateFavicon(faviconUrl: string): void {
     // 根据文件扩展名设置类型
     if (faviconUrl.endsWith('.svg')) {
       favicon.type = 'image/svg+xml'
+    }
+    else if (faviconUrl.endsWith('.webp')) {
+      favicon.type = 'image/webp'
     }
     else if (faviconUrl.endsWith('.png')) {
       favicon.type = 'image/png'

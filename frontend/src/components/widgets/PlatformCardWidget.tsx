@@ -15,28 +15,24 @@ const PLATFORMS = [
     name: 'Bilibili',
     icon: <SiBilibili />,
     color: 'from-blue-400 to-cyan-500',
-    emoji: '📺',
   },
   {
     id: 'steam',
     name: 'Steam',
     icon: <FaSteam />,
     color: 'from-gray-700 to-gray-800',
-    emoji: '🎮',
   },
   {
     id: 'github',
     name: 'GitHub',
     icon: <FaGithub />,
     color: 'from-gray-700 to-gray-900',
-    emoji: '💻',
   },
   {
     id: 'netease',
     name: 'NetEase',
     icon: <SiNeteasecloudmusic />,
     color: 'from-red-500 to-red-600',
-    emoji: '🎵',
   },
 ]
 
@@ -89,7 +85,7 @@ export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps)
 
         <div className="text-right">
           <div className="text-5xl opacity-20">
-            {platform.emoji}
+            {platform.icon}
           </div>
         </div>
       </div>

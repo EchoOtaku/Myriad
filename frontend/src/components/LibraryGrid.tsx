@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FaBook, FaGamepad, FaMusic, FaVideo } from '@lib/icons'
 
 import { API_URL } from '../config'
 import PlatformIcon from './PlatformIcon'
@@ -606,10 +607,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   const getTypeIcon = useCallback((type: string) => {
     switch (type) {
-      case 'game': return '🎮'
-      case 'video': return '🎬'
-      case 'music': return '🎵'
-      default: return '📦'
+      case 'game': return <FaGamepad />
+      case 'video':
+      case 'anime':
+      case 'tv_series':
+        return <FaVideo />
+      case 'music': return <FaMusic />
+      default: return <FaBook />
     }
   }, [])
 
@@ -876,7 +880,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                     )
                                   : (
                                       <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-purple-500">
-                                        <span className="text-6xl">{item.item_type === 'anime' ? '📺' : '🎬'}</span>
+                                        <span className="text-6xl"><FaVideo /></span>
                                       </div>
                                     )}
 

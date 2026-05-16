@@ -30,10 +30,18 @@ import {
 import type { BrewSource, CardSize, FeedType, SourceType } from '../../../types/brew'
 import {
   LuClock as Clock,
+  LuCloudSun as CloudSun,
+  LuFolder as Folder,
   LuFolderOpen as FolderOpen,
   LuGripVertical as GripVertical,
+  LuInbox as Inbox,
+  LuMoon as Moon,
+  LuNewspaper as Newspaper,
+  LuRefreshCw as RefreshCw,
+  LuRss as Rss,
   LuShuffle as Shuffle,
   LuSortAsc as SortAsc,
+  LuSun as Sun,
 } from '@lib/icons'
 import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -57,7 +65,7 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
 
   if (mostUnread && mostUnread.unread_count > 0) {
     tips.push({
-      icon: '📚',
+      icon: <Folder size={16} />,
       iconUrl: mostUnread.icon || undefined,
       main: `${mostUnread.name}`,
       sub: (brewTranslations.tipUnreadCount || '{count} 条未读').replace('{count}', String(mostUnread.unread_count)),
@@ -72,7 +80,7 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
   if (recentlyUpdated.length > 0) {
     const source = recentlyUpdated[0]
     tips.push({
-      icon: '🔄',
+      icon: <RefreshCw size={16} />,
       iconUrl: source.icon || undefined,
       main: `${source.name}`,
       sub: brewTranslations.tipJustUpdated || '刚刚更新',
@@ -87,7 +95,7 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
     if (newItem) {
       const title = newItem.title.length > 16 ? `${newItem.title.slice(0, 16)}...` : newItem.title
       tips.push({
-        icon: '📰',
+        icon: <Newspaper size={16} />,
         iconUrl: randomSource.icon || undefined,
         main: title,
         sub: (brewTranslations.tipFromSource || '来自 {source}').replace('{source}', randomSource.name),
@@ -98,22 +106,22 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
   // 计算总未读数
   const totalUnread = sources.reduce((acc, s) => acc + (s.unread_count || 0), 0)
   if (totalUnread > 0) {
-    tips.push({ icon: '📬', main: (brewTranslations.tipUnreadCount || '{count} 条未读').replace('{count}', String(totalUnread)), sub: brewTranslations.tipClickToView || '点击卡片查看' })
+    tips.push({ icon: <Inbox size={16} />, main: (brewTranslations.tipUnreadCount || '{count} 条未读').replace('{count}', String(totalUnread)), sub: brewTranslations.tipClickToView || '点击卡片查看' })
   }
 
   // 基础统计
-  tips.push({ icon: '📡', main: (brewTranslations.tipSubscriptionCount || '{count} 个订阅').replace('{count}', String(sources.length)), sub: brewTranslations.tipManageSources || '管理你的信息源' })
+  tips.push({ icon: <Rss size={16} />, main: (brewTranslations.tipSubscriptionCount || '{count} 个订阅').replace('{count}', String(sources.length)), sub: brewTranslations.tipManageSources || '管理你的信息源' })
 
   // 时段问候（作为兜底）
   const hour = new Date().getHours()
   if (hour >= 5 && hour < 12) {
-    tips.push({ icon: '☀️', main: brewTranslations.tipMorning || '早安', sub: brewTranslations.tipStartReading || '开启今日阅读' })
+    tips.push({ icon: <Sun size={16} />, main: brewTranslations.tipMorning || '早安', sub: brewTranslations.tipStartReading || '开启今日阅读' })
   }
   else if (hour >= 12 && hour < 18) {
-    tips.push({ icon: '🌤️', main: brewTranslations.tipAfternoon || '午后时光', sub: brewTranslations.tipRelaxReading || '适合轻松阅读' })
+    tips.push({ icon: <CloudSun size={16} />, main: brewTranslations.tipAfternoon || '午后时光', sub: brewTranslations.tipRelaxReading || '适合轻松阅读' })
   }
   else {
-    tips.push({ icon: '🌙', main: brewTranslations.tipEvening || '晚间阅读', sub: brewTranslations.tipQuietTime || '享受安静时刻' })
+    tips.push({ icon: <Moon size={16} />, main: brewTranslations.tipEvening || '晚间阅读', sub: brewTranslations.tipQuietTime || '享受安静时刻' })
   }
 
   return tips

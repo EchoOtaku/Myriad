@@ -21,7 +21,7 @@ export type ControlMode
 
 /** 动态提示信息 */
 export interface DynamicTip {
-  icon: string
+  icon: React.ReactNode
   iconUrl?: string
   main: string
   sub: string

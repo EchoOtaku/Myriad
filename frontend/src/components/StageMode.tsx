@@ -1,4 +1,4 @@
-import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaBook, FaGamepad, FaGithub, FaMusic, FaSteam, FaVideo, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
@@ -38,6 +38,13 @@ function applyStageGradient(element: HTMLElement, isDark: boolean, easeProgress:
 
 function getBlurAmount(easeProgress: number, isEnteringPhase: boolean) {
   return isEnteringPhase ? easeProgress * 20 : (1 - easeProgress) * 20
+}
+
+function getPlaceholderIcon(type: string) {
+  if (type === 'game') return <FaGamepad />
+  if (type === 'video' || type === 'anime' || type === 'tv_series') return <FaVideo />
+  if (type === 'music') return <FaMusic />
+  return <FaBook />
 }
 
 // 🚀 性能优化：预编译正则表达式（避免每次调用时重新创建）
@@ -289,13 +296,7 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
                 )
               : (
                   <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-[var(--color-primary,#10b981)] to-[var(--color-accent,#059669)]">
-                    <span className="text-6xl">
-                      {currentItem.type === 'game'
-                        ? '🎮'
-                        : currentItem.type === 'video' || currentItem.type === 'anime' || currentItem.type === 'tv_series'
-                          ? '📺'
-                          : currentItem.type === 'music' ? '🎵' : '📚'}
-                    </span>
+                    <span className="text-6xl">{getPlaceholderIcon(currentItem.type)}</span>
                   </div>
                 )}
             <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />

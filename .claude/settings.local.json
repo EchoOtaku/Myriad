@@ -95,7 +95,13 @@
       "Bash(grep -r \"ParsedIntent\\\\|IntentAction\\\\|IntentTarget\\\\|IntentConstraints\\\\|TimeRange\\\\|SortSpec\\\\|SortOrder\\\\|OutputFormat\\\\|ClarificationPoint\\\\|ClarificationType\\\\|AiRecipeResponse\\\\|RecipeGenerator\" /Users/haru/Documents/GitHub/Myriad/backend/src --include=*.rs)",
       "Bash(for type:*)",
       "Bash(do echo:*)",
-      "Bash(pnpm typecheck *)"
+      "Bash(pnpm typecheck *)",
+      "Bash(sips --help)",
+      "Bash(sips -s format webp /Users/haru/Documents/GitHub/Myriad/frontend/public/logo.png --out /tmp/test_logo.webp)",
+      "Bash(which magick *)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(python3 -c \"from PIL import Image; print\\(Image.__version__\\)\")",
+      "Bash(md5 /Users/haru/Documents/GitHub/Myriad/docs/logo.png)"
     ],
     "deny": [],
     "ask": []

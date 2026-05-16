@@ -22,7 +22,7 @@ export type DynamicContentType = BuiltinContentType | `tapp-${string}`
 export interface DynamicContentItem {
   /** 内容类型 */
   type: DynamicContentType
-  /** 图标（emoji 或图片 URL） */
+  /** 图标标识或图片 URL */
   icon: string
   /** 主文本 */
   text: string

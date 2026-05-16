@@ -8,6 +8,7 @@ import type { LyricLine } from '../../utils/musicPlayer'
 import type { WidgetConfig } from '../WidgetGrid'
 
 import { motionShim as motion } from '@lib/motionShim'
+import { LuMusic } from '@lib/icons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext'
@@ -782,7 +783,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode: _isEditMode, isPrev
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            🎵
+            <LuMusic style={{ width: `${30 * scale}px`, height: `${30 * scale}px` }} />
           </motion.span>
           <span
             className="text-gray-500 dark:text-gray-400"
@@ -811,7 +812,7 @@ export const MusicPlayerWidget = memo(({ config, isEditMode: _isEditMode, isPrev
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            🎵
+            <LuMusic style={{ width: `${30 * scale}px`, height: `${30 * scale}px` }} />
           </motion.span>
           <span
             className="text-gray-500 dark:text-gray-400"

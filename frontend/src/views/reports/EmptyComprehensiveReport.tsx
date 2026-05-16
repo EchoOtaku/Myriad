@@ -36,7 +36,7 @@ export function EmptyComprehensiveReport({ isAdmin }: EmptyComprehensiveReportPr
                 style={{ background: 'var(--glass-bg)' }}
               >
                 <div className="text-5xl text-gray-400 dark:text-gray-500 opacity-40">
-                  ✨
+                  &ndash;
                 </div>
               </div>
             </div>

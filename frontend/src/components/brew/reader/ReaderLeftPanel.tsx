@@ -31,6 +31,7 @@ import {
   LuVolume2 as Volume2,
   LuX as X,
 } from '@lib/icons'
+import type { MouseEvent } from 'react'
 import { memo, useMemo, useRef } from 'react'
 
 import type { ReaderLeftPanelProps } from './types'
@@ -162,7 +163,7 @@ export default memo(function ReaderLeftPanel({
         transition={enableAnimations ? { duration: 0.3, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }}
         className="hidden sm:block sticky top-1/3 -translate-y-1/3 h-fit mr-4 z-20"
         style={{ pointerEvents: showPanels ? 'auto' : 'none', willChange: 'transform, opacity' }}
-        onClick={e => e.stopPropagation()}
+        onClick={(e: MouseEvent) => e.stopPropagation()}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
@@ -705,7 +706,7 @@ export default memo(function ReaderLeftPanel({
                                   title={`${voice.description}${t.brew.voiceSuperNaturalSuffix}`}
                                 >
                                   {voice.name}
-                                  ✨
+                                  <span className="ml-1 opacity-70">{t.brew.superNatural}</span>
                                 </button>
                               ))}
                               {groupedVoices.llmMale.map(voice => (
@@ -720,7 +721,7 @@ export default memo(function ReaderLeftPanel({
                                   title={`${voice.description}${voice.emotion_support ? t.brew.voiceEmotionalSuffix : ''}`}
                                 >
                                   {voice.name}
-                                  {voice.emotion_support && '🎭'}
+                                  {voice.emotion_support && <span className="ml-1 opacity-70">{t.brew.emotionalLabel}</span>}
                                 </button>
                               ))}
                               {groupedVoices.premiumMale.map(voice => (
@@ -775,7 +776,7 @@ export default memo(function ReaderLeftPanel({
                                   title={`${voice.description}${t.brew.voiceSuperNaturalSuffix}`}
                                 >
                                   {voice.name}
-                                  ✨
+                                  <span className="ml-1 opacity-70">{t.brew.superNatural}</span>
                                 </button>
                               ))}
                               {groupedVoices.llmFemale.map(voice => (
@@ -790,7 +791,7 @@ export default memo(function ReaderLeftPanel({
                                   title={`${voice.description}${voice.emotion_support ? t.brew.voiceEmotionalSuffix : ''}`}
                                 >
                                   {voice.name}
-                                  {voice.emotion_support && '🎭'}
+                                  {voice.emotion_support && <span className="ml-1 opacity-70">{t.brew.emotionalLabel}</span>}
                                 </button>
                               ))}
                               {groupedVoices.premiumFemale.map(voice => (

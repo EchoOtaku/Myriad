@@ -21,7 +21,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     surface: 'bg-[#fff9f0]/80',
     surfaceSolid: 'bg-[#fff9f0]',
     accent: '#b8860b',
-    icon: '☀️',
+    icon: 'L',
   },
   sepia: {
     bg: 'bg-[#f4ecd8]',
@@ -31,7 +31,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     surface: 'bg-[#faf4e6]/80',
     surfaceSolid: 'bg-[#faf4e6]',
     accent: '#8b6914',
-    icon: '📜',
+    icon: 'S',
   },
   dark: {
     bg: 'bg-[#1a1a1a]',
@@ -41,7 +41,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     surface: 'bg-[#242424]/80',
     surfaceSolid: 'bg-[#242424]',
     accent: '#fbbf24',
-    icon: '🌙',
+    icon: 'D',
   },
   night: {
     bg: 'bg-[#0d1117]',
@@ -51,7 +51,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     surface: 'bg-[#161b22]/80',
     surfaceSolid: 'bg-[#161b22]',
     accent: '#58a6ff',
-    icon: '🌑',
+    icon: 'N',
   },
 }
 

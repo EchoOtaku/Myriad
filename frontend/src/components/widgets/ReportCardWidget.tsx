@@ -4,7 +4,7 @@
  */
 
 import type { WidgetConfig } from '../WidgetGrid'
-import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaGithub, FaSteam, LuGitFork, LuStar, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -419,7 +419,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
                     <div className="flex items-center gap-2.5 mb-2">
                       {currentItem.stars !== undefined && (
                         <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700/50">
-                          <span className="text-xs">⭐</span>
+                          <LuStar size={10} />
                           <span className="text-[10px] font-bold text-gray-100">
                             {currentItem.stars >= 1000 ? `${(currentItem.stars / 1000).toFixed(1)}k` : currentItem.stars}
                           </span>
@@ -427,7 +427,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
                       )}
                       {currentItem.forks !== undefined && (
                         <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700/50">
-                          <span className="text-xs">🍴</span>
+                          <LuGitFork size={10} />
                           <span className="text-[10px] font-bold text-gray-100">
                             {currentItem.forks >= 1000 ? `${(currentItem.forks / 1000).toFixed(1)}k` : currentItem.forks}
                           </span>

@@ -271,7 +271,7 @@ export const WelcomeWidget = memo(({ config, isEditMode, isPreview }: WidgetComp
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            {navigationGuides.map((guide, index) => (
+            {navigationGuides.map((_, index) => (
               <motion.div
                 key={index}
                 className="h-1 rounded-full"

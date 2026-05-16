@@ -95,7 +95,7 @@ export interface WeatherWidgetProps {
 }
 
 export const WeatherWidget = memo(({ config, isEditMode: _isEditMode, isPreview }: WeatherWidgetProps) => {
-  const { containerRef, scale: _scale, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
+  const { containerRef, scale: _scale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
   const { t, locale } = useI18n()

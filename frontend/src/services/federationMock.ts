@@ -111,7 +111,7 @@ const MOCK_TIMELINE: TimelineItem[] = [
     activity_id: 'act-tl-003',
     activity_type: 'Create',
     object_type: 'Article',
-    content_preview: '我的新摄影作品集更新了，这次去了冰岛拍摄北极光 🌌 已同步到所有节点。',
+    content_preview: '我的新摄影作品集更新了，这次去了冰岛拍摄北极光，已同步到所有节点。',
     is_read: true,
     actor: {
       actor_url: 'https://pixelfed.social/users/carol',
@@ -393,8 +393,8 @@ const MOCK_CHANNEL_MESSAGES: Record<string, MessageItem[]> = {
     { message_id: 'msg-ch1-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: '你好！最近 Myriad 的社交功能进展如何？' }, is_encrypted: false, created_at: '2026-03-14T05:00:00Z' },
     { message_id: 'msg-ch1-002', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '进展不错，Channel 和 Room 基本功能都实现了，正在测试中。' }, is_encrypted: false, created_at: '2026-03-14T05:05:00Z' },
     { message_id: 'msg-ch1-003', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: '太好了！Ring 的 gossip 同步我也很期待，可以用来做跨实例的 RSS 推荐。' }, is_encrypted: false, created_at: '2026-03-14T05:10:00Z' },
-    { message_id: 'msg-ch1-004', sender_actor: 'https://myriad.local/users/me', message_type: 'tapp', payload: { title: 'Aro Messenger', description: '即时通讯应用，支持频道、群组和圈子', content_type: 'tapp', tapp_id: 'com.myriad.aro', tapp_version: '1.0.0', icon: '📦', text: '试试这个新做的通讯应用' }, is_encrypted: false, created_at: '2026-03-14T06:00:00Z' },
-    { message_id: 'msg-ch1-005', sender_actor: 'https://mastodon.social/users/alice', message_type: 'brew', payload: { title: 'Hacker News 精选', description: '每日精选 HN 热门文章，自动翻译中文摘要', content_type: 'brew', brew_id: 42, brew_link: 'https://news.ycombinator.com/rss', icon: '🍺', text: '这个 Brew 源不错，推荐给你' }, is_encrypted: false, created_at: '2026-03-14T06:30:00Z' },
+    { message_id: 'msg-ch1-004', sender_actor: 'https://myriad.local/users/me', message_type: 'tapp', payload: { title: 'Aro Messenger', description: '即时通讯应用，支持频道、群组和圈子', content_type: 'tapp', tapp_id: 'com.myriad.aro', tapp_version: '1.0.0', icon: 'tapp', text: '试试这个新做的通讯应用' }, is_encrypted: false, created_at: '2026-03-14T06:00:00Z' },
+    { message_id: 'msg-ch1-005', sender_actor: 'https://mastodon.social/users/alice', message_type: 'brew', payload: { title: 'Hacker News 精选', description: '每日精选 HN 热门文章，自动翻译中文摘要', content_type: 'brew', brew_id: 42, brew_link: 'https://news.ycombinator.com/rss', icon: 'brew', text: '这个 Brew 源不错，推荐给你' }, is_encrypted: false, created_at: '2026-03-14T06:30:00Z' },
     { message_id: 'msg-ch1-006', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '收到，我安装看看！' }, is_encrypted: false, created_at: '2026-03-14T06:35:00Z' },
   ],
   'ch-002': [
@@ -500,11 +500,11 @@ const MOCK_ROOM_MEMBERS: Record<string, RoomMember[]> = {
 
 const MOCK_ROOM_MESSAGES: Record<string, RoomMessageItem[]> = {
   'rm-001': [
-    { message_id: 'msg-rm1-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: 'MFP Layer 3 的 Channel 双向通信测试通过了 🎉' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T06:00:00Z' },
+    { message_id: 'msg-rm1-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: 'MFP Layer 3 的 Channel 双向通信测试通过了' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T06:00:00Z' },
     { message_id: 'msg-rm1-002', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '太好了！接下来要把 Room 的分发策略也跑一遍。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T06:15:00Z' },
-    { message_id: 'msg-rm1-003', sender_actor: 'https://lemmy.world/u/dave', message_type: 'tapp', payload: { title: 'MFP Inspector', description: '协议调试工具，可视化消息流和节点状态', content_type: 'tapp', tapp_id: 'com.myriad.mfp-inspector', tapp_version: '0.2.0', icon: '🔍', text: '大家可以用这个工具来调试' }, reactions: { '👍': 2 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:00:00Z' },
-    { message_id: 'msg-rm1-004', sender_actor: 'https://misskey.io/users/bob', message_type: 'library', payload: { title: 'Steins;Gate (命运石之门)', description: 'MAL 评分 9.07 · Sci-Fi, Thriller · 24 集', content_type: 'library', platform_id: 'mal', item_id: '9253', icon: '📚', text: '经典神作推荐' }, reactions: { '❤️': 4 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:30:00Z' },
-    { message_id: 'msg-rm1-005', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: 'Perfect. 大家把各自负责的模块测一下，明天汇总。' }, reactions: { '👍': 3 }, is_pinned: true, is_encrypted: false, created_at: '2026-03-14T07:45:00Z' },
+    { message_id: 'msg-rm1-003', sender_actor: 'https://lemmy.world/u/dave', message_type: 'tapp', payload: { title: 'MFP Inspector', description: '协议调试工具，可视化消息流和节点状态', content_type: 'tapp', tapp_id: 'com.myriad.mfp-inspector', tapp_version: '0.2.0', icon: 'search', text: '大家可以用这个工具来调试' }, reactions: { like: 2 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:00:00Z' },
+    { message_id: 'msg-rm1-004', sender_actor: 'https://misskey.io/users/bob', message_type: 'library', payload: { title: 'Steins;Gate (命运石之门)', description: 'MAL 评分 9.07 · Sci-Fi, Thriller · 24 集', content_type: 'library', platform_id: 'mal', item_id: '9253', icon: 'library', text: '经典神作推荐' }, reactions: { heart: 4 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:30:00Z' },
+    { message_id: 'msg-rm1-005', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: 'Perfect. 大家把各自负责的模块测一下，明天汇总。' }, reactions: { like: 3 }, is_pinned: true, is_encrypted: false, created_at: '2026-03-14T07:45:00Z' },
   ],
   'rm-002': [
     { message_id: 'msg-rm2-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: '推荐一个 Hacker News 的 RSS 源，配合 RSSHub 效果很好' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T04:00:00Z' },
@@ -517,9 +517,9 @@ const MOCK_ROOM_MESSAGES: Record<string, RoomMessageItem[]> = {
     { message_id: 'msg-rm3-003', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '同意，周末我来完善文档部分。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-13T18:30:00Z' },
   ],
   'rm-004': [
-    { message_id: 'msg-rm4-001', sender_actor: 'https://misskey.io/users/bob', message_type: 'text', payload: { text: '今季度最期待的番剧是什么？我投《链锯人》第二季' }, reactions: { '🔥': 5 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:00:00Z' },
-    { message_id: 'msg-rm4-002', sender_actor: 'https://mastodon.social/users/alice', message_type: 'library', payload: { title: '葬送的芙莉莲 (Sousou no Frieren)', description: 'MAL 评分 9.38 · Adventure, Drama, Fantasy · 第二季确认', content_type: 'library', platform_id: 'mal', item_id: '52991', icon: '📚', text: '葬送的芙莉莲第二季已确定，超期待！' }, reactions: { '❤️': 8 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:20:00Z' },
-    { message_id: 'msg-rm4-003', sender_actor: 'https://myriad.local/users/me', message_type: 'report', payload: { title: '2026年冬季番剧观看报告', description: '追番 12 部，完成 8 部，平均评分 7.8', content_type: 'report', report_id: 'rpt-2026-winter', icon: '📊', text: '分享一下我的冬季番剧报告' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:45:00Z' },
+    { message_id: 'msg-rm4-001', sender_actor: 'https://misskey.io/users/bob', message_type: 'text', payload: { text: '今季度最期待的番剧是什么？我投《链锯人》第二季' }, reactions: { hot: 5 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:00:00Z' },
+    { message_id: 'msg-rm4-002', sender_actor: 'https://mastodon.social/users/alice', message_type: 'library', payload: { title: '葬送的芙莉莲 (Sousou no Frieren)', description: 'MAL 评分 9.38 · Adventure, Drama, Fantasy · 第二季确认', content_type: 'library', platform_id: 'mal', item_id: '52991', icon: 'library', text: '葬送的芙莉莲第二季已确定，超期待！' }, reactions: { heart: 8 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:20:00Z' },
+    { message_id: 'msg-rm4-003', sender_actor: 'https://myriad.local/users/me', message_type: 'report', payload: { title: '2026年冬季番剧观看报告', description: '追番 12 部，完成 8 部，平均评分 7.8', content_type: 'report', report_id: 'rpt-2026-winter', icon: 'report', text: '分享一下我的冬季番剧报告' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:45:00Z' },
     { message_id: 'msg-rm4-004', sender_actor: 'https://pleroma.example.org/users/eve', message_type: 'text', payload: { text: '芙莉莲 +1！漫画也很好看。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T08:10:00Z' },
   ],
 }

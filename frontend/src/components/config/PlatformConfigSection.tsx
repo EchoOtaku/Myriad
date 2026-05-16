@@ -1,5 +1,6 @@
 import React from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import { LuGlobe } from '@lib/icons'
 import PlatformIcon from '../PlatformIcon'
 
 interface ConfigField {
@@ -43,7 +44,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(({
     <div className="config-section">
       <div className="section-header">
         <div className="section-header-left">
-          <span className="section-icon icon-platforms">🌐</span>
+          <LuGlobe className="section-icon icon-platforms" size={18} />
           <div>
             <h2 className="section-title">{t.config.platformsConfigTitle}</h2>
             <p className="section-description">{t.config.platformsConfigDesc}</p>

@@ -53,7 +53,7 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
       <SettingGroup>
         <div className="about">
           <div className="about-hero">
-            <img src="/logo.png" alt={t.config.aboutLogoAlt} className="about-logo" />
+            <img src="/logo.webp" alt={t.config.aboutLogoAlt} className="about-logo" />
             <h3 className="about-name">Myriad</h3>
             <p className="about-tagline">{t.config.aboutTagline}</p>
           </div>

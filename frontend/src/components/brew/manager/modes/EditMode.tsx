@@ -41,7 +41,7 @@ export interface EditModeProps {
   importProgress?: ImportProgress | null
   importExportSuccess?: string | null
   importExportError?: string | null
-  brewExportInputRef?: React.RefObject<HTMLInputElement>
+  brewExportInputRef?: React.RefObject<HTMLInputElement | null>
   sourcesCount?: number
   t: {
     selectAll: string

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png" alt="Myriad" width="120" />
+<img src="frontend/public/logo.webp" alt="Myriad" width="120" />
 
 # Myriad
 

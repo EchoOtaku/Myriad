@@ -7,6 +7,7 @@ import * as brewliaApi from '../../../services/brewliaApi'
 
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { LuCheck as Check, LuCopy as Copy, LuMessageSquare as MessageSquare, LuSend as Send } from '@lib/icons'
+import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AnnotationType } from '../../../services/brewliaApi'
@@ -59,7 +60,7 @@ export function AnnotationTooltip({
               brewliaApi.ANNOTATION_TYPE_CONFIG[hoveredAnnotation.type]?.color || 'text-gray-600'
             }`}
             >
-              {brewliaApi.ANNOTATION_TYPE_CONFIG[hoveredAnnotation.type]?.icon || '📝'}
+              {brewliaApi.ANNOTATION_TYPE_CONFIG[hoveredAnnotation.type]?.label?.slice(0, 1) || ''}
               {' '}
               {brewliaApi.ANNOTATION_TYPE_CONFIG[hoveredAnnotation.type]?.label || t.brew.annotationFallback}
             </span>
@@ -251,7 +252,7 @@ export function CommentInputPopup({
   }
 
   // 防止点击按钮时清除浏览器的文本选中状态
-  const preventSelectionClear = useCallback((e: React.MouseEvent) => {
+  const preventSelectionClear = useCallback((e: MouseEvent) => {
     e.preventDefault()
   }, [])
 
@@ -268,7 +269,7 @@ export function CommentInputPopup({
             left: Math.max(16, Math.min(commentPopupPosition.x - (showCommentInput ? 144 : 60), window.innerWidth - (showCommentInput ? 304 : 140))),
             top: Math.max(16, commentPopupPosition.y - (showCommentInput ? 180 : 90)),
           }}
-          onClick={e => e.stopPropagation()}
+          onClick={(e: MouseEvent) => e.stopPropagation()}
         >
           {!showCommentInput ? (
             /* 第一步：显示复制和评论按钮（上下布局） */

@@ -16,6 +16,18 @@ import { useMusicPlayer } from '../hooks/useMusicPlayer'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import {
+  LuImage,
+  LuLanguages,
+  LuLeaf,
+  LuMessageCircle,
+  LuMoon,
+  LuMusic,
+  LuPause,
+  LuSettings,
+  LuSun,
+  LuZap,
+} from '../lib/icons'
+import {
   getDynamicContentProvider,
 } from '../services/DynamicContentProvider'
 import {
@@ -25,6 +37,9 @@ import {
 } from '../utils/dynamicContent'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
+import { UserSection } from './ControlPanel/UserSection'
+import './GlobalControlPanel.css'
+
 // 懒加载展开面板子组件 — 仅在用户展开面板时加载
 const ControlPanelWidgets = lazy(() =>
   import('./ControlPanel/ControlPanelWidgets').then(m => ({ default: m.ControlPanelWidgets })),
@@ -32,13 +47,11 @@ const ControlPanelWidgets = lazy(() =>
 const MusicPlayer = lazy(() =>
   import('./ControlPanel/MusicPlayer').then(m => ({ default: m.MusicPlayer })),
 )
-import { UserSection } from './ControlPanel/UserSection'
-import './GlobalControlPanel.css'
 
 /** 扩展的动态内容类型（包含 Tapp 自定义类型） */
 interface DynamicContent {
   type: DynamicContentType
-  icon: string
+  icon: React.ReactNode
   text: string
   subtext?: string
   /** 是否显示副文本 */
@@ -145,6 +158,9 @@ const GlobalControlPanel: React.FC = () => {
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
   const { preference: animPreference, togglePerformanceMode } = useAnimationPreference()
+  const effectiveAnimationLevel = animPreference === 'auto' ? anim.level : animPreference
+  const isStandardAnimation = effectiveAnimationLevel === 'standard'
+  const animationModeClass = isStandardAnimation ? 'performance-standard' : 'performance-light'
 
   useEffect(() => {
     // 主题状态现在由 useThemeMode() hook 自动管理
@@ -256,9 +272,28 @@ const GlobalControlPanel: React.FC = () => {
       night: t.greeting?.night ?? 'Good night',
     }
     const greeting = getGreeting(user?.username, greetingTranslations, locale)
+    let greetingEmoji: string
+    switch (greeting.icon) {
+      case 'sunrise':
+        greetingEmoji = '🌅'
+        break
+      case 'sunset':
+        greetingEmoji = '🌆'
+        break
+      case 'moon':
+        greetingEmoji = '🌙'
+        break
+      case 'cloud-sun':
+        greetingEmoji = '🌤️'
+        break
+      case 'sun':
+      default:
+        greetingEmoji = '☀️'
+        break
+    }
     contents.push({
       type: 'greeting',
-      icon: greeting.icon,
+      icon: <span className="dynamic-icon-emoji">{greetingEmoji}</span>,
       text: greeting.text || greetingTranslations.afternoon,
       subtext: greeting.time,
     })
@@ -364,7 +399,7 @@ const GlobalControlPanel: React.FC = () => {
         const filtered = prev.filter(c => c.type !== 'quote')
         return [...filtered, {
           type: 'quote',
-          icon: '💭',
+          icon: <LuMessageCircle size={14} />,
           text: quoteData.text,
           subtext: quoteData.author || undefined,
           showSubtext: false,
@@ -374,7 +409,7 @@ const GlobalControlPanel: React.FC = () => {
       // 同步到动态内容提供者
       dynamicContentProvider.setContent('builtin', {
         type: 'quote',
-        icon: '💭',
+        icon: 'quote',
         text: quoteData.text,
         subtext: quoteData.author || undefined,
         priority: 50,
@@ -393,7 +428,7 @@ const GlobalControlPanel: React.FC = () => {
               const filtered = prev.filter(c => c.type !== 'quote')
               return [...filtered, {
                 type: 'quote',
-                icon: '💭',
+                icon: <LuMessageCircle size={14} />,
                 text: quote.text,
                 subtext: quote.author || undefined,
                 showSubtext: false,
@@ -403,7 +438,7 @@ const GlobalControlPanel: React.FC = () => {
             // 同步到动态内容提供者
             dynamicContentProvider.setContent('builtin', {
               type: 'quote',
-              icon: '💭',
+              icon: 'quote',
               text: quote.text,
               subtext: quote.author || undefined,
               priority: 50,
@@ -468,7 +503,7 @@ const GlobalControlPanel: React.FC = () => {
           return
         setCurrentContentIndex(prev => (prev + 1) % validContents.length)
         // 稍等一帧后开始淡入，确保内容已更新
-        window.setTimeout(() => setIsTransitioning(false), 80)
+        window.setTimeout(setIsTransitioning, 80, false)
         // 下一次循环：延长停留时间到 15秒，低端设备 30秒
         const base = 15000
         const nextDelay = Math.round(base * (anim.durationScale || 1))
@@ -657,7 +692,7 @@ const GlobalControlPanel: React.FC = () => {
     const handleVisibility = () => {
       if (!document.hidden) {
         lastUpdateTime = 0
-        setTimeout(() => measure(), 100)
+        setTimeout(measure, 100)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -812,7 +847,7 @@ const GlobalControlPanel: React.FC = () => {
         return [
           {
             type: 'music' as const,
-            icon: '🎵',
+            icon: <LuMusic size={14} />,
             text: currentLyric.text,
             subtext: `${currentSong.name} - ${currentSong.artist}`,
             lyricDuration, // 传入歌词持续时间
@@ -841,7 +876,7 @@ const GlobalControlPanel: React.FC = () => {
         return [
           {
             type: 'music' as const,
-            icon: isPlaying ? '🎵' : '⏸️',
+            icon: isPlaying ? <LuMusic size={14} /> : <LuPause size={14} />,
             text: currentSong.name,
             subtext: currentSong.artist,
           },
@@ -1089,7 +1124,7 @@ const GlobalControlPanel: React.FC = () => {
                 <div className="control-item control-item-compact">
                   <div className="control-item-info">
                     <div className="control-item-icon icon-theme">
-                      {isDark ? '🌙' : '☀️'}
+                      {isDark ? <LuMoon /> : <LuSun />}
                     </div>
                     <div>
                       <h4 className="control-item-title">{t.controlPanel.appearance}</h4>
@@ -1098,7 +1133,7 @@ const GlobalControlPanel: React.FC = () => {
                   </div>
                   <button
                     onClick={toggleTheme}
-                    className={`control-toggle ${isDark ? 'active' : ''}`}
+                    className={`control-toggle theme-toggle ${isDark ? 'active theme-dark' : 'theme-light'}`}
                     aria-label={t.controlPanel.themeSwitch}
                   >
                     <span className="control-toggle-slider"></span>
@@ -1108,21 +1143,21 @@ const GlobalControlPanel: React.FC = () => {
                 {/* 动效等级切换 */}
                 <div className="control-item control-item-compact">
                   <div className="control-item-info">
-                    <div className="control-item-icon icon-performance">
-                      {animPreference === 'light' ? '🐌' : animPreference === 'standard' ? '⚡' : '🔄'}
+                    <div className={`control-item-icon icon-performance ${animationModeClass}`}>
+                      {isStandardAnimation ? <LuZap /> : <LuLeaf />}
                     </div>
                     <div>
                       <h4 className="control-item-title">{t.controlPanel.animation}</h4>
                       <p className="control-item-desc">
                         {animPreference === 'auto'
-                          ? (anim.level === 'light' ? t.controlPanel.lowPerformance : anim.level === 'standard' ? t.controlPanel.highPerformance : t.controlPanel.noAnimation)
+                          ? (anim.level === 'standard' ? t.controlPanel.highPerformance : t.controlPanel.lowPerformance)
                           : animPreference === 'light' ? t.controlPanel.lowPerformance : t.controlPanel.highPerformance}
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={togglePerformanceMode}
-                    className={`control-toggle ${(animPreference === 'standard' || (animPreference === 'auto' && anim.level === 'standard')) ? 'active' : ''}`}
+                    className={`control-toggle animation-toggle ${animationModeClass} ${isStandardAnimation ? 'active' : ''}`}
                     aria-label={t.controlPanel.animation}
                   >
                     <span className="control-toggle-slider"></span>
@@ -1133,7 +1168,7 @@ const GlobalControlPanel: React.FC = () => {
                 <div className="control-item control-item-compact">
                   <div className="control-item-info">
                     <div className="control-item-icon icon-language">
-                      🌐
+                      <LuLanguages />
                     </div>
                     <div>
                       <h4 className="control-item-title">{t.controlPanel.language}</h4>
@@ -1171,7 +1206,7 @@ const GlobalControlPanel: React.FC = () => {
                   <div className="control-item control-item-compact">
                     <div className="control-item-info">
                       <div className="control-item-icon icon-wallpaper">
-                        🖼️
+                        <LuImage />
                       </div>
                       <div>
                         <h4 className="control-item-title">{t.controlPanel.wallpaper}</h4>
@@ -1195,7 +1230,7 @@ const GlobalControlPanel: React.FC = () => {
                   <div className="control-item control-item-compact">
                     <div className="control-item-info">
                       <div className="control-item-icon icon-config">
-                        ⚙️
+                        <LuSettings />
                       </div>
                       <div>
                         <h4 className="control-item-title">{t.controlPanel.configuration}</h4>

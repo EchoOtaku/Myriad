@@ -26,31 +26,31 @@ export const ANNOTATION_TYPE_CONFIG: Record<AnnotationType, {
     label: '指代',
     color: 'text-blue-600 dark:text-blue-400',
     bgColor: 'bg-blue-100 dark:bg-blue-900/30',
-    icon: '👆',
+    icon: 'T',
   },
   implicit: {
     label: '隐含',
     color: 'text-purple-600 dark:text-purple-400',
     bgColor: 'bg-purple-100 dark:bg-purple-900/30',
-    icon: '💭',
+    icon: 'I',
   },
   term: {
     label: '术语',
     color: 'text-orange-600 dark:text-orange-400',
     bgColor: 'bg-orange-100 dark:bg-orange-900/30',
-    icon: '📚',
+    icon: 'C',
   },
   context: {
     label: '背景',
     color: 'text-green-600 dark:text-green-400',
     bgColor: 'bg-green-100 dark:bg-green-900/30',
-    icon: '🌍',
+    icon: 'B',
   },
   abbreviation: {
     label: '缩写',
     color: 'text-pink-600 dark:text-pink-400',
     bgColor: 'bg-pink-100 dark:bg-pink-900/30',
-    icon: '🔤',
+    icon: 'W',
   },
 }
 

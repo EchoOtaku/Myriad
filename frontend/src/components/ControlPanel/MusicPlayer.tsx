@@ -6,6 +6,7 @@
 import type { UseMusicPlayerReturn } from '../../hooks/useMusicPlayer'
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import { LuAlertTriangle, LuMusic, LuPause, LuPlay, LuSearchX } from '@lib/icons'
 import { formatTime, getSongVipStatus, highlightText } from '../../utils/musicPlayer'
 import '../MusicPlayer.css'
 
@@ -26,7 +27,6 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
     audioDuration,
     volume,
     lyrics,
-    _playMode,
     isTempPlayMode,
     playlist,
     togglePlay,
@@ -53,7 +53,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
   if (!currentSong) {
     return (
       <div className="music-no-song">
-        <div className="music-no-song-icon">{musicError ? '⚠️' : '🎵'}</div>
+        <div className="music-no-song-icon">{musicError ? <LuAlertTriangle size={20} /> : <LuMusic size={20} />}</div>
         <div className={`music-no-song-text ${musicError ? 'error' : ''}`}>
           {musicError || (playlist.length === 0 ? t.music.noPlaylist : t.music.noPlaying)}
         </div>
@@ -419,7 +419,7 @@ const PlaylistItem = memo<{
       </div>
       {isActive && (
         <span className="music-playlist-playing">
-          {isPlaying ? '▶' : '⏸'}
+          {isPlaying ? <LuPlay size={12} /> : <LuPause size={12} />}
         </span>
       )}
     </div>
@@ -439,7 +439,6 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
     isPlaying,
     playlistSearchQuery,
     excludeVipSongs,
-    _filteredPlaylist,
     setMusicPlayerView,
     setPlaylistSearchQuery,
     setExcludeVipSongs,
@@ -632,7 +631,7 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
           })
         ) : (
           <div className="music-no-results">
-            <div className="music-no-results-icon">🔍</div>
+            <div className="music-no-results-icon"><LuSearchX size={20} /></div>
             <div className="music-no-results-text">{t.music.noMatching}</div>
           </div>
         )}

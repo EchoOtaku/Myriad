@@ -3,7 +3,7 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import { FaTimes } from '@lib/icons'
+import { FaTimes, LuPackage } from '@lib/icons'
 
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1085,7 +1085,7 @@ export default function WidgetGrid({
         <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
-              <span className="text-lg">📦</span>
+              <LuPackage size={18} />
               <span className="font-bold">{t.widgetGrid.widgetLibrary}</span>
             </div>
 

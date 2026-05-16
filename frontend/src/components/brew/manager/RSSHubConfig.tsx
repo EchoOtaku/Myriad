@@ -9,15 +9,26 @@ import {
   LuBarChart3 as BarChart3,
   LuCheck as Check,
   LuChevronDown as ChevronDown,
+  LuFileText as FileText,
   LuEdit3 as Edit3,
   LuExternalLink as ExternalLink,
   LuGlobe as Globe,
+  LuInfo as Info,
   LuKey as Key,
+  LuMessageCircle as MessageCircle,
+  LuMonitor as Monitor,
+  LuNewspaper as Newspaper,
+  LuPackage as Package,
+  LuPalette as Palette,
   LuPlus as Plus,
   LuRefreshCw as RefreshCw,
   LuSearch as Search,
   LuServer as Server,
+  LuSettings as Settings,
+  LuShoppingCart as ShoppingCart,
   LuTrash2 as Trash2,
+  LuVideo as Video,
+  LuWrench as Wrench,
   LuX as X,
   LuZap as Zap,
 } from '@lib/icons'
@@ -103,14 +114,14 @@ const COMMON_QUERY_PARAMS_KEYS = [
 
 // 常用路由分类 - 使用翻译键
 const ROUTE_CATEGORIES_KEYS = [
-  { id: 'social', nameKey: 'rsshubCategorySocial' as const, icon: '💬' },
-  { id: 'video', nameKey: 'rsshubCategoryVideo' as const, icon: '🎬' },
-  { id: 'news', nameKey: 'rsshubCategoryNews' as const, icon: '📰' },
-  { id: 'blog', nameKey: 'rsshubCategoryBlog' as const, icon: '📝' },
-  { id: 'programming', nameKey: 'rsshubCategoryProgramming' as const, icon: '💻' },
-  { id: 'design', nameKey: 'rsshubCategoryDesign' as const, icon: '🎨' },
-  { id: 'shopping', nameKey: 'rsshubCategoryShopping' as const, icon: '🛒' },
-  { id: 'other', nameKey: 'rsshubCategoryOther' as const, icon: '📦' },
+  { id: 'social', nameKey: 'rsshubCategorySocial' as const, icon: <MessageCircle size={12} /> },
+  { id: 'video', nameKey: 'rsshubCategoryVideo' as const, icon: <Video size={12} /> },
+  { id: 'news', nameKey: 'rsshubCategoryNews' as const, icon: <Newspaper size={12} /> },
+  { id: 'blog', nameKey: 'rsshubCategoryBlog' as const, icon: <FileText size={12} /> },
+  { id: 'programming', nameKey: 'rsshubCategoryProgramming' as const, icon: <Monitor size={12} /> },
+  { id: 'design', nameKey: 'rsshubCategoryDesign' as const, icon: <Palette size={12} /> },
+  { id: 'shopping', nameKey: 'rsshubCategoryShopping' as const, icon: <ShoppingCart size={12} /> },
+  { id: 'other', nameKey: 'rsshubCategoryOther' as const, icon: <Package size={12} /> },
 ]
 
 // 路由需要的配置类型
@@ -273,7 +284,7 @@ interface RSSHubConfigProps {
 export default function RSSHubConfigComponent({
   initialConfig,
   onConfigChange,
-  _isEditMode = false,
+  isEditMode: _isEditMode = false,
   disabled = false,
 }: RSSHubConfigProps) {
   const { t, locale } = useI18n()
@@ -1160,11 +1171,11 @@ export default function RSSHubConfigComponent({
                 {/* 配置要求图例 */}
                 <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400 py-1 border-b border-gray-200/50 dark:border-neutral-700/50">
                   <span className="flex items-center gap-1">
-                    <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded">⚙️</span>
+                    <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded"><Settings size={10} /></span>
                     {t.brew.rsshubServerConfig}
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">🔧</span>
+                    <span className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded"><Wrench size={10} /></span>
                     {t.brew.rsshubOptionalConfig}
                   </span>
                 </div>
@@ -1191,12 +1202,12 @@ export default function RSSHubConfigComponent({
                                 {route.name}
                                 {route.requiresConfig === 'server' && (
                                   <span className="px-1 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded" title={t.brew.rsshubServerConfig}>
-                                    ⚙️
+                                    <Settings size={10} />
                                   </span>
                                 )}
                                 {route.requiresConfig === 'optional' && (
                                   <span className="px-1 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded" title={t.brew.rsshubOptionalConfig}>
-                                    🔧
+                                    <Wrench size={10} />
                                   </span>
                                 )}
                               </div>
@@ -1282,8 +1293,8 @@ export default function RSSHubConfigComponent({
             }`}
             >
               {currentRouteConfig.requiresConfig === 'server'
-                ? `⚠️ ${t.brew.rsshubRouteNeedsServer}`
-                : `💡 ${t.brew.rsshubRouteSupportsOptional}`}
+                ? <><AlertCircle size={12} /> {t.brew.rsshubRouteNeedsServer}</>
+                : <><Info size={12} /> {t.brew.rsshubRouteSupportsOptional}</>}
             </div>
             <div className={`text-xs ${
               currentRouteConfig.requiresConfig === 'server'
