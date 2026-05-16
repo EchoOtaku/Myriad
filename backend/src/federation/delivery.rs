@@ -57,6 +57,27 @@ pub async fn process_delivery_queue(
             ))
             .await;
 
+        // 投递前：目标实例信任策略检查（黑名单等）
+        if let Err(reason) =
+            crate::federation::trust::enforce_outbound(db, &target_domain).await
+        {
+            let _ = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"UPDATE federation_delivery_queue
+                       SET status = 'dead', error_message = $1, last_attempt_at = NOW()
+                       WHERE id = $2"#,
+                    [reason.clone().into(), queue_id.into()],
+                ))
+                .await;
+            tracing::warn!(
+                "🛑 Delivery blocked by trust policy: target={}, reason={}",
+                target_inbox,
+                reason
+            );
+            continue;
+        }
+
         // object_json 已经是完整的 Activity JSON（含 @context/type/id/actor/object），直接发送
         let base_url = get_base_url().await;
         let username = get_username_by_id(db, user_id).await.unwrap_or_default();

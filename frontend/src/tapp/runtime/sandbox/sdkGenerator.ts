@@ -591,6 +591,7 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       getRoomMembers: (roomId) => sendRequest('federation', 'getRoomMembers', [roomId]),
       getRoomMessages: (roomId, before, limit) => sendRequest('federation', 'getRoomMessages', [roomId, before, limit]),
       sendRoomMessage: (roomId, req) => sendRequest('federation', 'sendRoomMessage', [roomId, req]),
+      pinRoomMessage: (roomId, messageId, pinned) => sendRequest('federation', 'pinRoomMessage', [roomId, messageId, pinned]),
       inviteMember: (roomId, req) => sendRequest('federation', 'inviteMember', [roomId, req]),
       removeMember: (roomId, actorUrl) => sendRequest('federation', 'removeMember', [roomId, actorUrl]),
       leaveRoom: (roomId) => sendRequest('federation', 'leaveRoom', [roomId]),
@@ -604,6 +605,22 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
       addPeer: (ringId, req) => sendRequest('federation', 'addPeer', [ringId, req]),
       removePeer: (ringId, peerUrl) => sendRequest('federation', 'removePeer', [ringId, peerUrl]),
       triggerSync: (ringId) => sendRequest('federation', 'triggerSync', [ringId]),
+      // Trust 策略
+      getTrustPolicy: () => sendRequest('federation', 'getTrustPolicy', []),
+      getInstances: () => sendRequest('federation', 'getInstances', []),
+      updateInstanceTrust: (req) => sendRequest('federation', 'updateInstanceTrust', [req]),
+      toggleInstanceBlock: (req) => sendRequest('federation', 'toggleInstanceBlock', [req]),
+      // 文件传输
+      initiateTransfer: (channelId, req) => sendRequest('federation', 'initiateTransfer', [channelId, req]),
+      listTransfers: (channelId) => sendRequest('federation', 'listTransfers', [channelId]),
+      getTransfer: (transferId) => sendRequest('federation', 'getTransfer', [transferId]),
+      uploadChunk: (transferId, req) => sendRequest('federation', 'uploadChunk', [transferId, req]),
+      cancelTransfer: (transferId) => sendRequest('federation', 'cancelTransfer', [transferId]),
+      // 实时订阅
+      subscribeChannel: (channelId) => sendRequest('federation', 'subscribeChannel', [channelId]),
+      unsubscribeChannel: (channelId) => sendRequest('federation', 'unsubscribeChannel', [channelId]),
+      subscribeRoom: (roomId) => sendRequest('federation', 'subscribeRoom', [roomId]),
+      unsubscribeRoom: (roomId) => sendRequest('federation', 'unsubscribeRoom', [roomId]),
       // 事件
       onMessage: (cb) => addEventListener('federation:message', cb),
       onChannelUpdate: (cb) => addEventListener('federation:channelUpdate', cb),

@@ -1,6 +1,6 @@
 export const SITE = {
   title: 'Myriad',
-  description: 'Multi-platform personal information aggregation and analysis platform',
+  description: 'A myriad of lights, in one place.',
   defaultLanguage: 'en-us',
 } as const
 

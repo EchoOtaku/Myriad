@@ -1314,3 +1314,170 @@ pub async fn handle_room_leave(
     tracing::info!("[Room] {} left room {}", actor_url_str, room_id);
     Ok(())
 }
+
+/// 处理远程 RoomJoin (myriad:RoomJoin)
+///
+/// 远程方接受 Invite，加入 Room。本地 home server 把成员激活，并向其他成员广播。
+pub async fn handle_room_join(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let room_id = object
+        .get("id")
+        .and_then(|v| v.as_str())
+        .or_else(|| object.get("room").and_then(|v| v.as_str()))
+        .ok_or("Missing room id")?;
+    let role = object.get("role").and_then(|v| v.as_str()).unwrap_or("member");
+
+    // 验证 Room 存在
+    let room_exists = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if room_exists.is_none() {
+        return Err(format!("Room {} not found", room_id));
+    }
+
+    // 加入/激活成员
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_room_members
+           (room_id, actor_url, is_local, role, joined_at)
+           VALUES ($1, $2, false, $3, NOW())
+           ON CONFLICT (room_id, actor_url) DO UPDATE SET
+               role = EXCLUDED.role,
+               joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
+        [room_id.into(), actor_url_str.into(), role.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+
+    crate::federation::ws_gateway::broadcast_to_room(room_id, &json!({
+        "type": "system",
+        "room_id": room_id,
+        "event": "member_joined",
+        "actor": actor_url_str,
+        "role": role
+    }))
+    .await;
+
+    tracing::info!("[Room] {} joined room {} as {}", actor_url_str, room_id, role);
+    Ok(())
+}
+
+/// 处理 RoomGovernance Activity (myriad:RoomGovernance)
+///
+/// 治理变更：name / description / avatar_url / invite_policy / max_members / is_public /
+/// transfer_owner。仅 owner 或 admin 角色可执行；transfer_owner 仅 owner 可执行。
+pub async fn handle_room_governance(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let room_id = object
+        .get("room")
+        .and_then(|v| v.as_str())
+        .or_else(|| object.get("id").and_then(|v| v.as_str()))
+        .ok_or("Missing room id")?;
+    let changes = object
+        .get("changes")
+        .and_then(|v| v.as_object())
+        .ok_or("Missing changes object")?;
+
+    // 验证发送方是 owner / admin
+    let sender_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT m.role, r.owner_actor
+               FROM federation_room_members m
+               JOIN federation_rooms r ON r.room_id = m.room_id
+               WHERE m.room_id = $1 AND m.actor_url = $2"#,
+            [room_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Actor {} is not a member of room {}", actor_url_str, room_id))?;
+
+    let role: String = sender_row.try_get("", "role").unwrap_or_default();
+    let owner: String = sender_row.try_get("", "owner_actor").unwrap_or_default();
+    let is_owner = owner == actor_url_str;
+    let is_admin = role == "admin" || is_owner;
+    if !is_admin {
+        return Err(format!(
+            "Actor {} has no governance rights in room {}",
+            actor_url_str, room_id
+        ));
+    }
+
+    // 转移 owner — 仅 owner 可发
+    if let Some(new_owner) = changes.get("transfer_owner").and_then(|v| v.as_str()) {
+        if !is_owner {
+            return Err("Only owner can transfer ownership".to_string());
+        }
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE federation_rooms SET owner_actor = $2 WHERE room_id = $1",
+            [room_id.into(), new_owner.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    // 字段更新（白名单）
+    let mut updates: Vec<(&str, sea_orm::Value)> = Vec::new();
+    if let Some(v) = changes.get("name").and_then(|v| v.as_str()) {
+        updates.push(("name", v.to_string().into()));
+    }
+    if let Some(v) = changes.get("description").and_then(|v| v.as_str()) {
+        updates.push(("description", v.to_string().into()));
+    }
+    if let Some(v) = changes.get("avatar_url").and_then(|v| v.as_str()) {
+        updates.push(("avatar_url", v.to_string().into()));
+    }
+    if let Some(v) = changes.get("invite_policy").and_then(|v| v.as_str()) {
+        updates.push(("invite_policy", v.to_string().into()));
+    }
+    if let Some(v) = changes.get("max_members").and_then(|v| v.as_i64()) {
+        updates.push(("max_members", (v as i32).into()));
+    }
+    if let Some(v) = changes.get("is_public").and_then(|v| v.as_bool()) {
+        updates.push(("is_public", v.into()));
+    }
+
+    for (col, val) in updates {
+        let sql = format!(
+            "UPDATE federation_rooms SET {} = $2, updated_at = NOW() WHERE room_id = $1",
+            col
+        );
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            &sql,
+            [room_id.into(), val],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(room_id, &json!({
+        "type": "system",
+        "room_id": room_id,
+        "event": "governance_changed",
+        "actor": actor_url_str,
+        "changes": changes
+    }))
+    .await;
+
+    tracing::info!(
+        "[Room] Governance change in {} by {}: {:?}",
+        room_id, actor_url_str, changes
+    );
+    Ok(())
+}

@@ -512,9 +512,9 @@ async fn get_site_metadata_wrapper() -> Response {
             (
                 StatusCode::OK,
                 Json(json!({
-                    "site_title": "Myriad - 数字自我发现",
-                    "site_description": "一键聚合你的多平台数据，生成AI个人分析报告",
-                    "site_favicon": "/favicon.svg"
+                    "site_title": "Myriad - A myriad of lights, in one place.",
+                    "site_description": "A myriad of lights, in one place.",
+                    "site_favicon": "/logo.png"
                 })),
             )
                 .into_response()

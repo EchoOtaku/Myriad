@@ -16,8 +16,8 @@ export const routes: RouteConfig[] = [
   {
     path: '/',
     component: () => import('../views/Home.tsx'),
-    title: 'Myriad - 数字自我发现',
-    description: '一键聚合你的多平台数据，生成AI个人分析报告',
+    title: 'Myriad - A myriad of lights, in one place.',
+    description: 'A myriad of lights, in one place.',
   },
   {
     path: '/library',

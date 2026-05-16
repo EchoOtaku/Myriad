@@ -3,6 +3,7 @@
  */
 
 export { AdvancedConfigSection } from './AdvancedConfigSection'
+export { default as AboutConfigSection } from './AboutConfigSection'
 export { default as AiConfigSection } from './AiConfigSection'
 export { default as GenericConfigSection } from './GenericConfigSection'
 export { default as MusicConfigSection } from './MusicConfigSection'

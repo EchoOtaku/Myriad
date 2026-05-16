@@ -194,6 +194,16 @@ const PERMISSION_INFO: Record<TappPermission, {
     description: '允许此应用发送联邦消息（频道和房间）',
     level: 'elevated',
   },
+  'federation:trust': {
+    title: '联邦信任管理',
+    description: '允许此应用读取与修改实例信任策略（封禁/解封、调整层级）',
+    level: 'privileged',
+  },
+  'federation:files': {
+    title: '联邦文件传输',
+    description: '允许此应用通过联邦频道发起或接收文件传输',
+    level: 'elevated',
+  },
 }
 
 /**

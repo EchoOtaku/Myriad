@@ -60,6 +60,22 @@ pub async fn post_inbox(
     let request_path = format!("/users/{}/inbox", username);
     verify_request_signature(&db, &headers, &body, &actor_url_str, &request_path).await?;
 
+    // 信任策略：黑名单 / 速率 / 内容过滤
+    let actor_domain = extract_domain(&actor_url_str).unwrap_or_default();
+    if let Err(reason) =
+        crate::federation::trust::enforce_inbound(&db, &actor_domain, &activity).await
+    {
+        tracing::warn!(
+            "🛑 Inbox rejected by trust policy: domain={}, reason={}",
+            actor_domain,
+            reason
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Rejected by trust policy", "reason": reason})),
+        ));
+    }
+
     tracing::info!(
         "📬 Inbox received: type={}, actor={}, target_user={}",
         activity_type,
@@ -139,6 +155,22 @@ pub async fn post_shared_inbox(
 
     // 验证签名
     verify_request_signature(&db, &headers, &body, &actor_url_str, "/inbox").await?;
+
+    // 信任策略
+    let actor_domain = extract_domain(&actor_url_str).unwrap_or_default();
+    if let Err(reason) =
+        crate::federation::trust::enforce_inbound(&db, &actor_domain, &activity).await
+    {
+        tracing::warn!(
+            "🛑 Shared inbox rejected by trust policy: domain={}, reason={}",
+            actor_domain,
+            reason
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Rejected by trust policy", "reason": reason})),
+        ));
+    }
 
     tracing::info!(
         "📬 Shared inbox received: type={}, actor={}",
@@ -722,9 +754,40 @@ async fn handle_mfp_activity(
                 })?;
             Ok(StatusCode::ACCEPTED)
         }
-        // 白名单中已声明但尚未实现的 MFP 类型 — 明确记录
-        "myriad:ChannelAccept" | "myriad:RoomJoin" | "myriad:RoomGovernance" | "myriad:KeyExchange" => {
-            tracing::warn!("MFP activity type {} is accepted but not yet implemented", activity_type);
+        "myriad:ChannelAccept" => {
+            crate::federation::channel::handle_channel_accept(db, actor_url_str, activity)
+                .await
+                .map_err(|e| {
+                    tracing::error!("ChannelAccept handling failed: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                })?;
+            Ok(StatusCode::ACCEPTED)
+        }
+        "myriad:KeyExchange" => {
+            crate::federation::channel::handle_key_exchange(db, actor_url_str, activity)
+                .await
+                .map_err(|e| {
+                    tracing::error!("KeyExchange handling failed: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                })?;
+            Ok(StatusCode::ACCEPTED)
+        }
+        "myriad:RoomJoin" => {
+            crate::federation::room::handle_room_join(db, actor_url_str, activity)
+                .await
+                .map_err(|e| {
+                    tracing::error!("RoomJoin handling failed: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                })?;
+            Ok(StatusCode::ACCEPTED)
+        }
+        "myriad:RoomGovernance" => {
+            crate::federation::room::handle_room_governance(db, actor_url_str, activity)
+                .await
+                .map_err(|e| {
+                    tracing::error!("RoomGovernance handling failed: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                })?;
             Ok(StatusCode::ACCEPTED)
         }
         _ => {

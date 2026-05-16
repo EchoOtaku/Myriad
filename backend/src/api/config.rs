@@ -819,7 +819,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         db_config.as_ref().and_then(|c| c.site_title.clone()),
                         "SITE_TITLE",
                     ),
-                    placeholder: "Myriad - 数字自我发现".to_string(),
+                    placeholder: "Myriad - A myriad of lights, in one place.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -830,7 +830,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         db_config.as_ref().and_then(|c| c.site_description.clone()),
                         "SITE_DESCRIPTION",
                     ),
-                    placeholder: "一键聚合你的多平台数据，生成AI个人分析报告".to_string(),
+                    placeholder: "A myriad of lights, in one place.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -841,7 +841,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         db_config.as_ref().and_then(|c| c.site_favicon.clone()),
                         "SITE_FAVICON",
                     ),
-                    placeholder: "/favicon.svg 或 https://example.com/icon.png（支持站外链接）"
+                    placeholder: "/logo.png 或 https://example.com/icon.png（支持站外链接）"
                         .to_string(),
                     required: false,
                 },
@@ -1702,17 +1702,17 @@ pub async fn get_site_metadata(State(db): State<DatabaseConnection>) -> (StatusC
         "site_title": get_value(
             db_config.as_ref().and_then(|c| c.site_title.clone()),
             "SITE_TITLE",
-            "Myriad - 数字自我发现"
+            "Myriad - A myriad of lights, in one place."
         ),
         "site_description": get_value(
             db_config.as_ref().and_then(|c| c.site_description.clone()),
             "SITE_DESCRIPTION",
-            "一键聚合你的多平台数据，生成AI个人分析报告"
+            "A myriad of lights, in one place."
         ),
         "site_favicon": get_value(
             db_config.as_ref().and_then(|c| c.site_favicon.clone()),
             "SITE_FAVICON",
-            "/favicon.svg"
+            "/logo.png"
         ),
     });
 

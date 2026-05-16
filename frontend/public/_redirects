@@ -8,7 +8,8 @@
 
 # 静态资源直接访问
 /assets/*  /assets/:splat  200
-/favicon.svg  /favicon.svg  200
+/logo.png  /logo.png  200
+/favicon.png  /favicon.png  200
 /sw.js  /sw.js  200
 
 # 所有其他路由都回退到 index.html

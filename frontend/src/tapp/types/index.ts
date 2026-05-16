@@ -222,6 +222,8 @@ export type TappPermission
     | 'federation:read'
     | 'federation:write'
     | 'federation:message'
+    | 'federation:trust'
+    | 'federation:files'
 
 // ============ 用户角色 ============
 

@@ -1062,3 +1062,144 @@ pub async fn accept_channel(
         "status": "accepted"
     }))
 }
+
+/// 处理收到的 ChannelAccept Activity（myriad:ChannelAccept）
+///
+/// 远程方接受了我方发起的 Channel：把 status 置为 'accepted'。
+/// 与外部 `Accept`（object=myriad:ChannelOpen）等价的快捷形式，
+/// 来自仅实现 MFP 扩展的对端实例。
+pub async fn handle_channel_accept(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let channel_id = object
+        .get("id")
+        .and_then(|v| v.as_str())
+        .or_else(|| object.as_str())
+        .ok_or("Missing channel id")?;
+
+    // 验证发送方确为该 Channel 的远程方
+    let ch_check = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT c.status FROM federation_channels c
+               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
+            [channel_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if ch_check.is_none() {
+        return Err(format!(
+            "Channel {} not found or actor {} is not the remote party",
+            channel_id, actor_url_str
+        ));
+    }
+
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_channels
+               SET status = 'accepted', last_activity_at = NOW()
+               WHERE channel_id = $1 AND status = 'pending'"#,
+            [channel_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if result.rows_affected() > 0 {
+        crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
+            "type": "channel_accepted",
+            "channel_id": channel_id
+        }))
+        .await;
+        tracing::info!("[Channel] {} accepted by remote {}", channel_id, actor_url_str);
+    }
+
+    Ok(())
+}
+
+/// 处理 myriad:KeyExchange Activity
+///
+/// 把对端 X25519 公钥作为一条特殊 message 存入 channel 历史，
+/// 同时通过 WebSocket 广播给本地客户端用于建立 E2E 会话。
+pub async fn handle_key_exchange(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let channel_id = object
+        .get("channel")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing channel")?;
+    let public_key = object
+        .get("publicKey")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing publicKey")?;
+    let algorithm = object
+        .get("algorithm")
+        .and_then(|v| v.as_str())
+        .unwrap_or("x25519-chacha20-poly1305");
+
+    // 验证发送方是该 Channel 的远程方
+    let ch_check = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT 1 FROM federation_channels c
+               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
+            [channel_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if ch_check.is_none() {
+        return Err(format!(
+            "Channel {} not found or actor {} is not the remote party",
+            channel_id, actor_url_str
+        ));
+    }
+
+    let message_id = activity
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(generate_message_id);
+
+    let payload = json!({
+        "publicKey": public_key,
+        "algorithm": algorithm,
+    });
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_channel_messages
+           (channel_id, message_id, sender_actor, message_type, payload, is_encrypted, created_at)
+           VALUES ($1, $2, $3, 'myriad:KeyExchange', $4, false, NOW())
+           ON CONFLICT (message_id) DO NOTHING"#,
+        [
+            channel_id.into(),
+            message_id.clone().into(),
+            actor_url_str.into(),
+            payload.clone().into(),
+        ],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+
+    crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
+        "type": "key_exchange",
+        "channel_id": channel_id,
+        "from": actor_url_str,
+        "publicKey": public_key,
+        "algorithm": algorithm
+    }))
+    .await;
+
+    tracing::info!("[Channel] KeyExchange received in channel {} from {}", channel_id, actor_url_str);
+    Ok(())
+}

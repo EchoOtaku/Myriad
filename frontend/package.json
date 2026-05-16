@@ -2,7 +2,7 @@
   "name": "myriad-frontend",
   "type": "module",
   "version": "0.1.0",
-  "description": "Frontend for Myriad - Multi-platform personal information aggregation and analysis",
+  "description": "Frontend for Myriad — a myriad of lights, in one place.",
   "scripts": {
     "astro": "astro",
     "dev": "astro dev",

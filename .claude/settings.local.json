@@ -94,7 +94,8 @@
       "Bash(wc -l /Users/haru/Documents/GitHub/Myriad/backend/migrations/*.rs)",
       "Bash(grep -r \"ParsedIntent\\\\|IntentAction\\\\|IntentTarget\\\\|IntentConstraints\\\\|TimeRange\\\\|SortSpec\\\\|SortOrder\\\\|OutputFormat\\\\|ClarificationPoint\\\\|ClarificationType\\\\|AiRecipeResponse\\\\|RecipeGenerator\" /Users/haru/Documents/GitHub/Myriad/backend/src --include=*.rs)",
       "Bash(for type:*)",
-      "Bash(do echo:*)"
+      "Bash(do echo:*)",
+      "Bash(pnpm typecheck *)"
     ],
     "deny": [],
     "ask": []

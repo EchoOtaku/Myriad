@@ -1050,6 +1050,10 @@ html.dark .config-section:hover {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08));
   color: #ef4444;
 }
+.section-icon.icon-about {
+  background: linear-gradient(135deg, rgba(201, 138, 163, 0.22), rgba(164, 140, 196, 0.12));
+  color: #b06b85;
+}
 
 html.dark .section-icon.icon-platforms {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(59, 130, 246, 0.10));
@@ -1077,6 +1081,10 @@ html.dark .section-icon.icon-permissions {
 }
 html.dark .section-icon.icon-advanced {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.10));
+}
+html.dark .section-icon.icon-about {
+  background: linear-gradient(135deg, rgba(232, 168, 192, 0.28), rgba(201, 182, 224, 0.14));
+  color: #e8a8c0;
 }
 
 @media (min-width: 640px) {
@@ -1114,6 +1122,163 @@ html.dark .section-title {
 
 html.dark .section-description {
   color: #9ca3af;
+}
+
+/* 关于页面 - 配色取自 logo */
+.about {
+  /* 取自 logo：粉色发色 → 淡紫色发尾，珊瑚星星点缀 */
+  --about-rose: #c98aa3;
+  --about-rose-soft: #d9a3a7;
+  --about-lavender: #a48cc4;
+  --about-tagline: #8b6b75;
+  --about-shadow: rgba(201, 138, 163, 0.28);
+
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+html.dark .about {
+  --about-rose: #e8a8c0;
+  --about-rose-soft: #d9a3a7;
+  --about-lavender: #c9b6e0;
+  --about-tagline: #bfa0ac;
+  --about-shadow: rgba(232, 168, 192, 0.32);
+}
+
+.about-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.5rem 1rem;
+}
+
+.about-logo {
+  width: 6.5rem;
+  height: 6.5rem;
+  margin-bottom: 1rem;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 28px var(--about-shadow));
+}
+
+.about-name {
+  margin: 0 0 0.625rem;
+  color: #111827;
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+html.dark .about-name {
+  color: #f9fafb;
+}
+
+.about-tagline {
+  margin: 0;
+  color: var(--about-tagline);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.about-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid rgba(209, 213, 219, 0.45);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+}
+
+html.dark .about-list {
+  background: rgba(55, 65, 81, 0.32);
+  border-color: rgba(107, 114, 128, 0.4);
+}
+
+.about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(209, 213, 219, 0.4);
+  min-height: 2.5rem;
+}
+
+html.dark .about-row {
+  border-bottom-color: rgba(107, 114, 128, 0.32);
+}
+
+.about-row.is-last {
+  border-bottom: none;
+}
+
+.about-row-label {
+  flex-shrink: 0;
+  color: #4b5563;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+html.dark .about-row-label {
+  color: #d1d5db;
+}
+
+.about-row-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: #111827;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+html.dark .about-row-value {
+  color: #f3f4f6;
+}
+
+.about-row-link {
+  color: var(--about-rose);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.about-row-link:hover {
+  color: var(--about-lavender);
+  text-decoration: underline;
+}
+
+@media (max-width: 520px) {
+  .about-logo {
+    width: 5.5rem;
+    height: 5.5rem;
+  }
+
+  .about-name {
+    font-size: 1.4rem;
+  }
+
+  .about-tagline {
+    font-size: 0.92rem;
+  }
+
+  .about-row {
+    padding: 0.75rem 0.875rem;
+  }
+
+  .about-row-value {
+    font-size: 0.82rem;
+  }
 }
 
 /* Evocative 动效说明文本 */

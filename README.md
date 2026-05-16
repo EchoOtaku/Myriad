@@ -1,368 +1,176 @@
+<div align="center">
+
+<img src="docs/logo.png" alt="Myriad" width="120" />
+
 # Myriad
 
-> Multi-platform personal information aggregation and AI-powered analysis platform
+### 让每一个你，被看见
+
+*A myriad of lights, in one place.*
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](backend/Cargo.toml)
+[![Astro](https://img.shields.io/badge/Astro-6-blueviolet.svg)](frontend/package.json)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
 
-## 🚀 Quick Start
+[在线体验](#) · [快速开始](#-快速开始) · [文档](docs/) · [反馈](https://github.com/myriad-you/Myriad/issues)
 
-### 生产环境部署（推荐）
+</div>
 
-**最快 3 分钟部署到生产环境：**
+---
+
+## ✨ 关于 Myriad
+
+我们在 GitHub 写代码、在 Bilibili 看视频、在 Steam 游玩、在 Notion 记录、在网易云听歌——
+每一处都留下了一点自己，但它们彼此不相往来。
+
+**Myriad 是个人在互联网的数字生活展示入口。**
+它把散落在各处的你，重新聚合到一个地方：让你自己看见，也让别人看见。
+
+> 既可以作为公开的个人门户对外展示，也可以作为私有的数字仓库自己使用。
+
+---
+
+## 🌟 你可以用它做什么
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 📡 把你的多平台汇成一处
+连接 GitHub、Bilibili、Steam、网易云、Notion、RSSHub 等多个平台，
+所有数据流入同一个本地数据库，你完全拥有它们。
+
+</td>
+<td width="50%" valign="top">
+
+### 🧠 让 AI 替你阅读和组织
+内置多层智能体——计划、执行、记忆、技能演化——
+持续阅读你的数据，整理出报告、推荐与洞察。
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🧩 像写小程序一样扩展它
+**Tapp 沙箱**让任何人写一个"应用"挂载到 Myriad 上：
+声明式 API、组件、快捷键、事件总线，应有尽有。
+
+</td>
+<td width="50%" valign="top">
+
+### 🌐 公开展示 / 私人收藏，皆可
+作为门户开放给世界，作为知识库留给自己。
+权限粒度、内容可见性、对外接口都由你来定。
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🚀 快速开始
+
+### Docker（推荐）
 
 ```bash
-# 1. 克隆并配置
-git clone https://github.com/yourusername/Myriad.git
+git clone https://github.com/myriad-you/Myriad.git
 cd Myriad
+
 cp .env.production.example .env
+# 编辑 .env：POSTGRES_PASSWORD / JWT_SECRET / CORS_ORIGINS
 
-# 2. 生成安全密钥（必须）
-openssl rand -base64 32  # 设置为 POSTGRES_PASSWORD
-openssl rand -base64 32  # 设置为 JWT_SECRET
-# 编辑 .env，修改 CORS_ORIGINS 为你的域名
-
-# 3. 运行安全检查
-bash scripts/check-security.sh
-
-# 4. 启动服务
 docker compose up -d
 ```
 
-📖 **详细文档：**
-- [⚡ 快速开始](QUICKSTART.md) - 3 分钟部署指南
-- [🔐 生产部署](DEPLOYMENT.md) - 完整安全配置
-- [🐛 故障排查](DEPLOYMENT.md#-故障排查) - 常见问题解决
+打开 `http://localhost:4321`，按引导完成初始化（数据库 + 管理员）。
 
-### 开发环境部署
+### 本地开发
 
-```powershell
-# Windows
-.\scripts\docker\deploy.ps1 -Mode prebuilt
+```bash
+# 后端（需要 Rust 1.75+、PostgreSQL 16+）
+cd backend && cp .env.example .env && cargo run
 
-# Linux/Mac
-./scripts/docker/deploy.sh --mode prebuilt
+# 前端（需要 Node 20+、pnpm）
+cd frontend && pnpm install && pnpm dev
 ```
 
-### 📚 Documentation
+或一键脚本：
 
-- 📖 **[Documentation Portal](./docs/quick-reference/INDEX.md)** - Central documentation hub
-- 🚀 **[Getting Started](./docs/deployment/GETTING_STARTED.md)** - Deploy in 5 minutes
-- 🌐 **[Production Deployment](./docs/deployment/PRODUCTION_DEPLOY.md)** - Complete production setup guide
-- 🐳 **[Docker Guide](./docs/deployment/DOCKER_GUIDE.md)** - Build & publish images
-- 📡 **[API Documentation](./docs/API.md)** - Complete API reference
-- 🏗️ **[Architecture](./docs/development/ARCHITECTURE.md)** - System design
-- 🔧 **[Advanced Deployment](./docs/deployment/DOCKER_DEPLOYMENT.md)** - Production configuration
-- 📝 **[Changelog](./docs/CHANGELOG.md)** - Version history
+```bash
+./scripts/dev/dev.sh        # macOS / Linux
+.\scripts\dev\dev.ps1       # Windows
+```
 
 ---
 
-## 🌟 Features
+## 🏛 技术构成
 
-- **Multi-Platform Integration**: Connect and aggregate data from GitHub, Twitter/X, LinkedIn, and more
-- **AI-Powered Analysis**: Use Google Gemini to analyze your digital presence and generate insights
-- **Beautiful Visualizations**: Interactive dashboards and charts to visualize your data
-- **Unified Database**: PostgreSQL-based centralized storage for all your platform data
-- **Modern Tech Stack**: Built with Astro (frontend) and Rust (backend) for maximum performance
-- **Easy Deployment**: Docker support for simple containerized deployment
+<table>
+<tr>
+<td><b>前端</b></td><td>Astro 6 · React 19 · Tailwind 4 · TypeScript</td>
+</tr>
+<tr>
+<td><b>后端</b></td><td>Rust · Axum 0.8 · SeaORM · Tokio</td>
+</tr>
+<tr>
+<td><b>数据</b></td><td>PostgreSQL 16+</td>
+</tr>
+<tr>
+<td><b>智能</b></td><td>多层 Agent 编排 · Tapp 可编程沙箱 · MCP</td>
+</tr>
+<tr>
+<td><b>部署</b></td><td>Docker / Docker Compose · 多架构镜像</td>
+</tr>
+</table>
 
-## 🏗️ Architecture
+---
+
+## 📂 仓库结构
 
 ```
 Myriad/
-├── frontend/               # Astro + React + Tailwind CSS
-├── backend/                # Rust + Axum + SeaORM
-├── database/               # PostgreSQL schema
-├── docker/                 # Docker configuration
-├── scripts/                # Automation scripts
-│   ├── docker/            # Docker deployment scripts
-│   └── dev/               # Development scripts
-└── docs/                   # Documentation
-    ├── deployment/        # Deployment guides
-    ├── development/       # Development guides
-    ├── guides/            # User guides
-    └── API.md             # API documentation
+├── backend/        Rust + Axum
+│   └── src/
+│       ├── api/            HTTP 路由
+│       ├── services/       业务服务（agent / ai / fetcher / ...）
+│       │   └── agent/      智能体子系统
+│       └── models/         SeaORM 模型
+├── frontend/       Astro + React
+│   └── src/
+│       ├── views/          页面
+│       ├── tapp/           Tapp 运行时与示例
+│       └── i18n/           中英日三语
+├── docker/         构建与编排
+├── docs/           开发与部署文档
+└── scripts/        开发与部署脚本
 ```
-
-### Technology Stack
-
-**Frontend:**
-
-- Astro 4.x - Static site generator
-- React 18 - UI components
-- Tailwind CSS - Styling
-- TypeScript - Type safety
-- Chart.js - Data visualization
-
-**Backend:**
-
-- Rust 1.75+ - Systems programming language
-- Axum 0.7 - Web framework
-- SeaORM 0.12 - Database ORM
-- Tokio - Async runtime
-- google-generativeai - Google Gemini API client
-
-**Database:**
-
-- PostgreSQL 16+ - Primary database
-
-**DevOps:**
-
-- Docker & Docker Compose - Containerization
-- Multi-platform scripts (PowerShell & Bash)
-
-## 💻 Manual Setup (Advanced Users)
-
-For development or manual setup without Docker, see [docs/development/BUILD.md](./docs/development/BUILD.md).
-
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (1.75 or later)
-- [Node.js](https://nodejs.org/) (20 or later)
-- [PostgreSQL](https://www.postgresql.org/) (16 or later) or Docker
-- Git
-
-### Installation
-
-1. **Clone the repository:**
-
-   ```powershell
-   git clone https://github.com/yourusername/Myriad.git
-   cd Myriad
-   ```
-
-2. **Run the setup script:**
-
-   ```powershell
-   .\scripts\setup.ps1
-   ```
-
-3. **Configure environment variables:**
-   Copy the example file and edit with your credentials:
-
-   ```powershell
-   # Copy template
-   cp backend/.env.example backend/.env
-
-   # Edit backend/.env with required values
-   ```
-
-   Minimum required configuration:
-
-   ```env
-   # Database
-   DATABASE_URL=postgres://myriad:password@localhost:5432/myriad
-
-   # Server
-   SERVER_HOST=127.0.0.1
-   SERVER_PORT=3000
-   RUST_LOG=info
-
-   # Security
-   JWT_SECRET=your-secret-key-here  # Generate with: openssl rand -hex 32
-   ```
-
-   Optional GitHub OAuth configuration:
-
-   ```env
-   # GitHub OAuth (可选 - 用于额外用户登录和管理员账户绑定)
-   GITHUB_CLIENT_ID=your_github_client_id
-   GITHUB_CLIENT_SECRET=your_github_client_secret
-   GITHUB_REDIRECT_URL=http://localhost:3000/api/auth/github/callback
-   FRONTEND_URL=http://localhost:4321
-   ```
-
-4. **Initialize the system:**
-
-   Visit `http://localhost:4321/setup` and follow the guided setup:
-
-   - **Step 1: Database Initialization** - Set up PostgreSQL tables
-   - **Step 2: Create Admin Account** - Create your local administrator account
-
-   After setup, login at `http://localhost:4321/login`
-
-   # GitHub OAuth (required for login)
-
-   GITHUB_CLIENT_ID=your_client_id
-   GITHUB_CLIENT_SECRET=your_client_secret
-   GITHUB_REDIRECT_URL=http://localhost:3000/api/auth/github/callback
-   FRONTEND_URL=http://localhost:4321
-
-   # AI Service (required for analysis)
-
-   GEMINI_API_KEY=your_api_key_here
-   GEMINI_MODEL=gemini-2.0-flash-exp
-
-   ```
-
-   ```
-
-5. **Set up the database:**
-
-   **Option A - Using Docker (Recommended):**
-
-   ```powershell
-   docker-compose up -d postgres
-   ```
-
-   **Option B - Local PostgreSQL:**
-
-   ```powershell
-   createdb myriad
-   psql myriad < database/schema.sql
-   ```
-
-6. **Start development servers:**
-
-   ```powershell
-   .\scripts\dev.ps1
-   ```
-
-7. **Access the application:**
-   - Frontend: http://localhost:4321
-   - Backend API: http://localhost:3000
-   - Health Check: http://localhost:3000/health
-
-## 📖 Documentation
-
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [API Documentation](docs/API.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Database Schema](database/README.md)
-
-## 🔧 Development
-
-### Available Scripts
-
-```powershell
-# Setup development environment
-.\scripts\setup.ps1
-
-# Start development servers (backend + frontend)
-.\scripts\dev.ps1
-
-# Build for production
-.\scripts\build.ps1
-```
-
-### Backend Development
-
-```powershell
-cd backend
-
-# Run backend
-cargo run
-
-# Run tests
-cargo test
-
-# Check for errors
-cargo check
-
-# Run with release optimizations
-cargo run --release
-```
-
-### Frontend Development
-
-```powershell
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-```
-
-## 🐳 Docker Deployment
-
-### Full Stack Deployment
-
-```powershell
-# Build and start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
-```
-
-### Individual Services
-
-```powershell
-# Start only PostgreSQL
-docker-compose up -d postgres
-
-# Start backend
-docker-compose up -d backend
-
-# Start frontend
-docker-compose up -d frontend
-```
-
-## 🔑 Configuration
-
-### Platform API Keys
-
-To use platform integrations, you need to obtain API keys:
-
-1. **GitHub**: Create a [Personal Access Token](https://github.com/settings/tokens)
-2. **Google Gemini**: Get an API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-3. **Twitter/X**: Apply for [Developer Access](https://developer.twitter.com/)
-4. **LinkedIn**: Create an app in [LinkedIn Developers](https://www.linkedin.com/developers/)
-
-Add these keys to `backend/.env`.
-
-## 📊 Features Roadmap
-
-- [x] Basic project structure
-- [x] Database schema design
-- [x] Backend API framework
-- [x] Frontend UI components
-- [ ] GitHub integration
-- [ ] Twitter/X integration
-- [ ] LinkedIn integration
-- [ ] AI analysis engine
-- [ ] Data visualization dashboards
-- [ ] User authentication (optional)
-- [ ] Export functionality
-- [ ] Scheduled data fetching
-- [ ] Custom platform plugins
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Astro](https://astro.build/)
-- Powered by [Rust](https://www.rust-lang.org/)
-- Styled with [Tailwind CSS](https://tailwindcss.com/)
-- Database: [PostgreSQL](https://www.postgresql.org/)
-- AI: [Google Gemini](https://ai.google.dev/)
-
-## 📧 Contact
-
-For questions or support, please open an issue on GitHub.
 
 ---
 
-**Note**: This project is in active development. Features and documentation may change frequently.
+## 📖 文档
+
+- [架构总览](docs/development/ARCHITECTURE.md)
+- [Tapp 开发](docs/development/TAPP_DEVELOPMENT.md)
+- [构建说明](docs/development/BUILD.md)
+- [API](docs/API.md)
+- [Docker 部署](docs/deployment/DOCKER_DEPLOYMENT.md)
+
+---
+
+## 🤝 贡献
+
+Issue 与 PR 都欢迎。UI 改动请同步更新中 / 英 / 日三语 i18n。
+
+## 📝 License
+
+[GPL-3.0](LICENSE)
+
+<br/>
+
+<div align="center">
+<sub><i>让每一个你，被看见</i> · <i>A myriad of lights, in one place.</i></sub>
+<br/>
+<sub>Maintained by <a href="https://github.com/myriad-you">@myriad-you</a></sub>
+</div>

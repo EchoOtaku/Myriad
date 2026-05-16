@@ -224,6 +224,15 @@ export interface TranslationKeys {
     networkDesc: string
     data: string
     dataDesc: string
+    about: string
+    aboutDesc: string
+    aboutTagline: string
+    aboutVersion: string
+    aboutLicense: string
+    aboutOrganization: string
+    aboutRepository: string
+    aboutDevInfo: string
+    aboutLogoAlt: string
     selectProject: string
     favorites: string
     allConfig: string

@@ -1,5 +1,6 @@
 import {
   FaExclamationTriangle,
+  FaInfoCircle,
   FaSearch,
   FaStar,
   FaTimes,
@@ -32,6 +33,7 @@ import {
 import { getCSRFToken } from '../utils/csrf'
 import {
   AdvancedConfigSection,
+  AboutConfigSection,
   AiConfigSection,
   MusicConfigSection,
   NetworkConfigSection,
@@ -351,6 +353,7 @@ const ModernConfigForm: React.FC = () => {
     { id: 'network', label: t.config.network, icon: <LuLink size={15} style={{ color: '#06b6d4' }} />, section: 'network' },
     { id: 'permissions', label: t.config.permissions, icon: <LuUsers size={15} style={{ color: '#6366f1' }} />, section: 'permissions' },
     { id: 'advanced', label: t.config.advanced, icon: <LuWrench size={15} style={{ color: '#ef4444' }} />, section: 'advanced' },
+    { id: 'about', label: t.config.about, icon: <FaInfoCircle size={15} style={{ color: '#b06b85' }} />, section: 'about' },
   ], [t])
 
   // 搜索功能
@@ -432,6 +435,15 @@ const ModernConfigForm: React.FC = () => {
       title: t.config.advanced,
       description: t.config.advancedDesc,
       keywords: ['advanced', '高级', 'danger', 'reset', '重置', '危险'],
+    })
+
+    // 关于
+    items.push({
+      type: 'section',
+      section: 'about',
+      title: t.config.about,
+      description: t.config.aboutDesc,
+      keywords: ['about', '关于', '版本', 'version', 'logo', 'myriad'],
     })
 
     // 权限管理
@@ -919,6 +931,12 @@ const ModernConfigForm: React.FC = () => {
           <AdvancedConfigSection
             onReset={handleReset}
             onMessage={setMessage}
+            {...props}
+          />
+        )
+      case 'about':
+        return (
+          <AboutConfigSection
             {...props}
           />
         )

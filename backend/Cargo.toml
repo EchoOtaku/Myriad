@@ -3,7 +3,7 @@ name = "myriad-backend"
 version = "0.1.0"
 edition = "2021"
 authors = ["Myriad Contributors"]
-description = "Backend service for Myriad - Multi-platform personal information aggregation and analysis"
+description = "Backend service for Myriad — a myriad of lights, in one place."
 
 [[bin]]
 name = "myriad-backend"

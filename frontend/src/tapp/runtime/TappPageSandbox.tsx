@@ -581,7 +581,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerAnimationHandlers(bridge, animationConfigRef)
     registerDynamicContentHandlers(bridge, currentTappInstance)
     registerAdvancedHandlers(bridge, currentTappInstance)
-    registerFederationHandlers(bridge, currentTappInstance)
+    const closeFederationSockets = registerFederationHandlers(bridge, currentTappInstance)
     registerContextHandlers(bridge, currentTappInstance)
 
     // 收集 URL 启动参数传递给沙箱
@@ -596,7 +596,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current, launchParams)
 
     // 清理函数列表
-    const cleanups: (() => void)[] = []
+    const cleanups: (() => void)[] = [closeFederationSockets]
 
     if (isWebKit) {
       // 🎯 Safari/WebKit Portal 模式

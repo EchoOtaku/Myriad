@@ -503,3 +503,76 @@ pub async fn list_instances(
         "total": instances.len()
     }))
 }
+
+// ==================== Enforcement (inbox / delivery 调用入口) ====================
+
+/// 检查域名是否被封禁
+async fn is_domain_blocked(db: &DatabaseConnection, domain: &str) -> bool {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT is_blocked FROM federation_instances WHERE domain = $1",
+            [domain.into()],
+        ))
+        .await
+        .ok()
+        .flatten();
+    row.map(|r| r.try_get::<bool>("", "is_blocked").unwrap_or(false))
+        .unwrap_or(false)
+}
+
+/// 入站请求策略检查（inbox 调用）
+///
+/// 顺序：实例黑名单 → 速率限制 → 内容过滤
+/// 返回 `Err(reason)` 表示拒绝。
+pub async fn enforce_inbound(
+    db: &DatabaseConnection,
+    domain: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    if domain.is_empty() {
+        return Err("Empty domain".to_string());
+    }
+
+    if is_domain_blocked(db, domain).await {
+        return Err(format!("Instance {} is blocked", domain));
+    }
+
+    let rate = check_rate_limit(db, domain, &RateLimitPolicy::default()).await;
+    if !rate.allowed {
+        return Err(rate.reason.unwrap_or_else(|| "Rate limited".to_string()));
+    }
+
+    let trust = get_instance_trust_level(db, domain).await;
+    if let FilterVerdict::Reject(reason) =
+        apply_content_filters(activity, trust, &load_content_filter_rules(db).await)
+    {
+        return Err(reason);
+    }
+
+    Ok(())
+}
+
+/// 出站投递策略检查（delivery 调用）
+///
+/// 仅检查目标实例是否被封禁 —— 投递不消耗入站速率配额。
+pub async fn enforce_outbound(
+    db: &DatabaseConnection,
+    target_domain: &str,
+) -> Result<(), String> {
+    if target_domain.is_empty() {
+        return Err("Empty target domain".to_string());
+    }
+    if is_domain_blocked(db, target_domain).await {
+        return Err(format!("Target {} is blocked", target_domain));
+    }
+    Ok(())
+}
+
+/// 加载当前生效的内容过滤规则
+///
+/// 当前实现：返回空列表（管理 API 后续接入）。保留入口确保 inbox 调用稳定。
+async fn load_content_filter_rules(_db: &DatabaseConnection) -> Vec<ContentFilterRule> {
+    Vec::new()
+}
+

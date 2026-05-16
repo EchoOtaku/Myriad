@@ -10,7 +10,7 @@ const IMAGE_CACHE = `${CACHE_VERSION}-images`
 // 需要预缓存的静态资源
 const STATIC_ASSETS = [
   '/',
-  '/favicon.svg',
+  '/logo.png',
 ]
 
 // 缓存配置

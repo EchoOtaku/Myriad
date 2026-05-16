@@ -11,6 +11,9 @@
  * - federation.rooms — Room 读取与消息发送
  * - federation.rings — Ring 信息读取
  * - federation.publish / unpublish — 内容发布管理
+ * - federation.trust — 实例信任策略管理
+ * - federation.transfers — 文件传输
+ * - federation.subscribeChannel / subscribeRoom — WS 实时事件订阅
  */
 
 import type { TappInstance, TappMessage } from '../types'
@@ -19,11 +22,71 @@ import { federationApi } from '../../services/federationApi'
 
 /**
  * 注册联邦处理器到 TappBridge
+ *
+ * 返回 cleanup 函数 — 调用以关闭由该 bridge 持有的所有 WebSocket 订阅。
  */
 export function registerFederationHandlers(
   bridge: TappBridge,
   _tappInstance: TappInstance,
-): void {
+): () => void {
+  // 此 bridge 持有的实时订阅
+  const channelSockets = new Map<string, WebSocket>()
+  const roomSockets = new Map<string, WebSocket>()
+
+  const safeClose = (ws: WebSocket): void => {
+    try {
+      ws.close()
+    }
+    catch {
+      /* ignore */
+    }
+  }
+
+  const closeAllSockets = (): void => {
+    for (const ws of channelSockets.values())
+      safeClose(ws)
+    channelSockets.clear()
+    for (const ws of roomSockets.values())
+      safeClose(ws)
+    roomSockets.clear()
+  }
+
+  const attachChannelWs = (channelId: string, ws: WebSocket): void => {
+    ws.addEventListener('message', (ev) => {
+      try {
+        const data = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
+        bridge.emit('federation:message', { scope: 'channel', channelId, data })
+        if (data && typeof data === 'object' && data.type === 'channel_closed')
+          bridge.emit('federation:channelUpdate', { channelId, event: 'closed' })
+      }
+      catch {
+        /* ignore non-JSON */
+      }
+    })
+    ws.addEventListener('close', () => {
+      channelSockets.delete(channelId)
+      bridge.emit('federation:channelUpdate', { channelId, event: 'disconnected' })
+    })
+  }
+
+  const attachRoomWs = (roomId: string, ws: WebSocket): void => {
+    ws.addEventListener('message', (ev) => {
+      try {
+        const data = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
+        bridge.emit('federation:message', { scope: 'room', roomId, data })
+        if (data && typeof data === 'object' && data.event === 'governance_changed')
+          bridge.emit('federation:roomUpdate', { roomId, event: 'governance_changed', changes: data.changes })
+      }
+      catch {
+        /* ignore non-JSON */
+      }
+    })
+    ws.addEventListener('close', () => {
+      roomSockets.delete(roomId)
+      bridge.emit('federation:roomUpdate', { roomId, event: 'disconnected' })
+    })
+  }
+
   // ==================== 时间线 ====================
 
   bridge.registerHandler('federation.getTimeline', async () => {
@@ -494,4 +557,187 @@ export function registerFederationHandlers(
       return { success: false, error: error instanceof Error ? error.message : 'Failed' }
     }
   })
+
+  // ==================== Trust 策略管理 ====================
+
+  bridge.registerHandler('federation.getTrustPolicy', async () => {
+    try {
+      const data = await federationApi.getTrustPolicy()
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.getInstances', async () => {
+    try {
+      const data = await federationApi.getInstances()
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.updateInstanceTrust', async (message: TappMessage) => {
+    const [req] = (message.payload as { args: unknown[] }).args || []
+    if (!req || typeof req !== 'object')
+      return { success: false, error: 'Trust request is required' }
+    try {
+      const data = await federationApi.updateInstanceTrust(req as Parameters<typeof federationApi.updateInstanceTrust>[0])
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.toggleInstanceBlock', async (message: TappMessage) => {
+    const [req] = (message.payload as { args: unknown[] }).args || []
+    if (!req || typeof req !== 'object')
+      return { success: false, error: 'Block request is required' }
+    try {
+      const data = await federationApi.toggleInstanceBlock(req as Parameters<typeof federationApi.toggleInstanceBlock>[0])
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  // ==================== 文件传输 ====================
+
+  bridge.registerHandler('federation.initiateTransfer', async (message: TappMessage) => {
+    const [channelId, req] = (message.payload as { args: unknown[] }).args || []
+    if (!channelId || typeof channelId !== 'string' || !req || typeof req !== 'object')
+      return { success: false, error: 'Channel ID and transfer request are required' }
+    try {
+      const data = await federationApi.initiateTransfer(
+        channelId,
+        req as Parameters<typeof federationApi.initiateTransfer>[1],
+      )
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.listTransfers', async (message: TappMessage) => {
+    const [channelId] = (message.payload as { args: unknown[] }).args || []
+    if (!channelId || typeof channelId !== 'string')
+      return { success: false, error: 'Channel ID is required' }
+    try {
+      const data = await federationApi.listTransfers(channelId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.getTransfer', async (message: TappMessage) => {
+    const [transferId] = (message.payload as { args: unknown[] }).args || []
+    if (!transferId || typeof transferId !== 'string')
+      return { success: false, error: 'Transfer ID is required' }
+    try {
+      const data = await federationApi.getTransfer(transferId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.uploadChunk', async (message: TappMessage) => {
+    const [transferId, req] = (message.payload as { args: unknown[] }).args || []
+    if (!transferId || typeof transferId !== 'string' || !req || typeof req !== 'object')
+      return { success: false, error: 'Transfer ID and chunk are required' }
+    try {
+      const data = await federationApi.uploadChunk(
+        transferId,
+        req as Parameters<typeof federationApi.uploadChunk>[1],
+      )
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  bridge.registerHandler('federation.cancelTransfer', async (message: TappMessage) => {
+    const [transferId] = (message.payload as { args: unknown[] }).args || []
+    if (!transferId || typeof transferId !== 'string')
+      return { success: false, error: 'Transfer ID is required' }
+    try {
+      const data = await federationApi.cancelTransfer(transferId)
+      return { success: true, data }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+  })
+
+  // ==================== WS 实时事件订阅 ====================
+
+  bridge.registerHandler('federation.subscribeChannel', async (message: TappMessage) => {
+    const [channelId] = (message.payload as { args: unknown[] }).args || []
+    if (!channelId || typeof channelId !== 'string')
+      return { success: false, error: 'Channel ID is required' }
+    if (channelSockets.has(channelId))
+      return { success: true, data: { subscribed: true, alreadyOpen: true } }
+    try {
+      const ws = federationApi.connectChannelWs(channelId)
+      channelSockets.set(channelId, ws)
+      attachChannelWs(channelId, ws)
+      return { success: true, data: { subscribed: true } }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to subscribe' }
+    }
+  })
+
+  bridge.registerHandler('federation.unsubscribeChannel', async (message: TappMessage) => {
+    const [channelId] = (message.payload as { args: unknown[] }).args || []
+    if (!channelId || typeof channelId !== 'string')
+      return { success: false, error: 'Channel ID is required' }
+    const ws = channelSockets.get(channelId)
+    if (ws) {
+      safeClose(ws)
+      channelSockets.delete(channelId)
+    }
+    return { success: true, data: { unsubscribed: true } }
+  })
+
+  bridge.registerHandler('federation.subscribeRoom', async (message: TappMessage) => {
+    const [roomId] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string')
+      return { success: false, error: 'Room ID is required' }
+    if (roomSockets.has(roomId))
+      return { success: true, data: { subscribed: true, alreadyOpen: true } }
+    try {
+      const ws = federationApi.connectRoomWs(roomId)
+      roomSockets.set(roomId, ws)
+      attachRoomWs(roomId, ws)
+      return { success: true, data: { subscribed: true } }
+    }
+    catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to subscribe' }
+    }
+  })
+
+  bridge.registerHandler('federation.unsubscribeRoom', async (message: TappMessage) => {
+    const [roomId] = (message.payload as { args: unknown[] }).args || []
+    if (!roomId || typeof roomId !== 'string')
+      return { success: false, error: 'Room ID is required' }
+    const ws = roomSockets.get(roomId)
+    if (ws) {
+      safeClose(ws)
+      roomSockets.delete(roomId)
+    }
+    return { success: true, data: { unsubscribed: true } }
+  })
+
+  return closeAllSockets
 }
