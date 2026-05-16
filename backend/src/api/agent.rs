@@ -2247,6 +2247,20 @@ async fn toggle_heartbeat(
     }
 }
 
+/// 重新加载 Heartbeat 配置（HEARTBEAT.md 修改后调用）
+async fn reload_heartbeat() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Heartbeat not initialized" })),
+        )
+    })?;
+
+    manager.reload().await;
+    let tasks = manager.get_tasks().await;
+    Ok(Json(json!({ "reloaded": true, "task_count": tasks.len() })))
+}
+
 // ============ Skills & Memory ============
 
 /// 获取可用技能列表
@@ -3180,6 +3194,11 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         .route(
             "/heartbeat/{task_id}/toggle",
             post(toggle_heartbeat).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 重新加载 Heartbeat 配置（需要认证）
+        .route(
+            "/heartbeat/reload",
+            post(reload_heartbeat).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // Agent 列表（需要认证）
         .route(

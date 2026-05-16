@@ -86,17 +86,6 @@ impl HeartbeatManager {
         self.tasks.read().await.clone()
     }
 
-    /// 获取已启用的任务
-    pub async fn get_enabled_tasks(&self) -> Vec<HeartbeatTask> {
-        self.tasks
-            .read()
-            .await
-            .iter()
-            .filter(|t| t.enabled)
-            .cloned()
-            .collect()
-    }
-
     /// 切换任务启用状态
     pub async fn toggle_task(&self, task_id: &str) -> Option<bool> {
         let mut tasks = self.tasks.write().await;
