@@ -101,7 +101,15 @@
       "Bash(which magick *)",
       "Read(//opt/homebrew/bin/**)",
       "Bash(python3 -c \"from PIL import Image; print\\(Image.__version__\\)\")",
-      "Bash(md5 /Users/haru/Documents/GitHub/Myriad/docs/logo.png)"
+      "Bash(md5 /Users/haru/Documents/GitHub/Myriad/docs/logo.png)",
+      "Bash(sed -n '340,360p' /Users/haru/Documents/GitHub/Myriad/backend/src/main.rs)",
+      "Bash(sed -n '2200,2210p' /Users/haru/Documents/GitHub/Myriad/backend/src/main.rs)",
+      "Bash(bash /Users/haru/Documents/GitHub/Myriad/scripts/test-updater-smoke.sh)",
+      "Bash(pnpm lint *)",
+      "Bash(echo \"---exit $?---\")",
+      "Bash(awk '/UpdaterPanel|updaterApi/,/^$/')",
+      "Bash(pnpm exec *)",
+      "Bash(grep -n \"let api_router\\\\|^[[:space:]]*\\\\.layer\\\\b\\\\|^[[:space:]]*;[[:space:]]*$\" /Users/haru/Documents/GitHub/Myriad/backend/src/main.rs)"
     ],
     "deny": [],
     "ask": []

@@ -65,6 +65,9 @@ dotenvy = "0.15"
 # Error handling
 anyhow = "1.0"
 
+# Async trait support (used by services/oauth provider abstraction)
+async-trait = "0.1"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

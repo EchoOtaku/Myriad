@@ -30,6 +30,10 @@ COPY frontend/ ./
 ARG BACKEND_URL=
 ENV PUBLIC_API_URL=${BACKEND_URL}
 
+# Build-time version stamp injected into <meta name="myriad-version">.
+ARG MYRIAD_VERSION=v0.0.0-dev
+ENV PUBLIC_MYRIAD_VERSION=${MYRIAD_VERSION}
+
 # Build the application
 RUN if [ "$PACKAGE_MANAGER" = "pnpm" ]; then pnpm run build; else npm run build; fi
 

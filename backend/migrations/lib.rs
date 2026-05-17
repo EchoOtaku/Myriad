@@ -16,6 +16,9 @@ mod agent_system;
 #[path = "005_federation.rs"]
 mod federation;
 
+#[path = "006_oauth_identities.rs"]
+mod oauth_identities;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -27,6 +30,7 @@ impl MigratorTrait for Migrator {
             Box::new(brew_system::Migration),
             Box::new(agent_system::Migration),
             Box::new(federation::Migration),
+            Box::new(oauth_identities::Migration),
         ]
     }
 }

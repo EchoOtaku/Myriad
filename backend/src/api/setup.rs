@@ -76,6 +76,9 @@ pub async fn get_setup_config() -> Result<Json<Value>, (StatusCode, Json<Value>)
             "api_key_set": config_guard.gemini_api_key.is_some(),
             "model": config_guard.gemini_model.clone(),
         },
+        // PR #4: 公开 registration 开关 + OAuth providers 数量给前端
+        "allow_local_registration": config_guard.allow_local_registration,
+        "oauth_providers_count": config_guard.oauth_providers.iter().filter(|p| p.enabled).count(),
     });
 
     Ok(Json(config))

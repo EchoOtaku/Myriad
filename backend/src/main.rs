@@ -57,6 +57,23 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("🚀 Starting Myriad Backend v{}", env!("CARGO_PKG_VERSION"));
 
+    // Record process start time for /health.uptime_seconds.
+    api::mark_startup();
+
+    // Initialise the updater proxy client. None if env not set; routes still register
+    // and return a clean 503.
+    let updater_client = services::updater_client::UpdaterClient::from_env();
+    if let Some(c) = &updater_client {
+        tracing::info!(
+            base_url = %c.base_url(),
+            has_token = c.has_token(),
+            "updater client configured"
+        );
+    } else {
+        tracing::info!("no updater client configured (set MYRIAD_UPDATER_URL/UPDATE_TOKEN to enable)");
+    }
+    api::updater_admin::init(updater_client);
+
     run_server().await?;
 
     tracing::info!("👋 Backend shutdown complete");
@@ -144,6 +161,13 @@ async fn run_server() -> anyhow::Result<()> {
                 if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config().await {
                     tracing::debug!("ℹ️  GitHub OAuth status: {}", e);
                 }
+
+                // 🔐 Load OAuth provider registry (GitHub + future OIDC providers)
+                services::oauth::registry::init().await;
+                tracing::info!(
+                    "✅ OAuth providers loaded: {}",
+                    services::oauth::registry::REGISTRY.list().await.len()
+                );
 
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
@@ -363,6 +387,8 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/auth/me",              // Allow user info endpoint (for login state check)
         "/api/auth/logout",          // Allow logout endpoint
         "/api/auth/change-password", // Allow change password endpoint
+        "/api/auth/register",        // PR #4: 公开注册（自身有 allow_local_registration 检查）
+        "/api/auth/oauth/providers", // PR #2: 公开列出 OAuth providers
     ];
 
     // If in config mode and path is not whitelisted, return 503
@@ -440,6 +466,77 @@ async fn create_admin_wrapper(
                 "error": "Database not connected",
                 "message": "Database connection not available. Please configure database first."
             })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for register that gets DB from global state (PR #4)
+async fn register_wrapper(Json(payload): Json<api::auth_local::RegisterRequest>) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::auth_local::register(axum::extract::State(db.clone()), Json(payload))
+            .await
+        {
+            Ok(response) => response.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，请先完成初始配置"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for set_password (PR #4)
+async fn set_password_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::auth_local::SetPasswordRequest>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::auth_local::set_password(
+            axum::extract::State(db.clone()),
+            headers,
+            Json(payload),
+        )
+        .await
+        {
+            Ok(response) => response.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for toggle_local_login (PR #4)
+async fn toggle_local_login_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::auth_local::LocalLoginToggleRequest>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::auth_local::toggle_local_login(
+            axum::extract::State(db.clone()),
+            headers,
+            Json(payload),
+        )
+        .await
+        {
+            Ok(response) => response.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
         )
             .into_response(),
     }
@@ -2239,6 +2336,18 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/auth/change-password",
             post(change_password_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
+        // PR #4: 公开注册（开关受 allow_local_registration 控制） + 后补密码 + 本地登录开关
+        .route("/api/auth/register", post(register_wrapper))
+        .route(
+            "/api/auth/me/set-password",
+            post(set_password_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/auth/me/local-login",
+            axum::routing::patch(toggle_local_login_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         // Configuration routes (use wrapper for dynamic DB access) - 🔒 REQUIRE AUTHENTICATION
         .route(
             "/api/config",
@@ -2536,6 +2645,32 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 delete(api::reports::delete_comprehensive_report)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
+            // 🔐 通用 OAuth handler（PR #2 抽象层）
+            .route("/api/auth/oauth/providers", get(api::oauth::list_providers))
+            .route(
+                "/api/auth/oauth/{slug}/login",
+                get(api::oauth::provider_login),
+            )
+            .route(
+                "/api/auth/oauth/{slug}/callback",
+                get(api::oauth::provider_callback),
+            )
+            .route(
+                "/api/auth/oauth/{slug}/link",
+                get(api::oauth::provider_link)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/auth/oauth/{slug}/unlink/{identity_id}",
+                axum::routing::delete(api::oauth::provider_unlink)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/auth/identities",
+                get(api::oauth::list_my_identities)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // ↓ 兼容层：旧 GitHub 路由 302 重定向到新通用路由
             .route("/api/auth/github/login", get(api::auth::github_login))
             .route("/api/auth/github/callback", get(api::auth::github_callback))
             .route(
@@ -2994,6 +3129,69 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         api_router = api_router.merge(db_router);
     }
 
+    // 🚀 Updater admin proxy routes (admin-only). Backend forwards to the updater container
+    // and injects UPDATE_TOKEN server-side, so the browser never sees the secret.
+    // See docs/updater-spec.md §13.
+    {
+        use middleware::auth::admin_middleware;
+        api_router = api_router
+            .route(
+                "/api/admin/updater/status",
+                get(api::updater_admin::status)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/available",
+                get(api::updater_admin::available)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/jobs",
+                get(api::updater_admin::jobs)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/jobs/{id}",
+                get(api::updater_admin::job)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/snapshots",
+                get(api::updater_admin::snapshots)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/update",
+                post(api::updater_admin::trigger_update)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/rollback",
+                post(api::updater_admin::rollback)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/diagnostics",
+                get(api::updater_admin::diagnostics)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/rescue/exit-maintenance",
+                post(api::updater_admin::exit_maintenance)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/rescue/forget-current",
+                post(api::updater_admin::forget_current)
+                    .route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/self-update",
+                post(api::updater_admin::self_update)
+                    .route_layer(from_fn(admin_middleware)),
+            );
+    }
+
     // Apply middleware and layers
     let api_router = api_router
         .layer(from_fn(config_mode_middleware))
@@ -3078,6 +3276,9 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                                             );
                                         }
                                     }
+
+                                    // 🔐 Reload OAuth provider registry from new dynamic config
+                                    services::oauth::registry::REGISTRY.reload().await;
 
                                     // Switch to full mode FIRST before logging
                                     CONFIG_MODE.store(false, Ordering::Relaxed);

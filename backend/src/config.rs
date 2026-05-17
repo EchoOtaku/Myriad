@@ -16,6 +16,35 @@ impl Default for ModelTier {
     }
 }
 
+/// 单个 OAuth Provider 配置（OIDC / 其他）
+///
+/// GitHub 仍走 `github_client_id` / `github_client_secret` 平铺字段（内置 provider）。
+/// 这里专门给 OIDC / 未来其他 provider 用。
+///
+/// 详见 [`docs/oauth-refactor-plan.md`](../../docs/oauth-refactor-plan.md) §5。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OAuthProviderEntry {
+    /// 路由 slug：`/api/auth/oauth/<slug>/login`。须全局唯一。
+    pub slug: String,
+    /// "oidc" 或其他扩展 kind
+    pub kind: String,
+    /// UI 展示名
+    pub display_name: String,
+    /// 是否启用
+    pub enabled: bool,
+    pub client_id: String,
+    pub client_secret: String,
+    /// OAuth scopes (OIDC 至少需要 "openid")
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// OIDC discovery URL: `.../.well-known/openid-configuration`
+    #[serde(default)]
+    pub discovery_url: Option<String>,
+    /// UI 图标 URL（可选；缺省时前端用默认 OIDC logo）
+    #[serde(default)]
+    pub icon_url: Option<String>,
+}
+
 /// 解析后的 AI 配置（已根据 tier 确定具体的 provider/key/model）
 pub struct ResolvedAiConfig {
     pub provider: String,
@@ -222,10 +251,17 @@ pub struct DynamicConfig {
     pub enable_auto_fetch: bool,
     pub fetch_interval_hours: i32,
 
-    // OAuth 配置
+    // OAuth 配置（GitHub 是内置 provider，仍用平铺字段；其他 provider 走 oauth_providers）
     pub github_client_id: Option<String>,
     pub github_client_secret: Option<String>,
     pub github_redirect_url: String,
+
+    /// 通用 OIDC providers 列表（PR #3）
+    /// 详见 docs/oauth-refactor-plan.md §5
+    pub oauth_providers: Vec<OAuthProviderEntry>,
+
+    /// 是否允许公开本地账号注册（PR #4）
+    pub allow_local_registration: bool,
 
     // 站点 URL 配置（用于自动生成 OAuth 回调等 URL）
     pub base_url: Option<String>,
@@ -411,6 +447,9 @@ impl Default for DynamicConfig {
             github_client_id: None,
             github_client_secret: None,
             github_redirect_url: String::new(), // 自动从 base_url 生成
+
+            oauth_providers: Vec::new(),
+            allow_local_registration: false,
 
             base_url: None,
 

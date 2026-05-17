@@ -1,20 +1,21 @@
-name: Build and Push Docker Images
+name: Build and Push Development Images
+
+# Builds development/preview images for branch pushes.
+# Production releases are handled by release.yml on tag push.
+# NOTE: This workflow MUST NOT push the `latest` tag, since the updater
+# requires immutable version tags to roll back reliably.
 
 on:
   push:
     branches:
       - main
       - preview
-    tags:
-      - "v*"
-  release:
-    types: [published]
+      - beta
   workflow_dispatch:
     inputs:
       tag:
-        description: "Docker image tag"
+        description: "Override docker image tag (optional)"
         required: false
-        default: "latest"
 
 env:
   REGISTRY: docker.io
@@ -49,11 +50,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.BACKEND_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=dev-,format=short
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+          # latest is intentionally omitted; release.yml owns release tags.
 
       - name: Extract metadata for frontend
         id: meta-frontend
@@ -62,11 +61,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.FRONTEND_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=dev-,format=short
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5
@@ -76,6 +72,8 @@ jobs:
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
+          build-args: |
+            MYRIAD_VERSION=dev-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -89,48 +87,27 @@ jobs:
           build-args: |
             PACKAGE_MANAGER=pnpm
             PNPM_VERSION=9.15.4
+            MYRIAD_VERSION=dev-${{ github.sha }}
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      - name: Docker Hub description for backend
-        uses: peter-evans/dockerhub-description@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.BACKEND_IMAGE_NAME }}
-          short-description: "Myriad Backend - Multi-platform personal data aggregation and AI analysis"
-          readme-filepath: ./docs/DOCKER_README_BACKEND.md
-        continue-on-error: true
-
-      - name: Docker Hub description for frontend
-        uses: peter-evans/dockerhub-description@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.FRONTEND_IMAGE_NAME }}
-          short-description: "Myriad Frontend - Modern web interface for personal data analysis"
-          readme-filepath: ./docs/DOCKER_README_FRONTEND.md
-        continue-on-error: true
-
       - name: Summary
         run: |
-          echo "## Docker Images Built and Pushed 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Backend Image" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta-backend.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Frontend Image" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta-frontend.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Pull commands:" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.BACKEND_IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.FRONTEND_IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Development images pushed"
+            echo ""
+            echo "### Backend"
+            echo '```'
+            echo "${{ steps.meta-backend.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "### Frontend"
+            echo '```'
+            echo "${{ steps.meta-frontend.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "> Production releases (with \`release.json\` manifest) are published by \`release.yml\` on \`v*\` tag pushes."
+          } >> "$GITHUB_STEP_SUMMARY"

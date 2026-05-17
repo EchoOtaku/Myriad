@@ -1,0 +1,192 @@
+# Updater Quickstart
+
+如何在自托管 Myriad 实例上启用 updater，并执行第一次升级。
+完整设计参考 [docs/updater-spec.md](./updater-spec.md)。
+
+## 0. 准备
+
+- Docker Engine 20.10+ 且支持 `docker compose` v2 子命令
+- 单机部署（updater 当前只支持 single-node）
+- pgdata 在宿主文件系统的目录（不能是 docker named volume）
+
+## 1. 从旧布局迁移
+
+旧 Myriad（postgres named volume、`:latest` 镜像、直接暴露 backend/frontend 端口）需要先跑：
+
+```bash
+cd /path/to/myriad
+YES=1 bash scripts/migrate-to-updater.sh
+```
+
+脚本做的事：
+
+- 把 `myriad_postgres_data` named volume 复制到 `./pgdata`
+- 在 `.env` 写入 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad`、`UPDATE_TOKEN`（随机生成）等
+- 创建 `./state`、`./backups`
+- 校验 `.env` 没有重复 key
+
+脚本是幂等的，可以重复跑。
+
+## 2. 拉镜像 + 启动
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+此时栈的拓扑：
+
+```
+proxy (80) ─┬─► frontend
+            └─► backend ─► postgres
+updater (内网) — docker.sock + pgdata + state
+```
+
+只有 `proxy` 暴露宿主端口。`HTTP_PORT` 可以在 `.env` 调（默认 80）。
+
+## 3. 打开 updater UI
+
+浏览器访问：
+
+```
+http(s)://<host>/admin/updater
+```
+
+需要管理员登录。**默认走 backend 通道**：backend 持有 `UPDATE_TOKEN`，浏览器只携带 admin session cookie，整个流程不需要手动输入 token。
+
+如果 backend 本身挂了（极端情况），可以在 UI 的"高级：直连模式"切到 `direct` 并手输 `UPDATE_TOKEN`。前提是宿主机管理员显式启用了直连通道：
+
+```bash
+# 在 .env 里加这一行，然后 docker compose up -d proxy
+PROXY_ALLOW_DIRECT_UPDATER=true
+```
+
+默认 `PROXY_ALLOW_DIRECT_UPDATER=false`，`/_updater/*` 返回 404，强制走 backend。
+
+UI 提供：
+
+- 当前 updater/business 版本、channel、维护状态
+- 检查 GitHub Release（按 channel 过滤）
+- 触发升级（带确认 + 进度轮询）
+- 列出快照、一键回滚
+- 强制退出维护模式
+
+## 4. 触发一次升级（命令行）
+
+### 4.1 通过 backend（推荐）
+
+先用 admin 账号登录拿 cookie：
+
+```bash
+COOKIE_JAR=/tmp/myriad.cookies
+curl -s -c "$COOKIE_JAR" -X POST http://localhost/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"YOUR_ADMIN_PASSWORD"}'
+
+# 然后用 cookie 调 admin updater 路由
+curl -s -b "$COOKIE_JAR" http://localhost/api/admin/updater/status | jq
+
+curl -s -b "$COOKIE_JAR" -X POST http://localhost/api/admin/updater/update \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: update-$(date +%s)" \
+  -d '{"target_version":"v0.2.0"}'
+```
+
+无需 `X-Update-Token` —— 由 backend 注入。
+
+### 4.2 通过 direct（rescue/backend down）
+
+需要 proxy 启用了 `PROXY_ALLOW_DIRECT_UPDATER=true`：
+
+```bash
+# 1. 查 status
+curl -s http://localhost/_updater/status | jq
+
+# 2. 触发更新
+curl -s -X POST http://localhost/_updater/update \
+  -H "Content-Type: application/json" \
+  -H "X-Update-Token: $UPDATE_TOKEN" \
+  -H "Idempotency-Key: update-$(date +%s)" \
+  -d '{"target_version":"v0.2.0"}'
+
+# 3. 跟踪 job
+JID=...
+watch -n2 "curl -s http://localhost/_updater/jobs/$JID | jq '.status, .steps[-1]'"
+```
+
+升级流程（spec §7）：
+
+```
+preflight → maintenance_on → stopping → snapshotting → swap_tag
+  → starting_new → health_probing → swapping_proxy → finalize
+```
+
+任何步骤失败都会自动回滚到 snapshot；回滚再失败进入 `needs_manual`，proxy 维护页会展示恢复命令。
+
+## 5. 出问题怎么办
+
+### 5.1 proxy 维护页一直挂着
+
+```bash
+# 看 updater 状态
+docker exec myriad-updater myriad-rescue status
+
+# 想强制退出（确认服务确实正常时）
+touch ./state/manual-override
+docker exec myriad-updater myriad-rescue exit-maintenance --force
+```
+
+`manual-override` 是宿主文件级 flag，proxy 一旦读到不存在的话所有 rescue 端点都返回 403。这阻止远端通过 API 单独触发 rescue。
+
+### 5.2 升级后服务起不来
+
+```bash
+# 看可用快照
+docker exec myriad-updater myriad-rescue status | jq '.snapshots.items'
+
+# 选一个回滚
+docker exec myriad-updater myriad-rescue rollback --snapshot snap-<job-id>
+```
+
+### 5.3 把诊断包给开发者
+
+```bash
+docker exec myriad-updater myriad-rescue diagnose
+docker cp myriad-updater:/myriad-diagnostics.tar.gz .
+```
+
+里面包含 state 文件、env-probe、`docker info`、`docker images` 列表、`history.log` 末 100 行。
+
+## 6. 发版工程（仓库维护者侧）
+
+打 tag 触发 `release.yml`：
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+流程：
+
+1. 4 个组件镜像 (backend/frontend/proxy/updater) build & push 到 docker.io
+2. 自动生成 `release.json` 包含每个镜像的 immutable tag + digest
+3. 发布 GitHub Release，附 `release.json` + `SHA256SUMS`
+
+tag 命名约定：
+
+| 形态 | channel |
+|---|---|
+| `v0.2.0` | stable |
+| `v0.2.0-beta.1` | beta |
+| `v0.2.0-nightly.20260516` | nightly |
+
+每个 release 必填 `min_from_version`（避免跨版本直升）和 `min_updater_version`（强制先升 updater）。如需覆盖默认值，在 `release/overrides/<version>.json` 留一份补丁，CI 会 deep-merge 进 `release.json`。
+
+## 7. 关键约束（再次强调）
+
+- **永远不要推 `:latest`**：updater 的回滚依赖旧版本 tag 仍在 registry。
+- **pgdata 必须是 bind mount**：M1 不支持 docker named volume 上的快照。
+- **修改 `.env`**：用户可以随便加自己的 key，updater 只触碰 `MYRIAD_TAG`/`PROXY_TAG`/`UPDATER_TAG` + release 声明的 `env.new`。
+- **每次更新的 token 验证**：5 次/分钟错误后封 10 分钟。
+
+更多 corner case 见 [updater-spec.md §16-17](./updater-spec.md)。

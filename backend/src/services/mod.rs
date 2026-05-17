@@ -1,5 +1,7 @@
 // Service layer modules
 pub mod agent; // 🤖 AI Agent 自然语言任务编排系统
+pub mod oauth; // 🔐 OAuth Provider 抽象（GitHub / OIDC / ...）
+pub mod updater_client; // 🚀 Updater HTTP client (admin proxy)
 pub mod ai; // 🤖 AI 服务工厂（统一创建 AI 分析器）
 pub mod ai_service; // 🤖 AI 服务（Gemini API 集成）
 pub mod analyzer;

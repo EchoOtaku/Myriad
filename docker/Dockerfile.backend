@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Build-time version stamp consumed by /health (see api/mod.rs).
+ARG MYRIAD_VERSION=v0.0.0-dev
+ENV MYRIAD_VERSION=${MYRIAD_VERSION}
+
 # Copy manifests first
 COPY backend/Cargo.toml backend/Cargo.lock ./
 COPY backend/migrations ./migrations

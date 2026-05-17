@@ -1,0 +1,255 @@
+name: Release
+
+# Triggered by pushing a tag matching v*.
+# Builds all 4 component images, then assembles release.json and publishes a GitHub Release.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to (re)release, e.g. v0.1.0"
+        required: true
+      channel:
+        description: "Channel"
+        required: true
+        default: "stable"
+        type: choice
+        options: [stable, beta, nightly]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAMESPACE: somekawahitomi
+  COMPONENTS: backend frontend proxy updater
+
+jobs:
+  resolve:
+    name: Resolve version & channel
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.out.outputs.version }}
+      channel: ${{ steps.out.outputs.channel }}
+      prerelease: ${{ steps.out.outputs.prerelease }}
+    steps:
+      - id: out
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            CHANNEL="${{ inputs.channel }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+            # tag like v1.2.3-beta.1 -> beta channel; -nightly.* -> nightly; otherwise stable
+            case "$VERSION" in
+              *-nightly.*) CHANNEL=nightly ;;
+              *-beta.*)    CHANNEL=beta ;;
+              *)           CHANNEL=stable ;;
+            esac
+          fi
+          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$'; then
+            echo "::error::Invalid version tag: $VERSION"
+            exit 1
+          fi
+          [ "$CHANNEL" = "stable" ] && PRERELEASE=false || PRERELEASE=true
+          {
+            echo "version=$VERSION"
+            echo "channel=$CHANNEL"
+            echo "prerelease=$PRERELEASE"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.component }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend, proxy, updater]
+    outputs:
+      # Per-matrix outputs are not directly addressable; we write digests to artifacts instead.
+      _: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute dockerfile path
+        id: paths
+        run: |
+          case "${{ matrix.component }}" in
+            backend)  echo "dockerfile=docker/Dockerfile.backend"  >>"$GITHUB_OUTPUT" ;;
+            frontend) echo "dockerfile=docker/Dockerfile.frontend" >>"$GITHUB_OUTPUT" ;;
+            proxy)    echo "dockerfile=proxy/Dockerfile"           >>"$GITHUB_OUTPUT" ;;
+            updater)  echo "dockerfile=updater/Dockerfile"         >>"$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Check Dockerfile presence
+        id: check
+        run: |
+          if [ -f "${{ steps.paths.outputs.dockerfile }}" ]; then
+            echo "present=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::Dockerfile ${{ steps.paths.outputs.dockerfile }} not present; skipping build for ${{ matrix.component }}"
+            echo "present=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Buildx
+        if: steps.check.outputs.present == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.check.outputs.present == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push
+        if: steps.check.outputs.present == 'true'
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ steps.paths.outputs.dockerfile }}
+          push: true
+          # Immutable version tag + minor/major aliases. NEVER `latest`.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}:${{ needs.resolve.outputs.version }}
+          build-args: |
+            MYRIAD_VERSION=${{ needs.resolve.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to:   type=gha,scope=${{ matrix.component }},mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+
+      - name: Emit digest artifact
+        if: steps.check.outputs.present == 'true'
+        run: |
+          mkdir -p _digests
+          echo "${{ steps.build.outputs.digest }}" >"_digests/${{ matrix.component }}.digest"
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}:${{ needs.resolve.outputs.version }}" >"_digests/${{ matrix.component }}.ref"
+
+      - name: Emit absent marker
+        if: steps.check.outputs.present != 'true'
+        run: |
+          mkdir -p _digests
+          : >"_digests/${{ matrix.component }}.absent"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.component }}
+          path: _digests/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: _digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Assemble release.json
+        id: assemble
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+        run: |
+          set -euo pipefail
+          NS="${{ env.IMAGE_NAMESPACE }}"
+          REG="${{ env.REGISTRY }}"
+          REPO="${{ github.repository }}"
+
+          # Build images map dynamically based on which digests are present.
+          IMAGES=$(jq -n '{}')
+          for comp in backend frontend proxy updater; do
+            if [ -f "_digests/${comp}.absent" ]; then
+              echo "Skipping $comp (no Dockerfile this release)"
+              continue
+            fi
+            digest=$(cat "_digests/${comp}.digest")
+            ref="${REG}/${NS}/myriad-${comp}:${VERSION}"
+            IMAGES=$(echo "$IMAGES" | jq --arg c "$comp" --arg r "$ref" --arg d "$digest" \
+              '.[$c] = {ref: $r, digest: $d}')
+          done
+
+          NOTES_URL="https://github.com/${REPO}/releases/tag/${VERSION}"
+
+          # Pull defaults from release/example.release.json so changes there propagate.
+          jq -n \
+            --arg version "$VERSION" \
+            --arg channel "$CHANNEL" \
+            --arg released_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes_url "$NOTES_URL" \
+            --argjson images "$IMAGES" \
+            '{
+              schema_version: 1,
+              version: $version,
+              channel: $channel,
+              released_at: $released_at,
+              min_from_version: $version,
+              images: $images,
+              env: { required: ["POSTGRES_PASSWORD", "JWT_SECRET", "CORS_ORIGINS"], new: [], removed: [] },
+              migrations: { irreversible: false, estimated_seconds: 30, requires_full_backup: true },
+              updater: { min_updater_version: $version, self_update_required: false },
+              postgres: { min_pg_version: "16", max_pg_version: "16" },
+              notes_url: $notes_url,
+              signature: null
+            }' > release.json
+
+          # If repo provides per-release overrides at release/overrides/<version>.json, deep-merge them.
+          OVERRIDE="release/overrides/${VERSION}.json"
+          if [ -f "$OVERRIDE" ]; then
+            jq -s '.[0] * .[1]' release.json "$OVERRIDE" > release.merged.json
+            mv release.merged.json release.json
+          fi
+
+          # Validate against schema (basic structural check via jq).
+          jq -e 'has("schema_version") and has("version") and (.images | length > 0)' release.json >/dev/null
+
+          # Generate checksums.
+          ( cd . && sha256sum release.json > SHA256SUMS )
+
+          # Build a minimal changelog stub if not provided.
+          if [ ! -f "CHANGELOG-fragment.md" ]; then
+            {
+              echo "## ${VERSION}"
+              echo ""
+              echo "Channel: \`${CHANNEL}\`"
+              echo ""
+              echo "Images:"
+              jq -r '.images | to_entries[] | "- \(.key): `\(.value.ref)` (`\(.value.digest)`)"' release.json
+            } > CHANGELOG-fragment.md
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.resolve.outputs.version }}" \
+            --title "${{ needs.resolve.outputs.version }}" \
+            --notes-file CHANGELOG-fragment.md \
+            --prerelease=${{ needs.resolve.outputs.prerelease }} \
+            release.json SHA256SUMS
+
+      - name: Summary
+        run: |
+          {
+            echo "## Released ${{ needs.resolve.outputs.version }}"
+            echo ""
+            echo '### release.json'
+            echo '```json'
+            cat release.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

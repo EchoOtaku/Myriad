@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Myriad — 更新维护中</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fafafa;
+      --fg: #1a1a1a;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --warn-bg: #fef3c7;
+      --warn-fg: #92400e;
+      --danger-bg: #fee2e2;
+      --danger-fg: #991b1b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0a;
+        --fg: #f5f5f5;
+        --muted: #9ca3af;
+        --warn-bg: #422006;
+        --warn-fg: #fde68a;
+        --danger-bg: #450a0a;
+        --danger-fg: #fecaca;
+      }
+    }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+    .wrap { max-width: 640px; margin: 8vh auto 0; padding: 0 24px; }
+    h1 { font-size: 22px; margin: 0 0 8px; font-weight: 600; }
+    p { margin: 8px 0; }
+    .muted { color: var(--muted); }
+    .kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 16px 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+    .kv dt { color: var(--muted); }
+    .banner { padding: 12px 16px; border-radius: 8px; margin: 16px 0; display: none; }
+    .stale .banner.stale, .very-stale .banner.very-stale { display: block; }
+    .banner.stale { background: var(--warn-bg); color: var(--warn-fg); }
+    .banner.very-stale { background: var(--danger-bg); color: var(--danger-fg); }
+    pre { background: rgba(127,127,127,.1); padding: 12px; border-radius: 8px; font-size: 12.5px; overflow-x: auto; }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -2px; animation: spin .8s linear infinite; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="{{STALE_CLASS}}">
+  <div class="wrap">
+    <h1><span class="spinner"></span>Myriad 正在更新</h1>
+    <p class="muted">系统正在升级中，所有功能暂时不可用。完成后页面会自动恢复，无需手动刷新。</p>
+
+    <dl class="kv">
+      <dt>阶段</dt><dd>{{PHASE}} <span class="muted">({{MESSAGE_KEY}})</span></dd>
+      <dt>版本</dt><dd>{{FROM}} → {{TO}}</dd>
+      <dt>心跳</dt><dd>{{UPDATED_AT}}</dd>
+    </dl>
+
+    <div class="banner stale">
+      ⚠️ 更新心跳已超过 10 分钟未刷新。如果长时间未恢复，请联系管理员检查 updater 进程状态。
+    </div>
+
+    <div class="banner very-stale">
+      🚨 更新疑似失败（心跳已停滞超过 30 分钟）。请在宿主机执行以下任一恢复步骤：
+      <pre>
+# 1. 查看诊断信息
+docker exec myriad-updater myriad-rescue status
+
+# 2. 如有可用快照，回滚到上一个版本
+docker exec myriad-updater myriad-rescue rollback --snapshot &lt;snapshot-id&gt;
+
+# 3. 或强制退出维护模式（仅在确认服务已恢复时使用）
+touch ./state/manual-override
+docker exec myriad-updater myriad-rescue exit-maintenance --force
+</pre>
+    </div>
+  </div>
+  <script>
+    setTimeout(() => { location.reload(); }, 15000);
+  </script>
+</body>
+</html>

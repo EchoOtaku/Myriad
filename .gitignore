@@ -67,3 +67,5 @@ out/
 /.claude
 /backend/data/agent/memory
 /backend/data/agent/skills
+/proxy/target/debug
+/updater/target/debug

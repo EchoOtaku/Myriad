@@ -1,89 +1,50 @@
-# Myriad Docker Compose 配置文件
+# Myriad Docker Compose 配置文件 (v2 — proxy + updater)
 #
 # ============================================================================
-# 环境变量配置说明
+# 概述
 # ============================================================================
+# 这个 compose 文件配合 Myriad updater 系统使用。架构：
 #
-# 请在项目根目录创建 .env 文件并配置以下变量：
+#   proxy (80) ──┬──► frontend
+#                └──► backend ──► postgres
+#   updater (内网) — 负责拉取镜像/快照 pgdata/切换版本
 #
-# --- 必需配置 (REQUIRED) ---
+# 升级流程见 docs/updater-spec.md。
+# 老版本（直接暴露 backend/frontend 端口、使用 :latest 镜像）已废弃，
+# 迁移请使用 scripts/migrate-to-updater.sh。
 #
-# POSTGRES_PASSWORD=your_secure_password_here
-#   示例: POSTGRES_PASSWORD=MySecurePass123!@#
-#   说明: PostgreSQL 数据库密码，建议使用 16+ 位强密码
-#   生成: openssl rand -base64 32
+# ============================================================================
+# 必需 .env 变量
+# ============================================================================
+# MYRIAD_TAG             业务镜像版本，由 updater 维护
+# PROXY_TAG              代理镜像版本（少有变化）
+# UPDATER_TAG            updater 镜像版本（独立节奏）
+# COMPOSE_PROJECT_NAME=myriad  （updater 依赖这个）
 #
-# JWT_SECRET=your_jwt_secret_here
-#   示例: JWT_SECRET=kJ8mN2pQ5rT7vX9zB3cF6hK8mP0qS4tW6yA9bD2eG5j
-#   说明: JWT 认证密钥，用于用户 Token 加密（最少32字符）
-#   生成: openssl rand -base64 32
+# POSTGRES_PASSWORD      数据库密码（≥32 字符）
+# JWT_SECRET             JWT 密钥（≥32 字符）
+# CORS_ORIGINS           生产环境必填
 #
-# --- 可选配置 (OPTIONAL) ---
-#
-# CORS_ORIGINS=https://yourdomain.com
-#   示例: CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-#   说明: 允许访问的前端域名，多个域名用逗号分隔（生产环境必须配置）
-#   开发环境: CORS_ORIGINS=http://localhost:4321
-#
-# PUBLIC_API_URL=
-#   示例: PUBLIC_API_URL=https://api.yourdomain.com
-#   说明: 公开的 API 地址，留空则自动检测
-#
-# FRONTEND_URL=
-#   示例: FRONTEND_URL=https://yourdomain.com
-#   说明: 前端地址，用于 OAuth 回调重定向
-#
-# BASE_URL=
-#   示例: BASE_URL=https://api.yourdomain.com
-#   说明: 后端基础地址，用于生成 OAuth 回调 URL
-#
-# BACKEND_PORT=3000
-#   示例: BACKEND_PORT=8080
-#   说明: 后端服务暴露的主机端口
-#
-# FRONTEND_PORT=4321
-#   示例: FRONTEND_PORT=8000
-#   说明: 前端服务暴露的主机端口
-#
-# RUST_LOG=info
-#   示例: RUST_LOG=debug
-#   说明: 日志级别 (trace, debug, info, warn, error)
-#
-# CSP_CONNECT_SRC='self' https:
-#   示例: CSP_CONNECT_SRC='self' https://hirari.jp http://localhost:3000
-#   说明: Content Security Policy 的 connect-src 指令，控制前端可以连接的API域名
-#   重要: 如果后端API和前端不在同一域名，必须配置此项（包括协议和端口）
-#   格式: 多个域名用空格分隔，记得加引号
-#
-# ENVIRONMENT=production
-#   示例: ENVIRONMENT=development
-#   说明: 运行环境模式，影响CSP策略和安全配置
-#   - production: 启用严格的CSP和安全头
-#   - development: 放宽CSP限制，支持热重载
-#
-# 注意：应用配置（AI、平台集成、主题等）已迁移至数据库
-#      请通过 Web UI 的设置页面进行配置管理
-#
+# UPDATE_TOKEN           updater 鉴权 token（≥32 字符）
+# CHANNEL                stable | beta | nightly
+# GITHUB_TOKEN           可选：提升 GitHub API rate limit
+# REGISTRY_MIRROR        可选：镜像 mirror 前缀
+# MYRIAD_GITHUB_REPO     默认 somekawahitomi/myriad
+# ============================================================================
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: myriad-postgres
     deploy:
       resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+        limits: { cpus: '2.0', memory: 2G }
+        reservations: { cpus: '0.5', memory: 512M }
     environment:
       POSTGRES_DB: myriad
       POSTGRES_USER: myriad
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C --lc-collate=C --lc-ctype=C"
-      # PostgreSQL 性能优化
       POSTGRES_SHARED_BUFFERS: 512MB
       POSTGRES_EFFECTIVE_CACHE_SIZE: 1536MB
       POSTGRES_MAINTENANCE_WORK_MEM: 128MB
@@ -101,83 +62,51 @@ services:
       POSTGRES_MAX_PARALLEL_MAINTENANCE_WORKERS: 2
       TZ: Asia/Shanghai
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # IMPORTANT: bind mount, not named volume. The updater relies on file-level snapshots.
+      - ./pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U myriad -d myriad"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-    networks:
-      - myriad-net
+    networks: [myriad-net]
     restart: unless-stopped
-    # 生产环境建议：不暴露数据库端口
-    # ports:
-    #   - "${DB_PORT:-5432}:5432"
-    # 安全加固
-    security_opt:
-      - no-new-privileges:true
+    security_opt: [no-new-privileges:true]
     read_only: false
-    tmpfs:
-      - /tmp
-      - /run
-    # 日志配置
+    tmpfs: [/tmp, /run]
     logging:
       driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      options: { max-size: "10m", max-file: "3" }
 
-  # Backend API
   backend:
-    image: somekawahitomi/myriad-backend:latest
+    # NOTE: image tag is driven by updater via ${MYRIAD_TAG}.
+    image: ${BACKEND_IMAGE:-docker.io/somekawahitomi/myriad-backend}:${MYRIAD_TAG}
     container_name: myriad-backend
     deploy:
       resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+        limits: { cpus: '2.0', memory: 2G }
+        reservations: { cpus: '0.5', memory: 512M }
     environment:
-      # Database connection
       DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
-
-      # Server config
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 3000
-
-      # Security - REQUIRED: Generate with: openssl rand -base64 32
       JWT_SECRET: ${JWT_SECRET}
-
-      # CORS - IMPORTANT: Set your domain in production
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4321}
-
-      # CSP - Content Security Policy for connect-src directive
-      # 允许前端连接到后端API的域名（包括协议和端口）
-      # 示例: CSP_CONNECT_SRC='self' https://hirari.jp http://localhost:3000
-      # 生产环境必须配置！留空则使用默认值 'self' https:
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-'self' https:}
-
-      # Environment mode (development/production) - 影响CSP策略和安全配置
       ENVIRONMENT: ${ENVIRONMENT:-production}
-
-      # Optional: Frontend and Base URLs for OAuth callbacks
       FRONTEND_URL: ${FRONTEND_URL:-}
       BASE_URL: ${BASE_URL:-}
-
-      # Logging
       RUST_LOG: ${RUST_LOG:-info}
       TZ: Asia/Shanghai
-
-      # Note: 应用配置已迁移到数据库，通过 Web UI 管理
-      # AI、平台集成、主题、图片生成等配置请在设置页面中配置
-    ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      MYRIAD_VERSION: ${MYRIAD_TAG}
+      # Server-side updater proxy: backend forwards admin-authenticated UI requests
+      # to the updater. UPDATE_TOKEN is held here, never exposed to the browser.
+      MYRIAD_UPDATER_URL: http://updater:9090
+      UPDATE_TOKEN: ${UPDATE_TOKEN}
+    # NOTE: no `ports:` — only proxy exposes a host port.
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 30s
@@ -187,76 +116,100 @@ services:
     volumes:
       - backend_cache:/app/cache
       - backend_data:/app/data
-    networks:
-      - myriad-net
+    networks: [myriad-net]
     restart: unless-stopped
-    # 安全加固
-    security_opt:
-      - no-new-privileges:true
-    # 注意：需要写入权限用于数据库文件和缓存
+    security_opt: [no-new-privileges:true]
     read_only: false
-    tmpfs:
-      - /tmp
-    # 确保容器内用户有权限写入挂载的卷
-    user: "0:0"  # 使用 root 用户运行，确保有写入权限
-    # 日志配置
+    tmpfs: [/tmp]
+    user: "0:0"
     logging:
       driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      options: { max-size: "10m", max-file: "3" }
 
-  # Frontend
   frontend:
-    image: somekawahitomi/myriad-frontend:latest
+    image: ${FRONTEND_IMAGE:-docker.io/somekawahitomi/myriad-frontend}:${MYRIAD_TAG}
     container_name: myriad-frontend
     deploy:
       resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+        limits: { cpus: '1.0', memory: 1G }
+        reservations: { cpus: '0.25', memory: 256M }
     environment:
-      # OPTIONAL: Leave empty to auto-detect domain
       PUBLIC_API_URL: ${PUBLIC_API_URL:-}
       NODE_ENV: production
       TZ: Asia/Shanghai
-    ports:
-      - "${FRONTEND_PORT:-4321}:4321"
+      MYRIAD_VERSION: ${MYRIAD_TAG}
     depends_on:
-      backend:
-        condition: service_healthy
+      backend: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:4321"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    networks:
-      - myriad-net
+    networks: [myriad-net]
     restart: unless-stopped
-    # 安全加固
-    security_opt:
-      - no-new-privileges:true
+    security_opt: [no-new-privileges:true]
     read_only: true
-    tmpfs:
-      - /tmp
-    # 日志配置
+    tmpfs: [/tmp]
     logging:
       driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      options: { max-size: "10m", max-file: "3" }
+
+  proxy:
+    image: ${PROXY_IMAGE:-docker.io/somekawahitomi/myriad-proxy}:${PROXY_TAG}
+    container_name: myriad-proxy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    environment:
+      PROXY_STATE_FILE: /state/maintenance.json
+      PROXY_BACKEND_UPSTREAM: http://backend:3000
+      PROXY_FRONTEND_UPSTREAM: http://frontend:4321
+      PROXY_UPDATER_UPSTREAM: http://updater:9090
+      # Direct updater channel is OFF by default. Backend /api/admin/updater/* is the
+      # recommended path. Enable only for rescue scenarios when the backend is down.
+      PROXY_ALLOW_DIRECT_UPDATER: ${PROXY_ALLOW_DIRECT_UPDATER:-false}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./state:/state:ro
+    networks: [myriad-net]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
+  updater:
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}
+    container_name: myriad-updater
+    environment:
+      UPDATE_TOKEN: ${UPDATE_TOKEN}
+      CHANNEL: ${CHANNEL:-stable}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
+      MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-somekawahitomi/myriad}
+      CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
+      MYRIAD_VERSION: ${UPDATER_TAG}
+      TZ: Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./pgdata:/host/pgdata
+      - ./state:/state
+      - ./backups:/backups
+      - ./.env:/host/.env
+      - ./:/host/compose
+    networks: [myriad-net]
+    restart: unless-stopped
+    # NOTE: deliberately no `read_only`: updater needs to write state/snapshots/.env.
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
 
 volumes:
-  postgres_data:
-    driver: local
-  backend_cache:
-    driver: local
-  backend_data:
-    driver: local
+  backend_cache: { driver: local }
+  backend_data: { driver: local }
 
 networks:
   myriad-net:

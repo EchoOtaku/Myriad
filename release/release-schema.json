@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somekawahitomi/myriad/release/release-schema.json",
+  "title": "Myriad Release Manifest",
+  "description": "Authoritative metadata for a Myriad release, consumed by the updater. See docs/updater-spec.md §3.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "version",
+    "channel",
+    "released_at",
+    "images",
+    "env",
+    "migrations",
+    "updater",
+    "postgres",
+    "notes_url"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "description": "Increments when the manifest format changes incompatibly. Updaters must accept anything <= their supported version and reject higher.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "version": {
+      "description": "Semver-style tag for this release. Must match images.<comp>.ref tag for backend/frontend.",
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-z0-9.]+)?$"
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["stable", "beta", "nightly"]
+    },
+    "released_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "min_from_version": {
+      "description": "Updater refuses to upgrade if the currently installed version is lower than this. Force users via an intermediate release.",
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-z0-9.]+)?$"
+    },
+    "images": {
+      "type": "object",
+      "required": ["backend", "frontend"],
+      "additionalProperties": false,
+      "properties": {
+        "backend":  { "$ref": "#/$defs/imageRef" },
+        "frontend": { "$ref": "#/$defs/imageRef" },
+        "proxy":    { "$ref": "#/$defs/imageRef" },
+        "updater":  { "$ref": "#/$defs/imageRef" }
+      }
+    },
+    "env": {
+      "type": "object",
+      "required": ["required"],
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "description": "Env keys that must be present in user's .env before applying this release.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+        },
+        "new": {
+          "description": "Env keys introduced in this release.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "required"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+              "required": { "type": "boolean" },
+              "default": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "removed": {
+          "description": "Env keys no longer used. Informational; updater does not delete them.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+        }
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "required": ["irreversible", "estimated_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "irreversible": {
+          "description": "When true, downgrade past this release is unsupported (schema cannot be reverted). Updater still snapshots pgdata for emergency restore.",
+          "type": "boolean"
+        },
+        "estimated_seconds": {
+          "description": "Rough upper bound for migration time. Used to compute health-probe deadline.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "requires_full_backup": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "updater": {
+      "type": "object",
+      "required": ["min_updater_version"],
+      "additionalProperties": false,
+      "properties": {
+        "min_updater_version": {
+          "description": "Refuse business update if running updater is older than this. Force a self-update first.",
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-z0-9.]+)?$"
+        },
+        "self_update_required": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "required": ["min_pg_version", "max_pg_version"],
+      "additionalProperties": false,
+      "properties": {
+        "min_pg_version": { "type": "string", "pattern": "^[0-9]+$" },
+        "max_pg_version": { "type": "string", "pattern": "^[0-9]+$" }
+      }
+    },
+    "notes_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "signature": {
+      "description": "Cosign signature blob (base64). Optional in M1, required in M2.",
+      "type": ["string", "null"]
+    }
+  },
+  "$defs": {
+    "imageRef": {
+      "type": "object",
+      "required": ["ref", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "description": "Fully-qualified image reference with immutable version tag. Never use 'latest'.",
+          "type": "string",
+          "pattern": "^[a-z0-9.\\-/]+:[A-Za-z0-9._\\-]+$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

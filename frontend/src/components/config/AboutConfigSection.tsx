@@ -1,6 +1,7 @@
 import React from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { SettingGroup, SettingSection } from '../settings'
+import { UpdaterInlinePanel } from './UpdaterConfigSection'
 
 interface AboutConfigSectionProps {
   title: string
@@ -71,6 +72,9 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
           </ul>
         </div>
       </SettingGroup>
+
+      {/* Updater 管理（仅 admin 可见；非 admin 调 /api/admin/updater/* 会 403，UI 自然提示） */}
+      <UpdaterInlinePanel heading={t.config.updaterTitle} />
     </SettingSection>
   )
 }

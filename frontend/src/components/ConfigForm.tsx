@@ -32,8 +32,8 @@ import {
 } from '../lib/api'
 import { getCSRFToken } from '../utils/csrf'
 import {
-  AdvancedConfigSection,
   AboutConfigSection,
+  AdvancedConfigSection,
   AiConfigSection,
   MusicConfigSection,
   NetworkConfigSection,
@@ -219,7 +219,7 @@ const ModernConfigForm: React.FC = () => {
 
       if (response.success) {
         setMessage(t.config.permissionsSaved)
-        setTimeout(() => setMessage(''), 2000)
+        setTimeout(setMessage, 2000, '')
       }
       else {
         throw new Error(response.message || 'Failed')
@@ -437,13 +437,30 @@ const ModernConfigForm: React.FC = () => {
       keywords: ['advanced', '高级', 'danger', 'reset', '重置', '危险'],
     })
 
-    // 关于
+    // 关于（含 updater 管理内联面板）
     items.push({
       type: 'section',
       section: 'about',
       title: t.config.about,
       description: t.config.aboutDesc,
-      keywords: ['about', '关于', '版本', 'version', 'logo', 'myriad'],
+      keywords: [
+        'about',
+        '关于',
+        '版本',
+        'version',
+        'logo',
+        'myriad',
+        // updater 关键字也指向 about section（updater 已合并进关于页）
+        'updater',
+        '更新',
+        'update',
+        'upgrade',
+        '升级',
+        '回滚',
+        'rollback',
+        'snapshot',
+        '快照',
+      ],
     })
 
     // 权限管理
@@ -615,7 +632,7 @@ const ModernConfigForm: React.FC = () => {
       const saveResult = await updateConfig(clearedData)
 
       setMessage(`✓ ${t.config.configReset}`)
-      setTimeout(() => setMessage(''), 5000)
+      setTimeout(setMessage, 5000, '')
 
       window.dispatchEvent(
         new CustomEvent('config-reset-result', {
@@ -904,7 +921,7 @@ const ModernConfigForm: React.FC = () => {
             updateValue={updateUiFieldValue}
             onMessage={(msg) => {
               setMessage(msg)
-              setTimeout(() => setMessage(''), 3000)
+              setTimeout(setMessage, 3000, '')
             }}
             {...props}
           />

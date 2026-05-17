@@ -264,6 +264,22 @@ impl ConfigService {
             }
         }
 
+        // OIDC / 自定义 OAuth providers 列表
+        if let Some(v) = map.get("oauth_providers") {
+            if let Ok(parsed) =
+                serde_json::from_value::<Vec<crate::config::OAuthProviderEntry>>(v.clone())
+            {
+                config.oauth_providers = parsed;
+            } else {
+                tracing::warn!("oauth_providers config exists but failed to parse as Vec<OAuthProviderEntry>");
+            }
+        }
+
+        // 本地注册开关
+        if let Some(v) = map.get("allow_local_registration") {
+            config.allow_local_registration = v.as_bool().unwrap_or(false);
+        }
+
         // 站点 URL 配置
         if let Some(v) = map.get("base_url") {
             config.base_url = v.as_str().map(|s| s.to_string());

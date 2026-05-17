@@ -8,6 +8,14 @@ import { RateLimitError } from '../utils/rateLimiter'
 import { setSessionHint } from '../utils/sessionDetection'
 import { Spinner } from './Spinner'
 
+// PR #2/#3：后端返回的 OAuth provider 描述
+type ProviderInfo = {
+  slug: string
+  kind: 'github' | 'oidc'
+  display_name: string
+  icon?: string | null
+}
+
 const LoginForm: React.FC = () => {
   const { t, format } = useI18n()
   const [formData, setFormData] = useState({
@@ -16,21 +24,30 @@ const LoginForm: React.FC = () => {
   })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [githubEnabled, setGithubEnabled] = useState(false)
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const [allowRegister, setAllowRegister] = useState(false)
 
   useEffect(() => {
-    checkGithubOAuth()
+    // 并发拉 provider 列表 + setup config（注册开关）
+    void (async () => {
+      try {
+        const data = await fetchJson(`${API_URL}/api/auth/oauth/providers`)
+        if (Array.isArray(data?.providers)) {
+          setProviders(data.providers as ProviderInfo[])
+        }
+      }
+      catch (_err) {
+        // 静默：provider 列表不可用时仅显示本地登录
+      }
+      try {
+        const data = await fetchJson(`${API_URL}/api/setup/config`)
+        setAllowRegister(Boolean(data?.allow_local_registration))
+      }
+      catch (_err) {
+        // 静默：取不到时默认关闭注册
+      }
+    })()
   }, [])
-
-  const checkGithubOAuth = async () => {
-    try {
-      const data = await fetchJson(`${API_URL}/api/setup/config`)
-      setGithubEnabled(data.github_oauth?.client_id_set || false)
-    }
-    catch (_err) {
-      // Failed to check GitHub OAuth config
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -209,8 +226,8 @@ const LoginForm: React.FC = () => {
           </button>
         </form>
 
-        {/* GitHub OAuth Option */}
-        {githubEnabled && (
+        {/* OAuth Providers — 动态从 /api/auth/oauth/providers 拉取 */}
+        {providers.length > 0 && (
           <>
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
@@ -221,14 +238,41 @@ const LoginForm: React.FC = () => {
               </div>
             </div>
 
-            <a
-              href={`${API_URL}/api/auth/github/login`}
-              className="w-full py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-semibold shadow-md"
-            >
-              <FaGithub className="text-xl" />
-              <span>{t.auth.loginWithGithub}</span>
-            </a>
+            <div className="flex flex-col gap-2">
+              {providers.map(p => (
+                <a
+                  key={p.slug}
+                  href={`${API_URL}/api/auth/oauth/${p.slug}/login`}
+                  className={
+                    p.slug === 'github'
+                      ? 'w-full py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-semibold shadow-md'
+                      : 'w-full py-3 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-semibold shadow-sm'
+                  }
+                >
+                  {p.icon === 'github'
+                    ? <FaGithub className="text-xl" />
+                    : p.icon
+                      ? <img src={p.icon} alt="" className="w-5 h-5" />
+                      : null}
+                  <span>
+                    {p.slug === 'github'
+                      ? t.auth.loginWithGithub
+                      : `使用 ${p.display_name} 登录`}
+                  </span>
+                </a>
+              ))}
+            </div>
           </>
+        )}
+
+        {/* Register link — PR #4 */}
+        {allowRegister && (
+          <div className="mt-6 text-center text-sm text-gray-600">
+            还没有账号？
+            <a href="/register" className="text-indigo-600 hover:underline ml-1">
+              立即注册
+            </a>
+          </div>
         )}
       </div>
     </div>

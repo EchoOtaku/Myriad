@@ -43,6 +43,7 @@ const Reports = lazy(() => import('./views/Reports.tsx'))
 const Config = lazy(() => import('./views/Config.tsx'))
 const DataManagement = lazy(() => import('./views/DataManagement.tsx'))
 const Login = lazy(() => import('./views/Login.tsx'))
+const Register = lazy(() => import('./views/Register.tsx'))
 const Setup = lazy(() => import('./views/Setup.tsx'))
 
 // Tapp 页面
@@ -247,6 +248,7 @@ function AppRoutes() {
           )}
         />
         <Route path="/login" element={<SuspensePage><Login /></SuspensePage>} />
+        <Route path="/register" element={<SuspensePage><Register /></SuspensePage>} />
         <Route path="/setup" element={<SuspensePage><Setup /></SuspensePage>} />
 
         {/* Tapp 路由 */}

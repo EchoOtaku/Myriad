@@ -11,6 +11,9 @@ import '../styles/tailwind.css'
 const title = 'Myriad - A myriad of lights, in one place.'
 const description = 'A myriad of lights, in one place.'
 const apiUrl = import.meta.env.PUBLIC_API_URL || ''
+// Build-time version stamp consumed by the Myriad updater health probe.
+// Falls back to `dev` outside of release builds.
+const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
 ---
 
 <!doctype html>
@@ -26,6 +29,10 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || ''
 
     <!-- 安全策略 -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <!-- Build-time version stamp; consumed by the Myriad updater health probe to detect
+         stale browser caches after an upgrade. -->
+    <meta name="myriad-version" content={myriadVersion} />
 
     <!-- Astro 6 内置 Fonts API: 全部字体自托管，消除 Google Fonts 外部请求 -->
     <!-- 主体字体（预加载） -->

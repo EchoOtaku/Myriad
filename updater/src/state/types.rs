@@ -1,0 +1,239 @@
+//! On-disk state schemas. Stable; bump `schema_version` if breaking changes are needed.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use crate::version::MyriadVersion;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdaterStateFile {
+    #[serde(default = "default_schema")]
+    pub schema_version: u32,
+
+    pub current_version: Option<MyriadVersion>,
+    pub updater_version: Option<MyriadVersion>,
+    pub last_checked_at: Option<DateTime<Utc>>,
+    pub channel: String,
+
+    #[serde(default)]
+    pub last_failed_update: Option<FailedUpdate>,
+
+    /// Cached result of the most recent successful release lookup. UI shows a "new version
+    /// available" hint without having to hit GitHub on every page render.
+    #[serde(default)]
+    pub latest_available: Option<LatestAvailable>,
+}
+
+impl Default for UpdaterStateFile {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            current_version: None,
+            updater_version: None,
+            last_checked_at: None,
+            channel: "stable".into(),
+            last_failed_update: None,
+            latest_available: None,
+        }
+    }
+}
+
+/// Cached snapshot of "what would `/available` return right now". Refreshed by the worker's
+/// periodic check or any manual `/available` call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatestAvailable {
+    pub version: MyriadVersion,
+    pub channel: String,
+    pub seen_at: DateTime<Utc>,
+    /// Whether the manifest mandates a self-update first (release.updater.self_update_required
+    /// or this updater is older than min_updater_version).
+    #[serde(default)]
+    pub requires_self_update: bool,
+    /// Required min_updater_version copied out for the UI's convenience.
+    #[serde(default)]
+    pub min_updater_version: Option<MyriadVersion>,
+    pub notes_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedUpdate {
+    pub from_version: Option<MyriadVersion>,
+    pub to_version: Option<MyriadVersion>,
+    pub at: DateTime<Utc>,
+    pub reason: String,
+    pub job_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintenanceFile {
+    #[serde(default = "default_schema")]
+    pub schema_version: u32,
+    pub active: bool,
+    pub phase: Phase,
+    pub from_version: Option<MyriadVersion>,
+    pub to_version: Option<MyriadVersion>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub job_id: Option<String>,
+    pub message_key: String,
+}
+
+impl MaintenanceFile {
+    pub fn inactive() -> Self {
+        Self {
+            schema_version: 1,
+            active: false,
+            phase: Phase::Idle,
+            from_version: None,
+            to_version: None,
+            started_at: None,
+            updated_at: Utc::now(),
+            job_id: None,
+            message_key: "updater.phase.idle".into(),
+        }
+    }
+
+    pub fn bump_heartbeat(&mut self) {
+        self.updated_at = Utc::now();
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Idle,
+    Checking,
+    Ready,
+    Preflight,
+    MaintenanceOn,
+    Stopping,
+    Snapshotting,
+    SwapTag,
+    StartingNew,
+    HealthProbing,
+    SwappingProxy,
+    Finalize,
+    RollbackInProgress,
+    StopNew,
+    RestoreSnapshot,
+    SwapTagBack,
+    StartOld,
+    NeedsManual,
+    Cleanup,
+}
+
+impl Phase {
+    /// True once the phase has performed an irreversible action (changed .env, started new
+    /// containers, etc.). After this point, automatic recovery on restart is disabled.
+    pub fn is_post_swap(self) -> bool {
+        use Phase::*;
+        matches!(
+            self,
+            SwapTag | StartingNew | HealthProbing | SwappingProxy | Finalize
+        )
+    }
+
+    /// True when we're inside the rollback flow (so recovery should continue/finish it).
+    pub fn is_rollback(self) -> bool {
+        use Phase::*;
+        matches!(
+            self,
+            RollbackInProgress | StopNew | RestoreSnapshot | SwapTagBack | StartOld
+        )
+    }
+}
+
+/// A single update or rollback task. Append-only step log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Job {
+    pub id: String,
+    pub kind: JobKind,
+    pub created_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub from_version: Option<MyriadVersion>,
+    pub to_version: Option<MyriadVersion>,
+    pub snapshot_id: Option<String>,
+    pub status: JobStatus,
+    pub steps: Vec<JobStep>,
+
+    /// Original Idempotency-Key client supplied (if any).
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JobKind {
+    Update,
+    Rollback,
+    SelfUpdate,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JobStatus {
+    Pending,
+    Running,
+    Succeeded,
+    Failed,
+    NeedsManual,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobStep {
+    pub phase: Phase,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub ok: Option<bool>,
+    /// Last 64KB of stdout/stderr collected for this step.
+    pub log_tail: String,
+    pub error: Option<String>,
+}
+
+impl JobStep {
+    pub fn start(phase: Phase) -> Self {
+        Self {
+            phase,
+            started_at: Utc::now(),
+            finished_at: None,
+            ok: None,
+            log_tail: String::new(),
+            error: None,
+        }
+    }
+
+    pub fn finish_ok(&mut self) {
+        self.finished_at = Some(Utc::now());
+        self.ok = Some(true);
+    }
+
+    pub fn finish_err(&mut self, err: impl Into<String>) {
+        self.finished_at = Some(Utc::now());
+        self.ok = Some(false);
+        self.error = Some(err.into());
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SnapshotsFile {
+    #[serde(default = "default_schema")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub items: Vec<SnapshotMeta>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotMeta {
+    pub id: String,
+    pub created_at: DateTime<Utc>,
+    pub source_version: Option<MyriadVersion>,
+    pub size_bytes: u64,
+    pub file_count: u64,
+    /// `true` when this is a pre-major-upgrade snapshot we keep forever.
+    pub keep: bool,
+    /// Optional cheap integrity hint: sha256 of a deterministic sample of paths.
+    pub sample_sha256: Option<String>,
+}
+
+fn default_schema() -> u32 {
+    1
+}

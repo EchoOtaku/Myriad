@@ -70,11 +70,12 @@ pub async fn create_admin(
     // Validate password
     validate_password(&request.password)?;
 
-    // ✅ SECURITY CHECK: Check if a local admin already exists
+    // ✅ SECURITY CHECK: setup-only — 拒绝若已经存在任意 admin（不再限于 local）
+    // PR #4: 改成"检查任意 admin"，因为现在 admin 不再强制 local provider
     let admin_exists_result = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT EXISTS (SELECT 1 FROM users WHERE auth_provider = 'local' AND is_admin = true) as exists",
+            "SELECT EXISTS (SELECT 1 FROM users WHERE is_admin = true) as exists",
             vec![],
         ))
         .await
@@ -92,13 +93,13 @@ pub async fn create_admin(
 
     if admin_exists {
         tracing::error!(
-            "🚨 Admin account creation REJECTED: Admin already exists (security protection)"
+            "🚨 setup/create-admin REJECTED: an admin already exists (use admin user-management instead)"
         );
         return Err((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Admin account already exists",
-                "message": "Only one local administrator account is allowed. Setup has been completed."
+                "message": "Setup has already been completed. Sign in as an existing admin to create more accounts."
             })),
         ));
     }
@@ -177,11 +178,13 @@ pub async fn local_login(
     tracing::info!("Local login attempt: {}", request.username);
 
     // Query user by username
+    // PR #4: 不再要求 auth_provider='local' — 只要 password_hash 存在就能本地登录。
+    // 这样 GitHub-注册用户走 /api/auth/me/set-password 后也能用 username 登录。
     use sea_orm::Value as SeaValue;
 
-    let query = "SELECT id, username, password_hash, is_admin, auth_provider, local_login_disabled 
-                 FROM users 
-                 WHERE username = $1 AND auth_provider = 'local'";
+    let query = "SELECT id, username, password_hash, is_admin, auth_provider, local_login_disabled
+                 FROM users
+                 WHERE LOWER(username) = LOWER($1) AND password_hash IS NOT NULL";
 
     let user_result = db
         .query_one(Statement::from_sql_and_values(
@@ -426,38 +429,23 @@ pub async fn change_password(
         )
     })?;
 
-    // Only local accounts can change password
-    if auth_provider != "local" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Operation not allowed",
-                "message": "Only local accounts can change password"
-            })),
-        ));
-    }
+    // PR #4: 任何拥有 password_hash 的账户都能改密码（不再要求 auth_provider='local'）
+    // 没有密码的账户（纯 OAuth）应走 /api/auth/me/set-password 后补密码。
+    let _ = auth_provider; // 信息性字段，保留读取以兼容旧 SELECT
 
-    let local_login_disabled: bool = user_row
-        .try_get("", "local_login_disabled")
-        .unwrap_or(false);
-
-    // Check if local login is disabled (GitHub linked)
-    if local_login_disabled {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({
-                "error": "Local login disabled",
-                "message": "This account has been linked to GitHub. Password change is not allowed."
-            })),
-        ));
-    }
-
-    let current_password_hash: String = user_row.try_get("", "password_hash").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user data"})),
-        )
-    })?;
+    let current_password_hash: Option<String> = user_row.try_get("", "password_hash").ok();
+    let current_password_hash = match current_password_hash {
+        Some(h) => h,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "No password set",
+                    "message": "This account has no password yet. Use /api/auth/me/set-password instead."
+                })),
+            ));
+        }
+    };
 
     // Verify old password
     verify_password(&request.old_password, &current_password_hash)?;
@@ -594,4 +582,358 @@ fn verify_password(password: &str, hash: &str) -> Result<(), (StatusCode, Json<V
                 })),
             )
         })
+}
+
+// ============================================================================
+// PR #4 新增端点：公开注册 + 后补密码 + 本地登录开关
+// ============================================================================
+// 详见 docs/oauth-refactor-plan.md §7.2、§9
+
+/// POST /api/auth/register —— 公开本地账号注册
+///
+/// 受 `DynamicConfig.allow_local_registration` 开关控制；关闭时返回 403。
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub password: String,
+    pub email: Option<String>,
+}
+
+pub async fn register(
+    State(db): State<DatabaseConnection>,
+    Json(req): Json<RegisterRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
+    // 开关检查
+    {
+        let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        if !cfg.allow_local_registration {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({
+                    "error": "Registration disabled",
+                    "message": "Public registration is disabled. Ask an administrator to create an account."
+                })),
+            ));
+        }
+    }
+
+    validate_username(&req.username)?;
+    validate_password(&req.password)?;
+
+    use sea_orm::Value as SeaValue;
+
+    // username 冲突检查（大小写不敏感）
+    let dup = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1",
+            vec![SeaValue::String(Some(Box::new(req.username.clone())))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+    if dup.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Username taken",
+                "message": "This username is already in use"
+            })),
+        ));
+    }
+
+    let password_hash = hash_password(&req.password)?;
+
+    let insert = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO users (username, email, password_hash, auth_provider, is_admin, \
+                                 avatar_url, created_at, updated_at, last_login_at) \
+             VALUES ($1, $2, $3, 'local', false, $4, NOW(), NOW(), NOW()) \
+             RETURNING id",
+            vec![
+                SeaValue::String(Some(Box::new(req.username.clone()))),
+                req.email
+                    .clone()
+                    .map(|s| SeaValue::String(Some(Box::new(s))))
+                    .unwrap_or(SeaValue::String(None)),
+                SeaValue::String(Some(Box::new(password_hash))),
+                SeaValue::String(Some(Box::new(
+                    "https://ui-avatars.com/api/?name=User&background=4f46e5&color=fff"
+                        .to_string(),
+                ))),
+            ],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to insert user: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to create account"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Insert returned no row"})),
+            )
+        })?;
+
+    let user_id: i32 = insert
+        .try_get("", "id")
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to read new user id"})),
+            )
+        })?;
+
+    tracing::info!("✅ Public registration: {} (id={})", req.username, user_id);
+
+    // 注册即登录：颁发 JWT + cookie
+    issue_session_cookie(user_id, &req.username, false).await
+}
+
+/// POST /api/auth/me/set-password —— GitHub-only 用户后补密码
+///
+/// 要求当前账户**没有**密码（已有密码走 `change_password`）。
+#[derive(Debug, Deserialize)]
+pub struct SetPasswordRequest {
+    pub new_password: String,
+}
+
+pub async fn set_password(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<SetPasswordRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use crate::middleware::auth::verify_jwt_token;
+    use sea_orm::Value as SeaValue;
+
+    let claims = verify_jwt_token(&headers).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Unauthorized"})),
+        )
+    })?;
+    let user_id: i32 = claims.sub.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid user id"})),
+        )
+    })?;
+
+    validate_password(&req.new_password)?;
+
+    // 必须当前 password_hash 为 NULL
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT password_hash IS NOT NULL AS has_password FROM users WHERE id = $1",
+            vec![SeaValue::Int(Some(user_id))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("DB error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
+        })?;
+    let has_password: bool = row.try_get("", "has_password").unwrap_or(false);
+    if has_password {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Password already set",
+                "message": "Use POST /api/auth/change-password to change an existing password."
+            })),
+        ));
+    }
+
+    let hash = hash_password(&req.new_password)?;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+        vec![
+            SeaValue::String(Some(Box::new(hash))),
+            SeaValue::Int(Some(user_id)),
+        ],
+    ))
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to set password: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to set password"})),
+        )
+    })?;
+
+    Ok(Json(json!({"success": true})))
+}
+
+/// PATCH /api/auth/me/local-login —— 开关本地登录
+///
+/// - `enabled=false`：禁用本地登录；前置条件 — 至少有一个 OAuth identity（防失联）
+/// - `enabled=true`：启用本地登录；前置条件 — 已有密码（password_hash 非 NULL）
+#[derive(Debug, Deserialize)]
+pub struct LocalLoginToggleRequest {
+    pub enabled: bool,
+}
+
+pub async fn toggle_local_login(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<LocalLoginToggleRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use crate::middleware::auth::verify_jwt_token;
+    use sea_orm::Value as SeaValue;
+
+    let claims = verify_jwt_token(&headers).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Unauthorized"})),
+        )
+    })?;
+    let user_id: i32 = claims.sub.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid user id"})),
+        )
+    })?;
+
+    // 取当前状态
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT password_hash IS NOT NULL AS has_password, \
+                    (SELECT COUNT(*) FROM user_identities WHERE user_id = users.id) AS identity_count \
+             FROM users WHERE id = $1",
+            vec![SeaValue::Int(Some(user_id))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("DB error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
+        })?;
+
+    let has_password: bool = row.try_get("", "has_password").unwrap_or(false);
+    let identity_count: i64 = row.try_get("", "identity_count").unwrap_or(0);
+
+    // 前置检查
+    if req.enabled {
+        if !has_password {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "No password set",
+                    "message": "Set a password via /api/auth/me/set-password before enabling local login."
+                })),
+            ));
+        }
+    } else if identity_count == 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Cannot disable last login method",
+                "message": "Link at least one OAuth provider before disabling local login."
+            })),
+        ));
+    }
+
+    let disabled = !req.enabled;
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE users SET local_login_disabled = $1, updated_at = NOW() WHERE id = $2",
+        vec![
+            SeaValue::Bool(Some(disabled)),
+            SeaValue::Int(Some(user_id)),
+        ],
+    ))
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update local_login_disabled: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to update"})),
+        )
+    })?;
+
+    Ok(Json(json!({"success": true, "enabled": req.enabled})))
+}
+
+/// 内部：给指定 user 颁发 JWT + 设置 cookie，返回 AuthResponse + Set-Cookie
+async fn issue_session_cookie(
+    user_id: i32,
+    username: &str,
+    is_admin: bool,
+) -> Result<axum::response::Response, (StatusCode, Json<Value>)> {
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "JWT_SECRET not configured"})),
+        )
+    })?;
+    let claims = Claims {
+        sub: user_id.to_string(),
+        username: username.to_string(),
+        is_admin,
+        exp: (Utc::now() + Duration::days(30)).timestamp(),
+        iat: Utc::now().timestamp(),
+    };
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+    )
+    .map_err(|e| {
+        tracing::error!("JWT encode failed: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to create session token"})),
+        )
+    })?;
+
+    use crate::oauth_url_builder::SiteConfig;
+    let is_production = SiteConfig::is_production().await;
+    let cookie_value = format!(
+        "auth_token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}",
+        token,
+        if is_production { "; Secure" } else { "" }
+    );
+
+    let body = Json(AuthResponse {
+        token: token.clone(),
+        user: UserInfo {
+            id: user_id,
+            username: username.to_string(),
+            is_admin,
+            auth_provider: "local".to_string(),
+        },
+    });
+    let mut resp = body.into_response();
+    resp.headers_mut()
+        .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
+    Ok(resp)
 }
