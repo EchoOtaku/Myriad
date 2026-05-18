@@ -92,7 +92,7 @@ ensure_key PROXY_TAG "$DEFAULT_PROXY_TAG"
 ensure_key UPDATER_TAG "$DEFAULT_UPDATER_TAG"
 ensure_key COMPOSE_PROJECT_NAME myriad
 ensure_key CHANNEL "$DEFAULT_CHANNEL"
-ensure_key MYRIAD_GITHUB_REPO somekawahitomi/myriad
+ensure_key MYRIAD_GITHUB_REPO Myriad-You/Myriad
 ensure_key CHECK_INTERVAL_SECS 3600
 ensure_key PROXY_ALLOW_DIRECT_UPDATER false
 if ! grep -qE "^UPDATE_TOKEN=" "$ENV_FILE"; then

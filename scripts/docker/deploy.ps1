@@ -1,370 +1,150 @@
 # =============================================================================
-# Myriad Docker Unified Deployment Script
+# Myriad Docker Unified Deployment Script (PowerShell)
 # =============================================================================
-# Supports both local build and pre-built image deployment
+# Brings up the full stack (proxy + frontend + backend + postgres + updater)
+# defined in docker-compose.yml.
+#
+# After bootstrap, normal day-to-day updates run through the admin UI:
+#   Settings -> About -> Update Management
+# See docs/UPDATER_QUICKSTART.md.
 # =============================================================================
 
 param(
-    [ValidateSet("build", "prebuilt")]
-    [string]$Mode = "build",
-    [string]$Username = "mirai-mamori",
-    [string]$Tag = "latest",
-    [switch]$Stop = $false,
-    [switch]$Clean = $false,
-    [switch]$Logs = $false,
-    [switch]$Status = $false,
-    [switch]$Rebuild = $false
+    [Parameter(Position = 0)]
+    [string]$Command = "up"
 )
 
 $ErrorActionPreference = "Stop"
 
-# Color output functions
-function Write-ColorOutput($ForegroundColor) {
-    $fc = $host.UI.RawUI.ForegroundColor
-    $host.UI.RawUI.ForegroundColor = $ForegroundColor
-    if ($args) {
-        Write-Output $args
-    }
-    $host.UI.RawUI.ForegroundColor = $fc
+function Write-Color($c) { $f = $host.UI.RawUI.ForegroundColor; $host.UI.RawUI.ForegroundColor = $c; if ($args) { Write-Output $args }; $host.UI.RawUI.ForegroundColor = $f }
+function Write-Ok    { Write-Color Green $args }
+function Write-Info  { Write-Color Cyan $args }
+function Write-Warn  { Write-Color Yellow $args }
+function Write-Err   { Write-Color Red $args }
+
+# Change to repo root.
+Set-Location (Resolve-Path (Join-Path $PSScriptRoot "..\.."))
+
+function Show-Usage {
+    @"
+Usage: deploy.ps1 [command]
+
+Commands:
+  up        (default) Initialise .env / pgdata if needed, then `docker compose up -d`
+  down      Stop and remove containers (volumes preserved)
+  restart   docker compose restart
+  pull      docker compose pull
+  logs      docker compose logs -f
+  status    docker compose ps + image versions
+  upgrade   Pull latest images per .env tags + recreate
+  help      Show this help
+
+Examples:
+  .\deploy.ps1                 # Bootstrap + start
+  .\deploy.ps1 down            # Stop
+  .\deploy.ps1 status          # See running versions
+"@ | Write-Host
 }
 
-function Write-Success { Write-ColorOutput Green $args }
-function Write-Info { Write-ColorOutput Cyan $args }
-function Write-Warning { Write-ColorOutput Yellow $args }
-function Write-Error { Write-ColorOutput Red $args }
-
-# Show banner
-function Show-Banner {
-    Write-Info "==========================================="
-    if ($Mode -eq "prebuilt") {
-        Write-Info "   Myriad Pre-built Image Deployment"
-    }
-    else {
-        Write-Info "      Myriad Docker Deployment Tool"
-    }
-    Write-Info "==========================================="
-    Write-Host ""
+function Get-ComposeCmd {
+    docker compose version 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { return "docker compose" }
+    if (Get-Command docker-compose -ErrorAction SilentlyContinue) { return "docker-compose" }
+    Write-Err "X Neither 'docker compose' nor 'docker-compose' is available"
+    exit 2
 }
 
-# Check if Docker is installed
-function Test-Docker {
-    Write-Info "Checking Docker environment..."
-    try {
-        $null = docker --version
-        if ($Mode -eq "build") {
-            $null = docker-compose --version
-            Write-Success "[OK] Docker and Docker Compose installed"
-        }
-        else {
-            Write-Success "[OK] Docker is installed"
-        }
-        return $true
-    }
-    catch {
-        Write-Error "[ERROR] Docker not found"
-        Write-Error "Please install Docker Desktop: https://www.docker.com/products/docker-desktop"
-        return $false
-    }
+function Invoke-Compose {
+    $cmd = (Get-ComposeCmd) -split " "
+    & $cmd[0] @($cmd[1..($cmd.Count - 1)]) @args
 }
 
-# Get compose file and command prefix
-function Get-ComposeConfig {
-    if ($Mode -eq "prebuilt") {
-        return @{
-            File        = "docker-compose.prebuilt.yml"
-            EnvTemplate = ".env.prebuilt"
-        }
-    }
-    else {
-        return @{
-            File        = "docker-compose.yml"
-            EnvTemplate = ".env.docker"
-        }
-    }
-}
-
-# Check and create environment file
-function Initialize-Environment {
-    Write-Info "Checking environment configuration..."
-    
-    $config = Get-ComposeConfig
-    
+function Ensure-Env {
     if (-not (Test-Path ".env")) {
-        if (Test-Path $config.EnvTemplate) {
-            Write-Warning ".env file not found, creating from $($config.EnvTemplate)..."
-            Copy-Item $config.EnvTemplate ".env"
-            
-            # For prebuilt mode, set Docker username and tag
-            if ($Mode -eq "prebuilt") {
-                $content = Get-Content ".env" -Raw
-                $content = $content -replace 'DOCKER_USERNAME=.*', "DOCKER_USERNAME=$Username"
-                $content = $content -replace 'IMAGE_TAG=.*', "IMAGE_TAG=$Tag"
-                Set-Content ".env" $content
-            }
-            
-            Write-Success "[OK] .env file created"
-            Write-Warning "[IMPORTANT] Please edit .env file and change:"
-            Write-Warning "  - POSTGRES_PASSWORD (database password)"
-            Write-Warning "  - JWT_SECRET (JWT secret key)"
-            Write-Host ""
-            $response = Read-Host "Edit .env file now? (y/N)"
-            if ($response -eq 'y' -or $response -eq 'Y') {
-                notepad .env
-                Write-Host ""
-                Read-Host "Press Enter after editing to continue"
-            }
+        if (-not (Test-Path ".env.production.example")) {
+            Write-Err "X Missing both .env and .env.production.example"
+            exit 2
         }
-        else {
-            Write-Error "[ERROR] $($config.EnvTemplate) template file not found"
-            return $false
+        Write-Warn ".env not found - copying from .env.production.example"
+        Copy-Item ".env.production.example" ".env"
+        Write-Warn ""
+        Write-Warn "Edit .env now and set at minimum:"
+        Write-Warn "  - POSTGRES_PASSWORD"
+        Write-Warn "  - JWT_SECRET"
+        Write-Warn "  - CORS_ORIGINS"
+        Write-Warn ""
+        Write-Warn "scripts/migrate-to-updater.sh will fill MYRIAD_TAG / UPDATER_TAG / UPDATE_TOKEN."
+        Write-Warn ""
+        $r = Read-Host "Open .env in notepad? (y/N)"
+        if ($r -match "^[Yy]$") {
+            notepad .env
         }
     }
-    else {
-        Write-Success "[OK] .env configuration file found"
-    }
-    
-    return $true
 }
 
-# Stop and cleanup containers
-function Stop-Application {
-    Write-Info "Stopping application containers..."
-    $config = Get-ComposeConfig
-    
-    if ($config.File -eq "docker-compose.yml") {
-        docker-compose down
+function Ensure-PgdataAndUpdater {
+    $hasMyriadTag = $false
+    if (Test-Path ".env") {
+        $hasMyriadTag = (Select-String -Path .env -Pattern "^MYRIAD_TAG=" -Quiet)
     }
-    else {
-        docker-compose -f $config.File down
-    }
-    
-    Write-Success "[OK] Containers stopped"
-}
-
-# Clean all resources (including volumes)
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '')]
-function Clear-Application {
-    Write-Warning "[WARNING] This will delete all containers, images and volumes (including database data)"
-    $response = Read-Host "Confirm to continue? (yes/N)"
-    if ($response -ne 'yes') {
-        Write-Info "Cleanup cancelled"
-        return
-    }
-    
-    Write-Info "Cleaning application resources..."
-    $config = Get-ComposeConfig
-    
-    if ($config.File -eq "docker-compose.yml") {
-        docker-compose down -v --rmi all
-    }
-    else {
-        docker-compose -f $config.File down -v
-    }
-    
-    Write-Success "[OK] All resources cleaned"
-}
-
-# Show logs
-function Show-Logs {
-    Write-Info "Showing application logs (Press Ctrl+C to exit)..."
-    $config = Get-ComposeConfig
-    
-    if ($config.File -eq "docker-compose.yml") {
-        docker-compose logs -f
-    }
-    else {
-        docker-compose -f $config.File logs -f
-    }
-}
-
-# Show status
-function Show-Status {
-    Write-Info "Application status:"
-    Write-Host ""
-    
-    $config = Get-ComposeConfig
-    if ($config.File -eq "docker-compose.yml") {
-        docker-compose ps
-    }
-    else {
-        docker-compose -f $config.File ps
-    }
-    
-    Write-Host ""
-    
-    # Check health status
-    $postgres = docker inspect myriad-postgres --format='{{.State.Health.Status}}' 2>$null
-    $backend = docker inspect myriad-backend --format='{{.State.Health.Status}}' 2>$null
-    $frontend = docker inspect myriad-frontend --format='{{.State.Health.Status}}' 2>$null
-    
-    Write-Info "Service health status:"
-    if ($postgres) { Write-Host "  PostgreSQL: $postgres" }
-    if ($backend) { Write-Host "  Backend:    $backend" }
-    if ($frontend) { Write-Host "  Frontend:   $frontend" }
-    Write-Host ""
-    
-    Write-Info "Access URLs:"
-    Write-Success "  Frontend: http://localhost:4321"
-    Write-Success "  Backend:  http://localhost:3000"
-    Write-Success "  Database: localhost:5432"
-}
-
-# Build and start application (local build mode)
-function Start-LocalBuild {
-    Write-Info "Starting Myriad application (Local Build Mode)..."
-    Write-Host ""
-    
-    if ($Rebuild) {
-        Write-Info "Building images (first build may take several minutes)..."
-        docker-compose build --no-cache
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "[ERROR] Build failed"
-            return $false
+    if (-not (Test-Path "./pgdata") -or -not $hasMyriadTag) {
+        Write-Info "==> Running scripts/migrate-to-updater.sh (idempotent)"
+        if (Get-Command bash -ErrorAction SilentlyContinue) {
+            $env:YES = "1"
+            bash scripts/migrate-to-updater.sh
+            Remove-Item Env:YES -ErrorAction SilentlyContinue
+        } else {
+            Write-Err "X bash not found. Install Git Bash or WSL, then run:"
+            Write-Err "    YES=1 bash scripts/migrate-to-updater.sh"
+            exit 2
         }
-        Write-Success "[OK] Image build completed"
+        Write-Host ""
     }
-    
-    Write-Info "Starting containers..."
-    docker-compose up -d
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "[ERROR] Start failed"
-        return $false
-    }
-    
-    Write-Success "[OK] Containers started"
-    return $true
 }
 
-# Start application (pre-built mode)
-function Start-Prebuilt {
-    Write-Info "Starting Myriad application (Pre-built Image Mode)..."
-    Write-Info "  Docker Hub user: $Username"
-    Write-Info "  Image tag: $Tag"
+function Cmd-Up {
+    Ensure-Env
+    Ensure-PgdataAndUpdater
+    Write-Info "==> docker compose up -d"
+    Invoke-Compose up -d
     Write-Host ""
-    
-    Write-Info "Pulling latest images..."
-    docker-compose -f docker-compose.prebuilt.yml pull
-    Write-Host ""
-    
-    Write-Info "Starting services..."
-    docker-compose -f docker-compose.prebuilt.yml up -d
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "[ERROR] Start failed"
-        return $false
-    }
-    
-    Write-Success "[OK] Services started"
-    return $true
+    Write-Ok "Stack started. Admin UI: http://localhost/ -> Settings -> About -> Update Management"
 }
 
-# Wait for services to be ready
-function Wait-ForServices {
-    Write-Info "Waiting for services to be ready..."
-    $maxWait = 60
-    $waited = 0
-    $interval = 5
-    
-    while ($waited -lt $maxWait) {
-        Start-Sleep -Seconds $interval
-        $waited += $interval
-        
-        $backend = docker inspect myriad-backend --format='{{.State.Health.Status}}' 2>$null
-        if ($backend -eq "healthy") {
-            Write-Success "[OK] All services ready!"
-            Write-Host ""
-            Show-Status
-            return $true
-        }
-        
-        Write-Host "." -NoNewline
-    }
-    
+function Cmd-Down     { Write-Info "==> docker compose down"; Invoke-Compose down }
+function Cmd-Restart  { Write-Info "==> docker compose restart"; Invoke-Compose restart }
+function Cmd-Pull     { Write-Info "==> docker compose pull"; Invoke-Compose pull }
+function Cmd-Logs     { Invoke-Compose logs -f --tail=200 }
+function Cmd-Status {
+    Invoke-Compose ps
     Write-Host ""
-    Write-Warning "[WARNING] Service startup timeout, please check logs"
-    Write-Info "View logs with:"
-    if ($Mode -eq "prebuilt") {
-        Write-Host "  docker-compose -f docker-compose.prebuilt.yml logs -f"
-    }
-    else {
-        Write-Host "  docker-compose logs -f"
-    }
-    return $false
+    Write-Info "Image versions in use:"
+    Invoke-Compose images 2>$null
+    if ($LASTEXITCODE -ne 0) { Invoke-Compose ps --format "table {{.Service}}`t{{.Image}}" }
+}
+function Cmd-Upgrade {
+    Ensure-Env
+    Write-Info "==> docker compose pull"
+    Invoke-Compose pull
+    Write-Info "==> docker compose up -d (recreate with new tags)"
+    Invoke-Compose up -d
+    Write-Ok "Upgrade complete."
 }
 
-# Main function
-function Main {
-    Show-Banner
-    
-    # Check Docker
-    if (-not (Test-Docker)) {
+switch ($Command.ToLower()) {
+    "up"      { Cmd-Up }
+    "down"    { Cmd-Down }
+    "restart" { Cmd-Restart }
+    "pull"    { Cmd-Pull }
+    "logs"    { Cmd-Logs }
+    "status"  { Cmd-Status }
+    "upgrade" { Cmd-Upgrade }
+    "help"    { Show-Usage }
+    "-h"      { Show-Usage }
+    "--help"  { Show-Usage }
+    default {
+        Write-Err "Unknown command: $Command"
+        Show-Usage
         exit 1
     }
-    Write-Host ""
-    
-    # Handle command line parameters
-    if ($Stop) {
-        Stop-Application
-        exit 0
-    }
-    
-    if ($Clean) {
-        Clear-Application
-        exit 0
-    }
-    
-    if ($Logs) {
-        Show-Logs
-        exit 0
-    }
-    
-    if ($Status) {
-        Show-Status
-        exit 0
-    }
-    
-    # Initialize environment
-    if (-not (Initialize-Environment)) {
-        exit 1
-    }
-    Write-Host ""
-    
-    # Start application based on mode
-    if ($Mode -eq "prebuilt") {
-        $success = Start-Prebuilt
-    }
-    else {
-        $success = Start-LocalBuild
-    }
-    
-    if (-not $success) {
-        exit 1
-    }
-    
-    Write-Host ""
-    $success = Wait-ForServices
-    if (-not $success) {
-        exit 1
-    }
-    
-    Write-Host ""
-    Write-Success "==========================================="
-    Write-Success "       Deployment Complete!"
-    Write-Success "==========================================="
-    Write-Host ""
-    Write-Info "Common commands:"
-    Write-Host "  Check status: .\deploy.ps1 -Mode $Mode -Status"
-    Write-Host "  View logs:    .\deploy.ps1 -Mode $Mode -Logs"
-    Write-Host "  Stop service: .\deploy.ps1 -Mode $Mode -Stop"
-    if ($Mode -eq "build") {
-        Write-Host "  Rebuild:      .\deploy.ps1 -Mode build -Rebuild"
-    }
-    Write-Host "  Full cleanup: .\deploy.ps1 -Mode $Mode -Clean"
-    Write-Host ""
-    Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor Cyan
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
-
-# Execute main function
-Main

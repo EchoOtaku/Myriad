@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::config::{Channel, SecretString};
 use crate::error::{Result, UpdaterError};
-use crate::release::Manifest;
+use crate::release::{cosign, CosignPolicy, Manifest, VerifyOutcome};
 use crate::state::atomic;
 
 pub struct GithubClient {
@@ -21,6 +21,7 @@ pub struct GithubClient {
     token: Option<SecretString>,
     client: Client,
     cache_dir: PathBuf,
+    cosign_policy: CosignPolicy,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -41,7 +42,12 @@ pub struct Asset {
 }
 
 impl GithubClient {
-    pub fn new(repo: impl Into<String>, token: Option<SecretString>, cache_dir: PathBuf) -> Result<Self> {
+    pub fn new(
+        repo: impl Into<String>,
+        token: Option<SecretString>,
+        cache_dir: PathBuf,
+        cosign_policy: CosignPolicy,
+    ) -> Result<Self> {
         let client = Client::builder()
             .user_agent("myriad-updater")
             .connect_timeout(Duration::from_secs(10))
@@ -53,6 +59,7 @@ impl GithubClient {
             token,
             client,
             cache_dir,
+            cosign_policy,
         })
     }
 
@@ -103,16 +110,89 @@ impl GithubClient {
         }))
     }
 
-    /// Download release.json for the given tag. Uses ETag/If-None-Match cache.
+    /// Download release.json for the given tag, optionally verifying the cosign signature.
+    /// Uses ETag/If-None-Match cache for the manifest blob.
     pub async fn fetch_manifest(&self, tag: &str) -> Result<Manifest> {
         let release = self.get_release_by_tag(tag).await?;
-        let asset = release
+        let manifest_asset = release
             .assets
             .iter()
             .find(|a| a.name == "release.json")
             .ok_or_else(|| UpdaterError::Github(format!("release {tag} has no release.json asset")))?;
-        let bytes = self.download_with_cache(tag, asset).await?;
-        Manifest::from_json(&bytes)
+        let bytes = self.download_with_cache(tag, manifest_asset).await?;
+
+        // 1) parse + structural validation
+        let manifest = Manifest::from_json(&bytes)?;
+
+        // 2) cosign verification (governed by policy)
+        if !matches!(self.cosign_policy, CosignPolicy::Off) {
+            let outcome = self.verify_cosign(tag, &release, &bytes).await;
+            if let Err(e) = cosign::enforce(&outcome, self.cosign_policy) {
+                return Err(UpdaterError::Precondition(format!("cosign: {e}")));
+            }
+        }
+
+        Ok(manifest)
+    }
+
+    /// Fetch .sig + .pem siblings for `release.json` and ask cosign to verify them.
+    /// Returns `VerifyOutcome::Skipped` if the assets are missing — the policy layer decides
+    /// whether that's acceptable.
+    async fn verify_cosign(&self, tag: &str, release: &Release, manifest_bytes: &[u8]) -> VerifyOutcome {
+        let sig_asset = release.assets.iter().find(|a| a.name == "release.json.sig");
+        let pem_asset = release.assets.iter().find(|a| a.name == "release.json.pem");
+        let (Some(sig), Some(pem)) = (sig_asset, pem_asset) else {
+            return VerifyOutcome::Skipped;
+        };
+
+        // Write the manifest + sig + pem to the cache dir so cosign can `--signature path`.
+        let mp = self.cache_dir.join(format!("release-{tag}.json"));
+        let sp = self.cache_dir.join(format!("release-{tag}.sig"));
+        let cp = self.cache_dir.join(format!("release-{tag}.pem"));
+        if let Err(e) = atomic::write_atomic_bytes(&mp, manifest_bytes) {
+            return VerifyOutcome::Failed(format!("write cache manifest: {e}"));
+        }
+        let sig_bytes = match self.fetch_asset_bytes(sig).await {
+            Ok(b) => b,
+            Err(e) => return VerifyOutcome::Failed(format!("download sig: {e}")),
+        };
+        let pem_bytes = match self.fetch_asset_bytes(pem).await {
+            Ok(b) => b,
+            Err(e) => return VerifyOutcome::Failed(format!("download cert: {e}")),
+        };
+        if let Err(e) = atomic::write_atomic_bytes(&sp, &sig_bytes) {
+            return VerifyOutcome::Failed(format!("write sig: {e}"));
+        }
+        if let Err(e) = atomic::write_atomic_bytes(&cp, &pem_bytes) {
+            return VerifyOutcome::Failed(format!("write cert: {e}"));
+        }
+
+        cosign::verify(&mp, &sp, &cp, &self.repo).await
+    }
+
+    /// One-shot asset download (no cache; used for short-lived .sig/.pem).
+    async fn fetch_asset_bytes(&self, asset: &Asset) -> Result<Vec<u8>> {
+        let mut headers = self.auth_headers();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/octet-stream"));
+        let resp = self
+            .client
+            .get(&asset.browser_download_url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("download {}: {e}", asset.name)))?;
+        if !resp.status().is_success() {
+            return Err(UpdaterError::Github(format!(
+                "download {} failed: {}",
+                asset.name,
+                resp.status()
+            )));
+        }
+        Ok(resp
+            .bytes()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("read body: {e}")))?
+            .to_vec())
     }
 
     async fn get_release_by_tag(&self, tag: &str) -> Result<Release> {

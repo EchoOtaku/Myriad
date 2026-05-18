@@ -67,5 +67,11 @@ out/
 /.claude
 /backend/data/agent/memory
 /backend/data/agent/skills
-/proxy/target/debug
-/updater/target/debug
+# Rust build artifacts for updater/proxy crates
+/proxy/target/
+/updater/target/
+
+# Updater state (per-host runtime data, never in git)
+/state/
+/backups/
+/pgdata/

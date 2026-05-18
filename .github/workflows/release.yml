@@ -21,7 +21,9 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAMESPACE: somekawahitomi
+  # Docker Hub namespace = DOCKERHUB_USERNAME secret. Forks set their own
+  # DOCKERHUB_USERNAME / DOCKERHUB_TOKEN; nothing in this file is hardcoded.
+  IMAGE_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME }}
   COMPONENTS: backend frontend proxy updater
 
 jobs:
@@ -151,8 +153,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Required for cosign keyless OIDC signing.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
 
       - uses: actions/download-artifact@v4
         with:
@@ -233,6 +242,27 @@ jobs:
             } > CHANGELOG-fragment.md
           fi
 
+      - name: Sign release.json with cosign (keyless OIDC)
+        env:
+          # Tell cosign to use GitHub Actions OIDC token for keyless signing.
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          set -euo pipefail
+          # Outputs:
+          #   release.json.sig         — base64 cosign signature
+          #   release.json.pem         — signing certificate (cosign Rekor entry binds to OIDC subject)
+          cosign sign-blob \
+            --yes \
+            --output-signature release.json.sig \
+            --output-certificate release.json.pem \
+            release.json
+          # Also sign SHA256SUMS so verifiers can audit asset integrity end-to-end.
+          cosign sign-blob \
+            --yes \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem \
+            SHA256SUMS
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -241,7 +271,8 @@ jobs:
             --title "${{ needs.resolve.outputs.version }}" \
             --notes-file CHANGELOG-fragment.md \
             --prerelease=${{ needs.resolve.outputs.prerelease }} \
-            release.json SHA256SUMS
+            release.json release.json.sig release.json.pem \
+            SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
 
       - name: Summary
         run: |

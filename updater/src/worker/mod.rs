@@ -108,10 +108,13 @@ impl Worker {
     }
 
     pub fn github_client(&self) -> Result<GithubClient> {
+        use crate::release::CosignPolicy;
+        let policy = CosignPolicy::from_env(Some(&self.config.cosign_verify));
         GithubClient::new(
             self.config.github_repo.clone(),
             self.config.github_token.clone(),
             self.state.cache_dir(),
+            policy,
         )
     }
 

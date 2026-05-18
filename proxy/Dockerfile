@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.6
-FROM rust:1.83-bookworm AS builder
+# rust:1.88+ required (axum 0.8 ecosystem + `time` crate); pin for reproducibility.
+FROM rust:1.90-bookworm AS builder
 WORKDIR /work
 
 COPY proxy/Cargo.toml proxy/Cargo.toml

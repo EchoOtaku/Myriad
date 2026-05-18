@@ -1,297 +1,161 @@
 # =============================================================================
-# Myriad Docker Image Build and Push Script
+# Myriad Docker Image Build and Push Script (PowerShell)
 # =============================================================================
-# Build Docker images and push to Docker Hub or other registries
+# Build and push backend / frontend / proxy / updater images.
+#
+# Production releases should prefer the release.yml GitHub Actions workflow
+# (push a v* tag). This script is for local Dockerfile validation, private
+# registries, and offline environments.
 # =============================================================================
 
 param(
     [string]$Registry = "docker.io",
     [string]$Username = "",
-    [string]$Tag = "latest",
+    [string]$Tag = "",
     [switch]$Push = $false,
-    [switch]$SkipBackend = $false,
-    [switch]$SkipFrontend = $false,
+    [switch]$Backend,
+    [switch]$Frontend,
+    [switch]$Proxy,
+    [switch]$Updater,
+    [switch]$All,
+    [switch]$BackendOnly,
+    [switch]$FrontendOnly,
+    [switch]$ProxyOnly,
+    [switch]$UpdaterOnly,
     [switch]$NoBuildCache = $false
 )
 
 $ErrorActionPreference = "Stop"
 
-# Color output
-function Write-ColorOutput($ForegroundColor) {
-    $fc = $host.UI.RawUI.ForegroundColor
-    $host.UI.RawUI.ForegroundColor = $ForegroundColor
-    if ($args) {
-        Write-Output $args
-    }
-    $host.UI.RawUI.ForegroundColor = $fc
-}
+function Write-Color($c) { $f = $host.UI.RawUI.ForegroundColor; $host.UI.RawUI.ForegroundColor = $c; if ($args) { Write-Output $args }; $host.UI.RawUI.ForegroundColor = $f }
+function Write-Success { Write-Color Green $args }
+function Write-Info { Write-Color Cyan $args }
+function Write-Warn { Write-Color Yellow $args }
+function Write-Err { Write-Color Red $args }
 
-function Write-Success { Write-ColorOutput Green $args }
-function Write-Info { Write-ColorOutput Cyan $args }
-function Write-Warning { Write-ColorOutput Yellow $args }
-function Write-Error { Write-ColorOutput Red $args }
-
-# Show banner
 function Show-Banner {
     Write-Info "==========================================="
     Write-Info "   Myriad Docker Image Build & Push Tool"
     Write-Info "==========================================="
+    Write-Warn "Production releases: push a v* git tag to trigger release.yml."
     Write-Host ""
 }
 
-# Get version info
 function Get-Version {
-    # Read version from Cargo.toml
     if (Test-Path "backend/Cargo.toml") {
-        $cargoContent = Get-Content "backend/Cargo.toml" -Raw
-        if ($cargoContent -match 'version\s*=\s*"([^"]+)"') {
-            return $Matches[1]
+        $line = (Get-Content "backend/Cargo.toml" | Where-Object { $_ -match '^version\s*=\s*"([^"]+)"' } | Select-Object -First 1)
+        if ($line -match '"([^"]+)"') {
+            return "v$($matches[1])"
         }
     }
-    return "latest"
+    return "v0.0.0-dev"
 }
 
-# Check Docker
 function Test-Docker {
-    Write-Info "Checking Docker environment..."
-    try {
-        $null = docker --version
-        Write-Success "[OK] Docker is installed"
-        return $true
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        Write-Err "X Docker not found. Install: https://docs.docker.com/engine/install/"
+        exit 1
     }
-    catch {
-        Write-Error "[ERROR] Docker not found"
-        Write-Error "Please install Docker Desktop: https://www.docker.com/products/docker-desktop"
-        return $false
-    }
+    Write-Success "Docker is available"
 }
 
-# Docker login
-function Connect-Registry {
-    param([string]$registry, [string]$username)
-    
-    if ([string]::IsNullOrEmpty($username)) {
-        Write-Warning "Username not provided, skipping login"
-        return $true
-    }
-    
-    Write-Info "Logging in to $registry..."
-    try {
-        docker login $registry -u $username
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "[OK] Login successful"
-            return $true
-        }
-    }
-    catch {
-        Write-Error "[ERROR] Login failed"
-        return $false
-    }
-    return $false
+function Invoke-DockerLogin($registry, $username) {
+    if (-not $username) { return $true }
+    Write-Info "Logging in to $registry ..."
+    docker login $registry -u $username
+    if ($LASTEXITCODE -ne 0) { Write-Err "Login failed"; return $false }
+    Write-Success "Login OK"; return $true
 }
 
-# Build image
-function Invoke-ImageBuild {
-    param(
-        [string]$service,
-        [string]$dockerfile,
-        [string]$imageName,
-        [bool]$noCache
-    )
-    
-    Write-Info "Building $service image..."
-    Write-Info "  Image name: $imageName"
-    Write-Info "  Dockerfile: $dockerfile"
-    
-    $buildArgs = @(
-        "build",
-        "-f", $dockerfile,
-        "-t", $imageName,
-        "."
-    )
-    
-    if ($noCache) {
-        $buildArgs += "--no-cache"
-    }
-    
-    Write-Host ""
-    & docker $buildArgs
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "[ERROR] $service build failed"
+function Build-One($service, $dockerfile, $imageName, $myriadVersion) {
+    if (-not (Test-Path $dockerfile)) {
+        Write-Warn "X $dockerfile not present; skipping $service"
         return $false
     }
-    
-    Write-Success "[OK] $service build completed"
+    Write-Info "Building $service -> $imageName"
+    $args = @("build", "-f", $dockerfile, "-t", $imageName, "--build-arg", "MYRIAD_VERSION=$myriadVersion")
+    if ($NoBuildCache) { $args += "--no-cache" }
+    $args += "."
+    docker @args
+    if ($LASTEXITCODE -ne 0) { Write-Err "X $service build failed"; return $false }
+    Write-Success "$service build OK"
     return $true
 }
 
-# Push image
-function Push-Image {
-    param([string]$imageName)
-    
-    Write-Info "Pushing image: $imageName"
+function Push-One($imageName) {
+    Write-Info "Push: $imageName"
     docker push $imageName
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "[ERROR] Push failed"
-        return $false
-    }
-    
-    Write-Success "[OK] Push completed"
-    return $true
+    if ($LASTEXITCODE -ne 0) { Write-Err "X push failed"; return $false }
+    Write-Success "Push OK"; return $true
 }
 
-# Main function
-function Main {
-    Show-Banner
-    
-    # Check Docker
-    if (-not (Test-Docker)) {
-        exit 1
-    }
-    Write-Host ""
-    
-    # Get or validate username
-    if ([string]::IsNullOrEmpty($Username)) {
-        $Username = Read-Host "Please enter Docker Hub username (or registry username)"
-        if ([string]::IsNullOrEmpty($Username)) {
-            Write-Error "Username is required"
-            exit 1
-        }
-    }
-    
-    # Get version
-    $version = Get-Version
-    Write-Info "Detected version: $version"
-    Write-Host ""
-    
-    # Image names
-    $backendImage = "$Registry/$Username/myriad-backend:$Tag"
-    $frontendImage = "$Registry/$Username/myriad-frontend:$Tag"
-    
-    # Login if push is needed
-    if ($Push) {
-        if (-not (Connect-Registry -registry $Registry -username $Username)) {
-            exit 1
-        }
-        Write-Host ""
-    }
-    
-    $success = $true
-    
-    # Build backend
-    if (-not $SkipBackend) {
-        Write-Info "========== Building Backend Image =========="
-        if (-not (Invoke-ImageBuild -service "Backend" -dockerfile "docker/Dockerfile.backend" -imageName $backendImage -noCache $NoBuildCache)) {
-            $success = $false
-        }
-        Write-Host ""
-        
-        # Also tag with version
-        if ($Tag -ne $version -and $Tag -ne "latest") {
-            $versionImage = "$Registry/$Username/myriad-backend:$version"
-            docker tag $backendImage $versionImage
-            Write-Info "  Also tagged as: $versionImage"
-        }
-    }
-    
-    # Build frontend
-    if (-not $SkipFrontend) {
-        Write-Info "========== Building Frontend Image =========="
-        if (-not (Invoke-ImageBuild -service "Frontend" -dockerfile "docker/Dockerfile.frontend" -imageName $frontendImage -noCache $NoBuildCache)) {
-            $success = $false
-        }
-        Write-Host ""
-        
-        # Also tag with version
-        if ($Tag -ne $version -and $Tag -ne "latest") {
-            $versionImage = "$Registry/$Username/myriad-frontend:$version"
-            docker tag $frontendImage $versionImage
-            Write-Info "  Also tagged as: $versionImage"
-        }
-    }
-    
-    if (-not $success) {
-        Write-Error "Build process encountered errors"
-        exit 1
-    }
-    
-    # Push images
-    if ($Push) {
-        Write-Info "========== Pushing Images =========="
-        
-        if (-not $SkipBackend) {
-            if (-not (Push-Image -imageName $backendImage)) {
-                $success = $false
-            }
-            
-            # Also push version tag if exists
-            if ($Tag -ne $version -and $Tag -ne "latest") {
-                $versionImage = "$Registry/$Username/myriad-backend:$version"
-                Push-Image -imageName $versionImage
-            }
-        }
-        
-        if (-not $SkipFrontend) {
-            if (-not (Push-Image -imageName $frontendImage)) {
-                $success = $false
-            }
-            
-            # Also push version tag if exists
-            if ($Tag -ne $version -and $Tag -ne "latest") {
-                $versionImage = "$Registry/$Username/myriad-frontend:$version"
-                Push-Image -imageName $versionImage
-            }
-        }
-        
-        if (-not $success) {
-            Write-Error "Push process encountered errors"
-            exit 1
-        }
-    }
-    
-    # Display summary
-    Write-Host ""
-    Write-Success "==========================================="
-    Write-Success "         Build Complete!"
-    Write-Success "==========================================="
-    Write-Host ""
-    Write-Info "Built images:"
-    if (-not $SkipBackend) {
-        Write-Host "  Backend:  $backendImage"
-    }
-    if (-not $SkipFrontend) {
-        Write-Host "  Frontend: $frontendImage"
-    }
-    Write-Host ""
-    
-    if ($Push) {
-        Write-Success "[OK] Images pushed to registry"
-        Write-Host ""
-        Write-Info "Users can pull with:"
-        if ($BuildBackend) {
-            Write-Host "  docker pull $backendImage"
-        }
-        if ($BuildFrontend) {
-            Write-Host "  docker pull $frontendImage"
-        }
-    }
-    else {
-        Write-Info "Local build complete, use -Push parameter to push to registry"
-        Write-Host ""
-        Write-Info "Push command:"
-        Write-Host "  .\build-and-push.ps1 -Username $Username -Tag $Tag -Push"
-    }
-    
-    Write-Host ""
-    Write-Info "View images:"
-    Write-Host "  docker images | grep myriad"
-    Write-Host ""
-    Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor Cyan
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+# ---------- main ----------
+
+Show-Banner
+Test-Docker
+
+# Resolve which targets to build.
+$buildBackend  = $true
+$buildFrontend = $true
+$buildProxy    = $false
+$buildUpdater  = $false
+
+if ($Backend)     { $buildBackend  = $true }
+if ($Frontend)    { $buildFrontend = $true }
+if ($Proxy)       { $buildProxy    = $true }
+if ($Updater)     { $buildUpdater  = $true }
+if ($All)         { $buildBackend = $true; $buildFrontend = $true; $buildProxy = $true; $buildUpdater = $true }
+if ($BackendOnly) { $buildBackend = $true; $buildFrontend = $false; $buildProxy = $false; $buildUpdater = $false }
+if ($FrontendOnly) { $buildBackend = $false; $buildFrontend = $true; $buildProxy = $false; $buildUpdater = $false }
+if ($ProxyOnly)   { $buildBackend = $false; $buildFrontend = $false; $buildProxy = $true; $buildUpdater = $false }
+if ($UpdaterOnly) { $buildBackend = $false; $buildFrontend = $false; $buildProxy = $false; $buildUpdater = $true }
+
+if ($Push -and -not $Username) {
+    $Username = Read-Host "Registry username"
+    if (-not $Username) { Write-Err "Push requires username"; exit 1 }
 }
 
-# Execute main function
-Main
+$myriadVersion = Get-Version
+if (-not $Tag) { $Tag = $myriadVersion }
+Write-Info "Version: $myriadVersion  Tag: $Tag"
+Write-Host ""
+
+if ($Push) {
+    if (-not (Invoke-DockerLogin $Registry $Username)) { exit 1 }
+    Write-Host ""
+}
+
+$targets = @(
+    @{ name = "backend";  file = "docker/Dockerfile.backend";  enabled = $buildBackend  },
+    @{ name = "frontend"; file = "docker/Dockerfile.frontend"; enabled = $buildFrontend },
+    @{ name = "proxy";    file = "proxy/Dockerfile";           enabled = $buildProxy    },
+    @{ name = "updater";  file = "updater/Dockerfile";         enabled = $buildUpdater  }
+)
+
+$built = @()
+foreach ($t in $targets) {
+    if (-not $t.enabled) { continue }
+    $image = "$Registry/$Username/myriad-$($t.name):$Tag"
+    Write-Host "========== $($t.name) =========="
+    if (Build-One $t.name $t.file $image $myriadVersion) {
+        $built += $image
+    } else {
+        Write-Err "Build failed for $($t.name)"; exit 1
+    }
+    Write-Host ""
+}
+
+if ($Push) {
+    Write-Host "========== Push =========="
+    foreach ($img in $built) {
+        if (-not (Push-One $img)) { exit 1 }
+    }
+}
+
+Write-Host ""
+Write-Success "==========================================="
+Write-Success "         Done"
+Write-Success "==========================================="
+foreach ($img in $built) { Write-Host "  $img" }
+Write-Host ""
+if (-not $Push) { Write-Info "Use -Push to push to registry" }

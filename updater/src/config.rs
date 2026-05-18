@@ -22,6 +22,10 @@ pub struct Config {
 
     /// How often to poll GitHub for new releases. Set to 0 to disable polling.
     pub check_interval_secs: u64,
+
+    /// Cosign signature verification policy. See release::cosign::CosignPolicy.
+    /// COSIGN_VERIFY env: off | soft | strict (default: off for backwards compat).
+    pub cosign_verify: String,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -93,7 +97,7 @@ impl Config {
             .parse()?;
 
         let github_repo = std::env::var("MYRIAD_GITHUB_REPO")
-            .unwrap_or_else(|_| "somekawahitomi/myriad".into());
+            .unwrap_or_else(|_| "Myriad-You/Myriad".into());
 
         let github_token = std::env::var("GITHUB_TOKEN").ok().map(SecretString::new);
 
@@ -106,6 +110,8 @@ impl Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(3600);
 
+        let cosign_verify = std::env::var("COSIGN_VERIFY").unwrap_or_else(|_| "off".into());
+
         Ok(Self {
             update_token: SecretString::new(token),
             channel,
@@ -113,6 +119,7 @@ impl Config {
             github_token,
             registry_mirror,
             check_interval_secs,
+            cosign_verify,
         })
     }
 }

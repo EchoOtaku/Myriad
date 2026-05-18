@@ -28,16 +28,18 @@ use crate::error::{Result, UpdaterError};
 
 pub use types::*;
 
-/// Owned handle to the state directory. Holds an exclusive process lock for the lifetime
-/// of the handle so we cannot accidentally run two updaters against the same state.
+/// Owned handle to the state directory. The updater daemon holds an exclusive process lock
+/// for its entire lifetime via `open()`. The rescue CLI can also need to read state while
+/// the daemon is still running (e.g. `myriad-rescue status` for diagnostics), in which case
+/// it uses `open_readonly()` to skip the lock.
 pub struct StateDir {
     root: PathBuf,
-    _lock: lock::ProcessLock,
+    _lock: Option<lock::ProcessLock>,
 }
 
 impl StateDir {
-    /// Open (and create if missing) the state directory.
-    /// Fails fast if another updater already holds the lock.
+    /// Open the state directory with an exclusive process lock. Used by the main updater
+    /// daemon — fails fast if another instance already holds the lock.
     pub fn open(root: &Path) -> Result<Self> {
         std::fs::create_dir_all(root)?;
         for sub in ["snapshots", "cache"] {
@@ -46,7 +48,22 @@ impl StateDir {
         let lock = lock::ProcessLock::acquire(&root.join("lock"))?;
         Ok(Self {
             root: root.to_path_buf(),
-            _lock: lock,
+            _lock: Some(lock),
+        })
+    }
+
+    /// Open the state directory **without** taking the process lock. Suitable for rescue
+    /// CLI read-only operations (`status`, `diagnose`, `clean-snapshots`). Writes are still
+    /// physically possible but the caller is responsible for ensuring no conflicting daemon
+    /// is mutating state concurrently (typically: stop the updater container first).
+    pub fn open_readonly(root: &Path) -> Result<Self> {
+        std::fs::create_dir_all(root)?;
+        for sub in ["snapshots", "cache"] {
+            std::fs::create_dir_all(root.join(sub))?;
+        }
+        Ok(Self {
+            root: root.to_path_buf(),
+            _lock: None,
         })
     }
 

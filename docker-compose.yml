@@ -29,7 +29,7 @@
 # CHANNEL                stable | beta | nightly
 # GITHUB_TOKEN           可选：提升 GitHub API rate limit
 # REGISTRY_MIRROR        可选：镜像 mirror 前缀
-# MYRIAD_GITHUB_REPO     默认 somekawahitomi/myriad
+# MYRIAD_GITHUB_REPO     默认 Myriad-You/Myriad
 # ============================================================================
 
 services:
@@ -188,8 +188,12 @@ services:
       CHANNEL: ${CHANNEL:-stable}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
-      MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-somekawahitomi/myriad}
+      MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-Myriad-You/Myriad}
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
+      # cosign signature policy: off (default) | soft | strict
+      # Strict requires release.json.sig + release.json.pem assets to be present and
+      # the OIDC subject to match the configured repo's workflows.
+      COSIGN_VERIFY: ${COSIGN_VERIFY:-off}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
       MYRIAD_VERSION: ${UPDATER_TAG}
       TZ: Asia/Shanghai

@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1.6
 
 # ---------- builder ----------
-FROM rust:1.83-bookworm AS builder
+# rust:1.88+ required: some transitive deps (axum 0.8 ecosystem, `time` crate) need
+# edition2024 and minor stdlib features only available in 1.88+. Pin to a known-good
+# version rather than `latest` for reproducibility.
+FROM rust:1.90-bookworm AS builder
 WORKDIR /work
 
 COPY updater/Cargo.toml updater/Cargo.toml
@@ -38,6 +41,20 @@ RUN set -eux; \
 
 COPY --from=builder /work/updater/target/release/myriad-updater /usr/local/bin/myriad-updater
 COPY --from=builder /work/updater/target/release/myriad-rescue  /usr/local/bin/myriad-rescue
+
+# cosign CLI for release.json signature verification (M2). Single static binary, ~50 MB.
+ARG COSIGN_VERSION=v2.4.1
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) cs_arch=amd64 ;; \
+        arm64) cs_arch=arm64 ;; \
+        *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/cosign \
+        "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${cs_arch}"; \
+    chmod +x /usr/local/bin/cosign; \
+    cosign version
 
 # Required bind mounts in compose:
 #   /state                  state directory (host: ./state)

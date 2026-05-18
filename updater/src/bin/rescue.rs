@@ -59,7 +59,10 @@ enum Cmd {
 async fn main() -> Result<()> {
     logging::init();
     let cli = Cli::parse();
-    let state = StateDir::open(&cli.state_dir)?;
+    // Rescue uses a lock-less StateDir so it can run while the updater container is up
+    // (e.g. for `status` / `diagnose`). Destructive subcommands like `rollback` assume the
+    // operator has already stopped the updater container — documented in §16.3.
+    let state = StateDir::open_readonly(&cli.state_dir)?;
     let ctx = rescue::Context {
         state,
         compose_dir: cli.compose_dir,
