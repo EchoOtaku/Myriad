@@ -47,39 +47,22 @@ impl ProviderRegistry {
 
     /// 从 DynamicConfig 重建 provider 集合（启动时 + 配置变更时调用）
     ///
-    /// 装载：
-    /// 1. GitHub（用 `github_client_id` / `github_client_secret`）
-    /// 2. OIDC providers（来自 `oauth_providers` 列表）
+    /// 装载顺序：
+    /// 1. `oauth_providers` 列表（kind="github" / "oidc"），优先
+    /// 2. legacy `github_client_id`/`github_client_secret` 平铺字段（向后兼容；
+    ///    若 (1) 中已经有 slug="github" 则跳过）
     pub async fn reload(&self) {
         use crate::GLOBAL_DYNAMIC_CONFIG;
 
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         let mut new_map: HashMap<String, Arc<dyn OAuthProvider>> = HashMap::new();
 
-        // GitHub
-        if let (Some(cid), Some(csec)) = (
-            config.github_client_id.as_ref().filter(|s| !s.is_empty()),
-            config
-                .github_client_secret
-                .as_ref()
-                .filter(|s| !s.is_empty()),
-        ) {
-            let provider = GithubProvider::new(cid.clone(), csec.clone());
-            new_map.insert("github".to_string(), Arc::new(provider));
-            tracing::info!("🔐 OAuth provider loaded: github");
-        } else {
-            tracing::debug!("ℹ️  GitHub OAuth not configured, skipping");
-        }
-
-        // OIDC / 自定义 providers
         for entry in &config.oauth_providers {
             if !entry.enabled {
                 continue;
             }
-            if entry.slug == "github" {
-                tracing::warn!(
-                    "oauth_providers contains reserved slug 'github'; ignoring (use github_client_id/secret instead)"
-                );
+            if entry.slug.trim().is_empty() {
+                tracing::warn!("OAuth provider with empty slug, skipping");
                 continue;
             }
             if new_map.contains_key(&entry.slug) {
@@ -87,6 +70,21 @@ impl ProviderRegistry {
                 continue;
             }
             match entry.kind.as_str() {
+                "github" => {
+                    if entry.client_id.is_empty() || entry.client_secret.is_empty() {
+                        tracing::warn!(
+                            "GitHub provider '{}' missing credentials; skipping",
+                            entry.slug
+                        );
+                        continue;
+                    }
+                    let provider = GithubProvider::new(
+                        entry.client_id.clone(),
+                        entry.client_secret.clone(),
+                    );
+                    new_map.insert(entry.slug.clone(), Arc::new(provider));
+                    tracing::info!("🔐 OAuth provider loaded: {} (github)", entry.slug);
+                }
                 "oidc" => {
                     let discovery = match entry.discovery_url.as_ref() {
                         Some(u) if !u.is_empty() => u.clone(),
@@ -117,6 +115,22 @@ impl ProviderRegistry {
                         entry.slug
                     );
                 }
+            }
+        }
+
+        // Legacy 兼容：旧的 github_client_id/secret 平铺字段
+        // 仅当 entries 里没有 slug="github" 时才生效，避免冲突。
+        if !new_map.contains_key("github") {
+            if let (Some(cid), Some(csec)) = (
+                config.github_client_id.as_ref().filter(|s| !s.is_empty()),
+                config
+                    .github_client_secret
+                    .as_ref()
+                    .filter(|s| !s.is_empty()),
+            ) {
+                let provider = GithubProvider::new(cid.clone(), csec.clone());
+                new_map.insert("github".to_string(), Arc::new(provider));
+                tracing::info!("🔐 OAuth provider loaded: github (from legacy fields)");
             }
         }
 

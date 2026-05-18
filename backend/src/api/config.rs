@@ -2289,3 +2289,248 @@ pub async fn update_permissions(
         })),
     )
 }
+
+// ============================================================================
+// PR #6: OAuth Providers + 本地注册开关 — 专用端点
+// ============================================================================
+// 详见 docs/oauth-refactor-plan.md §5、§7
+//
+// GitHub 仍走旧的 github_client_id/github_client_secret 字段（OAuthConfigSection
+// 已经有对应输入），这里专门给"通用 OIDC providers 列表 + 注册开关"用。
+
+/// GET /api/config/oauth-providers
+///
+/// 返回 OIDC providers 列表 + 本地注册开关。
+/// `client_secret` 字段在响应中被掩码（仅在数据库已设置时返回 `***`），
+/// 前端不应展示明文；保存时若收到 `***` 表示用户没改，沿用旧值。
+pub async fn get_oauth_providers() -> (StatusCode, Json<Value>) {
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+
+    let mut providers: Vec<Value> = config
+        .oauth_providers
+        .iter()
+        .map(|p| {
+            json!({
+                "slug": p.slug,
+                "kind": p.kind,
+                "display_name": p.display_name,
+                "enabled": p.enabled,
+                "client_id": p.client_id,
+                "client_secret": if p.client_secret.is_empty() { "" } else { "***" },
+                "scopes": p.scopes,
+                "discovery_url": p.discovery_url,
+                "icon_url": p.icon_url,
+            })
+        })
+        .collect();
+
+    // 自动迁移：若 legacy github_client_id 有值但 entries 里没有 slug="github"，
+    // 合成一条只读 entry 展示给前端。客户端首次保存时会写到 oauth_providers。
+    let has_github_entry = config.oauth_providers.iter().any(|p| p.slug == "github");
+    if !has_github_entry {
+        if let (Some(cid), Some(_csec)) = (
+            config.github_client_id.as_ref().filter(|s| !s.is_empty()),
+            config
+                .github_client_secret
+                .as_ref()
+                .filter(|s| !s.is_empty()),
+        ) {
+            providers.insert(
+                0,
+                json!({
+                    "slug": "github",
+                    "kind": "github",
+                    "display_name": "GitHub",
+                    "enabled": true,
+                    "client_id": cid,
+                    "client_secret": "***",
+                    "scopes": Vec::<String>::new(),
+                    "discovery_url": null,
+                    "icon_url": null,
+                }),
+            );
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "providers": providers,
+            "allow_local_registration": config.allow_local_registration,
+        })),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateOAuthProvidersPayload {
+    pub providers: Vec<crate::config::OAuthProviderEntry>,
+    pub allow_local_registration: bool,
+}
+
+/// PUT /api/config/oauth-providers
+///
+/// 全量覆盖 providers 列表 + 注册开关。
+/// 校验：
+/// 1. slug 必填、不能是保留值 "github"、不能重复
+/// 2. kind="oidc" 时 discovery_url 必填
+/// 3. client_secret 若为掩码 `***`，沿用现有 secret
+/// 保存后触发 [`ProviderRegistry::reload`]。
+pub async fn update_oauth_providers(
+    State(db): State<DatabaseConnection>,
+    Json(mut payload): Json<UpdateOAuthProvidersPayload>,
+) -> (StatusCode, Json<Value>) {
+    // 校验 + secret 回填
+    let mut seen = std::collections::HashSet::new();
+    {
+        let current = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        for p in payload.providers.iter_mut() {
+            let slug = p.slug.trim();
+            if slug.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Provider slug is required"})),
+                );
+            }
+            // slug 必须 URL-safe（路由参数）：字母数字 + 连字符/下划线，2-32 字符
+            if slug.len() > 32
+                || !slug
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("invalid slug '{}': only ASCII letters, digits, '-' and '_' allowed (max 32 chars)", slug)
+                    })),
+                );
+            }
+            p.slug = slug.to_string();
+            if !seen.insert(p.slug.clone()) {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": format!("duplicate provider slug: {}", p.slug)})),
+                );
+            }
+            if p.enabled && p.client_id.trim().is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("provider '{}' requires client_id (disable it if not ready)", p.slug)
+                    })),
+                );
+            }
+            match p.kind.as_str() {
+                "github" => { /* no extra requirements */ }
+                "oidc" => {
+                    if p.discovery_url.as_deref().unwrap_or("").trim().is_empty() {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({
+                                "error": format!("OIDC provider '{}' requires discovery_url", p.slug)
+                            })),
+                        );
+                    }
+                }
+                other => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "error": format!("unsupported provider kind '{}'", other),
+                            "message": "kind must be 'github' or 'oidc'"
+                        })),
+                    );
+                }
+            }
+            // secret 回填：前端送 "***" 表示沿用
+            if p.client_secret == "***" || p.client_secret.is_empty() {
+                if let Some(existing) = current.oauth_providers.iter().find(|e| e.slug == p.slug) {
+                    p.client_secret = existing.client_secret.clone();
+                } else if p.kind == "github" && p.slug == "github" {
+                    // 从 legacy 字段拿一次作为初值
+                    if let Some(legacy) = current
+                        .github_client_secret
+                        .as_ref()
+                        .filter(|s| !s.is_empty())
+                    {
+                        p.client_secret = legacy.clone();
+                    } else {
+                        p.client_secret.clear();
+                    }
+                } else {
+                    p.client_secret.clear();
+                }
+            }
+
+            // 启用的 provider 必须有 secret（兜底检查，回填后仍为空才报错）
+            if p.enabled && p.client_secret.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("provider '{}' requires client_secret (disable it if not ready)", p.slug)
+                    })),
+                );
+            }
+        }
+    }
+
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    let mut updates = std::collections::HashMap::new();
+    let providers_json = match serde_json::to_value(&payload.providers) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to serialize providers: {}", e)})),
+            );
+        }
+    };
+    updates.insert("oauth_providers".to_string(), providers_json);
+    updates.insert(
+        "allow_local_registration".to_string(),
+        json!(payload.allow_local_registration),
+    );
+
+    // 兼容镜像：若 entries 里有 slug="github"，同时写到 legacy 平铺字段；
+    // 反之则清空它们，让 registry 不会同时拿到两份冲突的凭证。
+    if let Some(gh) = payload
+        .providers
+        .iter()
+        .find(|p| p.slug == "github" && p.kind == "github")
+    {
+        updates.insert("github_client_id".to_string(), json!(gh.client_id));
+        updates.insert("github_client_secret".to_string(), json!(gh.client_secret));
+    } else {
+        updates.insert("github_client_id".to_string(), json!(""));
+        updates.insert("github_client_secret".to_string(), json!(""));
+    }
+
+    if let Err(e) = config_service.update_configs(updates).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to save: {}", e)})),
+        );
+    }
+
+    // 刷新全局配置缓存
+    match config_service.load_config().await {
+        Ok(new_config) => {
+            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = new_config;
+            tracing::info!("✅ Global dynamic config refreshed (oauth providers)");
+        }
+        Err(e) => {
+            tracing::warn!("⚠️ Failed to refresh global config: {}", e);
+        }
+    }
+
+    // 热重载 OAuth 注册中心
+    crate::services::oauth::registry::REGISTRY.reload().await;
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "providers_count": payload.providers.len(),
+            "allow_local_registration": payload.allow_local_registration,
+        })),
+    )
+}

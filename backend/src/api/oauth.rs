@@ -197,7 +197,7 @@ pub async fn provider_callback(
         OAuthPurpose::LinkAccount(admin_id) => {
             handle_link(&db, &slug, admin_id, &profile, &frontend_url).await
         }
-        OAuthPurpose::Login => handle_login(&db, &slug, &profile, &frontend_url).await,
+        OAuthPurpose::Login => handle_login(&db, &slug, &profile).await,
     }
 }
 
@@ -240,7 +240,9 @@ async fn handle_link(
         .map_err(|e| err_500(format!("DB error: {e}")))?;
 
     if let Some(row) = existing {
-        let owner_id: i32 = row.try_get("", "user_id").unwrap_or(-1);
+        let owner_id: i32 = row
+            .try_get("", "user_id")
+            .map_err(|e| err_500(format!("failed to read user_id: {e}")))?;
         if owner_id != admin_id {
             let url = format!("{}/?link=error&reason=already_linked", frontend_url);
             return Ok(Redirect::to(&url).into_response());
@@ -286,7 +288,6 @@ async fn handle_login(
     db: &DatabaseConnection,
     slug: &str,
     profile: &NormalizedProfile,
-    frontend_url: &str,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
     let user_id = find_or_create_user(db, slug, profile).await?;
 
@@ -321,20 +322,17 @@ async fn handle_login(
     .map_err(|e| err_500(format!("JWT encode failed: {e}")))?;
 
     // Set-Cookie + HTML 重定向
+    // 注意：使用相对路径，避免把管理员可控的 base_url 注入到 <meta refresh> / <script>
     let is_production = SiteConfig::is_production().await;
     let cookie_value = format!(
         "auth_token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{}",
         token,
         if is_production { "; Secure" } else { "" }
     );
-    let redirect_url = format!("{}/?auth=success", frontend_url);
-    let html = format!(
-        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
-        <meta http-equiv=\"refresh\" content=\"0;url={}\"><title>Login</title></head>\
+    let html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+        <meta http-equiv=\"refresh\" content=\"0;url=/?auth=success\"><title>Login</title></head>\
         <body><p>Login successful, redirecting...</p>\
-        <script>window.location.href={:?};</script></body></html>",
-        redirect_url, redirect_url
-    );
+        <script>window.location.href=\"/?auth=success\";</script></body></html>";
 
     let mut response = axum::response::Html(html).into_response();
     response
@@ -364,7 +362,9 @@ async fn find_or_create_user(
         .await
         .map_err(|e| err_500(format!("DB error: {e}")))?
     {
-        let uid: i32 = row.try_get("", "user_id").unwrap_or(-1);
+        let uid: i32 = row
+            .try_get("", "user_id")
+            .map_err(|e| err_500(format!("failed to read user_id: {e}")))?;
         // 更新 identity 的 last_login_at + 档案字段
         let _ = db
             .execute(Statement::from_sql_and_values(
@@ -419,7 +419,9 @@ async fn find_or_create_user(
                 .await
                 .map_err(|e| err_500(format!("DB error: {e}")))?
             {
-                let uid: i32 = row.try_get("", "id").unwrap_or(-1);
+                let uid: i32 = row
+                    .try_get("", "id")
+                    .map_err(|e| err_500(format!("failed to read id: {e}")))?;
                 upsert_identity(db, slug, uid, profile).await?;
                 return Ok(uid);
             }

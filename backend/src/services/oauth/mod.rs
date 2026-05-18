@@ -13,8 +13,6 @@ pub mod oidc;
 pub mod registry;
 pub mod state;
 
-pub use registry::ProviderRegistry;
-
 /// Provider 类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -23,22 +21,14 @@ pub enum ProviderKind {
     Oidc,
 }
 
-impl ProviderKind {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ProviderKind::Github => "github",
-            ProviderKind::Oidc => "oidc",
-        }
-    }
-}
-
 /// 交换 code 后得到的 token 集合
+///
+/// 当前只用到 `access_token`（GitHub /user, OIDC userinfo）和 `id_token`（OIDC claims）。
+/// 未来加 token refresh 时再补 refresh_token / expires_in。
 #[derive(Debug, Clone)]
 pub struct ProviderTokens {
     pub access_token: String,
-    pub refresh_token: Option<String>,
     pub id_token: Option<String>,
-    pub expires_in: Option<u64>,
 }
 
 /// 标准化的用户档案（跨 provider 统一格式）

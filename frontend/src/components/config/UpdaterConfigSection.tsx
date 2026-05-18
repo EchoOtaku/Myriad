@@ -1,17 +1,20 @@
 /**
- * Updater 内联面板（admin 在「关于」section 中看到的更新管理界面）。
+ * Updater 内联面板 — 极简设计。
  *
- * 视觉层级（状态优先 vs 信息倾倒）：
- *   1. Hero 状态卡 — 一眼看出"现在处于什么状态、下一步该做什么"
- *   2. 进度卡    — 仅在有任务运行时显示，带进度条
- *   3. 折叠区块  — 快照、高级与诊断（默认收起，admin 不会被技术细节淹没）
+ * 日常使用只显示：
+ *   - 当前版本
+ *   - 状态（一句话：已是最新 / 有新版本 / 升级中 / 维护中 / 异常）
+ *   - 上次检查时间
+ *   - 一个主按钮（"检查更新" 或 "升级到 vX"）
  *
- * 实现遵循 docs/updater-spec.md §13。Backend mode 走 admin session + CSRF +
- * 服务器持有 UPDATE_TOKEN；direct mode 是运维 fallback，需 PROXY_ALLOW_DIRECT_UPDATER。
+ * 任务进行中：进度卡接替主信息卡。
+ * 异常/危险操作：默认折叠在「维护操作」「快照」「高级」三组里。
+ *
+ * 风格沿用 about-row（与上方的版本/协议/组织/仓库一致）。
  */
 
-import type { Job, LatestAvailable, ReleaseManifest, SnapshotMeta, TransportMode, UpdaterStatus } from '../../services/updaterApi'
-import { LuAlertTriangle, LuDownload, LuRefreshCw, LuRotateCw, LuShieldCheck } from '@lib/icons'
+import type { Job, ReleaseManifest, SnapshotMeta, TransportMode, UpdaterStatus } from '../../services/updaterApi'
+import { LuRefreshCw } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { detectVersionDrift, makeUpdaterApi, UpdaterError } from '../../services/updaterApi'
@@ -29,15 +32,10 @@ export interface UpdaterInlinePanelProps {
   heading?: string
 }
 
-type Toast = { kind: 'info' | 'error' | 'ok', text: string } | null
+type Toast = { kind: 'ok' | 'error', text: string } | null
 
-type HeroKind = 'healthy' | 'available' | 'updating' | 'maintenance' | 'needsManual' | 'offline' | 'firstRun'
-
-interface HeroInfo {
-  kind: HeroKind
-  title: string
-  subtitle: string
-}
+/** 派生状态：决定状态行文案和主按钮行为。 */
+type Mood = 'healthy' | 'available' | 'updating' | 'maintenance' | 'needsManual' | 'offline' | 'firstRun'
 
 export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading }) => {
   const { t } = useI18n()
@@ -145,7 +143,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
       const manifest = await api.available()
       setAvailable(manifest)
       if (!manifest)
-        setToast({ kind: 'info', text: u.updaterNoAvailable })
+        setToast({ kind: 'ok', text: u.updaterNoAvailable })
       await refresh()
     }
     catch (e) {
@@ -169,7 +167,6 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
     setBusy('upgrade')
     setToast(null)
     try {
-      // 若 available manifest 还没拉过，先拿一次以便用最新 version
       let resolvedTarget = target
       if (!available) {
         const m = await api.available().catch(() => null)
@@ -178,10 +175,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
           resolvedTarget = m.version
         }
       }
-      const r = await api.triggerUpdate(
-        resolvedTarget,
-        `update-${resolvedTarget}-${Date.now()}`,
-      )
+      const r = await api.triggerUpdate(resolvedTarget, `update-${resolvedTarget}-${Date.now()}`)
       setToast({ kind: 'ok', text: format(u.updaterDispatched, { jobId: r.job_id }) })
       await refresh()
     }
@@ -262,8 +256,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
     }
   }, [api, refresh, tokenRequired, explain, u])
 
-  // ===== 派生：当前 hero 状态 =====
-  const hero = useMemo<HeroInfo>(() => deriveHero(status, u), [status, u])
+  const mood = useMemo<Mood>(() => deriveMood(status), [status])
 
   // 非 admin：整段折叠
   if (accessDenied && mode === 'backend')
@@ -272,8 +265,10 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
   // ===== Render =====
 
   const showProgress = !!activeJob && !['succeeded', 'failed'].includes(activeJob.status)
-  const showExitMaintenance = !!status?.maintenance_active && !showProgress
+  const showMaintenanceActions = !!status?.maintenance_active && !showProgress
   const showSelfUpdate = !!status?.requires_self_update && !!status.latest_available
+
+  const statusValue = renderStatusValue(mood, status, u)
 
   return (
     <div className="updater-panel">
@@ -295,55 +290,97 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
         </div>
       )}
 
-      {/* ===== 1. Hero 状态卡 ===== */}
-      <Hero
-        info={hero}
-        status={status}
-        loading={loading}
-        u={u}
-        primaryButton={renderPrimaryAction({
-          status,
-          u,
-          busy,
-          tokenRequired,
-          hero,
-          onCheck: checkAvailable,
-          onUpgrade: triggerUpgrade,
-        })}
-      />
+      {/* 进行中 → 进度卡占据主区；否则展示信息列表 */}
+      {showProgress
+        ? <ProgressCard job={activeJob!} u={u} />
+        : (
+            <ul className="updater-list">
+              <li className="updater-row">
+                <span className="updater-row-label">{u.updaterCurrentVersion}</span>
+                <span className="updater-row-value">
+                  {status?.current_version
+                    ? <code>{status.current_version}</code>
+                    : <span className="updater-row-value muted">{u.updaterStatusFirstRun}</span>}
+                </span>
+              </li>
+              <li className="updater-row">
+                <span className="updater-row-label">{u.updaterRowStatus}</span>
+                <span className={`updater-row-value ${statusValue.tone}`}>
+                  {statusValue.text}
+                </span>
+              </li>
+              {status?.last_checked_at && (
+                <li className="updater-row">
+                  <span className="updater-row-label">{u.updaterLastChecked}</span>
+                  <span className="updater-row-value muted">
+                    {formatAgo(status.last_checked_at, u)}
+                  </span>
+                </li>
+              )}
+            </ul>
+          )}
 
       {toast && (
-        <div className={`updater-toast ${toast.kind}`}>
-          <span>{toast.text}</span>
+        <div className={`updater-toast ${toast.kind}`}>{toast.text}</div>
+      )}
+
+      {/* 主操作行：根据 mood 选择文案 */}
+      {!showProgress && (
+        <div className="updater-actions">
+          {mood === 'available' && status?.latest_available && (
+            <button
+              type="button"
+              className="btn-base btn-primary"
+              onClick={triggerUpgrade}
+              disabled={busy === 'upgrade' || tokenRequired}
+            >
+              <span>
+                {busy === 'upgrade'
+                  ? u.updaterDispatching
+                  : format(u.updaterUpgradeTo, { version: status.latest_available.version })}
+              </span>
+            </button>
+          )}
+          <button
+            type="button"
+            className={mood === 'available' ? 'btn-base btn-secondary' : 'btn-base btn-primary'}
+            onClick={checkAvailable}
+            disabled={busy === 'check' || loading}
+          >
+            <LuRefreshCw size={13} />
+            <span>{busy === 'check' ? u.updaterChecking : u.updaterCheckAvailable}</span>
+          </button>
+          {loading && !status && (
+            <span className="updater-actions-hint">{u.updaterLoading}</span>
+          )}
         </div>
       )}
 
-      {/* ===== 2. 进度卡（条件渲染） ===== */}
-      {showProgress && <ProgressCard job={activeJob!} u={u} />}
-
-      {/* ===== 3. 应急/危险操作（仅必要时显示） ===== */}
-      {(showExitMaintenance || showSelfUpdate) && (
-        <SettingGroup>
+      {/* ===== 维护操作（条件渲染，默认隐藏）===== */}
+      {(showMaintenanceActions || showSelfUpdate) && (
+        <SettingGroup
+          title={u.updaterMaintenanceActions}
+          collapsible
+          defaultExpanded={mood === 'needsManual' || mood === 'maintenance'}
+        >
           {showSelfUpdate && (
             <ButtonItem
               itemKey="self_update"
               label={u.updaterSelfUpdateButton}
               description={u.updaterActionSelfUpdateDesc}
               buttonText={busy === 'self-update' ? u.updaterSelfUpdateDispatching : u.updaterSelfUpdateButton}
-              buttonIcon={<LuShieldCheck size={14} />}
               onClick={triggerSelfUpdate}
-              variant="primary"
+              variant="secondary"
               layout="horizontal"
               disabled={busy === 'self-update' || tokenRequired}
             />
           )}
-          {showExitMaintenance && (
+          {showMaintenanceActions && (
             <ButtonItem
               itemKey="exit_maintenance"
               label={u.updaterForceExit}
               description={u.updaterActionExitDesc}
               buttonText={busy === 'exit-maintenance' ? u.updaterProcessing : u.updaterForceExit}
-              buttonIcon={<LuAlertTriangle size={14} />}
               onClick={exitMaintenance}
               variant="danger"
               layout="horizontal"
@@ -353,7 +390,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
         </SettingGroup>
       )}
 
-      {/* ===== 4. 快照与历史（折叠）===== */}
+      {/* ===== 快照与历史（折叠）===== */}
       <SettingGroup
         title={u.updaterGroupHistory}
         description={u.updaterGroupHistoryDesc}
@@ -378,7 +415,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
             )}
       </SettingGroup>
 
-      {/* ===== 5. 高级与诊断（折叠）===== */}
+      {/* ===== 高级（折叠）===== */}
       <SettingGroup
         title={u.updaterGroupAdvanced}
         description={u.updaterGroupAdvancedDesc}
@@ -391,7 +428,6 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
           mode={mode}
           token={token}
           loading={loading}
-          busy={busy}
           u={u}
           onModeChange={(m) => {
             setMode(m)
@@ -406,138 +442,63 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
   )
 }
 
-// ===== 子组件：Hero =====
+// ===== 状态推导 =====
 
-function Hero({
-  info,
-  status,
-  loading,
-  u,
-  primaryButton,
-}: {
-  info: HeroInfo
-  status: UpdaterStatus | null
-  loading: boolean
-  u: ReturnType<typeof useI18n>['t']['config']
-  primaryButton: React.ReactNode
-}) {
-  return (
-    <div className={`updater-hero ${info.kind}`}>
-      <div className="updater-hero-head">
-        <span className="updater-hero-dot" />
-        <div className="updater-hero-body">
-          <h4 className="updater-hero-title">{info.title}</h4>
-          <p className="updater-hero-subtitle">{info.subtitle}</p>
-          <VersionLine status={status} u={u} />
-          {status?.last_checked_at && (
-            <p className="updater-hero-meta">
-              {u.updaterLastChecked}
-              ：
-              {formatAgo(status.last_checked_at, u)}
-            </p>
-          )}
-          {loading && !status && (
-            <p className="updater-hero-meta">{u.updaterLoading}</p>
-          )}
-        </div>
-      </div>
-      <div className="updater-hero-actions">{primaryButton}</div>
-    </div>
-  )
-}
-
-function VersionLine({
-  status,
-  u,
-}: {
-  status: UpdaterStatus | null
-  u: ReturnType<typeof useI18n>['t']['config']
-}) {
+function deriveMood(status: UpdaterStatus | null): Mood {
   if (!status)
-    return null
-  const current = status.current_version
-  const latest = status.latest_available?.version
-  if (!current && !latest)
-    return null
-  return (
-    <div className="updater-hero-versions">
-      {current && (
-        <span>
-          {u.updaterCurrentVersion}
-          ：
-          <code>{current}</code>
-        </span>
-      )}
-      {latest && latest !== current && (
-        <>
-          <span className="arrow">→</span>
-          <span>
-            <code>{latest}</code>
-          </span>
-        </>
-      )}
-      {status.channel && (
-        <span>
-          ·
-          {status.channel}
-        </span>
-      )}
-    </div>
-  )
+    return 'offline'
+  if (status.job_in_flight)
+    return 'updating'
+  if (status.maintenance_phase === 'needs_manual')
+    return 'needsManual'
+  if (status.maintenance_active)
+    return 'maintenance'
+  if (!status.current_version)
+    return 'firstRun'
+  if (status.update_available)
+    return 'available'
+  return 'healthy'
 }
 
-// ===== 子组件：主操作按钮 =====
-
-function renderPrimaryAction({
-  status,
-  u,
-  busy,
-  tokenRequired,
-  hero,
-  onCheck,
-  onUpgrade,
-}: {
-  status: UpdaterStatus | null
-  u: ReturnType<typeof useI18n>['t']['config']
-  busy: string | null
-  tokenRequired: boolean
-  hero: HeroInfo
-  onCheck: () => void
-  onUpgrade: () => void
-}) {
-  // 优先级：可升级 > 维护中(无主操作) > 首次/正常
-  const canUpgrade = hero.kind === 'available' && !!status?.latest_available
-  const target = status?.latest_available?.version
-
-  return (
-    <>
-      {canUpgrade && target && (
-        <button
-          type="button"
-          className="btn-base btn-primary"
-          onClick={onUpgrade}
-          disabled={busy === 'upgrade' || !!status?.job_in_flight || tokenRequired}
-        >
-          <LuDownload size={14} />
-          <span>
-            {busy === 'upgrade' ? u.updaterDispatching : format(u.updaterUpgradeTo, { version: target })}
-          </span>
-        </button>
-      )}
-      <button
-        type="button"
-        className={canUpgrade ? 'btn-base btn-secondary' : 'btn-base btn-primary'}
-        onClick={onCheck}
-        disabled={busy === 'check'}
-      >
-        <LuRefreshCw size={14} />
-        <span>{busy === 'check' ? u.updaterChecking : u.updaterCheckAvailable}</span>
-      </button>
-    </>
-  )
+function renderStatusValue(
+  mood: Mood,
+  status: UpdaterStatus | null,
+  u: ReturnType<typeof useI18n>['t']['config'],
+): { text: React.ReactNode, tone: '' | 'muted' | 'attention' | 'warning' | 'danger' } {
+  switch (mood) {
+    case 'healthy':
+      return { text: u.updaterStatusHealthy, tone: 'muted' }
+    case 'available':
+      return {
+        text: (
+          <>
+            {u.updaterStatusAvailable}
+            {status?.latest_available && (
+              <>
+                {' '}
+                ·
+                {' '}
+                <code>{status.latest_available.version}</code>
+              </>
+            )}
+          </>
+        ),
+        tone: 'attention',
+      }
+    case 'updating':
+      return { text: u.updaterStatusUpdating, tone: 'warning' }
+    case 'maintenance':
+      return { text: u.updaterStatusMaintenance, tone: 'warning' }
+    case 'needsManual':
+      return { text: u.updaterStatusNeedsManual, tone: 'danger' }
+    case 'offline':
+      return { text: u.updaterStatusOffline, tone: 'danger' }
+    case 'firstRun':
+      return { text: u.updaterStatusFirstRunDesc, tone: 'muted' }
+  }
 }
 
-// ===== 子组件：进度卡 =====
+// ===== 进度卡 =====
 
 function ProgressCard({
   job,
@@ -550,16 +511,19 @@ function ProgressCard({
   const total = Math.max(job.steps.length, done + 1)
   const pct = Math.min(99, Math.round((done / total) * 100))
   const currentStep = job.steps.at(-1)
-  const phaseLabel = currentStep?.phase ?? job.status
   return (
     <div className="updater-progress">
       <div className="updater-progress-head">
-        <span className="updater-progress-phase">
-          {format(u.updaterTaskProgress, { jobId: job.id.slice(0, 8) })}
-          {' '}
-          ·
-          {phaseLabel}
-        </span>
+        <h4 className="updater-progress-title">
+          {u.updaterStatusUpdating}
+          {job.to_version && (
+            <>
+              {' '}
+              ·
+              <code>{job.to_version}</code>
+            </>
+          )}
+        </h4>
         <span className="updater-progress-counts">
           {done}
           {' '}
@@ -568,6 +532,7 @@ function ProgressCard({
           {total}
         </span>
       </div>
+      <p className="updater-progress-phase">{currentStep?.phase ?? job.status}</p>
       <div className="updater-progress-bar">
         <div
           className={`updater-progress-bar-fill ${currentStep?.finished_at ? '' : 'indeterminate'}`}
@@ -591,7 +556,7 @@ function ProgressCard({
   )
 }
 
-// ===== 子组件：快照行 =====
+// ===== 快照行 =====
 
 function SnapshotRow({
   snapshot,
@@ -612,7 +577,7 @@ function SnapshotRow({
         <div className="updater-snapshot-version">
           {snapshot.source_version
             ? <code>{snapshot.source_version}</code>
-            : <span style={{ color: '#9ca3af' }}>—</span>}
+            : <span className="updater-row-value muted">—</span>}
         </div>
         <div className="updater-snapshot-info">
           {new Date(snapshot.created_at).toLocaleString()}
@@ -627,14 +592,13 @@ function SnapshotRow({
         onClick={onRollback}
         disabled={busy || disabled}
       >
-        <LuRotateCw size={13} />
-        <span>{u.updaterRollback}</span>
+        {u.updaterRollback}
       </button>
     </div>
   )
 }
 
-// ===== 子组件：高级面板 =====
+// ===== 高级面板 =====
 
 function AdvancedPanel({
   status,
@@ -642,7 +606,6 @@ function AdvancedPanel({
   mode,
   token,
   loading,
-  busy,
   u,
   onModeChange,
   onTokenChange,
@@ -653,14 +616,11 @@ function AdvancedPanel({
   mode: TransportMode
   token: string
   loading: boolean
-  busy: string | null
   u: ReturnType<typeof useI18n>['t']['config']
   onModeChange: (m: TransportMode) => void
   onTokenChange: (s: string) => void
   onRefresh: () => void
 }) {
-  const _ = busy // reserved for future per-row spinners
-  void _
   return (
     <>
       <dl className="updater-detail-grid">
@@ -690,38 +650,36 @@ function AdvancedPanel({
         </details>
       )}
 
-      <div style={{ marginTop: '0.85rem' }}>
-        <div className="updater-mode-row">
-          <label>
-            <input
-              type="radio"
-              name="updater-mode"
-              checked={mode === 'backend'}
-              onChange={() => onModeChange('backend')}
-            />
-            {u.updaterModeBackend}
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="updater-mode"
-              checked={mode === 'direct'}
-              onChange={() => onModeChange('direct')}
-            />
-            {u.updaterModeDirect}
-          </label>
-        </div>
-        {mode === 'direct' && (
+      <div className="updater-mode-row">
+        <label>
           <input
-            type="password"
-            value={token}
-            onChange={e => onTokenChange(e.target.value)}
-            placeholder="UPDATE_TOKEN"
-            className="updater-token-input"
-            autoComplete="off"
+            type="radio"
+            name="updater-mode"
+            checked={mode === 'backend'}
+            onChange={() => onModeChange('backend')}
           />
-        )}
+          {u.updaterModeBackend}
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="updater-mode"
+            checked={mode === 'direct'}
+            onChange={() => onModeChange('direct')}
+          />
+          {u.updaterModeDirect}
+        </label>
       </div>
+      {mode === 'direct' && (
+        <input
+          type="password"
+          value={token}
+          onChange={e => onTokenChange(e.target.value)}
+          placeholder="UPDATE_TOKEN"
+          className="updater-token-input"
+          autoComplete="off"
+        />
+      )}
 
       <div style={{ marginTop: '0.85rem' }}>
         <button
@@ -738,33 +696,7 @@ function AdvancedPanel({
   )
 }
 
-// ===== 派生 hero 状态 =====
-
-function deriveHero(
-  status: UpdaterStatus | null,
-  u: ReturnType<typeof useI18n>['t']['config'],
-): HeroInfo {
-  if (!status)
-    return { kind: 'offline', title: u.updaterStatusOffline, subtitle: u.updaterStatusOfflineDesc }
-  if (status.job_in_flight)
-    return { kind: 'updating', title: u.updaterStatusUpdating, subtitle: u.updaterStatusUpdatingDesc }
-  if (status.maintenance_phase === 'needs_manual')
-    return { kind: 'needsManual', title: u.updaterStatusNeedsManual, subtitle: u.updaterStatusNeedsManualDesc }
-  if (status.maintenance_active)
-    return { kind: 'maintenance', title: u.updaterStatusMaintenance, subtitle: u.updaterStatusMaintenanceDesc }
-  if (!status.current_version)
-    return { kind: 'firstRun', title: u.updaterStatusFirstRun, subtitle: u.updaterStatusFirstRunDesc }
-  if (status.update_available)
-    return { kind: 'available', title: u.updaterStatusAvailable, subtitle: u.updaterStatusAvailableDesc }
-  return { kind: 'healthy', title: u.updaterStatusHealthy, subtitle: u.updaterStatusHealthyDesc }
-}
-
 // ===== 辅助 =====
-
-function _unusedLatest(la: LatestAvailable | null | undefined) {
-  return la
-}
-void _unusedLatest
 
 function formatBytes(n: number): string {
   if (n < 1024)

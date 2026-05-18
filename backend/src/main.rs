@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -69,6 +69,15 @@ async fn main() -> anyhow::Result<()> {
             has_token = c.has_token(),
             "updater client configured"
         );
+        // Best-effort reachability probe. Don't block startup — the updater container may
+        // still be coming up, and admin routes return 503 cleanly when unreachable.
+        let probe = c.clone();
+        tokio::spawn(async move {
+            match probe.ping().await {
+                Ok(_) => tracing::info!("updater /healthz: reachable"),
+                Err(e) => tracing::warn!(err = %e, "updater /healthz: unreachable on startup (will retry on demand)"),
+            }
+        });
     } else {
         tracing::info!("no updater client configured (set MYRIAD_UPDATER_URL/UPDATE_TOKEN to enable)");
     }
@@ -517,6 +526,52 @@ async fn set_password_wrapper(
     }
 }
 
+/// PR #6: Wrapper for admin_create_user
+async fn admin_create_user_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::auth_local::AdminCreateUserRequest>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::auth_local::admin_create_user(
+            axum::extract::State(db.clone()),
+            headers,
+            Json(payload),
+        )
+        .await
+        {
+            Ok(response) => response.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// PR #6: Wrapper for admin_list_users
+async fn admin_list_users_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::auth_local::admin_list_users(
+            axum::extract::State(db.clone()),
+            headers,
+        )
+        .await
+        {
+            Ok(response) => response.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for toggle_local_login (PR #4)
 async fn toggle_local_login_wrapper(
     headers: axum::http::HeaderMap,
@@ -820,6 +875,34 @@ async fn update_permissions_wrapper(
                 "error": "Database not connected",
                 "message": "数据库未连接，权限功能暂不可用"
             })),
+        )
+            .into_response(),
+    }
+}
+
+/// PR #6: Wrapper for get_oauth_providers (admin)
+async fn get_oauth_providers_wrapper() -> Response {
+    let (status, json) = api::config::get_oauth_providers().await;
+    (status, json).into_response()
+}
+
+/// PR #6: Wrapper for update_oauth_providers (admin)
+async fn update_oauth_providers_wrapper(
+    Json(payload): Json<api::config::UpdateOAuthProvidersPayload>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::update_oauth_providers(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
         )
             .into_response(),
     }
@@ -2336,6 +2419,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/auth/change-password",
             post(change_password_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
+        // PR #6: admin 用户管理（GET 列出 / POST 创建）— 仅管理员
+        .route(
+            "/api/admin/users",
+            get(admin_list_users_wrapper)
+                .post(admin_create_user_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
         // PR #4: 公开注册（开关受 allow_local_registration 控制） + 后补密码 + 本地登录开关
         .route("/api/auth/register", post(register_wrapper))
         .route(
@@ -2376,6 +2466,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/config/permissions",
             post(update_permissions_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)), // 🔒 仅管理员
+        )
+        // PR #6: OAuth providers + 本地注册开关（仅管理员可读写）
+        .route(
+            "/api/config/oauth-providers",
+            get(get_oauth_providers_wrapper)
+                .put(update_oauth_providers_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/test",
@@ -3204,7 +3301,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Now the type is unified, convert to Router<()> by applying route matching
     let app: Router = if std::path::Path::new(&config.frontend_dist_path).exists() {
         tracing::info!("Serving frontend from: {}", config.frontend_dist_path);
-        api_router.fallback_service(ServeDir::new(&config.frontend_dist_path))
+        // SPA fallback: 任何 ServeDir 未匹配到的路径都返回 index.html，让 React Router 接管
+        // 否则像 /register、/tapp/run/xxx 这类客户端路由会被静态文件服务直接 404。
+        let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
+        let serve_dir =
+            ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html));
+        api_router.fallback_service(serve_dir)
     } else {
         tracing::warn!("Frontend dist path not found, serving API only");
         api_router

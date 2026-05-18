@@ -32,7 +32,7 @@ const RegisterForm: React.FC = () => {
       return
     }
     if (formData.username.length < 3 || formData.username.length > 20) {
-      setError('用户名长度应为 3-20 个字符')
+      setError(t.auth.usernameRange3to20)
       return
     }
     if (!/^\w+$/.test(formData.username)) {
@@ -40,7 +40,7 @@ const RegisterForm: React.FC = () => {
       return
     }
     if (formData.password.length < 8) {
-      setError('密码至少 8 位，且必须包含字母与数字')
+      setError(t.auth.passwordRule)
       return
     }
 
@@ -59,11 +59,11 @@ const RegisterForm: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         },
-        '注册失败',
+        t.auth.registerFailed,
       )
 
       if (!data?.token || !data?.user) {
-        throw new Error('注册响应不完整')
+        throw new Error(t.auth.registerResponseIncomplete)
       }
 
       setSessionHint()
@@ -77,7 +77,7 @@ const RegisterForm: React.FC = () => {
       setTimeout(() => { window.location.href = '/' }, 100)
     }
     catch (err: any) {
-      setError(err?.message || '注册失败')
+      setError(err?.message || t.auth.registerFailed)
     }
     finally {
       setSubmitting(false)
@@ -120,14 +120,14 @@ const RegisterForm: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              邮箱（可选）
+              {t.auth.emailOptional}
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="you@example.com"
+              placeholder={t.auth.emailPlaceholder}
               maxLength={255}
               autoComplete="email"
             />
@@ -163,19 +163,19 @@ const RegisterForm: React.FC = () => {
               ? (
                   <>
                     <Spinner size="sm" variant="white" />
-                    <span>注册中...</span>
+                    <span>{t.auth.registering}</span>
                   </>
                 )
               : (
-                  <span>创建账号</span>
+                  <span>{t.auth.register}</span>
                 )}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-600">
-          已有账号？
+          {t.auth.haveAccount}
           <a href="/login" className="text-indigo-600 hover:underline ml-1">
-            返回登录
+            {t.auth.backToLogin}
           </a>
         </div>
       </div>

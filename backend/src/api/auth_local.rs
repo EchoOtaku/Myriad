@@ -937,3 +937,188 @@ async fn issue_session_cookie(
         .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
     Ok(resp)
 }
+
+// ============================================================================
+// PR #6: Admin 后台建本地账号
+// ============================================================================
+// 详见 docs/oauth-refactor-plan.md §7.2
+//
+// 不受 allow_local_registration 开关限制；可选 is_admin 字段提升新账号为管理员。
+
+#[derive(Debug, Deserialize)]
+pub struct AdminCreateUserRequest {
+    pub username: String,
+    pub password: String,
+    pub email: Option<String>,
+    #[serde(default)]
+    pub is_admin: bool,
+}
+
+pub async fn admin_create_user(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<AdminCreateUserRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use crate::middleware::auth::verify_jwt_token;
+
+    let claims = verify_jwt_token(&headers).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Unauthorized"})),
+        )
+    })?;
+    if !claims.is_admin {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Forbidden", "message": "Admin only"})),
+        ));
+    }
+
+    validate_username(&req.username)?;
+    validate_password(&req.password)?;
+
+    use sea_orm::Value as SeaValue;
+
+    let dup = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1",
+            vec![SeaValue::String(Some(Box::new(req.username.clone())))],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("DB error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+    if dup.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Username taken",
+                "message": "This username is already in use"
+            })),
+        ));
+    }
+
+    let password_hash = hash_password(&req.password)?;
+
+    let insert = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO users (username, email, password_hash, auth_provider, is_admin, \
+                                 avatar_url, created_at, updated_at) \
+             VALUES ($1, $2, $3, 'local', $4, $5, NOW(), NOW()) \
+             RETURNING id",
+            vec![
+                SeaValue::String(Some(Box::new(req.username.clone()))),
+                req.email
+                    .clone()
+                    .map(|s| SeaValue::String(Some(Box::new(s))))
+                    .unwrap_or(SeaValue::String(None)),
+                SeaValue::String(Some(Box::new(password_hash))),
+                SeaValue::Bool(Some(req.is_admin)),
+                SeaValue::String(Some(Box::new(format!(
+                    "https://ui-avatars.com/api/?name={}&background=4f46e5&color=fff",
+                    urlencoding::encode(&req.username)
+                )))),
+            ],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create user: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to create account"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Insert returned no row"})),
+            )
+        })?;
+
+    let user_id: i32 = insert.try_get("", "id").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read new id"})),
+        )
+    })?;
+
+    tracing::info!(
+        "✅ Admin {} created account: {} (id={}, is_admin={})",
+        claims.username,
+        req.username,
+        user_id,
+        req.is_admin
+    );
+
+    Ok(Json(json!({
+        "success": true,
+        "user_id": user_id,
+        "username": req.username,
+        "is_admin": req.is_admin,
+    })))
+}
+
+/// GET /api/admin/users — admin 列出所有用户（含 identities 计数）
+pub async fn admin_list_users(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use crate::middleware::auth::verify_jwt_token;
+    let claims = verify_jwt_token(&headers).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Unauthorized"})),
+        )
+    })?;
+    if !claims.is_admin {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Forbidden"})),
+        ));
+    }
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT u.id, u.username, u.email, u.is_admin, u.auth_provider, \
+                    u.local_login_disabled, u.password_hash IS NOT NULL AS has_password, \
+                    u.created_at, u.last_login_at, \
+                    (SELECT COUNT(*) FROM user_identities i WHERE i.user_id = u.id) AS identity_count \
+             FROM users u ORDER BY u.created_at DESC",
+            vec![],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("DB error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    let users: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<i32>("", "id").unwrap_or(0),
+                "username": r.try_get::<String>("", "username").unwrap_or_default(),
+                "email": r.try_get::<Option<String>>("", "email").unwrap_or(None),
+                "is_admin": r.try_get::<bool>("", "is_admin").unwrap_or(false),
+                "auth_provider": r.try_get::<String>("", "auth_provider").unwrap_or_default(),
+                "local_login_disabled": r.try_get::<bool>("", "local_login_disabled").unwrap_or(false),
+                "has_password": r.try_get::<bool>("", "has_password").unwrap_or(false),
+                "identity_count": r.try_get::<i64>("", "identity_count").unwrap_or(0),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>>("", "created_at").ok().map(|t| t.to_rfc3339()),
+                "last_login_at": r.try_get::<chrono::DateTime<chrono::Utc>>("", "last_login_at").ok().map(|t| t.to_rfc3339()),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "users": users })))
+}

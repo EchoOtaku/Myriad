@@ -103,9 +103,7 @@ impl OAuthProvider for GithubProvider {
 
         Ok(ProviderTokens {
             access_token: token.access_token().secret().clone(),
-            refresh_token: token.refresh_token().map(|t| t.secret().clone()),
             id_token: None,
-            expires_in: token.expires_in().map(|d| d.as_secs()),
         })
     }
 

@@ -143,6 +143,21 @@ export interface TranslationKeys {
     rateLimitError: string
     logoutSuccess: string
     logoutFailed: string
+    // PR #4/#5: 注册 + provider 通用按钮
+    loginWith: string
+    register: string
+    registering: string
+    registerTitle: string
+    haveAccount: string
+    backToLogin: string
+    noAccount: string
+    registerHere: string
+    emailOptional: string
+    emailPlaceholder: string
+    registerFailed: string
+    registerResponseIncomplete: string
+    usernameRange3to20: string
+    passwordRule: string
   }
 
   // 设置向导
@@ -326,6 +341,8 @@ export interface TranslationKeys {
     updaterStatusOfflineDesc: string
     updaterStatusFirstRun: string
     updaterStatusFirstRunDesc: string
+    updaterRowStatus: string
+    updaterMaintenanceActions: string
     // 操作描述
     updaterActionCheckDesc: string
     updaterActionUpgradeDesc: string
@@ -550,6 +567,52 @@ export interface TranslationKeys {
     githubClientIdPlaceholder: string
     githubClientSecret: string
     githubClientSecretPlaceholder: string
+    // PR #6: OIDC providers + 本地注册开关
+    oidcSectionTitle: string
+    oidcSectionDesc: string
+    oidcCallbackTemplate: string
+    oidcEmpty: string
+    oidcAddProvider: string
+    oidcSaveConfig: string
+    oidcSaving: string
+    oidcSaved: string
+    oidcEnabled: string
+    oidcDelete: string
+    oidcSlugLabel: string
+    oidcSlugPlaceholder: string
+    oidcDisplayNameLabel: string
+    oidcDisplayNamePlaceholder: string
+    oidcClientIdLabel: string
+    oidcClientSecretLabel: string
+    oidcClientSecretPlaceholder: string
+    oidcDiscoveryLabel: string
+    oidcDiscoveryPlaceholder: string
+    oidcScopesLabel: string
+    oidcScopesPlaceholder: string
+    oidcIconLabel: string
+    oidcIconPlaceholder: string
+    oidcNewProvider: string
+    // PR #7: preset 流程 + 重排
+    oauthProvidersTitle: string
+    oauthProvidersDesc: string
+    oauthProvidersEmpty: string
+    oauthAddLoginMethod: string
+    oauthPickPreset: string
+    oauthHowToHint: string
+    oauthOpenDocs: string
+    oauthAdvanced: string
+    // 各 preset 的使用方法描述
+    oauthPresetHintGithub: string
+    oauthPresetHintGoogle: string
+    oauthPresetHintMicrosoft: string
+    oauthPresetHintGitlab: string
+    oauthPresetHintDiscord: string
+    oauthPresetHintAuthentik: string
+    oauthPresetHintKeycloak: string
+    oauthPresetHintAuth0: string
+    oauthPresetHintCustom: string
+    allowRegisterTitle: string
+    allowRegisterDesc: string
     musicConfigTitle: string
     musicConfigDesc: string
     musicUsageTitle: string

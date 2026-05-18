@@ -170,15 +170,12 @@ impl OAuthProvider for OidcProvider {
         struct TokenResp {
             access_token: String,
             #[serde(default)]
-            refresh_token: Option<String>,
-            #[serde(default)]
             id_token: Option<String>,
-            #[serde(default)]
-            expires_in: Option<u64>,
         }
 
         let resp = http
             .post(&doc.token_endpoint)
+            .header("Accept", "application/json")
             .form(&params)
             .send()
             .await
@@ -197,9 +194,7 @@ impl OAuthProvider for OidcProvider {
 
         Ok(ProviderTokens {
             access_token: token.access_token,
-            refresh_token: token.refresh_token,
             id_token: token.id_token,
-            expires_in: token.expires_in,
         })
     }
 

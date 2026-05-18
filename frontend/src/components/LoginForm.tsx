@@ -6,6 +6,7 @@ import { fetchJson } from '../utils/apiHelper'
 import { sanitizeUsername } from '../utils/inputSanitizer'
 import { RateLimitError } from '../utils/rateLimiter'
 import { setSessionHint } from '../utils/sessionDetection'
+import './LoginForm.css'
 import { Spinner } from './Spinner'
 
 // PR #2/#3：后端返回的 OAuth provider 描述
@@ -238,26 +239,28 @@ const LoginForm: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2.5">
               {providers.map(p => (
                 <a
                   key={p.slug}
                   href={`${API_URL}/api/auth/oauth/${p.slug}/login`}
                   className={
                     p.slug === 'github'
-                      ? 'w-full py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-semibold shadow-md'
-                      : 'w-full py-3 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-semibold shadow-sm'
+                      ? 'oauth-provider-btn oauth-provider-btn-github'
+                      : 'oauth-provider-btn oauth-provider-btn-oidc'
                   }
                 >
-                  {p.icon === 'github'
-                    ? <FaGithub className="text-xl" />
-                    : p.icon
-                      ? <img src={p.icon} alt="" className="w-5 h-5" />
-                      : null}
-                  <span>
+                  <span className="oauth-provider-icon">
+                    {p.icon === 'github'
+                      ? <FaGithub />
+                      : p.icon
+                        ? <img src={p.icon} alt="" />
+                        : <span className="oauth-provider-icon-fallback">{p.display_name?.[0]?.toUpperCase() || '?'}</span>}
+                  </span>
+                  <span className="oauth-provider-label">
                     {p.slug === 'github'
                       ? t.auth.loginWithGithub
-                      : `使用 ${p.display_name} 登录`}
+                      : format(t.auth.loginWith, { name: p.display_name })}
                   </span>
                 </a>
               ))}
@@ -268,9 +271,9 @@ const LoginForm: React.FC = () => {
         {/* Register link — PR #4 */}
         {allowRegister && (
           <div className="mt-6 text-center text-sm text-gray-600">
-            还没有账号？
+            {t.auth.noAccount}
             <a href="/register" className="text-indigo-600 hover:underline ml-1">
-              立即注册
+              {t.auth.registerHere}
             </a>
           </div>
         )}
