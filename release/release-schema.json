@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/somekawahitomi/myriad/release/release-schema.json",
+  "$id": "https://github.com/Myriad-You/Myriad/release/release-schema.json",
   "title": "Myriad Release Manifest",
   "description": "Authoritative metadata for a Myriad release, consumed by the updater. See docs/updater-spec.md §3.",
   "type": "object",

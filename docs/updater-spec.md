@@ -506,7 +506,19 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
 ### 15.4 release.json 校验
 
 M1：HTTPS + digest 校验 + version 正则
-M2：cosign 签名
+M2：cosign 签名（已实现）
+
+**cosign keyless 流程**：
+
+1. release.yml 在 GitHub Actions runner 上用 OIDC token 调 `cosign sign-blob` 签 release.json
+   和 SHA256SUMS，产出 `.sig` + `.pem` 一并发到 Release assets。
+2. updater 拉 release.json 时同时拉 `release.json.sig` 和 `release.json.pem`，调本地 cosign
+   CLI 校验：
+   - `--certificate-identity-regexp ^https://github\.com/<repo>/\.github/workflows/.+@refs/tags/v[0-9].+$`
+   - `--certificate-oidc-issuer https://token.actions.githubusercontent.com`
+3. 用户通过 `COSIGN_VERIFY` 环境变量切换策略：`off`（默认，兼容老 release）/ `soft`
+   （失败仅 warning）/ `strict`（失败拒绝升级）。
+4. updater 镜像里预装 cosign CLI（`sigstore/cosign` v2.4.1 单文件二进制）。
 
 ## 16. 观测与诊断
 
@@ -545,30 +557,42 @@ CLI 直接读 state + 调 docker，**不依赖 updater 进程活着**。
 
 ## 17. 测试矩阵
 
-M1 release 前必须跑通：
+M1 release 前必须跑通。状态：
+- **e2e** — 通过 `scripts/test-updater-e2e.sh` 自动验证（本地二进制 + /tmp testbed）
+- **unit** — 通过 `cargo test --lib` 验证
+- **manual** — 需要真实 docker stack（本地或预发环境），尚未自动化
 
-| # | 场景 | 期望 |
-|---|---|---|
-| 1 | 正常更新 | 成功 |
-| 2 | pull 中断网 | 维护未启动，回 idle |
-| 3 | 新 backend 启动失败 | 自动回滚成功 |
-| 4 | 新 backend health 持续 false | 5min 超时回滚 |
-| 5 | migration 失败 | 回滚 pgdata，旧 backend 起来 |
-| 6 | 回滚中 snapshot 丢失 | needs_manual |
-| 7 | 更新中拔电源 | 重启续状态机 |
-| 8 | 更新中 docker daemon 重启 | 重试或失败回滚 |
-| 9 | 磁盘满 | preflight 拒绝 |
-| 10 | .env 缺新 required env | preflight 拒绝 |
-| 11 | min_from_version 不满足 | preflight 拒绝 |
-| 12 | min_updater_version 高于自己 | 拒绝并提示 |
-| 13 | 并发 POST /update | 第二个 409 |
-| 14 | pgdata 是 named volume | 启动时拒绝 |
-| 15 | compose 不引用 MYRIAD_TAG | 启动时拒绝 |
-| 16 | token 错误 | 401，5 次后限流 |
-| 17 | GitHub rate limit | 退避重试，最终标 unknown |
-| 18 | release.json 未知字段 | 忽略继续 |
-| 19 | frontend cache 旧版本 | health meta 失败 → 回滚 |
-| 20 | proxy 重启 | 维护状态从磁盘恢复 |
+| # | 场景 | 期望 | 当前状态 |
+|---|---|---|---|
+| 1 | 正常更新 | 成功 | manual |
+| 2 | pull 中断网 | 维护未启动，回 idle | manual |
+| 3 | 新 backend 启动失败 | 自动回滚成功 | manual |
+| 4 | 新 backend health 持续 false | 5min 超时回滚 | manual |
+| 5 | migration 失败 | 回滚 pgdata，旧 backend 起来 | manual |
+| 6 | 回滚中 snapshot 丢失 | needs_manual | manual |
+| 7 | 更新中拔电源 | 重启续状态机 | manual |
+| 8 | 更新中 docker daemon 重启 | 重试或失败回滚 | manual |
+| 9 | 磁盘满 | preflight 拒绝 | manual |
+| 10 | .env 缺新 required env | preflight 拒绝 | manual |
+| 11 | min_from_version 不满足 | preflight 拒绝 | manual |
+| 12 | min_updater_version 高于自己 | 拒绝并提示 | manual |
+| 13 | 并发 POST /update | 第二个 409 | manual |
+| 14 | pgdata 是 named volume | 启动时拒绝 | unit + smoke |
+| 15 | compose 不引用 MYRIAD_TAG | 启动时拒绝 | **e2e ✓** + smoke |
+| 16 | token 错误 | 401，5 次后限流 | **e2e ✓** (401 验证); 限流 unit |
+| 17 | GitHub rate limit | 退避重试，最终标 unknown | manual |
+| 18 | release.json 未知字段 | 忽略继续 | unit (serde flatten + skip_unknown) |
+| 19 | frontend cache 旧版本 | health meta 失败 → 回滚 | manual |
+| 20 | proxy 重启 | 维护状态从磁盘恢复 | **e2e ✓** (fail-open + maintenance.json 切换) |
+
+E2E 实际覆盖（10 项 / 全过，2026-05-17）：
+
+- proxy `/healthz`、`/_proxy/status`、`/_updater/*` 转发、维护页 503 切换、删 maintenance.json 后 fail-open
+- updater `/healthz`、`/status` schema 合规、`/update` 鉴权、版本格式校验
+- rescue CLI 在 updater 运行时仍可调（无 lock 冲突）
+
+> 完整升级 + 回滚 + self-update flow 的 manual 验证需要本地 `docker compose up -d` + 至少
+> 一个真实 release.json on GitHub。第一个公开 tag (`v0.1.0`) 是天然的端到端测试。
 
 ## 18. 实施分期
 
@@ -582,8 +606,8 @@ M1 release 前必须跑通：
 ### M2（强烈建议）
 
 - btrfs/zfs snapshot 优化
-- cosign 验签
-- registry mirror
+- ~~cosign 验签~~ ✅ 已实现（§15.4）
+- registry mirror（基础支持已实现，通过 `REGISTRY_MIRROR` env）
 
 ### M3（可选，可能永不做）
 

@@ -182,7 +182,27 @@ tag 命名约定：
 
 每个 release 必填 `min_from_version`（避免跨版本直升）和 `min_updater_version`（强制先升 updater）。如需覆盖默认值，在 `release/overrides/<version>.json` 留一份补丁，CI 会 deep-merge 进 `release.json`。
 
-## 7. 关键约束（再次强调）
+## 7. 启用 cosign 验证（推荐生产环境）
+
+releases 自 v0.1.0 起由 GitHub Actions OIDC keyless 签名（`release.json.sig` +
+`release.json.pem` 作为 release assets）。updater 镜像里已经预装 cosign CLI，只需把策略
+切到 `strict`：
+
+```bash
+# .env
+COSIGN_VERIFY=strict
+```
+
+随后 `docker compose up -d updater` 重启 updater。从此每次拉 release.json 时：
+
+- 缺失 `.sig`/`.pem` → 拒绝升级（"strict"）
+- 签名校验失败 → 拒绝升级（"strict"）
+- 校验通过 → 正常进入 preflight
+
+`COSIGN_VERIFY=soft` 是过渡选项：失败仅 warning，不阻止升级。推荐先 soft 跑几个版本观察
+日志，确认无误后切 strict。
+
+## 8. 关键约束（再次强调）
 
 - **永远不要推 `:latest`**：updater 的回滚依赖旧版本 tag 仍在 registry。
 - **pgdata 必须是 bind mount**：M1 不支持 docker named volume 上的快照。
