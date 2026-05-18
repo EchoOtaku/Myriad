@@ -139,15 +139,17 @@ impl OAuthProvider for OidcProvider {
     async fn build_auth_url(&self, state: &str, redirect_uri: &str) -> Result<String, String> {
         let doc = self.discovery().await?;
         let scope = self.scope_string();
-        let url = format!(
-            "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}",
-            doc.authorization_endpoint,
-            urlencoding::encode(&self.client_id),
-            urlencoding::encode(redirect_uri),
-            urlencoding::encode(&scope),
-            urlencoding::encode(state),
-        );
-        Ok(url)
+        // 用 url crate 解析 + append query，避免 authorization_endpoint 本身带 ?param 时
+        // 拼出 https://x?a=b?response_type=code 这种非法 URL
+        let mut url = url::Url::parse(&doc.authorization_endpoint)
+            .map_err(|e| format!("invalid authorization_endpoint: {e}"))?;
+        url.query_pairs_mut()
+            .append_pair("response_type", "code")
+            .append_pair("client_id", &self.client_id)
+            .append_pair("redirect_uri", redirect_uri)
+            .append_pair("scope", &scope)
+            .append_pair("state", state);
+        Ok(url.into())
     }
 
     async fn exchange_code(

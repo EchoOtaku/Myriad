@@ -146,10 +146,15 @@ pub async fn provider_link(
 
 // ---------- GET /api/auth/oauth/:slug/callback ----------
 
+/// OAuth 回调参数 — `code` 和 `state` 在成功路径必需，但 provider 报错时
+/// （用户拒绝授权 / 配置错误等）会以 `?error=...&error_description=...` 形式回调，
+/// 所以全部字段都 optional 来容错解析。
 #[derive(Debug, Deserialize)]
 pub struct CallbackQuery {
-    code: String,
-    state: String,
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
 }
 
 pub async fn provider_callback(
@@ -157,8 +162,35 @@ pub async fn provider_callback(
     Query(params): Query<CallbackQuery>,
     State(db): State<DatabaseConnection>,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
+    let frontend_base = SiteConfig::get_base_url().await;
+
+    // provider 报错路径：直接重定向到登录页，带 error 信息
+    if let Some(err) = params.error.as_ref() {
+        let desc = params.error_description.unwrap_or_default();
+        tracing::warn!(
+            "🚨 OAuth provider '{}' returned error: {} ({})",
+            slug,
+            err,
+            desc
+        );
+        let url = format!(
+            "{}/login?oauth_error={}&desc={}",
+            frontend_base,
+            urlencoding::encode(err),
+            urlencoding::encode(&desc),
+        );
+        return Ok(Redirect::to(&url).into_response());
+    }
+
+    let code = params
+        .code
+        .ok_or_else(|| err_400("OAuth callback missing 'code' parameter"))?;
+    let state_param = params
+        .state
+        .ok_or_else(|| err_400("OAuth callback missing 'state' parameter"))?;
+
     // 1. 验证 state
-    let stored = consume_state(&params.state)
+    let stored = consume_state(&state_param)
         .await
         .ok_or_else(|| err_400("OAuth state invalid or expired (possible CSRF)"))?;
 
@@ -178,7 +210,7 @@ pub async fn provider_callback(
     // 3. exchange + fetch profile
     let redirect_uri = build_redirect_uri(&slug).await;
     let tokens = provider
-        .exchange_code(&params.code, &redirect_uri)
+        .exchange_code(&code, &redirect_uri)
         .await
         .map_err(err_500)?;
     let profile = provider.fetch_profile(&tokens).await.map_err(err_500)?;
@@ -190,12 +222,10 @@ pub async fn provider_callback(
         profile.username
     );
 
-    let frontend_url = SiteConfig::get_base_url().await;
-
-    // 4. 分流：LinkAccount vs Login
+    // 4. 分流：LinkAccount vs Login（复用前面的 frontend_base，省一次 await）
     match stored.purpose {
         OAuthPurpose::LinkAccount(admin_id) => {
-            handle_link(&db, &slug, admin_id, &profile, &frontend_url).await
+            handle_link(&db, &slug, admin_id, &profile, &frontend_base).await
         }
         OAuthPurpose::Login => handle_login(&db, &slug, &profile).await,
     }
@@ -506,14 +536,14 @@ async fn upsert_identity(
             NOW(), NOW() \
          ) \
          ON CONFLICT (provider, provider_user_id) DO UPDATE SET \
-            user_id = EXCLUDED.user_id, \
             provider_username = EXCLUDED.provider_username, \
             email = EXCLUDED.email, \
             email_verified = EXCLUDED.email_verified, \
             avatar_url = EXCLUDED.avatar_url, \
             profile_url = EXCLUDED.profile_url, \
             raw_profile = EXCLUDED.raw_profile, \
-            last_login_at = NOW()",
+            last_login_at = NOW() \
+         WHERE user_identities.user_id = EXCLUDED.user_id",
         vec![
             SeaValue::Int(Some(user_id)),
             SeaValue::String(Some(Box::new(slug.to_string()))),

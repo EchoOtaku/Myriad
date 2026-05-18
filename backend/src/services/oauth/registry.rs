@@ -86,6 +86,13 @@ impl ProviderRegistry {
                     tracing::info!("🔐 OAuth provider loaded: {} (github)", entry.slug);
                 }
                 "oidc" => {
+                    if entry.client_id.is_empty() || entry.client_secret.is_empty() {
+                        tracing::warn!(
+                            "OIDC provider '{}' missing credentials; skipping",
+                            entry.slug
+                        );
+                        continue;
+                    }
                     let discovery = match entry.discovery_url.as_ref() {
                         Some(u) if !u.is_empty() => u.clone(),
                         _ => {
