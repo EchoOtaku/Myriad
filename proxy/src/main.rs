@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Body;
-use axum::extract::{Request, State};
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use axum::extract::{ConnectInfo, Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::any;
 use axum::Router;
@@ -118,15 +118,22 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(listen).await?;
     info!(addr = %listen, "proxy listening");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await?;
     Ok(())
 }
 
-async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Result<Response, Infallible> {
+async fn handle(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(client_addr): ConnectInfo<SocketAddr>,
+    req: Request,
+) -> Result<Response, Infallible> {
     let path = req.uri().path().to_string();
 
     // Health / proxy-status routes handled by axum directly above; this path is the fallback.
@@ -135,7 +142,7 @@ async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Result<Resp
     // is the recommended path (admin session + server-held UPDATE_TOKEN). The direct path
     // is kept for rescue scenarios (backend itself down) — operators enable it via
     // PROXY_ALLOW_DIRECT_UPDATER=true. See docs/updater-spec.md §15.
-    if let Some(rest) = path.strip_prefix("/_updater/") {
+    if path.starts_with("/_updater/") {
         if !state.allow_direct_updater {
             return Ok((
                 StatusCode::NOT_FOUND,
@@ -143,11 +150,16 @@ async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Result<Resp
             )
                 .into_response());
         }
-        return Ok(
-            forward(&state, &state.updater_upstream, &format!("/{rest}"), req)
-                .await
-                .unwrap_or_else(bad_gateway),
-        );
+        let upstream_path = updater_path_with_query(req.uri());
+        return Ok(forward(
+            &state,
+            &state.updater_upstream,
+            &upstream_path,
+            req,
+            client_addr,
+        )
+        .await
+        .unwrap_or_else(bad_gateway));
     }
 
     let maint = read_maintenance(&state.state_path).await;
@@ -161,9 +173,15 @@ async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Result<Resp
     } else {
         &state.frontend_upstream
     };
-    Ok(forward(&state, upstream, &path_with_query(req.uri()), req)
-        .await
-        .unwrap_or_else(bad_gateway))
+    Ok(forward(
+        &state,
+        upstream,
+        &path_with_query(req.uri()),
+        req,
+        client_addr,
+    )
+    .await
+    .unwrap_or_else(bad_gateway))
 }
 
 fn bad_gateway(err: anyhow::Error) -> Response {
@@ -178,21 +196,41 @@ fn path_with_query(uri: &Uri) -> String {
     }
 }
 
+fn updater_path_with_query(uri: &Uri) -> String {
+    let full = path_with_query(uri);
+    match full.strip_prefix("/_updater/") {
+        Some(rest) => format!("/{rest}"),
+        None => full,
+    }
+}
+
 async fn forward(
     state: &AppState,
     upstream_base: &str,
     path_q: &str,
     req: Request,
+    client_addr: SocketAddr,
 ) -> anyhow::Result<Response> {
     let (parts, body) = req.into_parts();
     let url = format!("{}{}", upstream_base, path_q);
     let mut builder = hyper::Request::builder().method(parts.method).uri(&url);
     for (k, v) in parts.headers.iter() {
         // Skip hop-by-hop headers.
-        if is_hop_by_hop(k.as_str()) {
+        if is_hop_by_hop(k.as_str()) || is_proxy_managed_forwarded_header(k.as_str()) {
             continue;
         }
         builder = builder.header(k, v);
+    }
+    let client_ip = client_addr.ip().to_string();
+    builder = builder
+        .header("x-forwarded-for", forwarded_for(&parts.headers, &client_ip))
+        .header("x-real-ip", client_ip)
+        .header(
+            "x-forwarded-proto",
+            forwarded_proto(&parts.headers).unwrap_or_else(|| HeaderValue::from_static("http")),
+        );
+    if let Some(host) = forwarded_host(&parts.headers) {
+        builder = builder.header("x-forwarded-host", host);
     }
     let upstream_req = builder.body(body)?;
     let resp = state.client.request(upstream_req).await?;
@@ -220,6 +258,36 @@ fn is_hop_by_hop(name: &str) -> bool {
             | "transfer-encoding"
             | "upgrade"
     )
+}
+
+fn is_proxy_managed_forwarded_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "x-forwarded-for" | "x-real-ip" | "x-forwarded-host" | "x-forwarded-proto"
+    )
+}
+
+fn forwarded_for(headers: &HeaderMap, client_ip: &str) -> String {
+    match headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(existing) => format!("{existing}, {client_ip}"),
+        None => client_ip.to_string(),
+    }
+}
+
+fn forwarded_proto(headers: &HeaderMap) -> Option<HeaderValue> {
+    headers.get("x-forwarded-proto").cloned()
+}
+
+fn forwarded_host(headers: &HeaderMap) -> Option<HeaderValue> {
+    headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get(header::HOST))
+        .cloned()
 }
 
 async fn read_maintenance(path: &PathBuf) -> MaintenanceFile {
@@ -262,12 +330,9 @@ fn maintenance_response(m: &MaintenanceFile) -> Response {
             },
         );
     let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(
-        axum::http::header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
-    headers.insert(
-        axum::http::header::CONTENT_TYPE,
+        header::CONTENT_TYPE,
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
     headers.insert("Retry-After", HeaderValue::from_static("30"));
@@ -292,4 +357,67 @@ async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 #[allow(dead_code)]
 fn _silence_unused() {
     let _ = Method::GET;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_with_query_preserves_query() {
+        let uri: Uri = "/api/setup/status?mode=config".parse().unwrap();
+
+        assert_eq!(path_with_query(&uri), "/api/setup/status?mode=config");
+    }
+
+    #[test]
+    fn updater_path_with_query_strips_prefix_and_preserves_query() {
+        let uri: Uri = "/_updater/status?detail=1".parse().unwrap();
+
+        assert_eq!(updater_path_with_query(&uri), "/status?detail=1");
+    }
+
+    #[test]
+    fn updater_path_with_query_handles_nested_paths() {
+        let uri: Uri = "/_updater/rescue/exit-maintenance?force=true"
+            .parse()
+            .unwrap();
+
+        assert_eq!(
+            updater_path_with_query(&uri),
+            "/rescue/exit-maintenance?force=true"
+        );
+    }
+
+    #[test]
+    fn forwarded_for_sets_client_ip_when_missing() {
+        let headers = HeaderMap::new();
+
+        assert_eq!(forwarded_for(&headers, "192.0.2.10"), "192.0.2.10");
+    }
+
+    #[test]
+    fn forwarded_for_appends_client_ip_when_present() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
+
+        assert_eq!(
+            forwarded_for(&headers, "192.0.2.10"),
+            "203.0.113.9, 192.0.2.10"
+        );
+    }
+
+    #[test]
+    fn forwarded_host_falls_back_to_host() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::HOST,
+            HeaderValue::from_static("example.myriad.local"),
+        );
+
+        assert_eq!(
+            forwarded_host(&headers).unwrap(),
+            HeaderValue::from_static("example.myriad.local")
+        );
+    }
 }
